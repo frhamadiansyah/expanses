@@ -12,7 +12,8 @@ test('the bar over the keyboard offers last month, the 3-month average and the y
   await page.goto('/transactions');
   const now = new Date();
   const lastMonth = localIsoDate(new Date(now.getFullYear(), now.getMonth() - 1, 15));
-  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '1200000', date: lastMonth });
+  // Home catering is essential built in, so the emergency fund (essential spending) counts it too.
+  await addTransaction(page, { description: 'Katering rumah', paidWith: 'BCA Tahapan', category: 'Home catering', amount: '1200000', date: lastMonth });
 
   await page.goto('/calculators/emergency');
   const bar = page.getByRole('listbox', { name: 'Spending to fill from' });

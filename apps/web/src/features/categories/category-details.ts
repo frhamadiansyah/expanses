@@ -5,9 +5,11 @@ import type { ResolvedNeed } from '@expanses/core';
  * The quiet line under "Spending" on a category's page: where its essential-or-lifestyle answer comes from — a mark
  * of its own or a parent's. None at all says nothing: the control already reads Essential, and the ⓘ says why.
  */
-export function needCaption(source: ResolvedNeed['source'], parentName: string | null): string | undefined {
-  if (source === 'yours') return 'Custom';
+export function needCaption(source: ResolvedNeed['source'], parentName: string | null, waitsFor: readonly string[] = []): string | undefined {
+  // A Debts & savings mark of its own waits for phones on an older build (sync, 0119): said so, by name.
+  if (source === 'yours') return waitsFor.length ? `Custom · reaches ${waitsFor.join(', ')} after an update` : 'Custom';
   if (source === 'parent') return parentName ? `Follows ${parentName}` : 'Follows its parent';
+  if (source === 'default') return 'Built in';
   return undefined;
 }
 

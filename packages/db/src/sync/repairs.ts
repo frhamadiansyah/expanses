@@ -7,7 +7,7 @@ import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { TRIP_TRANSFERS_MIN_APP_VERSION } from '../repos/shared-event-transfers';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, lineageOfTransaction, projectPurchase, rowUpsertsTx, type SharedBook, writeChangeSetsTx } from './capture';
+import { captureConfigOf, isThirdMark, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, type SharedBook, thirdMarksCrossedKey, thirdMarkWaitsTx, writeChangeSetsTx } from './capture';
 import { memberOfDeviceTx } from './apply';
 import { itemsWithStaleFaceTx, sendSummariesTx } from './net-worth/summaries';
 import { decodeHlc } from './hlc';
@@ -53,6 +53,12 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * drops. As R5 does for a trip's switches, each time a device in the book is first seen at `MONTH_START_MIN_APP_VERSION`
  * or later, this phone sends the value again at the clock it holds it at, and the updated phone, whose migration dropped
  * the stale clock, writes it. Nothing goes for a value never changed.
+ *
+ * R7 Debts & savings marks (0119): a category marked Debts & savings is held back from the book's log while any other
+ * phone in it is on a build whose table refuses the value (`thirdMarkWaitsTx`), its clocks kept here as if sent. Each
+ * time every other phone is first seen at `NEEDS_THIRD_MARK_MIN_APP_VERSION` or later — and again for each phone that
+ * joins at it — this phone sends every Debts & savings mark it holds at the clock it holds it at (none `changed`), so a
+ * later word from another phone still wins. A mark with no clock here never went anywhere: it goes at a fresh one.
  *
  * R4 card faces (fix/sync-card-tier): a joint account's summary now carries what its card face is drawn from (its bank,
  * its card tier, its number's last four: `ItemFace`). An account given a tier before this build sent none, and its
@@ -156,6 +162,8 @@ export interface RepairReport {
   tripSwitches?: number | null;
   /** R6: the workspace's month start sent again (1) or nothing to send (0); null when no device had newly crossed. */
   monthStart?: number | null;
+  /** R7: Debts & savings marks sent; null while a phone in the book cannot store one, or none had newly crossed. */
+  thirdMarks?: number | null;
 }
 
 /** The shared book here, active and with its members known; null for anything else. */
@@ -381,6 +389,27 @@ async function resendTripSwitchesTx(tx: Tx, database: Database, book: SharedBook
 }
 
 /**
+ * R7: every Debts & savings mark of the book this phone holds, each at the clock it holds it at. Returns how many.
+ *
+ * The `need` field travels at its own clock; the row's existence clock (`@row`) is taken by the receiver at this
+ * change-set's hlc, as for every resend (R5's too): carrying the original would mean a change to apply for every
+ * revivable entity, which is not worth it here. What it allows: a phone that cleared the mark after it was made, in the
+ * moment between this phone's pull and this resend, sees it come back.
+ */
+async function resendThirdMarksTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
+  const marks = (await rowUpsertsTx(tx, book, 'category_need')).filter(isThirdMark);
+  const ops: Op[] = [];
+  for (const mark of marks) {
+    const [clock] = await tx.values<[string]>(sql`
+      SELECT hlc FROM sync_field_clocks WHERE book_id = ${book.bookId} AND entity = 'category_need' AND id = ${mark.id} AND field = 'need'`);
+    const fields = { need: 'debts_savings' };
+    ops.push(clock ? { entity: 'category_need', id: mark.id, op: 'upsert', fields, changed: [], clocks: { need: clock[0] } } : { entity: 'category_need', id: mark.id, op: 'upsert', fields });
+  }
+  await writeChangeSetsTx(tx, captureConfigOf(database), book, ops);
+  return ops.length;
+}
+
+/**
  * Runs the one-time repairs of a shared book on this phone, each once. Called after a sync that pulled the book to the
  * relay's latest. A repair that throws leaves its marker unwritten (it runs again next time) and is rethrown after the
  * others have had their turn, for the caller to log; nothing it wrote half-way stays (each step is one db transaction).
@@ -490,6 +519,26 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       const sent = await resendTripSwitchesTx(tx, database, book);
       const all = [...new Set([...crossed, ...nowAt])].sort();
       await tx.run(sql`INSERT INTO settings (key, value) VALUES (${switchesCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+      return sent;
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.thirdMarks = await database.transaction(async (tx) => {
+      const book = await activeBookTx(tx, bookId);
+      if (!book) return null;
+      if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'category_needs'`)).length === 0) return null;
+      // Only once every other phone can store the mark — the same test that held it back — and then once per phone
+      // newly seen there: one that joins later took none of the marks held before it came.
+      const self = await localDeviceId(tx);
+      if (await thirdMarkWaitsTx(tx, bookId, self)) return null;
+      const others = (await bookDevicesTx(tx, bookId)).filter((d) => d.deviceId !== self).map((d) => d.deviceId);
+      const crossed = await crossedTx(tx, bookId, thirdMarksCrossedKey(bookId));
+      if (others.every((id) => crossed.has(id))) return null;
+      const sent = await resendThirdMarksTx(tx, database, book);
+      const all = [...new Set([...crossed, ...others])].sort();
+      await tx.run(sql`INSERT INTO settings (key, value) VALUES (${thirdMarksCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
       return sent;
     });
   } catch (error) {

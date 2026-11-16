@@ -487,9 +487,10 @@ export {
 export { budgetSheet, type BudgetCap, type BudgetLine, type BudgetSheet, type BudgetSheetInput, type CapNode, outermostCapsTotal, type SavingsRow } from './budget/sheet';
 export { BUDGET_FREQUENCIES, type BudgetFrequency, perMonthMinor } from './budget/frequency';
 export { type BudgetShare, bpOf, type CapToResolve, formatBp, parsePercentBp, resolveCaps, ShareError, type ShareBasis, shareOfMinor } from './budget/shares';
-export { CATEGORY_NEEDS, type CategoryNeed, type NeedNode, needOf, type ResolvedNeed, resolveNeeds } from './budget/needs';
+export { CATEGORY_NEEDS, type CategoryNeed, DEFAULT_CATEGORY_NEEDS, defaultNeedOfKey, type NeedNode, needOf, readNeed, type ResolvedNeed, resolveNeeds } from './budget/needs';
 export {
   capsByNeed,
+  type CappedSides,
   type CapPlanNode,
   DEFAULT_SPENDING_GUIDE,
   type EssentialSplit,

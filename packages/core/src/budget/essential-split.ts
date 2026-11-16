@@ -6,8 +6,9 @@ import type { CategoryNeed } from './needs';
  *
  * Income and spending are the figures Cashflow already shows for the period; each spending category counts under its
  * resolved mark (unmarked is essential, as on the budget sheet and the emergency fund). Debts & savings is what is
- * left of the income once both are taken off, so the three always add back to the income — and it can go below
- * nought, when more went out than came in.
+ * left of the income once Essential and Lifestyle are taken off, so the three always add back to the income — and it
+ * can go below nought, when more went out than came in. Spending in a category marked Debts & savings (insurance,
+ * donations, loan interest) is neither Essential nor Lifestyle: it stays inside that remainder.
  *
  * Cashflow's Income page, the Budget box and the Financial health card all read this one function.
  */
@@ -55,12 +56,15 @@ export interface EssentialSplitParts {
 
 export interface EssentialSplit {
   incomeMinor: number;
+  /** Every category's spending, Debts & savings marked ones included. */
   spendingMinor: number;
+  /** The part of the spending in categories marked Debts & savings: inside `debtsSavingsMinor`, never beside it. */
+  debtsSavingsSpentMinor: number;
   essentialMinor: number;
   lifestyleMinor: number;
   /** Income less both kinds of spending. Below nought when more was spent than earned. */
   debtsSavingsMinor: number;
-  /** How much more was spent than earned, or 0. */
+  /** How much more was spent than earned, all spending counted, or 0. */
   overspentMinor: number;
   /** Whole percents of income, or null with no income to divide by. Debts & savings is 0 when it went below nought. */
   percents: EssentialSplitParts | null;
@@ -84,21 +88,25 @@ function roundTo(values: readonly number[], total: number): number[] {
 export function essentialSplit(input: EssentialSplitInput): EssentialSplit {
   let essentialMinor = 0;
   let lifestyleMinor = 0;
+  let debtsSavingsSpentMinor = 0;
   for (const row of input.spending) {
-    if (input.needs[row.accountId] === 'lifestyle') lifestyleMinor += row.amountBaseMinor;
+    const need = input.needs[row.accountId];
+    if (need === 'lifestyle') lifestyleMinor += row.amountBaseMinor;
+    else if (need === 'debts_savings') debtsSavingsSpentMinor += row.amountBaseMinor;
     else essentialMinor += row.amountBaseMinor;
   }
-  const spendingMinor = essentialMinor + lifestyleMinor;
+  const spendingMinor = essentialMinor + lifestyleMinor + debtsSavingsSpentMinor;
   const incomeMinor = input.incomeMinor;
-  const debtsSavingsMinor = incomeMinor - spendingMinor;
-  const overspentMinor = Math.max(0, -debtsSavingsMinor);
-  const base = { incomeMinor, spendingMinor, essentialMinor, lifestyleMinor, debtsSavingsMinor, overspentMinor };
+  const debtsSavingsMinor = incomeMinor - essentialMinor - lifestyleMinor;
+  const overspentMinor = Math.max(0, spendingMinor - incomeMinor);
+  const base = { incomeMinor, spendingMinor, debtsSavingsSpentMinor, essentialMinor, lifestyleMinor, debtsSavingsMinor, overspentMinor };
   if (incomeMinor <= 0) return { ...base, percents: null, bar: null };
 
   const essential = Math.max(0, essentialMinor);
   const lifestyle = Math.max(0, lifestyleMinor);
-  const kept = Math.max(0, debtsSavingsMinor);
-  // The bar is the income when something was kept; when more went out than came in, it is what went out.
+  // Debts & savings on the bar: what was kept — which holds the spending marked so — or, when more went out than came
+  // in, at least that spending, so the bar is the income when something was kept and what went out when not.
+  const kept = Math.max(0, debtsSavingsMinor, debtsSavingsSpentMinor);
   const whole = essential + lifestyle + kept;
   const bar = whole > 0 ? { essential: essential / whole, lifestyle: lifestyle / whole, debtsSavings: kept / whole } : { essential: 0, lifestyle: 0, debtsSavings: 0 };
 
@@ -122,16 +130,33 @@ export function gradeSplit(split: EssentialSplit, guide: SpendingGuide): RatioSt
 }
 
 /** What a month's caps plan for each kind of spending: only the outermost cap in each branch, as the cap total reads them. */
+/** Which sides at least one outermost cap was set under. */
+export interface CappedSides {
+  essential: boolean;
+  lifestyle: boolean;
+  debtsSavings: boolean;
+}
+
 export interface CapPlanNode {
   id: string;
   capMinor: number | null;
   children: readonly CapPlanNode[];
 }
 
-export function capsByNeed(lines: readonly CapPlanNode[], needs: Readonly<Record<string, CategoryNeed>>): { essentialMinor: number; lifestyleMinor: number; any: boolean } {
+/**
+ * A cap on a category marked Debts & savings (an insurance premium, a zakat) is money planned inside the Debts & savings
+ * side, which plans the income less the Essential and Lifestyle caps: it is counted in `debtsSavingsMinor`, and neither
+ * adds to nor takes from that side's plan.
+ */
+export function capsByNeed(
+  lines: readonly CapPlanNode[],
+  needs: Readonly<Record<string, CategoryNeed>>,
+): { essentialMinor: number; lifestyleMinor: number; debtsSavingsMinor: number; any: boolean; capped: CappedSides } {
   let essentialMinor = 0;
   let lifestyleMinor = 0;
+  let debtsSavingsMinor = 0;
   let any = false;
+  const capped: CappedSides = { essential: false, lifestyle: false, debtsSavings: false };
   const walk = (rows: readonly CapPlanNode[]) => {
     for (const row of rows) {
       if (row.capMinor === null) {
@@ -139,12 +164,21 @@ export function capsByNeed(lines: readonly CapPlanNode[], needs: Readonly<Record
         continue;
       }
       any = true;
-      if (needs[row.id] === 'lifestyle') lifestyleMinor += row.capMinor;
-      else essentialMinor += row.capMinor;
+      const need = needs[row.id];
+      if (need === 'lifestyle') {
+        lifestyleMinor += row.capMinor;
+        capped.lifestyle = true;
+      } else if (need === 'debts_savings') {
+        debtsSavingsMinor += row.capMinor;
+        capped.debtsSavings = true;
+      } else {
+        essentialMinor += row.capMinor;
+        capped.essential = true;
+      }
     }
   };
   walk(lines);
-  return { essentialMinor, lifestyleMinor, any };
+  return { essentialMinor, lifestyleMinor, debtsSavingsMinor, any, capped };
 }
 
 export interface NeedsPlanRow {
@@ -161,18 +195,24 @@ export interface NeedsPlanRow {
 /**
  * The Budget box: what each part used of what the month planned. Essential and Lifestyle plan what their caps add up
  * to; Debts & savings plans the rest of the month's income — the take-home typed on the plan, else what came in so far.
+ * Caps on Debts & savings categories are already inside that rest (`capsByNeed`).
  */
 export function needsPlan(
   split: EssentialSplit,
-  caps: { essentialMinor: number; lifestyleMinor: number; any: boolean },
+  caps: { essentialMinor: number; lifestyleMinor: number; any: boolean; capped?: CappedSides },
   incomePlanMinor: number,
 ): NeedsPlanRow[] {
   const income = incomePlanMinor > 0 ? incomePlanMinor : split.incomeMinor;
-  const planned = caps.any ? { essential: caps.essentialMinor, lifestyle: caps.lifestyleMinor, debtsSavings: income - caps.essentialMinor - caps.lifestyleMinor } : null;
+  // A side is planned only when a cap is set under it: caps only on insurance plan no Essential or Lifestyle at nought.
+  // Debts & savings plans the rest of the income whenever any cap is set. Without `capped`, any cap plans every side.
+  const sidePlan = (has: boolean | undefined, minor: number) => (caps.any && (has ?? true) ? minor : null);
+  const essentialPlan = sidePlan(caps.capped?.essential, caps.essentialMinor);
+  const lifestylePlan = sidePlan(caps.capped?.lifestyle, caps.lifestyleMinor);
+  const debtsSavingsPlan = caps.any ? income - caps.essentialMinor - caps.lifestyleMinor : null;
   const fillOf = (used: number, plan: number | null) => (plan === null ? 0 : plan > 0 ? Math.max(0, Math.min(1, used / plan)) : used > 0 ? 1 : 0);
   return [
-    { key: 'essential', usedMinor: split.essentialMinor, plannedMinor: planned?.essential ?? null, warn: planned !== null && split.essentialMinor > planned.essential, fill: fillOf(split.essentialMinor, planned?.essential ?? null) },
-    { key: 'lifestyle', usedMinor: split.lifestyleMinor, plannedMinor: planned?.lifestyle ?? null, warn: planned !== null && split.lifestyleMinor > planned.lifestyle, fill: fillOf(split.lifestyleMinor, planned?.lifestyle ?? null) },
-    { key: 'debtsSavings', usedMinor: split.debtsSavingsMinor, plannedMinor: planned?.debtsSavings ?? null, warn: split.debtsSavingsMinor < 0, fill: fillOf(split.debtsSavingsMinor, planned?.debtsSavings ?? null) },
+    { key: 'essential', usedMinor: split.essentialMinor, plannedMinor: essentialPlan, warn: essentialPlan !== null && split.essentialMinor > essentialPlan, fill: fillOf(split.essentialMinor, essentialPlan) },
+    { key: 'lifestyle', usedMinor: split.lifestyleMinor, plannedMinor: lifestylePlan, warn: lifestylePlan !== null && split.lifestyleMinor > lifestylePlan, fill: fillOf(split.lifestyleMinor, lifestylePlan) },
+    { key: 'debtsSavings', usedMinor: split.debtsSavingsMinor, plannedMinor: debtsSavingsPlan, warn: split.debtsSavingsMinor < 0, fill: fillOf(split.debtsSavingsMinor, debtsSavingsPlan) },
   ];
 }

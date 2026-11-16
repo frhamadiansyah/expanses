@@ -20,7 +20,10 @@ export interface SplitRowView {
   amountMinor: number;
   /** Debts & savings below nought. */
   warn: boolean;
-  /** Essential and Lifestyle filter the list; Debts & savings is what was not spent, so there is nothing to list. */
+  /**
+   * Essential and Lifestyle filter the list; Debts & savings is what was not spent on either (spending marked Debts &
+   * savings included), so it filters nothing.
+   */
   filters: boolean;
 }
 
@@ -79,7 +82,7 @@ export function splitCard(split: EssentialSplit | undefined, guide: SpendingGuid
     benchmark: guideText(guide, ' · '),
     bar: split?.bar ? SPLIT_KEYS.map((key) => ({ key, width: split.bar![key] * 100, colour: SPLIT_COLOURS[key] })) : null,
     marks: [guide.essential, guide.essential + guide.lifestyle],
-    explanation: `Share of take-home pay over the period, by each category’s Essential or Lifestyle mark (unmarked counts as Essential). Debts & savings is what was not spent; on track at ${guide.debtsSavings}% or more.`,
+    explanation: `Share of take-home pay over the period, by each category’s mark (unmarked counts as Essential). Debts & savings is what was not spent on Essential or Lifestyle, insurance, donations and loan interest marked so included; on track at ${guide.debtsSavings}% or more.`,
   };
 }
 

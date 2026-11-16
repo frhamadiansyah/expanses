@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { checkBudgetBox, checkGuideSheet, checkHealthCard, checkIncomePage, seedMonth } from './essential-split';
+import { checkBudgetBox, checkGuideSheet, checkHealthCard, checkIncomePage, checkThirdMark, seedMonth } from './essential-split';
 
 // Screenshots at 390 px go beside the mockups they were built from.
 const SHOTS = '../../docs/mockups/2026-11-16-elf-built';
@@ -11,4 +11,5 @@ test('by thumb: Essential · Lifestyle · Debts & savings on Cashflow, the guide
   await checkHealthCard(page, `${SHOTS}-health.png`);
   await checkGuideSheet(page, `${SHOTS}-guide.png`);
   await checkBudgetBox(page, `${SHOTS}-budget.png`);
+  await checkThirdMark(page, `${SHOTS}-third-mark.png`);
 });

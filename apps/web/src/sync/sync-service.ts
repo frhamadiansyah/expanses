@@ -845,11 +845,13 @@ export class SyncService {
       }
       const tags = report.eventTags;
       const changed =
-        (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0 || (report.cardFaces ?? 0) > 0 || (report.tripSwitches ?? 0) > 0 || (report.monthStart ?? 0) > 0;
+        (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0 || (report.cardFaces ?? 0) > 0 || (report.tripSwitches ?? 0) > 0 || (report.monthStart ?? 0) > 0 || (report.thirdMarks ?? 0) > 0;
       // R6: the workspace's "Month starts on", sent again for a phone that updated since it took it.
       if ((report.monthStart ?? 0) > 0) await this.note('repair', bookId, { message: 'Month starts on sent again for a phone that updated' });
       // R5: a shared trip's Split costs and Plan switches, sent again for a phone that updated since it took them.
       if ((report.tripSwitches ?? 0) > 0) await this.note('repair', bookId, { message: 'Trip switches (Split costs, Plan) sent again for a phone that updated' });
+      // R7: Debts & savings marks held back while a phone could not store them, sent now every phone can.
+      if ((report.thirdMarks ?? 0) > 0) await this.note('repair', bookId, { message: `${report.thirdMarks} Debts & savings marks sent now every phone can take them` });
       // R4: this phone's joint accounts sent again with their card faces (bank, tier, digits), once.
       if ((report.cardFaces ?? 0) > 0) await this.note('repair', bookId, { message: `One-time repair: ${report.cardFaces} net-worth items sent again with their card faces` });
       // R3: transfers listed on a shared event, sent again for a device that has updated since it took them.

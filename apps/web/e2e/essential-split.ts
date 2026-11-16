@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { setBudget } from './budget';
-import { markNeed } from './categories';
+import { expectNeed, markNeed } from './categories';
 
 /**
  * Essential · Lifestyle · Debts & savings, walked once for both shapes. Invented month: Rp 20.000.000 in; Rp 9.000.000
@@ -147,4 +147,26 @@ export async function checkHealthCard(page: Page, shot?: string) {
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({ path: shot });
   }
+}
+
+/**
+ * The third mark: Groceries given Debts & savings on its page leaves Essential on Cashflow's Income page 2 and is
+ * counted in what was kept — 0 / 25 / 75 — and the Essential filter no longer lists it.
+ */
+export async function checkThirdMark(page: Page, shot?: string) {
+  await markNeed(page, 'Groceries', 'Debts & savings');
+  await expectNeed(page, 'Groceries', 'Debts & savings', 'Custom');
+  const split = await openIncomeSplit(page);
+  await expect(split.getByTestId('split-row-essential')).toContainText('0%');
+  await expect(split.getByTestId('split-row-lifestyle')).toContainText('25%');
+  await expect(split.getByTestId('split-row-lifestyle')).toContainText(money('5.000.000'));
+  await expect(split.getByTestId('split-row-debtsSavings')).toContainText('75%');
+  await expect(split.getByTestId('split-row-debtsSavings')).toContainText(money('15.000.000'));
+  // Still no button: what was kept lists nothing.
+  await expect(split.getByRole('button', { name: /Debts & savings/ })).toHaveCount(0);
+  if (shot) await page.screenshot({ path: shot });
+  await split.getByTestId('split-row-essential').click();
+  await expect(page).toHaveURL(/need=essential/);
+  await expect(page.getByText('Market run')).toHaveCount(0);
+  await expect(page.getByText('Dinner out')).toHaveCount(0);
 }

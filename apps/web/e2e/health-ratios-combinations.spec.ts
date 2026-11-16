@@ -11,7 +11,7 @@ import { countsAs, expectNeed, markNeed, openCategory } from './categories';
  * The health-ratio combinations (spec §15, Part 1 rows), one test a row, at desktop width.
  *
  * Every figure is typed a key at a time, as a person types it, and every assertion is a figure. The set-up is a
- * bank at Rp 20.000.000, Groceries Rp 2.000.000 and Restaurants Rp 1.000.000: Rp 17.000.000 is left and
+ * bank at Rp 20.000.000, Groceries Rp 2.000.000 and Home catering Rp 1.000.000: Rp 17.000.000 is left and
  * Rp 3.000.000 went out, Rp 1.000.000 of it under Food and beverage.
  */
 
@@ -29,14 +29,15 @@ async function setUp(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '2000000', keyByKey: true });
-  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '1000000', keyByKey: true });
+  // Home catering: under Food and beverage and essential built in, so nothing marked reads as before the built-in marks.
+  await addTransaction(page, { description: 'Katering rumah', paidWith: 'BCA Tahapan', category: 'Home catering', amount: '1000000', keyByKey: true });
 }
 
-/** Row 2's marks: Food and beverage lifestyle, so Restaurants inherits it. */
+/** Row 2's marks: Food and beverage lifestyle, so Home catering inherits it over its built-in Essential. */
 async function markFoodLifestyle(page: Page) {
   await markNeed(page, 'Food and beverage', 'Lifestyle');
-  await openCategory(page, 'Restaurants');
-  await expectNeed(page, 'Restaurants', 'Lifestyle', 'Follows Food and beverage');
+  await openCategory(page, 'Home catering');
+  await expectNeed(page, 'Home catering', 'Lifestyle', 'Follows Food and beverage');
 }
 
 function emergencyCard(page: Page) {
@@ -98,11 +99,11 @@ test('row 3 — the same marks, counting all spending', async ({ page }) => {
   await expect(emergencyCard(page)).toContainText('5,7 months');
 });
 
-test('row 4 — Restaurants keeps its own essential mark under a lifestyle parent', async ({ page }) => {
+test('row 4 — Home catering keeps its own essential mark under a lifestyle parent', async ({ page }) => {
   await setUp(page);
   await markFoodLifestyle(page);
-  await countsAs(page, 'Restaurants').selectOption('essential');
-  await expectNeed(page, 'Restaurants', 'Essential', 'Custom');
+  await countsAs(page, 'Home catering').selectOption('essential');
+  await expectNeed(page, 'Home catering', 'Essential', 'Custom');
   await page.goto('/net-worth/health');
   await expect(emergencyCard(page)).toContainText('5,7 months');
 });
@@ -222,6 +223,27 @@ test('row 10 — the month split into essential and lifestyle on the Budget page
   await expect(page.getByTestId('spent-total')).toContainText('3.000.000');
   await expect(page.getByTestId('essential-spent')).toContainText('2.000.000');
   await expect(page.getByTestId('lifestyle-spent')).toContainText('1.000.000');
+  await expect(page.getByTestId('debts-savings-spent')).toContainText('0');
+});
+
+test('row 1b — built-in marks: Restaurants is lifestyle, Life insurance counts with the essentials', async ({ page }) => {
+  await setUp(page);
+  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '1000000', keyByKey: true });
+  await addTransaction(page, { description: 'Premi jiwa', paidWith: 'BCA Tahapan', category: 'Life insurance', amount: '2000000', keyByKey: true });
+  await page.goto('/net-worth/health');
+  // Rp 14 jt left against Rp 5 jt of essential spending (groceries, home catering and the premium): 2,8 months.
+  await expect(emergencyCard(page)).toContainText('2,8 months');
+  await countEmergency(page, 'All spending');
+  // Against all Rp 6 jt: 2,3 months.
+  await expect(emergencyCard(page)).toContainText('2,3 months');
+
+  await page.goto('/budget');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Essential and lifestyle' }).click();
+  await expect(page.getByTestId('spent-total')).toContainText('6.000.000');
+  await expect(page.getByTestId('essential-spent')).toContainText('3.000.000');
+  await expect(page.getByTestId('lifestyle-spent')).toContainText('1.000.000');
+  await expect(page.getByTestId('debts-savings-spent')).toContainText('2.000.000');
 });
 test('row 11 — the sections hold: a holiday never lists under compulsory', async ({ page }) => {
   await addFromTemplate(page, 'Holiday', '15000000');

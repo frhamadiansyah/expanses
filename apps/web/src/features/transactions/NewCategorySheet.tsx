@@ -107,13 +107,14 @@ export function useNewCategoryForm({
     </span>
   );
 
-  // What it would count as: its own choice, else its parent's (the parent's own or inherited), else essential.
+  // What it would count as: its own choice, else its parent's (the parent's own or inherited), else the built-in mark of
+  // the parent's key (a new category has no key of its own), else essential.
   const parent = parentId ? parents.find((p) => p.id === parentId) : undefined;
   const inherited = parentId ? needOf(parentId, parents, marks) : null;
   const resolved: ResolvedNeed = need
     ? { need, source: 'yours' }
     : inherited?.source
-      ? { need: inherited.need, source: 'parent' }
+      ? { need: inherited.need, source: inherited.source === 'default' ? 'default' : 'parent' }
       : { need: 'essential', source: null };
 
   const form = (

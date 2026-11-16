@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { vi } from 'vitest';
 import { createAccount, createDatabase, createWorkspace, migrate, personalBook, type Database, type WorkspaceContext } from '../../src/index';
 import { createNodeExecutor } from '../../src/node';
+import type { SqlExecutor } from '../../src/executor';
 import { projectPurchase } from '../../src/sync/capture';
 import { SyncEngine } from '../../src/sync/engine';
 import { generateDevice, requestSignerOf, type DeviceKeys } from '../../src/sync/keys';
@@ -23,14 +24,28 @@ vi.setConfig({ testTimeout: 30_000 });
 
 let template: Uint8Array | undefined;
 
+/**
+ * An executor whose errors reach the caller as a phone's do: the web worker passes only SQLite's message across, as a
+ * plain `Error` (apps/web/src/db/worker-executor.ts), so no `code` survives — a CHECK refusal included.
+ */
+export function asPhoneExecutor(inner: SqlExecutor): SqlExecutor {
+  const plain = (error: unknown) => new Error(error instanceof Error ? error.message : String(error));
+  return {
+    query: (text, params, method) => inner.query(text, params, method).catch((error: unknown) => Promise.reject(plain(error))),
+    execScript: (text) => inner.execScript(text).catch((error: unknown) => Promise.reject(plain(error))),
+    exportBytes: () => inner.exportBytes(),
+    importBytes: (bytes) => inner.importBytes(bytes),
+  };
+}
+
 /** A migrated, empty database: migrations run once per test file and are copied from there (they are most of the cost). */
-async function freshDatabase(baseCurrency: string): Promise<{ database: Database; ws: WorkspaceContext }> {
+async function freshDatabase(baseCurrency: string, phoneErrors = false): Promise<{ database: Database; ws: WorkspaceContext }> {
   if (!template) {
     const seed = createDatabase(createNodeExecutor());
     await migrate(seed);
     template = await seed.exportBytes();
   }
-  const database = createDatabase(createNodeExecutor());
+  const database = createDatabase(phoneErrors ? asPhoneExecutor(createNodeExecutor()) : createNodeExecutor());
   await database.importBytes(template);
   const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency });
   // The capture run (capture-setup.ts) shares every first Personal book from birth, as a stand-in for Share. A
@@ -73,9 +88,9 @@ export class Household {
     memberId: string = `member-${name}`,
     baseCurrency = 'IDR',
     appVersion = '0.3.0',
-    engine: { now?: () => number; recordEveryMs?: number } = {},
+    engine: { now?: () => number; recordEveryMs?: number; phoneErrors?: boolean } = {},
   ): Promise<Device> {
-    const { database, ws } = await freshDatabase(baseCurrency);
+    const { database, ws } = await freshDatabase(baseCurrency, engine.phoneErrors);
     const keys = await generateDevice();
     const { deviceId, public: pub } = keys;
     const bank = await createAccount(database, ws, { name: `${name} Bank`, kind: 'asset', subtype: 'bank', currency: baseCurrency });

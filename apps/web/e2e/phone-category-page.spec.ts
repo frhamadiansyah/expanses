@@ -32,8 +32,10 @@ test('the list is only names; a subcategory opens its page, where it is renamed,
   await page.getByRole('button', { name: 'Rename Restaurants' }).click();
   await expect(page.getByTestId('category-hero')).toContainText('Warung makan');
 
-  await countsAs(page, 'Warung makan').selectOption('lifestyle');
-  await expectNeed(page, 'Warung makan', 'Lifestyle', 'Custom');
+  // Renamed, it keeps its built-in Lifestyle; a mark of its own makes it Custom.
+  await expectNeed(page, 'Warung makan', 'Lifestyle', 'Built in');
+  await countsAs(page, 'Warung makan').selectOption('essential');
+  await expectNeed(page, 'Warung makan', 'Essential', 'Custom');
   await expect(page.getByRole('button', { name: 'Clear the mark on Warung makan' })).toBeVisible();
 
   await page.getByRole('link', { name: 'Categories' }).first().click();

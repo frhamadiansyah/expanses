@@ -11,7 +11,7 @@ import { expectNeed, markNeed, openCategory } from './categories';
  * The health-ratio combinations (spec §15, Part 1 rows), rows 2, 7, 9, 11 and 13 at phone width.
  *
  * Every figure is typed a key at a time, as a person types it, and every assertion is a figure. The set-up is a
- * bank at Rp 20.000.000, Groceries Rp 2.000.000 and Restaurants Rp 1.000.000: Rp 17.000.000 is left and
+ * bank at Rp 20.000.000, Groceries Rp 2.000.000 and Home catering Rp 1.000.000: Rp 17.000.000 is left and
  * Rp 3.000.000 went out, Rp 1.000.000 of it under Food and beverage.
  */
 
@@ -29,14 +29,15 @@ async function setUp(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '2000000', keyByKey: true });
-  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '1000000', keyByKey: true });
+  // Home catering: under Food and beverage and essential built in, so nothing marked reads as before the built-in marks.
+  await addTransaction(page, { description: 'Katering rumah', paidWith: 'BCA Tahapan', category: 'Home catering', amount: '1000000', keyByKey: true });
 }
 
-/** Row 2's marks: Food and beverage lifestyle, so Restaurants inherits it. */
+/** Row 2's marks: Food and beverage lifestyle, so Home catering inherits it over its built-in Essential. */
 async function markFoodLifestyle(page: Page) {
   await markNeed(page, 'Food and beverage', 'Lifestyle');
-  await openCategory(page, 'Restaurants');
-  await expectNeed(page, 'Restaurants', 'Lifestyle', 'Follows Food and beverage');
+  await openCategory(page, 'Home catering');
+  await expectNeed(page, 'Home catering', 'Lifestyle', 'Follows Food and beverage');
 }
 
 function emergencyCard(page: Page) {

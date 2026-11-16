@@ -1,4 +1,4 @@
-import { healthRatios, type SheetTotals } from '@expanses/core';
+import { emergencyOutgoingMinor, healthRatios, type SheetTotals } from '@expanses/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow,
@@ -132,9 +132,25 @@ describe('periodFlows lifestyle spending', () => {
     expect(flows.lifestyleSpendingMinor).toBe(1_500_000);
   });
 
-  it('is nothing while no category is marked', async () => {
+  it('counts a built-in Lifestyle category with nothing marked, and nothing once it is marked essential', async () => {
     await restaurants('2026-03-05', 2_000_000);
+    expect((await periodFlows(database, ws, YEAR)).lifestyleSpendingMinor).toBe(2_000_000);
+    await saveCategoryNeed(database, ws, categories['food_beverage.restaurants']!, 'essential');
     expect((await periodFlows(database, ws, YEAR)).lifestyleSpendingMinor).toBe(0);
+  });
+
+  it('keeps Debts & savings spending in the essential base of the emergency fund', async () => {
+    await groceries('2026-03-02', 3_000_000);
+    await restaurants('2026-03-05', 2_000_000);
+    await post('2026-03-09', 'Life cover', [
+      { accountId: categories['protection.life_insurance']!, amountMinor: 1_100_000 },
+      { accountId: bca.id, amountMinor: -1_100_000 },
+    ]);
+    const flows = await periodFlows(database, ws, YEAR);
+    expect(flows.spendingMinor).toBe(6_100_000);
+    expect(flows.lifestyleSpendingMinor).toBe(2_000_000);
+    // Insurance goes on in an emergency: counted with the essentials (built-in Debts & savings, unmarked).
+    expect(emergencyOutgoingMinor(flows, 'essential')).toBe(4_100_000);
   });
 });
 
