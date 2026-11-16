@@ -2,7 +2,7 @@ import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
 import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
+import { Banknote, CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
@@ -786,13 +786,9 @@ export function StatementPanel({
           <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
             {chosen.length} selected
           </span>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setPaying(true)}
-            className="ph-focus flex h-11 shrink-0 items-center justify-center rounded-full bg-[var(--ph-surface)] px-5 text-[17px] font-semibold text-[var(--ph-tint)] shadow-[0_1px_3px_rgb(0_0_0/0.08)] disabled:text-[var(--ph-ink-3)]"
-          >
-            Pay
+          {/* Pay as the card's own Pay glyph, a circle matching Clear: the name stays for screen readers. */}
+          <button type="button" aria-label="Pay" disabled={busy} onClick={() => setPaying(true)} className={`${SELECT_CIRCLE} text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]`}>
+            <Banknote size={20} aria-hidden />
           </button>
         </SelectBarFrame>
       )}
