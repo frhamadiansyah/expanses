@@ -22,6 +22,9 @@ import {
   pausedMonths,
   pausedUntil,
   pauseStart,
+  thisBillMonth,
+  billMonthIn,
+  type MonthStartDay,
   uuidv7,
   yearlyListed,
 } from '@expanses/core';
@@ -37,6 +40,7 @@ import { fundRoom, fundShortMessage } from './sinking-actions';
 import { dropSinkingFund, getSinkingFund, moveSinkingFund, type SinkingFundRow, setSinkingCustom, writeSinkingFund, writeSinkingOpening, writeSinkingPlan } from './sinking-funds';
 import { sinkingFactsOf } from './sinking-views';
 import { BILL_MONTH, billPausesExist, billTablesExist } from './bill-months';
+import { monthStartFor } from './month-start';
 import { captureBillLinkingTx, withCapture } from '../sync/capture';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
@@ -434,25 +438,34 @@ export async function committedByCategory(
     ]),
   );
   const today = isoDate();
+  // Each bill's month that speaks for this month: the calendar month, or by the workspace's "Month starts on" (0118).
+  const startDay = await monthStartFor(database, ws);
+  const monthOfBillNow = (template: ExpenseTemplateRow) => thisBillMonth(today, template.dayOfMonth, startDay);
   // A bill paused this month comes out for nothing, so none of the category is spoken for by it.
   const pausedNow = (await billPausesExist(database.db))
     ? new Set(
         (
           await database.db
-            .select({ templateId: billPauses.templateId })
+            .select({ templateId: billPauses.templateId, month: billPauses.month })
             .from(billPauses)
-            .where(and(eq(billPauses.workspaceId, ws.workspaceId), eq(billPauses.month, monthOf(today))))
-        ).map((row) => row.templateId),
+            .where(eq(billPauses.workspaceId, ws.workspaceId))
+        )
+          .filter((row) => {
+            const template = templates.find((t) => t.id === row.templateId);
+            return template !== undefined && row.month === monthOfBillNow(template);
+          })
+          .map((row) => row.templateId),
       )
     : new Set<string>();
   const committed: Record<string, number> = {};
   for (const template of templates) {
     if (!template.active || template.amountMinor === null || pausedNow.has(template.id)) continue;
     // A yearly or every-few-months bill is spoken for only in a month it comes out, and only once it has begun.
-    if (template.repeat !== 'monthly' && (!isOwedMonth(monthOf(today), template.repeatMonth, template.repeatEvery, template.startsMonth) || monthOf(today) < template.startsMonth)) continue;
+    const month = monthOfBillNow(template);
+    if (template.repeat !== 'monthly' && (!isOwedMonth(month, template.repeatMonth, template.repeatEvery, template.startsMonth) || month < template.startsMonth)) continue;
     // No rate reaching the bill's out day leaves it out rather than counting it as the wrong money — and says so
     // in `missing`, so the budget's "… of it is bills" line cannot quietly understate what is already spoken for.
-    const outDay = billWindow(monthOf(today), template.dayOfMonth, template.payByDay).opensOn;
+    const outDay = billWindow(month, template.dayOfMonth, template.payByDay).opensOn;
     // A bill written in its own currency is converted even where the workspace reads in the owner's money (an SGD bill in
     // a rupiah one is the case this exists for); one that follows its payer is converted as it always was.
     const convert = template.currency ? (money.convertForeign ?? money.convert) : money.convert;
@@ -544,6 +557,11 @@ interface BillFacts {
   payments: Map<string, PaymentFact[]>;
   skips: Map<string, Set<string>>;
   pauses: Map<string, Set<string>>;
+  /**
+   * The workspace's "Month starts on" (0118): which of a bill's months is this month's. A bill keeps its day and its
+   * months; with months from the 25th, a bill out on the 27th counts in November by its 27 October bill.
+   */
+  startDay: MonthStartDay;
 }
 
 /** Posted payments and skips for these bills. Without migration 0044 a payment settles the month it was made in. */
@@ -552,7 +570,8 @@ async function billFacts(database: Database, ws: WorkspaceContext, templates: Ex
   const payments = new Map<string, PaymentFact[]>();
   const skips = new Map<string, Set<string>>();
   const pauses = new Map<string, Set<string>>();
-  if (ids.length === 0) return { payments, skips, pauses };
+  const startDay = await monthStartFor(database, ws);
+  if (ids.length === 0) return { payments, skips, pauses, startDay };
 
   const rows = (await billTablesExist(database.db))
     ? await database.db
@@ -622,7 +641,7 @@ async function billFacts(database: Database, ws: WorkspaceContext, templates: Ex
     set.add(row.month);
     pauses.set(row.templateId, set);
   }
-  return { payments, skips, pauses };
+  return { payments, skips, pauses, startDay };
 }
 
 function settledOf(template: ExpenseTemplateRow, facts: BillFacts): Record<string, 'paid' | 'skipped' | 'paused'> {
@@ -674,7 +693,8 @@ const paidMinorOf = (payment: PaymentFact | undefined) => (payment ? paidFigures
 
 function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string): MonthlyBill {
   const settled = settledOf(template, facts);
-  const input = { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled, yearlyMonth: template.repeatMonth, repeatEvery: template.repeatEvery };
+  const input = linkInput(template, facts, today);
+  const thisMonth = thisBillMonth(today, template.dayOfMonth, facts.startDay);
   const { month, ...rest } = monthOfBill(template, facts, currentBillMonth(input), today);
   return {
     ...template,
@@ -682,8 +702,8 @@ function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string):
     ...rest,
     estimateMinor: template.amountMinor ?? paidMinorOf(facts.payments.get(template.id)?.[0]) ?? null,
     payableMonths: payableBillMonths(input),
-    pausedUntil: pausedUntil(facts.pauses.get(template.id) ?? [], today),
-    pauseFrom: pauseStart(today, settled),
+    pausedUntil: pausedUntil(facts.pauses.get(template.id) ?? [], today, thisMonth),
+    pauseFrom: pauseStart(today, settled, thisMonth),
   };
 }
 
@@ -725,14 +745,28 @@ export interface BillMonthRow extends BillHistoryRow {
  * Every active bill owed in `month` (its repeat, on or after its first month), where that month stands on `today`.
  * Skipped and paused months are included with their state. The open book's bills only, as `listExpenseTemplates` is.
  */
-export async function billsInMonth(database: Database, ws: WorkspaceContext, month: string, today: string): Promise<BillMonthRow[]> {
-  const templates = (await listExpenseTemplates(database, ws)).filter(
-    (template) => template.active && month >= template.startsMonth && isOwedMonth(month, template.repeatMonth, template.repeatEvery, template.startsMonth),
-  );
+export async function billsInMonth(
+  database: Database,
+  ws: WorkspaceContext,
+  month: string,
+  today: string,
+  /**
+   * `month` is one of the workspace's own months ("Month starts on", 0118), not a bill month: each bill is read for
+   * the bill month whose day falls inside it (`billMonthIn`). Off, `month` is every bill's bill month, as the debt
+   * plan's calendar reads it.
+   */
+  opts: { workspaceMonth?: boolean } = {},
+): Promise<BillMonthRow[]> {
+  const startDay = opts.workspaceMonth ? await monthStartFor(database, ws) : 1;
+  const billMonthOf = (template: ExpenseTemplateRow) => billMonthIn(month, template.dayOfMonth, startDay);
+  const templates = (await listExpenseTemplates(database, ws)).filter((template) => {
+    const own = billMonthOf(template);
+    return template.active && own >= template.startsMonth && isOwedMonth(own, template.repeatMonth, template.repeatEvery, template.startsMonth);
+  });
   const facts = await billFacts(database, ws, templates);
   return templates
     .map((template) => ({
-      ...monthOfBill(template, facts, month, today),
+      ...monthOfBill(template, facts, billMonthOf(template), today),
       bill: template,
       estimateMinor: template.amountMinor ?? paidMinorOf(facts.payments.get(template.id)?.[0]) ?? null,
     }))
@@ -754,7 +788,9 @@ export async function billDetail(database: Database, ws: WorkspaceContext, templ
       ...(facts.payments.get(template.id) ?? []).map((p) => p.billMonth),
     ].filter((month) => isOwedMonth(month, yearlyMonth, template.repeatEvery, template.startsMonth)),
   );
-  for (let month = template.startsMonth; month <= monthOf(onDate); month = addMonths(month, 1)) {
+  // Up to this month's bill, which a workspace whose months start later may already have in next calendar month.
+  const upTo = [monthOf(onDate), thisBillMonth(onDate, template.dayOfMonth, facts.startDay)].sort().at(-1)!;
+  for (let month = template.startsMonth; month <= upTo; month = addMonths(month, 1)) {
     if (isOwedMonth(month, yearlyMonth, template.repeatEvery, template.startsMonth)) months.add(month);
   }
   const history = [...months]
@@ -810,7 +846,7 @@ export async function pauseBill(database: Database, ws: WorkspaceContext, templa
   const template = (await listExpenseTemplates(database, ws)).find((t) => t.id === templateId);
   if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
   const facts = await billFacts(database, ws, [template]);
-  const months = pausedMonths(pauseStart(today, settledOf(template, facts)), until);
+  const months = pausedMonths(pauseStart(today, settledOf(template, facts), thisBillMonth(today, template.dayOfMonth, facts.startDay)), until);
   if (months.length === 0) throw new RecurringError('PAUSE_RANGE', 'A bill comes back after the months it is paused for');
   await database.transaction((tx) =>
     withCapture(
@@ -829,7 +865,10 @@ export async function pauseBill(database: Database, ws: WorkspaceContext, templa
 /** Brings a paused bill back from this month: its paused months from today on are taken back; earlier ones stay. */
 export async function resumeBill(database: Database, ws: WorkspaceContext, templateId: string, today: string = isoDate()): Promise<void> {
   if (!(await billPausesExist(database.db))) return;
-  const from = monthOf(today);
+  // From this month's bill: the calendar month, or by the workspace's "Month starts on" (0118) — the month the bills
+  // page shows as paused now.
+  const template = (await listExpenseTemplates(database, ws)).find((t) => t.id === templateId);
+  const from = template ? thisBillMonth(today, template.dayOfMonth, await monthStartFor(database, ws)) : monthOf(today);
   await database.transaction(async (tx) => {
     const ahead = (
       await tx
@@ -1000,7 +1039,16 @@ export interface LinkPurchaseInput {
 
 /** A bill's schedule and settled months as the link rules read them on a day. */
 function linkInput(template: ExpenseTemplateRow, facts: BillFacts, today: string) {
-  return { today, startsMonth: template.startsMonth, outDay: template.dayOfMonth, payByDay: template.payByDay, settled: settledOf(template, facts), yearlyMonth: template.repeatMonth, repeatEvery: template.repeatEvery };
+  return {
+    today,
+    startsMonth: template.startsMonth,
+    outDay: template.dayOfMonth,
+    payByDay: template.payByDay,
+    settled: settledOf(template, facts),
+    yearlyMonth: template.repeatMonth,
+    repeatEvery: template.repeatEvery,
+    startDay: facts.startDay,
+  };
 }
 
 /** The newest month a purchase may be linked to (see `latestLinkMonth` in core): a yearly bill's next one can be paid early. */

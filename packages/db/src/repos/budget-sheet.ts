@@ -1,9 +1,10 @@
-import { type BudgetSheet, budgetSheet, isUncategorisedKey, monthRange } from '@expanses/core';
+import { type BudgetSheet, budgetSheet, isUncategorisedKey, monthPeriod } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { NOT_IN_A_SET } from '../schema-category-sets';
+import { monthStartFor } from './month-start';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { hasBooks, listBooks } from './books';
 import { getBudgetIncome } from './budget-settings';
@@ -45,7 +46,8 @@ function mergeMissing(...lists: readonly Unconverted[][]): Unconverted[] {
  * loan schedules, and reading it back belongs to its own slice; until then no variance is invented.
  */
 export async function budgetSheetFor(database: Database, ws: WorkspaceContext, month: string): Promise<BudgetSheetResult> {
-  const { from, to } = monthRange(month);
+  // The workspace's month: the calendar month, or from its "Month starts on" day (0118), 25 Oct – 24 Nov for November.
+  const { from, to } = monthPeriod(month, await monthStartFor(database, ws));
 
   // A database stopped before migration 0042 has no book_categories to narrow by, and read the whole workspace
   // before workspaces existed — which is what it must keep doing.

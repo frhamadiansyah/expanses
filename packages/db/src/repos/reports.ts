@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { attributedOn, billTablesExist } from './bill-months';
+import { monthStartFor } from './month-start';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { partCountedWhere } from './book-splits';
 import { eventOnlyExists, notEventOnly } from './event-only';
@@ -42,6 +43,8 @@ async function categoryRows(
 ): Promise<{ where: SQL; onDate: SQL<string>; share: SQL<number> }> {
   // The budget and Cashflow ask for bills in the month they came out; every other reader keeps the day paid.
   const byBillMonth = opts.billMonths === true && (await billTablesExist(database.db));
+  // Whether a bill paid inside its own month counts on the day paid is asked of the workspace's months (0118).
+  const startDay = byBillMonth ? await monthStartFor(database, ws) : 1;
   const paid = opts.paidAccountId;
   // What the filtered account put into a transaction, in base: one entry, or the sum of several on the same account.
   const ownSum = sql`(SELECT sum(own.amount_base_minor) FROM entries own WHERE own.transaction_id = ${transactions.id} AND own.account_id = ${paid ?? null})`;
@@ -49,7 +52,7 @@ async function categoryRows(
     ? [
         // The first test keeps the date index in play; the second moves a bill paid in another month onto its own.
         sql`(${transactions.occurredOn} BETWEEN ${from} AND ${to} OR ${transactions.id} IN (SELECT transaction_id FROM bill_payments WHERE bill_month BETWEEN ${from.slice(0, 7)} AND ${to.slice(0, 7)}))`,
-        sql`${attributedOn()} BETWEEN ${from} AND ${to}`,
+        sql`${attributedOn(startDay)} BETWEEN ${from} AND ${to}`,
       ]
     : [gte(transactions.occurredOn, from), lte(transactions.occurredOn, to)];
   return {
@@ -75,7 +78,7 @@ async function categoryRows(
     // The day an amount is converted on is the day it is counted on. Under billMonths that is the out day of the
     // month whose bill it settles, not the day the payment was made — so August's internet paid on 3 September is
     // counted in August and converted at August's rate, which is the month the figure speaks for.
-    onDate: byBillMonth ? sql<string>`${attributedOn()}` : sql<string>`${transactions.occurredOn}`,
+    onDate: byBillMonth ? sql<string>`${attributedOn(startDay)}` : sql<string>`${transactions.occurredOn}`,
     // The part of each transaction the account paid: its own entry over the payers' entries — money-side entries (not
     // a category) with the same sign as its own. A purchase split 80/20 between a card and a bank, or with a friend who
     // paid part, counts 80% on the card. A bill the card paid for friends too is not divided: their receivables are

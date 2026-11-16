@@ -1,4 +1,4 @@
-import { addMonths, displayAmount, monthOf, type PeriodFlows, type PlanGroup } from '@expanses/core';
+import { addMonths, displayAmount, type MonthStartDay, type PeriodFlows, periodMonthOf, type PlanGroup } from '@expanses/core';
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -7,6 +7,7 @@ import { assetProfiles, investmentTrades } from '../schema-assets';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { eventOnlyExists, notEventOnly } from './event-only';
 import { categoryIdsOfBook, hasBooks } from './books';
+import { monthStartFor } from './month-start';
 import { categoryIdsByKeyAll } from './categories';
 import { resolvedCategoryNeeds } from './category-needs';
 import { listInstallments } from './installments';
@@ -38,9 +39,10 @@ const MAX_MONTHS = 12;
 const SAVINGS_SUBTYPES = ['savings', 'fund', 'time_deposit'];
 const SPENDING_SUBTYPES = ['cash', 'bank', 'ewallet', 'emoney', 'other_cash'];
 
-function monthsBetween(from: string, to: string): string[] {
+/** The months a range touches, each named as the workspace's months are (`periodMonthOf`). */
+function monthsBetween(from: string, to: string, startDay: MonthStartDay): string[] {
   const months: string[] = [];
-  for (let month = monthOf(from); month <= monthOf(to); month = addMonths(month, 1)) months.push(month);
+  for (let month = periodMonthOf(from, startDay); month <= periodMonthOf(to, startDay); month = addMonths(month, 1)) months.push(month);
   return months;
 }
 
@@ -64,8 +66,16 @@ export async function periodFlows(
   database: Database,
   ws: WorkspaceContext,
   range: { from: string; to: string },
-  opts: { homeLoanAccountIds?: string[] } = {},
+  opts: {
+    homeLoanAccountIds?: string[];
+    /**
+     * The day the months of `byMonth` start on ("Month starts on", 0118). Defaults to the open workspace's own; an
+     * owner-wide read (no workspace open) is calendar months unless a caller names the day, as Financial health does.
+     */
+    monthStart?: MonthStartDay;
+  } = {},
 ): Promise<PeriodFlowsResult> {
+  const startDay = opts.monthStart ?? (await monthStartFor(database, ws));
   // Flows are the owner's whole picture, so a key means every workspace's copy of it, not one workspace's.
   const keys = await categoryIdsByKeyAll(database, ws);
   const realizedGains = new Set(keys['income.realized_gains'] ?? []);
@@ -125,7 +135,7 @@ export async function periodFlows(
   const isSavingsDestination = (accountId: string, subtype: string) => groupOf.get(accountId) === 'invest' || SAVINGS_SUBTYPES.includes(subtype);
   const isSpendingMoney = (accountId: string, subtype: string) => SPENDING_SUBTYPES.includes(subtype) && groupOf.get(accountId) !== 'invest';
 
-  const byMonth = new Map(monthsBetween(range.from, range.to).map((month) => [month, { month, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0 }]));
+  const byMonth = new Map(monthsBetween(range.from, range.to, startDay).map((month) => [month, { month, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0 }]));
   const perTransaction = new Map<string, TransactionRoll>();
 
   // What was marked "not my spending". Narrowed the same two ways `rows` above is: this workspace, this period.
@@ -169,7 +179,7 @@ export async function periodFlows(
   }
 
   for (const row of rows) {
-    const month = monthOf(row.occurredOn);
+    const month = periodMonthOf(row.occurredOn, startDay);
     const bucket = byMonth.get(month);
     // What the entry is worth in the read currency. Null means no rate reaches that day, so it counts as nothing
     // and is named in `missing`; which side of the ledger a row is on is still read from the owner's figure, so a

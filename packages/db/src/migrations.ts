@@ -114,6 +114,7 @@ import feeWaiverYear from '../migrations/0113_fee_waiver_year.sql?raw';
 import tripTransfers from '../migrations/0114_trip_transfers.sql?raw';
 import feeWaiverLifetime from '../migrations/0115_fee_waiver_lifetime.sql?raw';
 import tripSplitCosts from '../migrations/0116_trip_split_costs.sql?raw';
+import monthStartsOn from '../migrations/0118_month_starts_on.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -238,6 +239,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 114, name: 'trip_transfers', sql: tripTransfers },
   { version: 115, name: 'fee_waiver_lifetime', sql: feeWaiverLifetime },
   { version: 116, name: 'trip_split_costs', sql: tripSplitCosts },
+  // 0117 is income_category_names (feat/income-categories, not merged here yet).
+  { version: 118, name: 'month_starts_on', sql: monthStartsOn },
 ];
 
 /** The highest version this build of the app knows how to produce. */
