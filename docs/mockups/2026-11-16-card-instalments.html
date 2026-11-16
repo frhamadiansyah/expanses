@@ -101,7 +101,7 @@
 
 
 <h2>How instalments connect to other pages (with A or C)</h2>
-<p class="lead">Today the laptop is hidden inside the card's balance on Debt-free, and the card's bill shows one amount with no hint of why it is higher. Proposed: on Debt-free, debts are grouped into fixed-each-month and no-fixed-amount, with each instalment plan its own fixed row; on Recurring, the instalment is its own recurring row. Nothing is counted twice — the card's own row shows only the rest of the card balance.</p>
+<p class="lead">Today the laptop is hidden inside the card's balance on Debt-free, and the card's bill shows one amount with no hint of why it is higher. Proposed: on Debt-free, debts are grouped into fixed-each-month and no-fixed-amount, with each instalment plan its own fixed row; on Recurring, nothing changes — the instalment already has its own row there today. Nothing is counted twice — the card's own row shows only the rest of the card balance.</p>
 <div class="row">
   <div class="col"><p class="cap">Debt-free plan · today</p><p class="note">One BCA Visa row; the laptop inside its balance.</p>
     <div class="phone"><div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span style="width:56px"></span></div>
@@ -129,15 +129,17 @@
       <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">5 Dec</div></div><div class="v">Rp 3.370.000</div></div></div></div></div>
 </div>
 <div class="row" style="margin-top:16px">
-  <div class="col"><p class="cap">Recurring bills · after</p><p class="note">The instalment is the recurring part — the same amount every month until it ends — so it gets its own row. The rest of the card's bill changes every month, so it stays off Recurring (it is on Debt-free).</p>
+  <div class="col"><p class="cap">Recurring bills · today (unchanged)</p><p class="note">Already there: running instalment plans have their own "Instalments" group after the bills, in no total (paid with the card's statement). The card's changing bill stays off Recurring. No change needed.</p>
     <div class="phone"><div class="nav"><span class="t"></span><b>Recurring</b><span style="width:56px"></span></div>
-      <div class="hd"><span>December</span></div>
+      <div class="hd"><span>Bills</span></div>
       <div class="panel">
-        <div class="tr new"><div class="ic">💻</div><div class="g"><div class="t">Laptop <span class="chip">1 of 12</span></div><div class="s">On BCA Visa bill</div></div><div class="v">Rp 1.000.000</div></div>
         <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">Due 5 Dec</div></div><div class="v">Rp 3.370.000</div></div>
         <div class="tr"><div class="ic">⚡</div><div class="g"><div class="t">Electricity</div><div class="s">Due 20 Dec</div></div><div class="v">Rp 850.000</div></div>
       </div>
-      <div class="foot">Paid when the BCA Visa bill is paid; nothing to pay separately.</div></div></div>
+      <div class="hd"><span>Instalments</span></div>
+      <div class="panel">
+        <div class="tr"><div class="ic grey">🗓</div><div class="g"><div class="t">Laptop · BCA Visa</div><div class="s">1 of 12 · on the statement</div></div><div class="v">Rp 1.000.000</div><span style="color:#c7c7cc">›</span></div>
+      </div></div></div>
   <div class="col"><p class="cap">The plan's own page · after</p><p class="note">Progress, what is left, the end, and each month's real transaction (with A or C).</p>
     <div class="phone"><div class="nav"><span class="t">‹ BCA Visa</span><b>Laptop</b><span style="width:56px"></span></div>
       <div class="panel" style="padding:12px"><div class="s">3 of 12 paid</div><div style="font-size:22px;font-weight:700;margin:2px 0">Rp 9.000.000 left</div>
