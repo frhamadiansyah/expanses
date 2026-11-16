@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { cardRecordsFrom } from './instalment-spending';
-import { countModeColumnExists, listInstallments, setInstallmentCountMode, updateInstallment } from './installments';
+import { countModeColumnExists, isTradeTx, listInstallments, setInstallmentCountMode, updateInstallment } from './installments';
 import { cardStatementLines } from './statements';
 
 /*
@@ -59,7 +59,8 @@ export async function autoLinkInstalmentPlans(database: Database, given: Workspa
         firstBilledMonth: plan.firstBilledMonth,
         earnsPoints: plan.earnsPoints,
         transactionId: outcome.transactionId,
-        countMode: 'each_month',
+        // An investment bought with the card is never spending: its plan counts At purchase.
+        countMode: (await isTradeTx(database.db, outcome.transactionId)) ? 'at_purchase' : 'each_month',
       });
       report.linked += 1;
     } else if (outcome.kind === 'before-records') {

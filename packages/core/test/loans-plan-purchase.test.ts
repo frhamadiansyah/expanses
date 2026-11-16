@@ -65,6 +65,11 @@ describe('matchPlanPurchase', () => {
 });
 
 describe('purchaseCandidates', () => {
+  it('offers an investment bought with the card, never a payment', () => {
+    const kept = purchaseCandidates([line('bond', '2026-11-10', 6_000_000, { spending: false, trade: true }), line('pay', '2026-11-10', 6_000_000, { spending: false })], 'p1');
+    expect(kept.map((l) => l.transactionId)).toEqual(['bond']);
+  });
+
   it('keeps the card’s own charges that no other plan has', () => {
     const kept = purchaseCandidates([line('a', '2026-11-10', 100), line('b', '2026-11-10', -100), line('c', '2026-11-10', 100, { convertedTo: { planId: 'x' } })], 'p1');
     expect(kept.map((l) => l.transactionId)).toEqual(['a']);

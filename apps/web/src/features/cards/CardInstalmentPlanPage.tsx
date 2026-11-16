@@ -57,9 +57,15 @@ export function CardInstalmentPlanPage() {
   const progress = planProgress(plan.totalMinor, statuses.data ?? []);
   const purchase = plan.transactionId ? (lines.data ?? []).find((line) => line.transactionId === plan.transactionId && !line.instalment) : undefined;
   const categoryName = plan.categoryAccountId ? categoryLabel(plan.categoryAccountId, categories) || null : null;
-  const footer = countSpendingFooter(plan, installmentSchedule(plan, statementDay), currency, monthStart, { categoryName, recordsFrom });
+  const state = purchaseStateOf(plan, lines.data ?? [], recordsFrom);
+  const footer = countSpendingFooter(plan, installmentSchedule(plan, statementDay), currency, monthStart, {
+    categoryName,
+    recordsFrom,
+    investment: plan.linkedToTrade,
+    beforeRecords: state === 'before-records',
+  });
   // A plan left with no purchase though one may be recorded (auto-link found none, or several): said until it is chosen.
-  const warning = noPurchaseWarning(purchaseStateOf(plan, lines.data ?? [], recordsFrom), plan.countMode, categoryName, true);
+  const warning = noPurchaseWarning(state, plan.countMode, categoryName, true);
 
   async function setMode(countMode: 'at_purchase' | 'each_month') {
     if (!plan || countMode === plan.countMode) return;
@@ -107,9 +113,16 @@ export function CardInstalmentPlanPage() {
           {!plan.transactionId && <ReadOnlyRow label="Category" value={categoryName ?? 'Uncategorised'} />}
         </InsetGroup>
 
-        <InsetGroup header="Count spending" footer={footer}>
-          <CountSpendingRow value={plan.countMode} onChange={(mode) => void setMode(mode)} disabled={busy} />
-        </InsetGroup>
+        {plan.linkedToTrade ? (
+          // An investment bought with the card (TF 139): never spending, so there is no choice to make.
+          <p data-testid="investment-plan-note" className="mx-[16px] mb-[18px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+            {footer}
+          </p>
+        ) : (
+          <InsetGroup header="Count spending" footer={footer}>
+            <CountSpendingRow value={plan.countMode} onChange={(mode) => void setMode(mode)} disabled={busy} />
+          </InsetGroup>
+        )}
         <ErrorBox error={error} />
         <NoPurchaseWarning text={warning} />
 

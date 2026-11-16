@@ -175,11 +175,16 @@ export interface PlanPurchaseLine {
   convertedTo: { planId: string } | null;
   originalCurrency?: string | null;
   originalAmountMinor?: number | null;
+  /** An investment bought with the card (a bond, a stock, a fund): a charge, but never spending. */
+  trade?: boolean;
 }
 
-/** The card's own charges a plan can be tied to: not a payment, an instalment row or a balancing line, nor another plan's. */
+/**
+ * The card's own charges a plan can be tied to: a purchase or an investment bought with the card — not a payment, an
+ * instalment row or a balancing line, nor another plan's.
+ */
 export function purchaseCandidates<T extends PlanPurchaseLine>(lines: readonly T[], planId: string | null): T[] {
-  return lines.filter((line) => line.spending && line.owedMinor > 0 && !line.instalment && !line.balancing && (!line.convertedTo || line.convertedTo.planId === planId));
+  return lines.filter((line) => (line.spending || line.trade === true) && line.owedMinor > 0 && !line.instalment && !line.balancing && (!line.convertedTo || line.convertedTo.planId === planId));
 }
 
 /** Where a plan's purchase is looked for: the first day three months before its first billed month to that month's last day. */

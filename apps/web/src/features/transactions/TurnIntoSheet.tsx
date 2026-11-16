@@ -25,11 +25,14 @@ export function TurnIntoSheet({
   purchase,
   card,
   currency,
+  investment = false,
   onClose,
 }: {
   purchase: { transactionId: string; description: string; occurredOn: string; amountMinor: number };
   card: { accountId: string; name: string };
   currency: string;
+  /** An investment bought with the card (TF 139): its plan counts At purchase, each instalment a card repayment. */
+  investment?: boolean;
   onClose: () => void;
 }) {
   const { database, ws } = useApp();
@@ -42,7 +45,7 @@ export function TurnIntoSheet({
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const months = turnMonths(shown);
-  const input = turnIntoInput(purchase, card.accountId, shown);
+  const input = turnIntoInput(purchase, card.accountId, shown, { investment });
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -66,7 +69,7 @@ export function TurnIntoSheet({
         <InsetGroup>
           <InsetRow title={purchase.description} subtitle={`${card.name} · ${shortDate(purchase.occurredOn)}`} value={formatMinor(purchase.amountMinor, currency)} valueTone="ink" chevron={false} />
         </InsetGroup>
-        <InsetGroup header="Months" footer={turnFooter(purchase.amountMinor, months, shown.firstBilledMonth, statementDay, currency)}>
+        <InsetGroup header="Months" footer={turnFooter(purchase.amountMinor, months, shown.firstBilledMonth, statementDay, currency, investment)}>
           <div className="relative" style={{ padding: `8px ${ROW_PAD_X}px` }}>
             <SegmentedControl
               segments={SEGMENTS}

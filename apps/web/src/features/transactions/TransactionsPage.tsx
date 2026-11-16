@@ -1371,7 +1371,7 @@ export function TransactionsPage() {
         label={
           <>
             {withDate && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
-            {repayment ? 'Instalment' : (row.categoryName ?? 'Uncategorised')}
+            {repayment ? 'Repayment' : (row.categoryName ?? 'Uncategorised')}
           </>
         }
         subtitle={

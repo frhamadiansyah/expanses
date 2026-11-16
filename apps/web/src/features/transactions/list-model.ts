@@ -254,7 +254,7 @@ export function instalmentRows(
     categoryId: null,
     categoryName: null,
     parentName: null,
-    transferName: 'Instalment',
+    transferName: 'Repayment',
     instalment: { planId: line.planId, cardAccountId: line.cardAccountId, number: line.number, of: line.of, countMode: 'at_purchase', purchaseId: line.transactionId },
   }));
   return [...spending, ...repaying];

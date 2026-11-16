@@ -82,6 +82,8 @@ export interface PurchaseChoice {
   occurredOn: string;
   description: string;
   amountMinor: number;
+  /** An investment bought with the card: its plan counts At purchase. */
+  trade: boolean;
 }
 
 /**
@@ -95,7 +97,7 @@ export function purchaseChoices(
   limit = 40,
 ): PurchaseChoice[] {
   return purchaseCandidates(lines, planId)
-    .map((line) => ({ transactionId: line.transactionId, occurredOn: line.occurredOn, description: line.description, amountMinor: line.owedMinor }))
+    .map((line) => ({ transactionId: line.transactionId, occurredOn: line.occurredOn, description: line.description, amountMinor: line.owedMinor, trade: line.trade === true }))
     .sort((a, b) => Number(b.amountMinor === totalMinor) - Number(a.amountMinor === totalMinor) || b.occurredOn.localeCompare(a.occurredOn))
     .slice(0, limit);
 }

@@ -77,3 +77,19 @@ describe('a plan with no purchase (owner, 16 Nov 2026)', () => {
     );
   });
 });
+
+describe('plans that are never spending (TF 139)', () => {
+  const phone = { totalMinor: 6_000_000, months: 6, monthlyMinor: 1_000_000, firstBilledMonth: '2026-12', rateBps: 0, conversionFeeMinor: 0, earnsPoints: false };
+  it('an investment says its instalments are repayments', () => {
+    expect(countSpendingFooter({ ...phone, countMode: 'at_purchase', transactionId: 'buy' }, installmentSchedule(phone, 18), 'IDR', 1, { investment: true })).toBe(
+      'An investment: instalments are card repayments, not spending.',
+    );
+  });
+
+  it('a plan from before the records, At purchase, has nothing to choose', () => {
+    expect(countSpendingFooter({ ...phone, countMode: 'at_purchase', transactionId: null }, installmentSchedule(phone, 18), 'IDR', 1, { beforeRecords: true })).toBe(
+      'Counted as card repayments only, not spending.',
+    );
+    expect(noPurchaseWarning('before-records', 'at_purchase', null, true)).toBeNull();
+  });
+});

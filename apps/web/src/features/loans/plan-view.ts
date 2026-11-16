@@ -19,8 +19,12 @@ export function countSpendingFooter(
   schedule: readonly { statementOn: string }[],
   currency: string,
   monthStart = 1,
-  opts: { categoryName?: string | null; recordsFrom?: string | null } = {},
+  opts: { categoryName?: string | null; recordsFrom?: string | null; investment?: boolean; beforeRecords?: boolean } = {},
 ): string {
+  // An investment bought with the card (TF 139): never spending, whatever else is true of it.
+  if (opts.investment) return 'An investment: instalments are card repayments, not spending.';
+  // Bought before the card's records with no purchase to choose (a bond added by hand): only ever card repayments.
+  if (plan.countMode === 'at_purchase' && !plan.transactionId && opts.beforeRecords) return 'Counted as card repayments only, not spending.';
   if (plan.countMode === 'at_purchase') {
     return plan.transactionId
       ? `At purchase: the whole ${formatMinor(plan.totalMinor, currency)} counts on the day of the purchase; each instalment repays the card.`

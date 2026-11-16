@@ -67,3 +67,24 @@ describe('the purchase once turned', () => {
     expect(spreadCaption({ months: 6, countMode: 'at_purchase' }, 'IDR')).toBeNull();
   });
 });
+
+describe('an investment bought with the card (TF 139)', () => {
+  const buy = (paidWith: { id: string; subtype: string }) =>
+    ({
+      id: 'b1', occurredOn: '2026-11-10', description: 'Buy ORI030', source: 'manual', status: 'posted', externalRef: null, originalCurrency: null, originalAmountMinor: null, mcc: null, cardId: null, goalId: null, createdAt: '',
+      entries: [entry('ori', 'asset', 'investment', 6_000_000), entry(paidWith.id, paidWith.subtype === 'credit_card' ? 'liability' : 'asset', paidWith.subtype, -6_000_000)],
+    }) as unknown as TransactionView;
+
+  it('a buy paid with this phone’s own card offers the row; one paid from the bank, or on the partner’s card, does not', () => {
+    expect(instalmentCardOf(buy({ id: 'visa', subtype: 'credit_card' }), own, { trade: true })).toEqual({ cardAccountId: 'visa', amountMinor: 6_000_000 });
+    expect(instalmentCardOf(buy({ id: 'debit', subtype: 'bank' }), own, { trade: true })).toBeNull();
+    expect(instalmentCardOf(buy({ id: 'partner-card', subtype: 'credit_card' }), own, { trade: true })).toBeNull();
+    expect(instalmentCardOf(buy({ id: 'visa', subtype: 'credit_card' }), own)).toBeNull();
+  });
+
+  it('saves At purchase, and says it is not spending', () => {
+    const input = turnIntoInput({ transactionId: 'b1', description: 'Buy ORI030', amountMinor: 6_000_000 }, 'visa', { ...blankTurnForm('2026-11-10', 18), months: 6 }, { investment: true });
+    expect(input).toMatchObject({ countMode: 'at_purchase', transactionId: 'b1', totalMinor: 6_000_000, months: 6 });
+    expect(turnFooter(6_000_000, 6, '2026-12', 18, 'IDR', true)).toBe('An investment, not spending: each instalment is a card repayment, December 2026 to May 2027.');
+  });
+});

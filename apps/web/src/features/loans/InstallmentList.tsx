@@ -124,7 +124,7 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
     setError(null);
     setBusy(true);
     try {
-      const fields = planFields({ ...form, transactionId: purchase }, currency);
+      const fields = planFields({ ...form, transactionId: purchase, ...(investment ? { countMode: 'at_purchase' as const } : {}) }, currency);
       if (sheet === 'new') await saveInstallment(database, ws, { cardAccountId, ...fields });
       else await updateInstallment(database, ws, { id: sheet.id, ...fields });
       await invalidate();
@@ -163,8 +163,10 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
   const planId = sheet && sheet !== 'new' ? sheet.id : null;
   const choices = purchaseChoices(lines.data ?? [], planId, typedTotal);
   const purchase = shownPurchase(form, typedTotal, lines.data ?? [], purchaseTouched);
+  // An investment bought with the card (TF 139): never spending, so it counts At purchase and offers no choice.
+  const investment = purchase !== null && (lines.data ?? []).some((line) => line.transactionId === purchase && line.trade);
   const categoryName = form.categoryAccountId ? categoryLabel(form.categoryAccountId, categories) || null : null;
-  const warning = noPurchaseWarning(
+  const warning = investment ? null : noPurchaseWarning(
     purchaseStateOf({ id: planId, transactionId: purchase, totalMinor: typedTotal, firstBilledMonth: form.firstBilledMonth }, lines.data ?? [], recordsFrom),
     form.countMode,
     categoryName,
@@ -174,7 +176,11 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
     const months = Number(form.months);
     if (!Number.isInteger(months) || months < 1 || !(typedTotal > 0) || !/^\d{4}-\d{2}$/.test(form.firstBilledMonth)) return undefined;
     const typed = { totalMinor: typedTotal, months, monthlyMinor: Math.round(typedTotal / months), firstBilledMonth: form.firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: form.earnsPoints };
-    return countSpendingFooter({ ...typed, countMode: form.countMode, transactionId: purchase }, installmentSchedule(typed, statementDay), currency, monthStart, { categoryName, recordsFrom });
+    return countSpendingFooter({ ...typed, countMode: investment ? 'at_purchase' : form.countMode, transactionId: purchase }, installmentSchedule(typed, statementDay), currency, monthStart, {
+      categoryName,
+      recordsFrom,
+      investment,
+    });
   })();
   const node = (
     <>
@@ -219,9 +225,13 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
                 </SelectRow>
               )}
             </InsetGroup>
-            <InsetGroup header="Count spending" footer={footer}>
-              <CountSpendingRow value={form.countMode} onChange={(countMode) => patch({ countMode })} />
-            </InsetGroup>
+            {investment ? (
+              <p className="mx-[16px] mb-[18px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]">{footer}</p>
+            ) : (
+              <InsetGroup header="Count spending" footer={footer}>
+                <CountSpendingRow value={form.countMode} onChange={(countMode) => patch({ countMode })} />
+              </InsetGroup>
+            )}
             {editSplit && (
               // What the row no longer spells out: how much is billed, what is still held and when it ends.
               <InsetGroup header="So far">

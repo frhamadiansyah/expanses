@@ -62,6 +62,8 @@ export interface StatementLine {
   convertedTo: { planId: string; months: number } | null;
   /** A purchase or refund, as opposed to money moved onto the card. */
   spending: boolean;
+  /** An investment bought with the card (a bond, a stock, a fund): a charge on the card, never spending. */
+  trade?: true;
   /** The currency and amount the merchant charged, when the card converted it. */
   originalCurrency: string | null;
   originalAmountMinor: number | null;
@@ -126,14 +128,15 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const BEFORE_APP = 'before-app:';
 
 async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
-  const rows = await db.values<[string, string, string | null, string, string | null, number, number, string | null, string | null, string | null, number | null, number, string | null]>(sql`
+  const rows = await db.values<[string, string, string | null, string, string | null, number, number, string | null, string | null, string | null, number | null, number, string | null, number]>(sql`
     SELECT t.id, t.occurred_on, p.posted_on, t.description, t.card_id,
       -SUM(e.amount_minor),
       EXISTS (SELECT 1 FROM entries x JOIN accounts xa ON xa.id = x.account_id WHERE x.transaction_id = t.id AND xa.kind IN ('expense', 'income'))
         OR EXISTS (SELECT 1 FROM entries y WHERE y.transaction_id = t.id AND y.spend_category_id IS NOT NULL),
       pay.id, pay.occurred_on, t.original_currency, t.original_amount_minor,
       (SELECT COUNT(*) FROM card_settlements cs WHERE cs.payment_transaction_id = t.id),
-      t.external_ref
+      t.external_ref,
+      EXISTS (SELECT 1 FROM investment_trades it WHERE it.transaction_id = t.id)
     FROM transactions t
     JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
     LEFT JOIN card_postings p ON p.transaction_id = t.id
@@ -161,7 +164,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
   }
   const settled = new Set(rows.flatMap((row) => (row[12]?.startsWith(BEFORE_APP) ? [row[12].slice(BEFORE_APP.length)] : [])));
   return rows
-    .map(([transactionId, occurredOn, postedOn, description, cardId, owed, spending, paymentId, paidOn, originalCurrency, originalAmount, settles, ref]) => ({
+    .map(([transactionId, occurredOn, postedOn, description, cardId, owed, spending, paymentId, paidOn, originalCurrency, originalAmount, settles, ref, trade]) => ({
       transactionId,
       occurredOn,
       postedOn,
@@ -181,6 +184,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       paidOff: settled.has(transactionId),
       balancing: ref?.startsWith(BEFORE_APP) ?? false,
       ...(partNames.has(transactionId) ? { splitCategories: partNames.get(transactionId)! } : {}),
+      ...(Number(trade) === 1 ? { trade: true as const } : {}),
     }))
     .sort((a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId));
 }
