@@ -161,6 +161,15 @@ function instalmentNumberFrom(debt: PlanDebt, fact: LoanPlanFact, onDate: string
   return 1;
 }
 
+/**
+ * The instalment plans a statement bills inside its figure, named for its row: "incl. Laptop 1/12", or
+ * "incl. Laptop 1/12, Sofa 3/6". Null when it holds none.
+ */
+export function instalmentsInside(statement: Pick<CardStatement, 'lines'>): string | null {
+  const parts = statement.lines.filter((line) => line.instalment).map((line) => `${line.description} ${line.instalment!.number}/${line.instalment!.of}`);
+  return parts.length > 0 ? `incl. ${parts.join(', ')}` : null;
+}
+
 function cardItems(input: MonthInput): PlanItem[] {
   return input.cards.flatMap((card) => {
     const { statement } = card;
@@ -177,9 +186,11 @@ function cardItems(input: MonthInput): PlanItem[] {
     const ownCharges = Math.max(0, statement.chargesMinor);
     const paidTowardOwn = Math.min(ownCharges, Math.max(0, statement.creditsMinor + statement.paidSinceMinor - statement.openingMinor));
     const debt = input.debts.find((d) => d.kind === 'card' && d.accountId === card.cardId);
+    const includes = instalmentsInside(statement);
     return [
       build(
         {
+          ...(includes ? { includes } : {}),
           kind: 'card',
           debtKey: debt?.key ?? card.cardId,
           name: card.name,

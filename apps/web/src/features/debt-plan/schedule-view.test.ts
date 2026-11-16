@@ -318,3 +318,18 @@ describe('dueRow', () => {
     expect(dueRow(on('2026-11-04', allPaid).filter((i) => i.kind !== 'loan'), '2026-11-04')).toBeNull();
   });
 });
+
+describe('a card statement with an instalment inside it (option C)', () => {
+  const instalmentLine = { key: 'p1#1', transactionId: 't1', occurredOn: '2026-10-18', postedOn: null, statementOn: '2026-10-18', description: 'Laptop', cardId: null, owedMinor: 1_000_000, countedMinor: 1_000_000, instalment: { planId: 'p1', number: 1, of: 12 }, convertedTo: null, spending: true, originalCurrency: null, originalAmountMinor: null, paidBy: null, settles: 0, paidOff: false, balancing: false };
+
+  it('says which instalment the statement holds', () => {
+    const withLaptop: CardMonth = { ...visa(), statement: statement(6_214_300, 6_214_300, true, { lines: [instalmentLine] }) };
+    const row = monthItems(input('2026-11-04', { cards: [withLaptop] })).find((i) => i.title === 'BCA Visa')!;
+    expect(row.includes).toBe('incl. Laptop 1/12');
+  });
+
+  it('says nothing when it holds none', () => {
+    const row = monthItems(input('2026-11-04', { cards: [visa()] })).find((i) => i.title === 'BCA Visa')!;
+    expect(row.includes).toBeUndefined();
+  });
+});

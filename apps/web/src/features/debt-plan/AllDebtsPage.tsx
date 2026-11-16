@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { ErrorBox } from '../../ui';
 import { Panel, PushedTitle, SCREEN } from '../../ui/native';
 import { repaidPercent } from '../loans/loan-view';
-import { allDebtsSubtitle, chipCounts, type DebtFilter, type DebtSort, filterDebts, readSort, SORTS, sortDebts, writeSort } from './all-debts-view';
+import { allDebtsSubtitle, chipCounts, type DebtFilter, debtGroups, type DebtSort, filterDebts, type GroupedDebtRow, readSort, SORTS, sortDebts, writeSort } from './all-debts-view';
+import { useInstallments } from '../loans/queries';
 import { Hair } from './ByHandList';
 import { debtDestination } from './PayFirstRowView';
 import type { PlanDebt } from './plan-inputs';
@@ -95,6 +96,56 @@ function DebtLine({ debt, today, first }: { debt: PlanDebt; today: string; first
   );
 }
 
+/**
+ * A row of the two groups (card instalments, option C): a debt, opening its own page, or a running instalment plan,
+ * opening the plan's page. The figure is a month's under Fixed each month and what is owed under No fixed amount.
+ */
+function GroupLine({ row, first }: { row: GroupedDebtRow; first: boolean }) {
+  const percent = Math.min(100, Math.round((row.progress.current / Math.max(1, row.progress.target)) * 100));
+  const look = 'ph-focus flex items-center gap-3 px-[16px] py-[11px]';
+  const body = (
+    <>
+        <span aria-hidden className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[13px] font-semibold text-[var(--ph-ink-2)]">
+          {row.name.charAt(0).toUpperCase()}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline justify-between gap-3">
+            <span className="truncate text-[16px] leading-[21px] font-medium text-[var(--ph-ink)]">{row.name}</span>
+            <span className="tabular shrink-0 text-[15px] text-[var(--ph-ink)]">{formatMinor(row.valueMinor, row.currency)}</span>
+          </span>
+          <span
+            role="progressbar"
+            aria-label={`${row.name} repaid`}
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="mt-[6px] block h-[4px] overflow-hidden rounded-full bg-[var(--ph-track)]"
+          >
+            <span className={`block h-full rounded-full ${row.late ? 'bg-[var(--ph-alarm)]' : 'bg-[var(--ph-up)]'}`} style={{ width: `${percent}%` }} />
+          </span>
+          <span className="mt-[4px] flex min-w-0 items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+            {row.late && <span className="shrink-0 rounded-[4px] bg-[var(--ph-alarm-panel)] px-[5px] font-semibold text-[var(--ph-alarm)]">Late</span>}
+            <span className="truncate">{row.late ? row.subtitle.replace(/^Late · /, '') : row.subtitle}</span>
+          </span>
+        </span>
+    </>
+  );
+  return (
+    <li data-testid="all-debts-row" data-name={row.name} className="relative">
+      {!first && <Hair />}
+      {row.plan ? (
+        <Link to="/cards/$cardId/settings/instalments/$planId" params={{ cardId: row.plan.cardAccountId, planId: row.plan.planId }} className={look}>
+          {body}
+        </Link>
+      ) : (
+        <Link {...debtDestination(row.debt!)} className={look}>
+          {body}
+        </Link>
+      )}
+    </li>
+  );
+}
+
 /** All debts (spec §4.3): every debt the plan counts, filtered by chip and sorted, the paid off ones last. */
 export function AllDebtsPage() {
   const today = isoDate();
@@ -106,6 +157,10 @@ export function AllDebtsPage() {
   const shown = sortDebts(filterDebts(debts, filter), sort);
   const active = shown.filter((d) => !d.paidOff);
   const paidOff = shown.filter((d) => d.paidOff);
+  // Grouped by whether a debt asks a fixed amount each month; a card's running instalment plans are rows of their own
+  // there, and leave the card's own figure (option C). Late and Paid off list debts alone.
+  const plans = useInstallments();
+  const groups = debtGroups(active, filter === 'all' || filter === 'active' ? (plans.data ?? []) : [], today);
 
   return (
     <div className={SCREEN}>
@@ -137,11 +192,20 @@ export function AllDebtsPage() {
               );
             })}
           </div>
-          {active.length > 0 && (
-            <Panel pad={false}>
+          {groups.fixed.length > 0 && (
+            <Panel pad={false} header="Fixed each month" trailing="A month" testId="debts-fixed">
               <ul>
-                {active.map((debt, index) => (
-                  <DebtLine key={debt.key} debt={debt} today={today} first={index === 0} />
+                {groups.fixed.map((row, index) => (
+                  <GroupLine key={row.key} row={row} first={index === 0} />
+                ))}
+              </ul>
+            </Panel>
+          )}
+          {groups.noFixed.length > 0 && (
+            <Panel pad={false} header="No fixed amount" trailing="Owed" testId="debts-no-fixed">
+              <ul>
+                {groups.noFixed.map((row, index) => (
+                  <GroupLine key={row.key} row={row} first={index === 0} />
                 ))}
               </ul>
             </Panel>

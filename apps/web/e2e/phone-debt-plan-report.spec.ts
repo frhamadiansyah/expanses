@@ -17,7 +17,10 @@ test('all debts: chips, the sort kept on the device, and the one paid off', asyn
   await expect(chips.getByRole('radio', { name: 'Active 2' })).toBeVisible();
   await expect(chips.getByRole('radio', { name: 'Late 0' })).toBeVisible();
   await expect(chips.getByRole('radio', { name: 'Paid off 1' })).toBeVisible();
-  await expect.poll(() => names(page)).toEqual(['BCA Visa', 'Kredit', 'Bank kecil']);
+  // Grouped (card instalments, option C): Kredit asks a fixed amount each month, the card's balance does not.
+  await expect.poll(() => names(page)).toEqual(['Kredit', 'BCA Visa', 'Bank kecil']);
+  await expect(page.getByTestId('debts-fixed')).toContainText('Kredit');
+  await expect(page.getByTestId('debts-no-fixed')).toContainText('BCA Visa');
 
   await chips.getByRole('radio', { name: 'Paid off 1' }).click();
   await expect.poll(() => names(page)).toEqual(['Bank kecil']);
@@ -27,7 +30,7 @@ test('all debts: chips, the sort kept on the device, and the one paid off', asyn
   await chips.getByRole('radio', { name: 'All 3' }).click();
   await page.getByRole('button', { name: 'Sort: Most left' }).click();
   await page.getByRole('menuitemradio', { name: 'Name' }).click();
-  await expect.poll(() => names(page)).toEqual(['BCA Visa', 'Kredit', 'Bank kecil']);
+  await expect.poll(() => names(page)).toEqual(['Kredit', 'BCA Visa', 'Bank kecil']);
   await page.reload();
   await expect(page.getByRole('button', { name: 'Sort: Name' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readings, TODAY } from './plan-fixtures';
 import { planDebts } from './plan-inputs';
-import { allDebtsSubtitle, chipCounts, filterDebts, readSort, sortDebts, writeSort } from './all-debts-view';
+import { allDebtsSubtitle, chipCounts, debtGroups, filterDebts, readSort, sortDebts, writeSort } from './all-debts-view';
 
 const debts = planDebts(readings(), TODAY);
 const keys = (list: { key: string }[]) => list.map((d) => d.key);
@@ -83,5 +83,32 @@ describe('the sort kept on the device', () => {
     expect(() => writeSort('name', broken)).not.toThrow();
     store.set('debt-plan.sort', 'nonsense');
     expect(readSort(storage)).toBe('mostLeft');
+  });
+});
+
+describe('debtGroups (card instalments, option C)', () => {
+  // Invented: a Rp 3.000.000 laptop on the BCA Visa over 6 × Rp 500.000 from October; on 4 Nov two are billed.
+  const laptop = { id: 'p1', cardAccountId: 'C1', transactionId: 't1', description: 'Laptop', createdAt: '2026-10-01', totalMinor: 3_000_000, months: 6, monthlyMinor: 500_000, firstBilledMonth: '2026-10', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true, countMode: 'each_month' as const };
+
+  it('puts scheduled loans and each running plan under Fixed each month, the rest under No fixed amount', () => {
+    const groups = debtGroups(sortDebts(debts, 'mostLeft'), [laptop], TODAY);
+    const fixedKeys = groups.fixed.map((row) => row.key);
+    expect(fixedKeys).toContain('plan:p1');
+    expect(groups.noFixed.map((row) => row.key)).toContain('C1');
+    expect(groups.noFixed.map((row) => row.key)).toContain('person:Dewi:IDR');
+    const plan = groups.fixed.find((row) => row.key === 'plan:p1')!;
+    expect(plan).toMatchObject({ name: 'Laptop', subtitle: '2 of 6 · ends Mar 2027', valueMinor: 500_000, currency: 'IDR', plan: { cardAccountId: 'C1', planId: 'p1', number: 2, of: 6 } });
+  });
+
+  it('takes what the plans still hold off the card’s own figure, so nothing is counted twice', () => {
+    const without = debtGroups(debts, [], TODAY).noFixed.find((row) => row.key === 'C1')!;
+    const withPlan = debtGroups(debts, [laptop], TODAY).noFixed.find((row) => row.key === 'C1')!;
+    expect(without.valueMinor).toBe(6_214_300);
+    // Four instalments of Rp 500.000 still to bill.
+    expect(withPlan.valueMinor).toBe(6_214_300 - 2_000_000);
+  });
+
+  it('leaves out a plan that has billed everything', () => {
+    expect(debtGroups(debts, [{ ...laptop, firstBilledMonth: '2026-01' }], TODAY).fixed.map((row) => row.key)).not.toContain('plan:p1');
   });
 });

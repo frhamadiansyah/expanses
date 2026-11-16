@@ -1,3 +1,5 @@
+import { installmentSplit } from '@expanses/core';
+import type { CardInstallmentRow } from '@expanses/db';
 import { repaidPercent, monthYearLabel } from '../loans/loan-view';
 import { dayMonth } from '../networth/debt-rows';
 import type { PlanDebt } from './plan-inputs';
@@ -85,4 +87,68 @@ export function writeSort(sort: DebtSort, storage: Pick<Storage, 'setItem'> | un
   } catch {
     // A private window or blocked storage: the sort lasts this visit only.
   }
+}
+
+/** One row of All debts' two groups: a debt, or a card's running instalment plan on its own. */
+export interface GroupedDebtRow {
+  key: string;
+  name: string;
+  subtitle: string;
+  /** Fixed each month: what it asks a month. No fixed amount: what is owed. In its own currency. */
+  valueMinor: number;
+  currency: string;
+  late: boolean;
+  /** How far through it is, for the bar: repaid of borrowed, or instalments billed of the plan's months. */
+  progress: { current: number; target: number };
+  debt: PlanDebt | null;
+  plan: { cardAccountId: string; planId: string; number: number; of: number } | null;
+}
+
+/** A plan still billing: what the card holds of it, unbilled, is above nothing. */
+const running = (plan: CardInstallmentRow, today: string) => installmentSplit(plan, today).unbilledMinor > 0;
+
+/**
+ * All debts' active list in two groups (card instalments, option C): Fixed each month — loans with a schedule and each
+ * running instalment plan as a row of its own ("Laptop · 1 of 12 · ends Nov 2027", a month's figure) — and No fixed
+ * amount — a card's own balance less what its plans still hold, a family loan, anything with no schedule, by what is
+ * owed. Nothing is counted twice: the plans' unbilled parts leave their card's figure for their own rows. Debts keep the
+ * order they come in (the chosen sort); plans follow the loans.
+ */
+export function debtGroups(debts: readonly PlanDebt[], plans: readonly CardInstallmentRow[], today: string): { fixed: GroupedDebtRow[]; noFixed: GroupedDebtRow[] } {
+  const owing = debts.filter(isActive);
+  const live = plans.filter((plan) => running(plan, today));
+  const heldBy = (cardAccountId: string) => live.filter((plan) => plan.cardAccountId === cardAccountId).reduce((sum, plan) => sum + installmentSplit(plan, today).unbilledMinor, 0);
+  const asRow = (debt: PlanDebt, valueMinor: number): GroupedDebtRow => ({
+    key: debt.key,
+    name: debt.name,
+    subtitle: allDebtsSubtitle(debt, today),
+    valueMinor,
+    currency: debt.currency,
+    late: debt.late,
+    progress: { current: debt.repaidMinor, target: Math.max(1, debt.borrowedMinor) },
+    debt,
+    plan: null,
+  });
+  const scheduled = (debt: PlanDebt) => debt.kind === 'loan' && debt.hasTerms && debt.endsMonth !== null;
+  const fixed = owing.filter(scheduled).map((debt) => asRow(debt, debt.next?.minor ?? 0));
+  const currencyOf = (cardAccountId: string) => debts.find((debt) => debt.accountId === cardAccountId)?.currency ?? null;
+  for (const plan of live) {
+    const split = installmentSplit(plan, today);
+    const billed = plan.months - split.monthsLeft;
+    fixed.push({
+      key: `plan:${plan.id}`,
+      name: plan.description,
+      subtitle: billed > 0 ? `${billed} of ${plan.months} · ends ${monthYearLabel(split.lastMonth)}` : `starts ${monthYearLabel(plan.firstBilledMonth)} · ends ${monthYearLabel(split.lastMonth)}`,
+      valueMinor: plan.monthlyMinor,
+      currency: currencyOf(plan.cardAccountId) ?? '',
+      late: false,
+      progress: { current: billed, target: plan.months },
+      debt: null,
+      plan: { cardAccountId: plan.cardAccountId, planId: plan.id, number: billed, of: plan.months },
+    });
+  }
+  const noFixed = owing
+    .filter((debt) => !scheduled(debt))
+    .map((debt) => asRow(debt, debt.kind === 'card' && debt.accountId ? Math.max(0, debt.leftMinor - heldBy(debt.accountId)) : debt.leftMinor));
+  return { fixed, noFixed };
 }

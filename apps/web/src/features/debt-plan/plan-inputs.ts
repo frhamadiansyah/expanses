@@ -53,6 +53,8 @@ export interface PlanItem {
   paidBaseMinor?: number | null;
   /** False for a row the totals leave out: a bill paid from a credit card, which that card's statement already counts. */
   inTotals?: boolean;
+  /** A card statement's instalment rows inside its figure: "incl. Laptop 1/12" (card instalments, option C). */
+  includes?: string;
 }
 
 export type PlanDebtKind = 'loan' | 'card' | 'person' | 'payable';

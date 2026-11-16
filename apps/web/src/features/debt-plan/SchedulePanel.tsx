@@ -81,6 +81,12 @@ function ScheduleRow({ item, today, first }: { item: PlanItem; today: string; fi
             <Tag tone={tag.tone}>{tag.text}</Tag>
             <span className="truncate">{item.fromMessage ? 'from bank message' : item.detail}</span>
           </span>
+          {/* What a card statement bills inside its figure from an instalment plan (option C). */}
+          {item.includes && (
+            <span data-testid="schedule-includes" className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-up)]">
+              {item.includes}
+            </span>
+          )}
         </span>
         {item.minor !== null && (
           <span className="tabular shrink-0 text-right text-[15px] text-[var(--ph-ink)]">
