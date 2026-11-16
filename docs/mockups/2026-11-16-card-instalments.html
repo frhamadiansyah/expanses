@@ -27,6 +27,7 @@
   .foot { font-size:11.5px; color:var(--ink3); margin:-4px 12px 10px; line-height:1.35; }
   .tot { display:flex; justify-content:space-between; padding:9px 12px; font-size:13px; } .tot b { font-size:15px; }
   table.cmp { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:13.5px; } .cmp th, .cmp td { padding:8px 12px; border-bottom:.5px solid var(--hair); text-align:left; vertical-align:top; } .cmp th { background:#f7f7f9; font-size:12px; color:var(--ink3); text-transform:uppercase; }
+  .hl { background:#e3f5e8; color:#1a7f37 !important; border-radius:4px; padding:0 4px; font-weight:600; }
 </style></head><body>
 <h1>Card instalments: real transactions and/or spreading the spending</h1>
 <p class="sub">Invented example: a laptop bought on the BCA Visa card on 10 Nov for Rp 12.000.000, converted to 12 monthly instalments of Rp 1.000.000 (0%). Statement day 18th. Three screens per option: the card's December statement, Cashflow November, Cashflow December. Green "NEW" = what changes.</p>
@@ -98,6 +99,51 @@
       <div class="tr"><div class="ic">🛒</div><div class="g"><div class="t">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><div class="v red">Rp 640.000</div></div></div></div></div>
 </div>
 
+
+<h2>How instalments connect to other pages (with A or C)</h2>
+<p class="lead">Today the laptop is hidden inside the card's balance on Debt-free, and the card's bill shows one amount with no hint of why it is higher. Proposed: each plan is its own row under its card, and the card's bill names what is inside it. Nothing is counted twice — the card's own row shows only the rest of the card balance.</p>
+<div class="row">
+  <div class="col"><p class="cap">Debt-free plan · today</p><p class="note">One BCA Visa row; the laptop inside its balance.</p>
+    <div class="phone"><div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span style="width:56px"></span></div>
+      <div class="hd"><span>In this order</span><span>A month</span></div>
+      <div class="panel">
+        <div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa</div><div class="s">Card · Rp 12.640.000 owed</div></div><div class="v">Rp 1.640.000</div></div>
+        <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">7,5% a year</div></div><div class="v">Rp 3.370.000</div></div>
+      </div></div></div>
+  <div class="col"><p class="cap">Debt-free plan · after</p><p class="note">The laptop is its own row under the card: left, months, end. The card row shows the rest.</p>
+    <div class="phone"><div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span style="width:56px"></span></div>
+      <div class="hd"><span>In this order</span><span>A month</span></div>
+      <div class="panel">
+        <div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa</div><div class="s">Card · Rp 640.000 owed</div></div><div class="v">Rp 640.000</div></div>
+        <div class="tr new" style="padding-left:36px"><div class="ic">💻</div><div class="g"><div class="t">Laptop <span class="chip">1 of 12</span></div><div class="s">Rp 11 jt left · ends Nov 2027</div></div><div class="v">Rp 1.000.000</div></div>
+        <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">7,5% a year</div></div><div class="v">Rp 3.370.000</div></div>
+      </div></div></div>
+  <div class="col"><p class="cap">Debt-free › Schedule · after</p><p class="note">The card's statement row says what is inside it (green text = new).</p>
+    <div class="phone"><div class="nav"><span class="t">‹ Debt-free</span><b>Schedule</b><span style="width:56px"></span></div>
+      <div style="text-align:center;font-weight:600;margin:0 0 8px;font-size:14px">‹ &nbsp;December 2026&nbsp; ›</div>
+      <div class="panel"><div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa</div><div class="s"><span class="hl">incl. Laptop 1/12</span></div></div><div class="v">Rp 1.640.000</div></div>
+      <div class="tr"><div class="ic">🏠</div><div class="g"><div class="t">KPR BCA</div><div class="s">5 Dec</div></div><div class="v">Rp 3.370.000</div></div></div></div></div>
+</div>
+<div class="row" style="margin-top:16px">
+  <div class="col"><p class="cap">Recurring bills · after</p><p class="note">The card's bill names the instalment inside it — no separate bill, it is paid with the card.</p>
+    <div class="phone"><div class="nav"><span class="t"></span><b>Recurring</b><span style="width:56px"></span></div>
+      <div class="hd"><span>December</span></div>
+      <div class="panel"><div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa bill</div><div class="s">Due 4 Jan · <span class="hl">incl. Laptop 1/12</span></div></div><div class="v">Rp 1.640.000</div></div>
+      <div class="tr"><div class="ic">⚡</div><div class="g"><div class="t">Electricity</div><div class="s">Due 20 Dec</div></div><div class="v">Rp 850.000</div></div></div></div></div>
+  <div class="col"><p class="cap">The plan's own page · after</p><p class="note">Progress, what is left, the end, and each month's real transaction (with A or C).</p>
+    <div class="phone"><div class="nav"><span class="t">‹ BCA Visa</span><b>Laptop</b><span style="width:56px"></span></div>
+      <div class="panel" style="padding:12px"><div class="s">3 of 12 paid</div><div style="font-size:22px;font-weight:700;margin:2px 0">Rp 9.000.000 left</div>
+        <div style="height:7px;border-radius:4px;background:#e5e5ea;overflow:hidden;margin:6px 0"><i style="display:block;height:100%;width:25%;background:#34c759"></i></div>
+        <div class="s">Ends November 2027 · Rp 1.000.000 a month</div></div>
+      <div class="hd"><span>Instalments</span></div>
+      <div class="panel new">
+        <div class="tr"><div class="g"><div class="t">3 of 12</div><div class="s">18 Feb 2027 · paid</div></div><div class="v">Rp 1.000.000</div><span style="color:#c7c7cc">›</span></div>
+        <div class="tr"><div class="g"><div class="t">2 of 12</div><div class="s">18 Jan 2027 · paid</div></div><div class="v">Rp 1.000.000</div><span style="color:#c7c7cc">›</span></div>
+        <div class="tr"><div class="g"><div class="t">1 of 12</div><div class="s">18 Dec 2026 · paid</div></div><div class="v">Rp 1.000.000</div><span style="color:#c7c7cc">›</span></div>
+      </div></div></div>
+  <div class="col"><p class="cap">Net worth · unchanged</p><p class="note">The card already owes the whole Rp 12.000.000 from the purchase day, falling as instalments are paid. That stays.</p>
+    <div class="phone"><div class="panel"><div class="tr"><div class="ic">💳</div><div class="g"><div class="t">BCA Visa</div><div class="s">Liability</div></div><div class="v">− Rp 12.640.000</div></div></div></div></div>
+</div>
 <h2>Side by side</h2>
 <table class="cmp">
   <tr><th></th><th>Today</th><th>A · Real transactions</th><th>B · Spread spending</th><th>C · Both</th></tr>
