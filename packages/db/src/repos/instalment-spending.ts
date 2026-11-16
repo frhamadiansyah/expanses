@@ -22,19 +22,149 @@ export interface PlanWithDay {
   plan: CardInstallmentRow;
   /** The card's statement day; the 1st when none was set, as the statements read it. */
   statementDay: number;
+  /**
+   * A spread that came from the payer's phone in a shared workspace (`purchase_spreads`, 0121): what all of the
+   * purchase's category lines came to there, which this phone — holding only the shared part — cannot work out itself.
+   * Absent for this phone's own plans, whose purchase is all here.
+   */
+  wholeBaseMinor?: number;
+  /** True for such a spread: there is no plan here to open, nor any debt of this phone's. */
+  received?: boolean;
 }
 
-/** Every plan in the workspace, with its card's statement day. */
+/**
+ * What a purchase's `spread` field carries (card instalments C, sync): everything another phone needs to work the
+ * purchase's Each month instalment lines out with the same function, to the same rupiah.
+ */
+export interface PurchaseSpread {
+  months: number;
+  firstBilledMonth: string;
+  totalMinor: number;
+  monthlyMinor: number;
+  statementDay: number;
+  wholeBaseMinor: number;
+}
+
+const spreadsTable = new WeakMap<Db, boolean>();
+
+/** Whether 0121 is here: a database before it holds no spread from another phone. */
+export async function purchaseSpreadsExist(db: Db): Promise<boolean> {
+  if (spreadsTable.get(db)) return true;
+  const rows = await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'purchase_spreads'`);
+  if (rows.length > 0) spreadsTable.set(db, true);
+  return rows.length > 0;
+}
+
+/** A `spread` as it arrived, or null for anything that is not one (an unknown shape is no spread). */
+export function readPurchaseSpread(value: unknown): PurchaseSpread | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Record<string, unknown>;
+  const whole = (n: unknown) => typeof n === 'number' && Number.isInteger(n);
+  if (!whole(v.months) || (v.months as number) < 1 || !whole(v.totalMinor) || !whole(v.monthlyMinor) || !whole(v.statementDay) || !whole(v.wholeBaseMinor)) return null;
+  if (typeof v.firstBilledMonth !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(v.firstBilledMonth)) return null;
+  const statementDay = v.statementDay as number;
+  if (statementDay < 1 || statementDay > 31) return null;
+  return {
+    months: v.months as number,
+    firstBilledMonth: v.firstBilledMonth,
+    totalMinor: v.totalMinor as number,
+    monthlyMinor: v.monthlyMinor as number,
+    statementDay,
+    wholeBaseMinor: v.wholeBaseMinor as number,
+  };
+}
+
+/**
+ * The spread a purchase travels with, read on the payer's phone from its own plan: a plan counting Each month tied to
+ * this transaction, its card's statement day, and what all its category lines come to. Null when there is none, or when
+ * the shared workspace keeps its books in another currency than the card's (owner ruling, 16 Nov 2026): both phones
+ * then count it at purchase. On the other phone, the spread it was sent.
+ */
+export async function purchaseSpreadOfTx(db: Db, transactionId: string, bookId: string | null): Promise<PurchaseSpread | null> {
+  const plans = await db.values<[string, number, number, number, string, string | null]>(sql`
+    SELECT i.card_account_id, i.months, i.total_minor, i.monthly_minor, i.first_billed_month, a.currency
+    FROM card_installments i JOIN accounts a ON a.id = i.card_account_id
+    WHERE i.transaction_id = ${transactionId} AND i.count_mode = 'each_month' LIMIT 1`).catch(() => [] as [string, number, number, number, string, string | null][]);
+  const plan = plans[0];
+  if (plan) {
+    const [cardAccountId, months, totalMinor, monthlyMinor, firstBilledMonth, cardCurrency] = plan;
+    if (bookId) {
+      const [book] = await db.values<[string]>(sql`SELECT base_currency FROM books WHERE id = ${bookId}`);
+      if (book && cardCurrency && book[0] !== cardCurrency) return null;
+    }
+    const [terms] = await db.values<[number | null]>(sql`SELECT statement_day FROM card_terms WHERE account_id = ${cardAccountId}`);
+    const [whole] = await db.values<[number | null]>(sql`
+      SELECT SUM(e.amount_base_minor) FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId} AND a.kind = 'expense'`);
+    return {
+      months: Number(months),
+      firstBilledMonth,
+      totalMinor: Number(totalMinor),
+      monthlyMinor: Number(monthlyMinor),
+      statementDay: Number(terms?.[0] ?? 1),
+      wholeBaseMinor: Number(whole?.[0] ?? 0),
+    };
+  }
+  if (!(await purchaseSpreadsExist(db))) return null;
+  const [row] = await db.values<[number, string, number, number, number, number]>(sql`
+    SELECT months, first_billed_month, total_minor, monthly_minor, statement_day, whole_base_minor FROM purchase_spreads WHERE transaction_id = ${transactionId}`);
+  if (!row) return null;
+  return { months: Number(row[0]), firstBilledMonth: row[1], totalMinor: Number(row[2]), monthlyMinor: Number(row[3]), statementDay: Number(row[4]), wholeBaseMinor: Number(row[5]) };
+}
+
+/**
+ * The spreads that came from the payer's phone (0121), as plans counting Each month: on the purchase's money account
+ * (the payer's placeholder here), never a debt of this phone's. A purchase this phone has a plan of its own for is its
+ * own plan's.
+ */
+async function receivedPlansTx(db: Db, ws: WorkspaceContext, own: ReadonlySet<string>): Promise<PlanWithDay[]> {
+  if (!(await purchaseSpreadsExist(db))) return [];
+  const rows = await db.values<[string, number, string, number, number, number, number, string, string]>(sql`
+    SELECT s.transaction_id, s.months, s.first_billed_month, s.total_minor, s.monthly_minor, s.statement_day, s.whole_base_minor, t.description,
+      (SELECT e.account_id FROM entries e JOIN accounts a ON a.id = e.account_id
+        WHERE e.transaction_id = s.transaction_id AND a.kind NOT IN ('income', 'expense') ORDER BY e.amount_minor ASC, e.rowid LIMIT 1)
+    FROM purchase_spreads s JOIN transactions t ON t.id = s.transaction_id
+    WHERE s.workspace_id = ${ws.workspaceId} AND t.status = 'posted'`);
+  return rows
+    .filter(([transactionId]) => !own.has(transactionId))
+    .map(([transactionId, months, firstBilledMonth, totalMinor, monthlyMinor, statementDay, wholeBaseMinor, description, moneyAccountId]) => ({
+      plan: {
+        id: `spread:${transactionId}`,
+        cardAccountId: moneyAccountId ?? '',
+        transactionId,
+        description,
+        createdAt: '',
+        totalMinor: Number(totalMinor),
+        months: Number(months),
+        monthlyMinor: Number(monthlyMinor),
+        firstBilledMonth,
+        rateBps: 0,
+        conversionFeeMinor: 0,
+        earnsPoints: true,
+        countMode: 'each_month' as const,
+      },
+      statementDay: Number(statementDay),
+      wholeBaseMinor: Number(wholeBaseMinor),
+      received: true,
+    }));
+}
+
+/**
+ * Every plan in the workspace, with its card's statement day — and every spread another phone sent for a purchase here
+ * (`receivedPlansTx`), which counts the same way.
+ */
 export async function plansWithStatementDays(db: Db, ws: WorkspaceContext): Promise<PlanWithDay[]> {
   const plans = await listInstallmentsTx(db, ws);
-  if (plans.length === 0) return [];
   const cardIds = [...new Set(plans.map((plan) => plan.cardAccountId))];
-  const terms = await db
-    .select({ accountId: cardTerms.accountId, statementDay: cardTerms.statementDay })
-    .from(cardTerms)
-    .where(and(eq(cardTerms.workspaceId, ws.workspaceId), inArray(cardTerms.accountId, cardIds)));
+  const terms = cardIds.length
+    ? await db
+        .select({ accountId: cardTerms.accountId, statementDay: cardTerms.statementDay })
+        .from(cardTerms)
+        .where(and(eq(cardTerms.workspaceId, ws.workspaceId), inArray(cardTerms.accountId, cardIds)))
+    : [];
   const dayOf = new Map(terms.map((term) => [term.accountId, term.statementDay ?? 1]));
-  return plans.map((plan) => ({ plan, statementDay: dayOf.get(plan.cardAccountId) ?? 1 }));
+  const own = plans.map((plan) => ({ plan, statementDay: dayOf.get(plan.cardAccountId) ?? 1 }));
+  const received = await receivedPlansTx(db, ws, new Set(plans.flatMap((plan) => (plan.transactionId ? [plan.transactionId] : []))));
+  return [...own, ...received];
 }
 
 export const countsEachMonth = (plan: { countMode: InstalmentCountMode }) => plan.countMode === 'each_month';
@@ -49,6 +179,7 @@ export function spreadPurchaseIds(plans: readonly PlanWithDay[]): string[] {
 
 /** One instalment counted as spending in one category, in the owner's currency. */
 export interface SpreadLine {
+  /** The plan's id; `spread:` and the purchase's id for a spread another phone sent, which has no plan here. */
   planId: string;
   cardAccountId: string;
   /** The purchase it spreads; null for a plan with no purchase, counted under Uncategorised. */
@@ -59,6 +190,8 @@ export interface SpreadLine {
   statementOn: string;
   categoryId: string;
   amountBaseMinor: number;
+  /** A spread the payer's phone sent (0121): there is no plan on this phone to open. */
+  received?: boolean;
 }
 
 /**
@@ -97,12 +230,13 @@ export async function spreadLinesIn(
   const needsUncategorised = spreading.some(({ plan }) => !plan.transactionId);
   const unfiled = needsUncategorised ? await uncategorisedForPlans(db, ws) : null;
   const out: SpreadLine[] = [];
-  for (const { plan, statementDay } of spreading) {
+  for (const { plan, statementDay, wholeBaseMinor, received } of spreading) {
     let parts: readonly PartWeight[];
     let whole: number | undefined;
     if (plan.transactionId) {
       parts = purchaseParts.get(plan.transactionId) ?? [];
-      whole = purchaseWhole.get(plan.transactionId);
+      // A spread from the payer's phone carries the whole it was worked out against: this phone may hold only a part.
+      whole = wholeBaseMinor ?? purchaseWhole.get(plan.transactionId);
     } else {
       // No purchase: the card paid all of it, so a Paid with filter on another account leaves it out.
       if (!unfiled || (opts.paidAccountId && opts.paidAccountId !== plan.cardAccountId)) continue;
@@ -121,6 +255,7 @@ export async function spreadLinesIn(
         statementOn: line.statementOn,
         categoryId: line.categoryKey,
         amountBaseMinor: line.amountMinor,
+        ...(received ? { received: true } : {}),
       });
     }
   }

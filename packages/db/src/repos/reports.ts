@@ -164,7 +164,7 @@ export async function instalmentSpendingIn(
   from: string,
   to: string,
   opts: CategoryTotalsOptions = {},
-): Promise<{ lines: SpreadLine[]; repayments: InstalmentRepayment[]; spreadPurchaseIds: string[] }> {
+): Promise<{ lines: SpreadLine[]; repayments: InstalmentRepayment[]; spreadPurchaseIds: string[]; spreadMonths: Record<string, number> }> {
   const spread = await spreadPlans(database, ws, 'expense');
   const repayments: InstalmentRepayment[] = [];
   for (const { plan, statementDay } of spread.plans) {
@@ -183,7 +183,10 @@ export async function instalmentSpendingIn(
       });
     }
   }
-  return { lines: await spreadIn(database, ws, 'expense', from, to, opts, spread), repayments, spreadPurchaseIds: spread.ids };
+  // How many months each spread purchase is spread over, by its id: a plan of this phone's or one the payer's phone sent.
+  const spreadMonths: Record<string, number> = {};
+  for (const { plan } of spread.plans) if (plan.countMode === 'each_month' && plan.transactionId) spreadMonths[plan.transactionId] = plan.months;
+  return { lines: await spreadIn(database, ws, 'expense', from, to, opts, spread), repayments, spreadPurchaseIds: spread.ids, spreadMonths };
 }
 
 /**

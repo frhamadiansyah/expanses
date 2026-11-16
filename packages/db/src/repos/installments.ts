@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardInstallments } from '../schema-loans';
+import { captureSpreadingTx } from '../sync/capture';
 
 export class InstallmentDbError extends Error {
   constructor(message: string) {
@@ -112,6 +113,8 @@ export async function saveInstallment(database: Database, ws: WorkspaceContext, 
   await database.transaction(async (tx) => {
     await cardAccountTx(tx, ws, input.cardAccountId);
     if (input.transactionId) await purchaseForPlanTx(tx, ws, input.cardAccountId, input.transactionId, null);
+    // A shared purchase goes out again with its spread (card instalments C, sync).
+    if (input.transactionId) await captureSpreadingTx(tx, input.transactionId);
     await tx.insert(cardInstallments).values({
       id,
       workspaceId: ws.workspaceId,
@@ -158,11 +161,13 @@ export async function updateInstallment(database: Database, ws: WorkspaceContext
 
   await database.transaction(async (tx) => {
     const found = await tx
-      .select({ id: cardInstallments.id, cardAccountId: cardInstallments.cardAccountId })
+      .select({ id: cardInstallments.id, cardAccountId: cardInstallments.cardAccountId, transactionId: cardInstallments.transactionId })
       .from(cardInstallments)
       .where(and(eq(cardInstallments.id, input.id), eq(cardInstallments.workspaceId, ws.workspaceId)));
     if (found.length === 0) throw new InstallmentDbError('Plan not found in this workspace');
     if (input.transactionId) await purchaseForPlanTx(tx, ws, found[0]!.cardAccountId, input.transactionId, input.id);
+    // The purchase it spread and the one it spreads now, when shared, go out again with their spreads.
+    for (const id of new Set([found[0]!.transactionId, input.transactionId === undefined ? found[0]!.transactionId : input.transactionId])) if (id) await captureSpreadingTx(tx, id);
     await tx
       .update(cardInstallments)
       .set({
@@ -186,8 +191,12 @@ export async function updateInstallment(database: Database, ws: WorkspaceContext
  */
 export async function setInstallmentCountMode(database: Database, ws: WorkspaceContext, id: string, countMode: InstalmentCountMode): Promise<void> {
   await database.transaction(async (tx) => {
-    const [found] = await tx.select({ id: cardInstallments.id }).from(cardInstallments).where(and(eq(cardInstallments.id, id), eq(cardInstallments.workspaceId, ws.workspaceId)));
+    const [found] = await tx
+      .select({ id: cardInstallments.id, transactionId: cardInstallments.transactionId })
+      .from(cardInstallments)
+      .where(and(eq(cardInstallments.id, id), eq(cardInstallments.workspaceId, ws.workspaceId)));
     if (!found) throw new InstallmentDbError('Plan not found in this workspace');
+    if (found.transactionId) await captureSpreadingTx(tx, found.transactionId);
     await writeCountModeTx(tx, ws, id, countMode);
   });
 }
@@ -214,7 +223,12 @@ export async function listInstallmentsTx(db: Db, ws: WorkspaceContext, cardAccou
 
 /** Removes a plan. The purchase it came from stays exactly as it was. */
 export async function deleteInstallment(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.db.delete(cardInstallments).where(and(eq(cardInstallments.id, id), eq(cardInstallments.workspaceId, ws.workspaceId)));
+  await database.transaction(async (tx) => {
+    const [found] = await tx.select({ transactionId: cardInstallments.transactionId }).from(cardInstallments).where(and(eq(cardInstallments.id, id), eq(cardInstallments.workspaceId, ws.workspaceId)));
+    // A shared purchase it spread goes out again, counting at purchase.
+    if (found?.transactionId) await captureSpreadingTx(tx, found.transactionId);
+    await tx.delete(cardInstallments).where(and(eq(cardInstallments.id, id), eq(cardInstallments.workspaceId, ws.workspaceId)));
+  });
 }
 
 /** Billed, unbilled and what falls due beyond a year, added up per card on a date. */

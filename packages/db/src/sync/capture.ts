@@ -13,7 +13,8 @@ import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { sendGoalSummariesTx } from './goals/summaries';
 import { reserveAndSplit } from './split';
-import { meetsVersion, NEEDS_THIRD_MARK_MIN_APP_VERSION } from './events/version';
+import { INSTALMENT_SPREAD_MIN_APP_VERSION, meetsVersion, NEEDS_THIRD_MARK_MIN_APP_VERSION } from './events/version';
+import { type PurchaseSpread, purchaseSpreadOfTx } from '../repos/instalment-spending';
 import { holderLineageId } from './held';
 import type { ChangeSet, Op } from './types';
 
@@ -193,6 +194,13 @@ export interface PurchaseFields {
    * without it carries none, and the receiver keeps what it has while the amount stays (an edit to a new amount clears it).
    */
   exactHundredths?: number | null;
+  /**
+   * The payer's instalment plan counts this purchase Each month (card instalments C, 0120/0121): what the other phone
+   * needs to count it a month at a time, to the same rupiah. Absent when it counts at purchase; going absent is said as
+   * null. A build before it takes the field's clock and drops it, so it is held from the log until every phone can read
+   * it (`spreadWaitsTx`).
+   */
+  spread?: PurchaseSpread | null;
 }
 
 export interface PurchaseMoney {
@@ -554,12 +562,16 @@ export async function writeChangeSetsTx(
   // An introduction's invite terms ride on its first change-set, beside the device op they vouch for (§8.2).
   if (attach && changeSets[0]) changeSets[0] = { ...changeSets[0], ...attach };
   const hold = ops.some(isThirdMark) && (await thirdMarkWaitsTx(tx, book.bookId, deviceId));
+  const holdSpread = ops.some(isSpreadOp) && (await spreadWaitsTx(tx, book.bookId, deviceId));
+  // A spread held now was sent to nobody: the record of who R8 has sent spreads to goes, as R7's does for the marks.
+  if (holdSpread) await tx.run(sql`DELETE FROM settings WHERE key = ${spreadsCrossedKey(book.bookId)}`);
   // A mark held now was sent to nobody, whoever R7 has sent to before — a phone that left and comes back under the
   // same device id among them: the record of who was sent the marks goes, so the next all-clear sends every one again.
   if (hold) await tx.run(sql`DELETE FROM settings WHERE key = ${thirdMarksCrossedKey(book.bookId)}`);
   let written = 0;
   for (const changeSet of changeSets) {
-    const sent = hold ? { ...changeSet, ops: changeSet.ops.filter((op) => !isThirdMark(op)) } : changeSet;
+    const marksOut = hold ? { ...changeSet, ops: changeSet.ops.filter((op) => !isThirdMark(op)) } : changeSet;
+    const sent = holdSpread ? { ...marksOut, ops: marksOut.ops.flatMap(withoutSpread) } : marksOut;
     if (sent.ops.length > 0 || sent.invite) {
       // Plaintext: the engine seals it when it drains (§6.3, §6.6).
       await tx.run(
@@ -572,6 +584,54 @@ export async function writeChangeSetsTx(
     for (const op of changeSet.ops) await recordClocks(tx, book.bookId, op, changeSet.hlc);
   }
   return written;
+}
+
+/** Where repair R8 keeps the devices it has sent the book's instalment spreads to; cleared whenever a spread is held. */
+export const spreadsCrossedKey = (bookId: string) => `repair.instalment-spreads-crossed.v1.${bookId}`;
+
+/** A purchase op that says a spread (card instalments C): what a build before `INSTALMENT_SPREAD_MIN_APP_VERSION` drops. */
+export const isSpreadOp = (op: Op): boolean => op.entity === 'purchase' && op.op === 'upsert' && 'spread' in op.fields;
+
+/** A purchase op with its spread taken out while it is held: the rest goes as ever, and an op of nothing else goes not at all. */
+function withoutSpread(op: Op): Op[] {
+  if (!isSpreadOp(op) || op.op !== 'upsert') return [op];
+  const { spread: _held, ...fields } = op.fields;
+  if (Object.keys(fields).length === 0) return [];
+  const rest: Op = { ...op, fields };
+  if (rest.op === 'upsert' && rest.changed) rest.changed = rest.changed.filter((field) => field !== 'spread');
+  if (rest.op === 'upsert' && rest.clocks) {
+    const { spread: _clock, ...clocks } = rest.clocks;
+    rest.clocks = clocks;
+  }
+  return [rest];
+}
+
+/**
+ * Whether a purchase's spread must wait before going into this book's log: some other phone in the book says a build
+ * before `INSTALMENT_SPREAD_MIN_APP_VERSION` (or none), or no other phone is in it yet — one joining later may be older.
+ * Such a build would not refuse it, but would show the purchase whole while this phone spreads it.
+ */
+export async function spreadWaitsTx(tx: Db, bookId: string, selfDeviceId: string): Promise<boolean> {
+  const others = await tx
+    .values<[string, string | null]>(sql`SELECT device_id, app_version FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL AND device_id <> ${selfDeviceId}`)
+    .catch(() => [] as [string, string | null][]);
+  return others.length === 0 || others.some(([, version]) => !meetsVersion(version, INSTALMENT_SPREAD_MIN_APP_VERSION));
+}
+
+/**
+ * The instalment plans' door (card instalments C): called before a plan tied to this purchase is saved, changed, set to
+ * count otherwise or removed — and before its card's statement day changes — so a shared purchase goes out with its new
+ * `spread`. A spread is a way of counting, not money: no summary is marked dirty.
+ */
+export async function captureSpreadingTx(tx: Db, transactionId: string): Promise<void> {
+  const session = sessionOf(tx);
+  if (!session) return;
+  const books = await session.sharedBooks();
+  if (books.length === 0) return;
+  const bookId = await bookOfTransaction(tx, transactionId);
+  const lineageId = await lineageOfTransaction(tx, transactionId);
+  const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
+  if (inShared) await session.touchLineage(lineageId, transactionId);
 }
 
 /** Where repair R7 keeps the devices it has sent the book's Debts & savings marks to; cleared whenever a mark is held. */
@@ -1084,6 +1144,8 @@ function diffFields(before: Record<string, unknown> | null, after: Record<string
   }
   // A list that is absent when empty (the lines left out, 0096) and was not: its going empty is a change, said as [].
   if (before && Array.isArray(before.excludedLines) && before.excludedLines.length > 0 && after.excludedLines === undefined) out.excludedLines = [];
+  // Likewise a spread that is no more (the plan back at purchase, removed, or tied to another purchase): said as null.
+  if (before && before.spread && after.spread === undefined) out.spread = null;
   return out;
 }
 
@@ -1392,6 +1454,8 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     ...(placed ? { dayOrder: dayOrder === null ? null : Number(dayOrder) } : {}),
     // Likewise only where 0068 is.
     ...(typed ? { exactHundredths: part || exact === null ? null : Number(exact) } : {}),
+    // Only when the payer's plan counts it Each month (0120), or one came from the payer's phone (0121).
+    ...((spread) => (spread ? { spread } : {}))(await purchaseSpreadOfTx(tx, transactionId, await bookOfTransaction(tx, transactionId))),
   };
 }
 

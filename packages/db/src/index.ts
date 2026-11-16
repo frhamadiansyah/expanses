@@ -278,7 +278,7 @@ export { householdPurchases, type HouseholdPurchase } from './repos/household-pu
 // Joint tax report (joint-net-worth §8.4, task 10): the report's inputs, with a joint group's received rows.
 export { type JointReport, reportInputsFor } from './repos/joint-tax';
 export { MONTH_START_MIN_APP_VERSION, phonesBehindMonthStart } from './sync/month-start';
-export { NEEDS_THIRD_MARK_MIN_APP_VERSION, SHARED_EVENTS_MIN_APP_VERSION, TRIP_SWITCHES_MIN_APP_VERSION, meetsVersion } from './sync/events/version';
+export { INSTALMENT_SPREAD_MIN_APP_VERSION, NEEDS_THIRD_MARK_MIN_APP_VERSION, SHARED_EVENTS_MIN_APP_VERSION, TRIP_SWITCHES_MIN_APP_VERSION, meetsVersion } from './sync/events/version';
 export type { EventInviteDetails } from './sync/invite';
 export type { ShareEventInput, JoinEventInput } from './sync/events/event-log';
 // Delete this copy: a shared event this phone's person is no longer in, taken off this phone alone.

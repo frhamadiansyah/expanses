@@ -44,6 +44,7 @@ import {
 import { recordActivityTx } from './activity-log';
 import { rederiveCardCycles } from './point-ledger';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
+import { purchaseSpreadsExist } from './instalment-spending';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email' | 'notification' | 'screen' | 'photo';
 
@@ -1178,6 +1179,8 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // The instalment plan a purchase was converted to is a fact about the same money too: its statement rows and its
   // Each month spreading (0120) follow the edited purchase rather than staying with the voided one.
   await tx.run(sql`UPDATE card_installments SET transaction_id = ${replacement} WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId}`);
+  // …and so is a spread the payer's phone sent for it (0121), on the phone it came to.
+  if (await purchaseSpreadsExist(tx)) await tx.run(sql`UPDATE purchase_spreads SET transaction_id = ${replacement} WHERE transaction_id = ${id}`);
   // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.
   await tx
     .update(transactionPointActuals)

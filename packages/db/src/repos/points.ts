@@ -18,7 +18,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { feeFieldsByCard, type FeeFields, NO_FEE_FIELDS, writeFeeFields } from './fee-columns';
-import { markAccountDirtyTx } from '../sync/capture';
+import { captureSpreadingTx, markAccountDirtyTx } from '../sync/capture';
 import { mccSourcesFor } from './mcc';
 import { openOwnProgrammeTx } from './programme-link';
 import { nonEarningInstallmentTransactionIds } from './installments';
@@ -147,6 +147,11 @@ export async function saveCardTerms(
   await database.transaction(async (tx) => {
     await requireCard(tx, ws, input.accountId);
     markAccountDirtyTx(tx, input.accountId); // joint net worth §9: its limit and cycle
+    // The day each instalment is billed on travels in a shared purchase's spread (card instalments C): a new statement
+    // day sends those purchases again. Asked before the write, so the spread is read as it was first.
+    for (const [transactionId] of await tx.values<[string]>(sql`
+      SELECT transaction_id FROM card_installments WHERE card_account_id = ${input.accountId} AND workspace_id = ${ws.workspaceId} AND transaction_id IS NOT NULL`).catch(() => [] as [string][]))
+      await captureSpreadingTx(tx, transactionId);
     await tx
       .insert(cardTerms)
       .values(row)

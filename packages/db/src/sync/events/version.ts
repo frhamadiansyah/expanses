@@ -33,6 +33,18 @@ export const TRIP_SWITCHES_MIN_APP_VERSION = '0.5.3';
  */
 export const NEEDS_THIRD_MARK_MIN_APP_VERSION = '0.5.4';
 
+/**
+ * The first app version that reads a purchase's `spread` (card instalments C, 0120 and 0121): a purchase its payer's
+ * plan counts Each month, which every phone in the book then counts a month at a time, to the same rupiah. An older build
+ * would not refuse the field — it takes its clock and drops it — but it would show the purchase whole on its day while
+ * the payer's phone spreads it, and repost the purchase for nothing. So, as for the Debts & savings marks, a `spread` is
+ * kept out of a shared book's log until every other phone there says this version or later (capture.ts,
+ * `writeChangeSetsTx`), its clock kept as if sent, and goes at that clock once they do (repairs.ts, R8).
+ *
+ * Ship order: every build that says 0.5.5 must contain migrations 0120 and 0121.
+ */
+export const INSTALMENT_SPREAD_MIN_APP_VERSION = '0.5.5';
+
 const segment = (parts: readonly string[], i: number) => {
   const n = Number(parts[i]);
   return Number.isFinite(n) ? n : 0;

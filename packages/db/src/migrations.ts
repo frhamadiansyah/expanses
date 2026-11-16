@@ -118,6 +118,7 @@ import incomeCategoryNames from '../migrations/0117_income_category_names.sql?ra
 import monthStartsOn from '../migrations/0118_month_starts_on.sql?raw';
 import categoryNeedDebtsSavings from '../migrations/0119_category_need_debts_savings.sql?raw';
 import instalmentCountMode from '../migrations/0120_instalment_count_mode.sql?raw';
+import purchaseSpreads from '../migrations/0121_purchase_spreads.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -246,6 +247,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 118, name: 'month_starts_on', sql: monthStartsOn },
   { version: 119, name: 'category_need_debts_savings', sql: categoryNeedDebtsSavings },
   { version: 120, name: 'instalment_count_mode', sql: instalmentCountMode },
+  { version: 121, name: 'purchase_spreads', sql: purchaseSpreads },
 ];
 
 /** The highest version this build of the app knows how to produce. */

@@ -630,7 +630,7 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     table: 'transactions',
     // 0084: a purchase split across workspaces is filed in book_transaction_splits instead, and travels in its one shared
     // workspace as its part there (capture.ts `projectPurchase`).
-    tables: ['transactions', 'entries', 'book_transactions', 'book_transaction_splits', 'transaction_flags', 'bill_payments', 'transaction_line_excluded'],
+    tables: ['transactions', 'entries', 'book_transactions', 'book_transaction_splits', 'transaction_flags', 'bill_payments', 'transaction_line_excluded', 'purchase_spreads'],
     scopeRule:
       "the lineage's head is in book_transactions for the book (the ledger files only rows with an income or expense entry), or has a part of a split across workspaces in it (book_transaction_splits)",
     scope: (bookId) =>
@@ -665,6 +665,16 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       // The amount as typed with cents (0068), beside the whole one: written in place when it is all that changed. Not
       // money: an older build ignores it, and every balance reads the lines.
       exactHundredths: ['transactions.exact_hundredths'],
+      // Card instalments C (0120/0121): the payer's plan counting it Each month. Read on the payer's phone from its own
+      // card_installments, which never travels; written on the other phone in place, beside the row, by apply.
+      spread: [
+        'purchase_spreads.months',
+        'purchase_spreads.first_billed_month',
+        'purchase_spreads.total_minor',
+        'purchase_spreads.monthly_minor',
+        'purchase_spreads.statement_day',
+        'purchase_spreads.whole_base_minor',
+      ],
     },
     linkColumns: [
       'transactions.id',
@@ -677,6 +687,7 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
       'transaction_flags.transaction_id',
       'transaction_line_excluded.transaction_id',
       'bill_payments.transaction_id',
+      'purchase_spreads.transaction_id',
     ],
   },
 ];
@@ -718,6 +729,7 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   category_colours: ['workspace_id'],
   book_transactions: ['workspace_id'],
   book_transaction_splits: ['workspace_id'],
+  purchase_spreads: ['workspace_id'],
   transaction_flags: ['workspace_id'],
   transaction_line_excluded: ['workspace_id'],
   bill_payments: ['workspace_id'],

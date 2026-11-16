@@ -11,6 +11,7 @@ import { markForeignDirtyTx } from '../repos/fx-pending';
 import { bookSplitsExist, excludedLinesTx } from '../repos/book-splits';
 import { ensureUncategorisedRowTx } from '../repos/uncategorised';
 import { budgetSharesExist } from '../repos/share-tables';
+import { purchaseSpreadsExist, readPurchaseSpread } from '../repos/instalment-spending';
 import { addPendingSummaryGoalsTx, isRevivable, paidFromOf, projectPurchase, rememberLastHeadTx, ROW_CLOCK, withCapturePaused, type PaidFrom, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
 import {
@@ -487,6 +488,12 @@ async function lineageOf(tx: Db, lineageId: string, bookId: string): Promise<Lin
   return row ? { head: row[0], paidBy: row[1], paidLabel: row[2], paidFrom: paidFromOf(row[3], row[4]) } : null;
 }
 
+/** The payer a carried `money` names, or null when it names none. */
+function carriedPayer(money: unknown): string | null {
+  const paidBy = money && typeof money === 'object' ? (money as Record<string, unknown>).paidBy : null;
+  return typeof paidBy === 'string' ? paidBy : null;
+}
+
 /** A carried `paidFrom` as this device reads it: absent, or anything but two non-empty strings, is null (§5.3). */
 function carriedPaidFrom(value: unknown): PaidFrom | null {
   if (!value || typeof value !== 'object') return null;
@@ -955,6 +962,8 @@ async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<bo
     if (field === 'exactHundredths' && (await exactExists(tx))) continue;
     // A bill link (fix round 2) is a `bill_payments` row beside the purchase, never its money.
     if (field === 'billLink' && (await billPaymentsExist(tx))) continue;
+    // A spread (card instalments C, 0121) is a way of counting it, kept beside the row: never its money either.
+    if (field === 'spread' && (await purchaseSpreadsExist(tx))) continue;
     return false;
   }
   return true;
@@ -985,6 +994,21 @@ async function applyBillLinkTx(tx: Db, ctx: BookContext, transactionId: string, 
   await tx.run(sql`
     INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month)
     VALUES (${transactionId}, ${ctx.ws.workspaceId}, ${templateId}, ${billMonth}) ON CONFLICT DO NOTHING`);
+}
+
+/**
+ * A purchase's spread as it arrived (card instalments C, 0121): the payer's plan counts it Each month, so this phone
+ * counts it a month at a time too, by the same function and figures. Null (the plan back at purchase, or gone) takes the
+ * one here away. A database before 0121 keeps none; its clock is dropped by 0121 so the field is taken again once there.
+ */
+async function applySpreadTx(tx: Db, ctx: BookContext, transactionId: string, value: unknown): Promise<void> {
+  if (!(await purchaseSpreadsExist(tx))) return;
+  await tx.run(sql`DELETE FROM purchase_spreads WHERE transaction_id = ${transactionId}`);
+  const spread = readPurchaseSpread(value);
+  if (!spread) return;
+  await tx.run(sql`
+    INSERT INTO purchase_spreads (transaction_id, workspace_id, months, first_billed_month, total_minor, monthly_minor, statement_day, whole_base_minor)
+    VALUES (${transactionId}, ${ctx.ws.workspaceId}, ${spread.months}, ${spread.firstBilledMonth}, ${spread.totalMinor}, ${spread.monthlyMinor}, ${spread.statementDay}, ${spread.wholeBaseMinor})`);
 }
 
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
@@ -1020,6 +1044,12 @@ async function applyPurchase(
   const lineage = await lineageOf(tx, op.id, ctx.bookId);
   if (lineage && lineage.head === null) return true; // void wins, for ever
   const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc, authorDevice);
+  // A spread is the payer's word alone (card instalments C): only their phone holds the plan. One from anyone else is
+  // passed over and leaves no clock, so the payer's own word still wins whenever it comes.
+  if (won.has('spread')) {
+    const payer = lineage?.paidBy ?? carriedPayer(won.get('money')?.value);
+    if (payer === null || (await authorMemberOf(tx, ctx.bookId, authorDevice)) !== payer) won.delete('spread');
+  }
   if (won.size === 0) return true;
   const winners = Object.fromEntries([...won].map(([field, { value }]) => [field, value]));
   if (!lineage) {
@@ -1075,6 +1105,7 @@ async function applyPurchase(
       await tx.run(sql`UPDATE transactions SET exact_hundredths = ${value} WHERE id = ${lineage.head!}`);
     }
     if ('billLink' in winners) await applyBillLinkTx(tx, ctx, lineage.head!, winners.billLink);
+    if ('spread' in winners) await applySpreadTx(tx, ctx, lineage.head!, winners.spread);
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }
@@ -1119,6 +1150,7 @@ async function applyPurchase(
     const id = await postTransactionTx(tx, ctx.ws, { ...input, id: await freeTransactionIdTx(tx, ctx.bookId, op.id) });
     if (!kept) await fileInOwnBookTx(tx, ctx, id);
     if ('billLink' in winners) await applyBillLinkTx(tx, ctx, id, winners.billLink);
+    if ('spread' in winners) await applySpreadTx(tx, ctx, id, winners.spread);
     await tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
           VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${from?.owner ?? null}, ${from?.itemId ?? null})`,
@@ -1128,6 +1160,7 @@ async function applyPurchase(
     const id = await replaceTransactionTx(tx, ctx.ws, was, input);
     if (!kept) await fileInOwnBookTx(tx, ctx, id);
     if ('billLink' in winners) await applyBillLinkTx(tx, ctx, id, winners.billLink);
+    if ('spread' in winners) await applySpreadTx(tx, ctx, id, winners.spread);
     if (parted) await postRemainderTx(tx, ctx, was, parted, changeSet.member);
     await tx.run(
       sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel},

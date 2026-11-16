@@ -72,7 +72,6 @@ import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
 import { accountsWithTransactions, amountExtraParts, buildRows, type CashflowContext, sharedTransferRow, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, sortRows, totals } from './list-model';
-import { useInstallments } from '../loans/queries';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -488,10 +487,8 @@ export function TransactionsPage() {
     enabled: !ownerWide,
     queryFn: () => instalmentSpendingIn(database, listWs, range.from ?? '0000-01-01', range.to ?? today, { excludeEvents: !eventsInCaps, billMonths: true }),
   });
-  const plans = useInstallments();
-  const spreadOver = new Map(
-    (plans.data ?? []).filter((plan) => plan.countMode === 'each_month' && plan.transactionId && (instalments.data?.spreadPurchaseIds ?? []).includes(plan.transactionId)).map((plan) => [plan.transactionId!, plan.months]),
-  );
+  // The purchases spread each month — by a plan here, or by the payer's plan on their phone (a shared workspace).
+  const spreadOver = new Map(Object.entries(instalments.data?.spreadMonths ?? {}));
   const instalmentList = (() => {
     if (ownerWide || filters.onlyDrafts || !instalments.data) return [];
     const read = instalments.data;
@@ -1369,7 +1366,8 @@ export function TransactionsPage() {
         accounts={accounts}
         phone={phone}
         testId="instalment-row"
-        onOpen={() => void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: plan.cardAccountId, planId: plan.planId } })}
+        // A spread the payer's phone sent has no plan here to open (card instalments C, sync): the row is read only.
+        onOpen={plan.received ? undefined : () => void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: plan.cardAccountId, planId: plan.planId } })}
         label={
           <>
             {withDate && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}

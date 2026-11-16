@@ -1,6 +1,7 @@
-# Card instalments C: making both phones agree in a shared workspace (design, not built)
+# Card instalments C: making both phones agree in a shared workspace
 
-Status: design for review. Nothing here is built. The local part (steps 1–3) is on `feat/card-instalments-c`.
+Status: approved 16 Nov 2026 and built on `feat/card-instalments-c`, with the owner's decisions on the open points
+(see "Decided" at the end). Tests: `packages/db/test/sync/instalment-spread-sync.test.ts`.
 
 ## The problem
 
@@ -129,3 +130,15 @@ Until both phones run 0.5.5 they still disagree on an Each month plan in Family,
 - **Plan with no purchase** (Uncategorised) counts in the payer's Personal workspace only and never in a shared book,
   so it needs no sync.
 - **Refusal-skip bug:** nothing here writes a column or value an older database lacks, so no older phone can be stopped.
+
+## Decided (owner, 16 Nov 2026) and how it was built
+
+- A book whose currency differs from the card's: the spread is sent as none, so both phones count the purchase at
+  purchase (`purchaseSpreadOfTx`).
+- The partner's phone: an instalment row that came from the payer cannot be opened (no plan there). The purchase
+  keeps its "counts Rp 0 now" caption. Both come from `instalmentSpendingIn` (`received`, `spreadMonths`).
+- A joint card, or a plan the partner makes on a purchase the owner paid: out of scope.
+- Writer check: a `spread` is taken only from a device of the purchase's payer (`authorMemberOf` = `paidBy`). That
+  includes the payer's own second device, which writes `purchase_spreads`. A phone's own plan always comes first.
+- Financial health's debt payments are each phone's own (its accounts). The At purchase plan's instalment stays a debt
+  payment on the payer's phone only. Spending agrees on both.

@@ -127,7 +127,16 @@ export interface ListRow {
    * that month's spending, in the purchase's category; under At purchase a repayment of the card, listed with the
    * transfers. Tapping it opens the plan. Absent on anything else.
    */
-  instalment?: { planId: string; cardAccountId: string; number: number; of: number; countMode: 'at_purchase' | 'each_month'; purchaseId: string | null };
+  instalment?: {
+    planId: string;
+    cardAccountId: string;
+    number: number;
+    of: number;
+    countMode: 'at_purchase' | 'each_month';
+    purchaseId: string | null;
+    /** Sent by the payer's phone in a shared workspace: no plan here to open. */
+    received?: boolean;
+  };
   /** A purchase its plan spreads each month: listed on its day, counting nothing there; the months it is spread over. */
   spreadOver?: number;
 }
@@ -225,7 +234,15 @@ export function instalmentRows(
     categoryId: line.categoryId,
     categoryName: byId.get(line.categoryId)?.name ?? null,
     parentName: parentNameOf(line.categoryId, byId),
-    instalment: { planId: line.planId, cardAccountId: line.cardAccountId, number: line.number, of: line.of, countMode: 'each_month', purchaseId: line.transactionId },
+    instalment: {
+      planId: line.planId,
+      cardAccountId: line.cardAccountId,
+      number: line.number,
+      of: line.of,
+      countMode: 'each_month',
+      purchaseId: line.transactionId,
+      ...(line.received ? { received: true } : {}),
+    },
   }));
   const repaying = read.repayments.map((line): ListRow => ({
     ...base(line.cardAccountId, line.description, line.statementOn, line.amountMinor),
