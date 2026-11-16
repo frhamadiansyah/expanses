@@ -1175,6 +1175,9 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   }
   await tx.update(cardSettlements).set({ purchaseTransactionId: replacement }).where(and(eq(cardSettlements.purchaseTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
   await tx.update(cardSettlements).set({ paymentTransactionId: replacement }).where(and(eq(cardSettlements.paymentTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
+  // The instalment plan a purchase was converted to is a fact about the same money too: its statement rows and its
+  // Each month spreading (0120) follow the edited purchase rather than staying with the voided one.
+  await tx.run(sql`UPDATE card_installments SET transaction_id = ${replacement} WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId}`);
   // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.
   await tx
     .update(transactionPointActuals)

@@ -236,3 +236,18 @@ describe('where each instalment stands', () => {
     expect(paid[1]!.status).toBe('upcoming');
   });
 });
+
+describe('an edited purchase', () => {
+  it('keeps its plan: the plan follows the correction, so the spreading stays', async () => {
+    const { replaceTransaction } = await import('../src/index');
+    const h = await laptop();
+    const edited = await replaceTransaction(h.database, h.ws, h.purchase, {
+      occurredOn: '2026-11-11',
+      description: 'Laptop 14"',
+      lines: expenseLines({ categoryAccountId: h.electronics, paymentAccountId: h.card.id, amountMinor: 12_000_000, currency: 'IDR' }),
+    });
+    expect((await listInstallments(h.database, h.ws))[0]!.transactionId).toBe(edited);
+    expect(total(await spentIn(h.database, h.ws, NOV))).toBe(0);
+    expect(total(await spentIn(h.database, h.ws, DEC))).toBe(1_640_000);
+  });
+});
