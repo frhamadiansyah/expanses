@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { instalmentsFrom, matchPlanPurchase, planPurchaseOutcome, planPurchaseWindow, type PlanPurchaseLine, purchaseCandidates } from '../src/index';
+import { firstBilledMonthFor, instalmentsFrom, matchPlanPurchase, planPurchaseOutcome, planPurchaseWindow, type PlanPurchaseLine, purchaseCandidates } from '../src/index';
 
 /** Invented: a laptop of Rp 12.000.000 on 10 Nov 2026, 12 instalments first billed December 2026. */
 const line = (transactionId: string, occurredOn: string, owedMinor: number, extra: Partial<PlanPurchaseLine> = {}): PlanPurchaseLine => ({
@@ -94,5 +94,25 @@ describe('instalmentsFrom', () => {
     const bills = [{ statementOn: '2026-09-18' }, { statementOn: '2026-10-01' }, { statementOn: '2026-10-18' }];
     expect(instalmentsFrom(bills, '2026-10-01')).toEqual([{ statementOn: '2026-10-01' }, { statementOn: '2026-10-18' }]);
     expect(instalmentsFrom(bills, null)).toEqual(bills);
+  });
+});
+
+describe('firstBilledMonthFor', () => {
+  it('is the month after the purchase’s own statement: bought on or before the statement day, next month; after, the one after', () => {
+    // The owner's example: 10 Nov, statement day the 18th, first billed December.
+    expect(firstBilledMonthFor('2026-11-10', 18)).toBe('2026-12');
+    expect(firstBilledMonthFor('2026-11-18', 18)).toBe('2026-12');
+    expect(firstBilledMonthFor('2026-11-19', 18)).toBe('2027-01');
+  });
+
+  it('rolls December into January of the next year', () => {
+    expect(firstBilledMonthFor('2026-12-10', 18)).toBe('2027-01');
+    expect(firstBilledMonthFor('2026-12-20', 18)).toBe('2027-02');
+  });
+
+  it('takes a statement day of 31 as the month’s last day', () => {
+    expect(firstBilledMonthFor('2027-02-28', 31)).toBe('2027-03');
+    expect(firstBilledMonthFor('2026-11-30', 31)).toBe('2026-12');
+    expect(firstBilledMonthFor('2026-04-30', 31)).toBe('2026-05');
   });
 });

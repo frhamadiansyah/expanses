@@ -228,3 +228,18 @@ export function planPurchaseOutcome(
 export function instalmentsFrom<T extends { statementOn: string }>(bills: readonly T[], recordsFrom: string | null): T[] {
   return recordsFrom === null ? [...bills] : bills.filter((bill) => bill.statementOn >= recordsFrom);
 }
+
+/**
+ * The month a purchase turned into instalments is first billed in (Turn into instalments): the statement after the one
+ * the purchase itself falls on — that one closes on or after the purchase's day, by the card's statement day (the
+ * month's last day when that day does not exist) — as the owner's example has it: bought 10 Nov, statement day the
+ * 18th, first billed December.
+ */
+export function firstBilledMonthFor(occurredOn: string, statementDay: number): string {
+  const month = occurredOn.slice(0, 7);
+  const [year, monthNumber] = month.split('-').map(Number) as [number, number];
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const statementOn = `${month}-${String(Math.min(Math.max(1, statementDay), lastDay)).padStart(2, '0')}`;
+  const purchaseStatement = occurredOn <= statementOn ? month : addMonthsTo(month, 1);
+  return addMonthsTo(purchaseStatement, 1);
+}

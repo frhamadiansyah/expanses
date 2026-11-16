@@ -2,6 +2,7 @@ import { addMonths, monthPeriod, splitExpenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+  autoLinkInstalmentPlans,
   budgetSheetFor,
   categoryTotalsIn,
   createAccount,
@@ -50,7 +51,7 @@ async function update(d: Device) {
   d.engine = new SyncEngine(d.database, d.transport, d.keys, undefined, { appVersion: BUILD, shareRecords: d.records });
 }
 
-async function household(options: { dewi?: string; olderSchema?: boolean; excluded?: boolean } = {}) {
+async function household(options: { dewi?: string; olderSchema?: boolean; excluded?: boolean; asOldSheet?: boolean } = {}) {
   const home = new Household();
   const fandri = await home.device('Fandri', undefined, 'IDR', BUILD, { phoneErrors: true });
   const dewi = await home.device('Dewi', undefined, 'IDR', options.dewi ?? BUILD, { phoneErrors: true });
@@ -88,7 +89,10 @@ async function household(options: { dewi?: string; olderSchema?: boolean; exclud
   });
   await home.settle();
   const [lineage] = (await fandri.database.db.values<[string]>(sql`SELECT lineage_id FROM sync_lineage WHERE head_transaction_id = ${purchase}`))[0]!;
-  const planId = await saveInstallment(fandri.database, fandri.ws, { cardAccountId: card, description: 'Laptop', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-12', transactionId: purchase });
+  // The old sheet never named the purchase, and 0120 left such a plan At purchase.
+  const planId = options.asOldSheet
+    ? await saveInstallment(fandri.database, fandri.ws, { cardAccountId: card, description: 'Laptop', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-12', countMode: 'at_purchase' })
+    : await saveInstallment(fandri.database, fandri.ws, { cardAccountId: card, description: 'Laptop', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-12', transactionId: purchase });
   await home.settle();
   const fam = (d: Device) => inBook(d.ws, family);
   /** Every op his phone has put in the book's log since the join, drained or not. */
@@ -175,6 +179,20 @@ describe('two phones agree on an Each month plan in Family', () => {
     const days = await dailyTotalsIn(h.dewi.database, h.fam(h.dewi), 'expense', '2026-12-01', '2026-12-31', { billMonths: true });
     expect(days.days).toEqual([{ date: '2026-12-25', amountMinor: 666_667 }]);
     expect(await familyFigures(h, h.dewi)).toEqual(await familyFigures(h, h.fandri));
+  });
+});
+
+describe('a plan saved by the old sheet, tied to its purchase on opening the app', () => {
+  it('goes out with its spread, and both phones count it each month alike', async () => {
+    const h = await household({ asOldSheet: true });
+    // Before: both count Family's part whole in November.
+    expect((await familyFigures(h, h.dewi))['2026-11']).toMatchObject({ cashflow: FAMILY_PART });
+    expect(await autoLinkInstalmentPlans(h.fandri.database, h.fandri.ws)).toEqual({ linked: 1, beforeRecords: 0, left: 0 });
+    await h.home.settle();
+    const mine = await familyFigures(h, h.fandri);
+    expect(mine['2026-12']).toMatchObject({ cashflow: 666_667 });
+    expect(await familyFigures(h, h.dewi)).toEqual(mine);
+    expect(await skipsOf(h.dewi.database)).toEqual([]);
   });
 });
 

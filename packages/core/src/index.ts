@@ -437,6 +437,7 @@ export {
   installmentSchedule,
   type InstallmentSplit,
   installmentSplit,
+  firstBilledMonthFor,
   instalmentsFrom,
   matchPlanPurchase,
   type PartWeight,

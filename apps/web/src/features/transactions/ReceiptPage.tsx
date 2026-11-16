@@ -45,6 +45,9 @@ import { classify } from './classify';
 import { isCorrection } from './draft';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines, splitParts } from './receipt-view';
+import { instalmentCardOf, instalmentRowValue, spreadCaption } from './turn-into';
+import { TurnIntoSheet } from './TurnIntoSheet';
+import { useInstallments } from '../loans/queries';
 import { TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
 import { rowByLine } from '../sharing/JointAccountRows';
@@ -82,6 +85,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const today = isoDate();
 
   const [editing, setEditing] = useState(false);
+  // Turn into instalments (option A): the sheet, open or not.
+  const [turning, setTurning] = useState(false);
+  const plans = useInstallments();
   const [viewing, setViewing] = useState<TransactionPhotoRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -192,6 +198,10 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   };
 
   const caption = heroCaption(tx, kind.amountMinor);
+  // A credit card purchase of this phone's own card can be turned into instalments; one already is reads its plan.
+  const plan = (plans.data ?? []).find((row) => row.transactionId === tx.id) ?? null;
+  const instalmentCard = instalmentCardOf(tx, accounts);
+  const spread = spreadCaption(plan, kind.currency);
   // One purchase split across workspaces, or with a part Not counted: each part, with the workspace it is counted in.
   const parts = splitParts(tx, accounts, book);
 
@@ -309,6 +319,12 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         </span>
         {/* Which of the two figures this is, when the bill and the share of it are not the same number. */}
         {caption && <span className="text-xs text-slate-500">{caption}</span>}
+        {/* Spread by its plan: the purchase counts a month at a time (card instalments C). */}
+        {spread && (
+          <span data-testid="spread-caption" className="text-xs text-slate-500">
+            {spread}
+          </span>
+        )}
         <h1 className="text-lg font-semibold">{tx.description}</h1>
         <span className="text-sm text-slate-500">
           {[...categoryNames, book?.name].filter(Boolean).join(' · ')}
@@ -381,6 +397,35 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
               <SwitchRow label={paidOffMark.refund ? 'Settled' : 'Paid off'} checked={paidOffMark.settled} disabled={busy} onChange={(on) => void markPaidOff(on)} />
             )}
           </InsetGroup>
+        )}
+
+        {/*
+         * Turn into instalments (owner, 16 Nov 2026, option A): None opens the sheet; a plan already tied to the purchase
+         * opens the plan's page, where its months, what is paid and how it counts are.
+         */}
+        {(plan || instalmentCard) && (
+          <InsetGroup>
+            <InsetRow
+              title="Instalments"
+              value={instalmentRowValue(plan, kind.currency)}
+              valueTone={plan ? 'ink-2' : 'ink-3'}
+              chevron
+              testId="receipt-instalments"
+              onClick={() =>
+                plan
+                  ? void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: plan.cardAccountId, planId: plan.id } })
+                  : setTurning(true)
+              }
+            />
+          </InsetGroup>
+        )}
+        {turning && instalmentCard && (
+          <TurnIntoSheet
+            purchase={{ transactionId: tx.id, description: tx.description, occurredOn: tx.occurredOn, amountMinor: instalmentCard.amountMinor }}
+            card={{ accountId: instalmentCard.cardAccountId, name: accounts.find((a) => a.id === instalmentCard.cardAccountId)?.name ?? '' }}
+            currency={accounts.find((a) => a.id === instalmentCard.cardAccountId)?.currency ?? kind.currency}
+            onClose={() => setTurning(false)}
+          />
         )}
 
         {/* A past purchase on a money account: read here, changed on its form. */}
