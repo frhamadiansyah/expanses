@@ -31,9 +31,12 @@
   .grab { width:36px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
   .dim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
   .wrapline { white-space:normal; }
+  .new { outline:3px solid var(--up); outline-offset:-3px; border-radius:12px; position:relative; overflow:visible !important; }
+  .new::before { content:'UPDATED'; position:absolute; top:-9px; right:8px; font-size:9.5px; font-weight:800; color:#fff; background:var(--up); border-radius:4px; padding:1px 5px; z-index:2; }
+  .inc { color:var(--up); font-weight:600; }
 </style></head><body>
 <h1>Debt-free plan: before and after</h1>
-<p class="sub">Before = screenshots of the app today (test figures). After = one page holding what now takes four: what is left and when it ends, the next payment, the order, extra a month, and the list. Schedule and Report stay as two rows at the bottom. Invented figures.</p>
+<p class="sub">Before = screenshots of the app today (test figures). After = one page holding what now takes four: what is left and when it ends, the next payment, the order, extra a month, and the list. Schedule and Report stay as two rows at the bottom. Invented figures.<br><b>Updated 16 Nov:</b> the debts are split into <i>Fixed each month</i> (loans and card instalment plans, which end on a known month) and <i>No fixed amount</i> (a card's own balance, family loans); a card instalment plan has its own row, and the card's row counts only the rest of its balance. Green UPDATED = changed since 14 Nov.</p>
 
 <h2>Before (today)</h2>
 <div class="row">
@@ -53,21 +56,28 @@
       <div class="nav"><span class="t">‹ Net worth</span><b>Debt-free</b><span class="t"></span></div>
       <div class="hero"><div class="k">Debt-free in</div><div class="big">February 2031</div>
         <div class="bar"><i></i></div>
-        <div class="hl"><span><b>Rp 37.570.000</b> left</span><span>0% repaid · 4 debts</span></div></div>
+        <div class="hl"><span><b>Rp 37.570.000</b> left</span><span>0% repaid · 5 debts</span></div></div>
       <div class="hdr"><span>Next</span></div>
-      <div class="panel"><div class="r"><div class="g"><div class="a">BCA Visa</div><div class="s"><span class="chip due">Due 18 Nov</span></div></div><div class="v">Rp 6.214.300</div><span class="pay">Pay</span></div></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">BCA Visa</div><div class="s"><span class="chip due">Due 18 Nov</span></div></div><div class="v">Rp 6.214.300<span class="x inc">incl. Laptop 1/12</span></div><span class="pay">Pay</span></div></div>
       <div class="hdr"><span>Plan</span></div>
       <div class="panel">
         <div class="r"><div class="g"><div class="a">Order</div></div><span class="vd">Avalanche</span><span class="chev">›</span></div>
         <div class="r"><div class="g"><div class="a">Extra a month</div></div><span class="vd" style="color:#c7c7cc">Amount</span></div>
       </div>
       <div class="foot">Highest interest first: costs the least in total.</div>
-      <div class="hdr"><span>In this order</span><span>A month</span></div>
+      <div class="new" style="padding:10px 0 2px;margin-bottom:12px">
+      <div class="hdr"><span>Fixed each month</span><span>A month</span></div>
       <div class="panel">
         <div class="r"><span class="num">1</span><div class="g"><div class="a">Akulaku</div><div class="s">2,5% a month · 6 months</div></div><div class="v">Rp 382.290</div><span class="chev">›</span></div>
         <div class="r"><span class="num">2</span><div class="g"><div class="a">KPR BCA</div><div class="s">7,5% a year · 7 years</div></div><div class="v">Rp 337.113</div><span class="chev">›</span></div>
-        <div class="r"><span class="num">3</span><div class="g"><div class="a">Dewi</div><div class="s">No fixed months</div></div><div class="v dim2" style="color:#8e8e93">—</div><span class="chev">›</span></div>
-        <div class="r"><span class="num">4</span><div class="g"><div class="a">BCA Visa</div><div class="s">Card · statement</div></div><div class="v">Rp 6.214.300</div><span class="chev">›</span></div>
+        <div class="r"><span class="num" style="background:none;color:#c7c7cc">–</span><div class="g"><div class="a">Laptop</div><div class="s">BCA Visa · 1 of 12</div></div><div class="v">Rp 1.000.000</div><span class="chev">›</span></div>
+      </div>
+      <div class="hdr"><span>No fixed amount</span><span>Owed</span></div>
+      <div class="panel" style="margin-bottom:6px">
+        <div class="r"><span class="num">3</span><div class="g"><div class="a">BCA Visa</div><div class="s">Card balance</div></div><div class="v">Rp 5.214.300</div><span class="chev">›</span></div>
+        <div class="r"><span class="num">4</span><div class="g"><div class="a">Dewi</div><div class="s">Family loan</div></div><div class="v">Rp 3.000.000</div><span class="chev">›</span></div>
+      </div>
+      <div class="foot wrapline" style="margin:0 16px 4px">Numbers = the order extra money goes. A 0% instalment is paid as billed; extra never goes there. The card's balance here leaves out what its plans still hold.</div>
       </div>
       <div class="panel">
         <div class="r"><div class="g"><div class="a">Schedule</div></div><span class="vd">1 due this month</span><span class="chev">›</span></div>
@@ -109,7 +119,7 @@
 </div>
 
 <h2>Schedule, after</h2>
-<p class="lead">One line for the month instead of three tiles; rows show the card's face, nothing cut off.</p>
+<p class="lead">One line for the month instead of three tiles; rows show the card's face, nothing cut off. The card's payment says what instalment is inside it.</p>
 <div class="row">
   <div class="col"><p class="cap">Schedule</p><p class="note">Month switcher, one summary line, then the payments.</p>
     <div class="phone">
@@ -117,7 +127,7 @@
       <div style="text-align:center;font-weight:600;margin:0 0 10px">‹ &nbsp; November 2026 &nbsp; ›</div>
       <div class="panel"><div class="r"><div class="g"><div class="a">Due Rp 6.214.300</div><div class="s">Paid Rp 0 · Late Rp 0</div></div></div></div>
       <div class="hdr"><span>Coming up</span></div>
-      <div class="panel"><div class="r"><div style="width:34px;height:22px;border-radius:4px;background:linear-gradient(135deg,#0a4fa3,#1d7be0);flex-shrink:0"></div><div class="g"><div class="a">BCA Visa</div><div class="s">18 Nov</div></div><div class="v">Rp 6.214.300</div><span class="pay">Pay</span></div></div>
+      <div class="panel new"><div class="r"><div style="width:34px;height:22px;border-radius:4px;background:linear-gradient(135deg,#0a4fa3,#1d7be0);flex-shrink:0"></div><div class="g"><div class="a">BCA Visa</div><div class="s">18 Nov</div></div><div class="v">Rp 6.214.300<span class="x inc">incl. Laptop 1/12</span></div><span class="pay">Pay</span></div></div>
     </div>
   </div>
 </div>
