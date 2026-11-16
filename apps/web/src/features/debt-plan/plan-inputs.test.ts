@@ -36,7 +36,7 @@ describe('planDebts', () => {
   });
 
   it('a card’s instalment plans are billed month by month', () => {
-    const plan = { id: 'i1', cardAccountId: 'C1', transactionId: null, description: 'Phone', createdAt: '2026-10-01', totalMinor: 1_200_000, months: 6, monthlyMinor: 200_000, firstBilledMonth: '2026-10', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true, countMode: 'at_purchase' as const, categoryAccountId: null, linkedToTrade: false };
+    const plan = { id: 'i1', cardAccountId: 'C1', transactionId: null, description: 'Phone', createdAt: '2026-10-01', totalMinor: 1_200_000, months: 6, monthlyMinor: 200_000, firstBilledMonth: '2026-10', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true, countMode: 'at_purchase' as const, categoryAccountId: null, linkedToTrade: false, paidSoFar: 0 };
     const debt = find('C1', readings({ cardPlans: [plan] }))!;
     // Oct and Nov billed; Dec–Mar still to bill.
     expect(debt.payoff!.minimumsMinor).toEqual([6_214_300 - 800_000, 200_000, 200_000, 200_000, 200_000]);

@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { cardRecordsFrom, cardStatement, cardStatementLines, planCategoryChoices, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, planInstalmentStatuses, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
+import { allPlanInstalmentStatuses, cardHasOpening, cardStatement, cardStatementLines, planCategoryChoices, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, planInstalmentStatuses, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { cycleBack, dueDateAfter } from '../cards/statement-dates';
@@ -82,10 +82,22 @@ export function useCardLines(cardAccountId: string, enabled = true) {
   return useQuery({ queryKey: ['card-statement-lines', ws.workspaceId, cardAccountId], enabled, queryFn: () => cardStatementLines(database, ws, cardAccountId) });
 }
 
-/** The day a card's records start in the app (its opening balance, else its counted-from day, else its first line). */
-export function useCardRecordsFrom(cardAccountId: string) {
+/** The card's statement day (the 1st when none was set) and due day (null when none): when each instalment is billed and due. */
+export function useCardDays(cardAccountId: string) {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['card-records-from', ws.workspaceId, cardAccountId], queryFn: async () => (await cardRecordsFrom(database.db, ws, cardAccountId)) ?? null });
+  return useQuery({
+    queryKey: ['card-terms', ws.workspaceId, 'days', cardAccountId],
+    queryFn: async () => {
+      const terms = (await listCardTerms(database, ws)).find((row) => row.accountId === cardAccountId);
+      return { statementDay: terms?.statementDay ?? 1, dueDay: terms?.dueDay ?? null };
+    },
+  });
+}
+
+/** Whether the card has an opening balance of its own: then a plan's owed rest is inside it, and no line is added (0124). */
+export function useCardHasOpening(cardAccountId: string, enabled = true) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['card-has-opening', ws.workspaceId, cardAccountId], enabled, queryFn: () => cardHasOpening(database, ws, cardAccountId) });
 }
 
 /** The Personal workspace's spending categories, which a plan with no purchase can count in. */
@@ -99,6 +111,16 @@ export function usePlanInstalments(planId: string, date?: string) {
   const { database, ws } = useApp();
   const onDate = date ?? isoDate();
   return useQuery({ queryKey: ['plan-instalments', ws.workspaceId, planId, onDate], queryFn: () => planInstalmentStatuses(database, ws, planId, onDate) });
+}
+
+/**
+ * Every plan's instalments, paid, billed or still to come, by plan id: the one answer the card's Instalments box,
+ * Debt-free and Recurring read, as the plan's own page does (`planInstalmentStatuses`).
+ */
+export function useAllPlanInstalments(date?: string) {
+  const { database, ws } = useApp();
+  const onDate = date ?? isoDate();
+  return useQuery({ queryKey: ['plan-instalments', ws.workspaceId, 'all', onDate], queryFn: () => allPlanInstalmentStatuses(database, ws, onDate) });
 }
 
 export function useInstallmentTotals(date?: string) {

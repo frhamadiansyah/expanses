@@ -1,5 +1,5 @@
 import { installmentSplit } from '@expanses/core';
-import type { CardInstallmentRow } from '@expanses/db';
+import type { CardInstallmentRow, PlanInstalmentStatus } from '@expanses/db';
 
 /** An active card instalment plan as Recurring's Monthly page lists it: information only, never part of a bills total. */
 export interface InstalmentLine {
@@ -9,7 +9,7 @@ export interface InstalmentLine {
   /** The plan's monthly figure, in the card's currency. */
   monthlyMinor: number;
   currency: string;
-  /** "3 of 12 · on the statement". */
+  /** "3 of 12 paid · on the statement". */
   detail: string;
 }
 
@@ -22,6 +22,8 @@ export function instalmentLines(
   cards: readonly { id: string; name: string; currency: string | null }[],
   baseCurrency: string,
   today: string,
+  /** Each plan's instalments (`planInstalmentStatuses`): what it counts as paid, as the plan's own page does. */
+  statuses: Readonly<Record<string, readonly PlanInstalmentStatus[]>> = {},
 ): InstalmentLine[] {
   const month = today.slice(0, 7);
   return plans
@@ -38,6 +40,8 @@ export function instalmentLines(
       title: `${plan.description} · ${card.name}`,
       monthlyMinor: plan.monthlyMinor,
       currency: card.currency ?? baseCurrency,
-      detail: `${plan.months - split.monthsLeft} of ${plan.months} · on the statement`,
+      detail: statuses[plan.id]
+        ? `${statuses[plan.id]!.filter((row) => row.status === 'paid').length} of ${plan.months} paid · on the statement`
+        : `${plan.months - split.monthsLeft} of ${plan.months} · on the statement`,
     }));
 }

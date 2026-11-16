@@ -1,12 +1,17 @@
 import { formatMinor, installmentSchedule, isoDate, monthName } from '@expanses/core';
+import { setPlanPaidSoFar } from '@expanses/db';
 import { getRouteApi } from '@tanstack/react-router';
+import { useState } from 'react';
+import { useApp } from '../../app/context';
 import { useBack } from '../../app/BackHeader';
 import { Pencil } from 'lucide-react';
-import { useAccounts } from '../../lib/queries';
+import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ProgressBar, ReadOnlyRow } from '../../ui/native';
 import { categoryLabel, NoPurchaseWarning, usePlanEditor } from '../loans/InstallmentList';
-import { countingLine, mayCountTwice, noPurchaseWarning, planProgress } from '../loans/plan-view';
-import { useCardLines, useCardRecordsFrom, useInstallments, usePlanCategoryChoices, usePlanInstalments, useStatementDay } from '../loans/queries';
+import { PaidList } from '../loans/PaidList';
+import { countingLine, dayMonthYear, mayCountTwice, noPurchaseWarning, owedFooter, paidListRows, planProgress } from '../loans/plan-view';
+import { useCardDays, useCardHasOpening, useCardLines, useInstallments, usePlanCategoryChoices, usePlanInstalments } from '../loans/queries';
 import { useMonthStart } from '../workspaces/queries';
 import { CardScreen, useCardPage } from './card-page';
 import { Line, SUBTITLE, TextLine, TITLE } from './rows';
@@ -14,12 +19,13 @@ import { Line, SUBTITLE, TextLine, TITLE } from './rows';
 const route = getRouteApi('/cards/$cardId/settings/instalments/$planId');
 
 const STATUS_WORD = { paid: 'paid', billed: 'billed', upcoming: 'upcoming' } as const;
-const dayMonthYear = (iso: string) => `${Number(iso.slice(8, 10))} ${monthName(iso.slice(0, 7), 'short')} ${iso.slice(0, 4)}`;
 
 /**
  * One instalment plan on a page of its own (card instalments, option C): how far it is — paid of its months, what is
  * left, when it ends — how its spending counts (At purchase | Each month), and each of its instalments, newest first,
- * paid, billed or upcoming. The instalment rows on the statement and on Cashflow open here; ✎ changes the plan.
+ * paid, billed or upcoming. The instalment rows on the statement and on Cashflow open here; ✎ changes the plan. A plan
+ * with no purchase lists them as its Paid list (owner, 17 Nov 2026, mockup 1b): a tap on a circle ticks it and every one
+ * before it, or unticks it and every one after, and the card's balance follows.
  */
 export function CardInstalmentPlanPage() {
   const { cardId, planId } = route.useParams();
@@ -29,11 +35,17 @@ export function CardInstalmentPlanPage() {
   const plan = (plans.data ?? []).find((row) => row.id === planId);
   const today = isoDate();
   const statuses = usePlanInstalments(planId, today);
-  const statementDay = useStatementDay(cardId).data ?? 1;
+  const days = useCardDays(cardId).data;
+  const statementDay = days?.statementDay ?? 1;
   const monthStart = useMonthStart();
   const lines = useCardLines(cardId);
-  const recordsFrom = useCardRecordsFrom(cardId).data ?? null;
   const categories = usePlanCategoryChoices(!!plan && !plan.transactionId).data ?? [];
+  const hasOpening = useCardHasOpening(cardId, !!plan && !plan.transactionId).data ?? false;
+  const { database, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const [paidOpen, setPaidOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
   const fallback = `/cards/${cardId}/settings/instalments` as const;
   // Removed from its own page, the plan has no page left: back to where it was opened from.
   const goBack = useBack(fallback);
@@ -57,10 +69,29 @@ export function CardInstalmentPlanPage() {
   const purchaseCategory = ownRow?.instalment?.categoryId ? (accounts.find((account) => account.id === ownRow.instalment!.categoryId)?.name ?? null) : null;
   const line = countingLine({ investment, monthlyMinor: plan.monthlyMinor, transactionId: plan.transactionId }, installmentSchedule(plan, statementDay), currency, monthStart, {
     categoryName: plan.transactionId ? purchaseCategory : categoryName,
-    recordsFrom,
+    paidSoFar: plan.paidSoFar,
   });
   // A plan with no purchase while the card holds an untied purchase of its total: said until it is chosen.
   const warning = noPurchaseWarning(mayCountTwice(plan, lines.data ?? []), investment, categoryName);
+  // With no purchase: the Paid list. One a card payment covers is paid, but not the list's to untick.
+  const covered = new Set((statuses.data ?? []).filter((row) => row.status === 'paid' && !row.ticked).map((row) => row.number));
+  const paidRows = plan.transactionId
+    ? null
+    : paidListRows({ schedule: installmentSchedule(plan, statementDay), paidSoFar: plan.paidSoFar, dueDay: days?.dueDay ?? null, covered, today, open: 0, expanded: paidOpen });
+  const cardName = accounts.find((account) => account.id === cardId)?.name ?? 'the card';
+  const ownId = plan.id;
+  async function tick(paidSoFar: number) {
+    setError(null);
+    setBusy(true);
+    try {
+      await setPlanPaidSoFar(database, ws, ownId, paidSoFar);
+      await invalidate();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <CardScreen
@@ -100,22 +131,35 @@ export function CardInstalmentPlanPage() {
         </p>
         <NoPurchaseWarning text={warning} />
 
-        <InsetGroup header="Instalments">
-          {progress.rows.length === 0 && <TextLine tone="ink-3">None yet</TextLine>}
-          {progress.rows.map((row) => (
-            <InsetRow
-              key={row.number}
-              testId="plan-instalment"
-              title={`${row.number} of ${row.of}`}
-              subtitle={`${dayMonthYear(row.statementOn)} · ${STATUS_WORD[row.status]}`}
-              value={formatMinor(row.amountMinor, currency)}
-              valueTone="ink"
-              // The statement it is billed on, where the payment that covers it is.
-              to="/cards/$cardId/statement"
-              params={{ cardId }}
-            />
-          ))}
-        </InsetGroup>
+        <ErrorBox error={error} />
+        {paidRows ? (
+          <PaidList
+            header="Instalments"
+            rows={paidRows}
+            currency={currency}
+            footer={<span data-testid="plan-owed">{owedFooter(plan, plan.paidSoFar, currency, cardName, hasOpening)}</span>}
+            disabled={busy}
+            onTap={(paidSoFar) => void tick(paidSoFar)}
+            onExpand={() => setPaidOpen(true)}
+          />
+        ) : (
+          <InsetGroup header="Instalments">
+            {progress.rows.length === 0 && <TextLine tone="ink-3">None yet</TextLine>}
+            {progress.rows.map((row) => (
+              <InsetRow
+                key={row.number}
+                testId="plan-instalment"
+                title={`${row.number} of ${row.of}`}
+                subtitle={`${dayMonthYear(row.statementOn)} · ${STATUS_WORD[row.status]}`}
+                value={formatMinor(row.amountMinor, currency)}
+                valueTone="ink"
+                // The statement it is billed on, where the payment that covers it is.
+                to="/cards/$cardId/statement"
+                params={{ cardId }}
+              />
+            ))}
+          </InsetGroup>
+        )}
         {editor.node}
       </div>
     </CardScreen>

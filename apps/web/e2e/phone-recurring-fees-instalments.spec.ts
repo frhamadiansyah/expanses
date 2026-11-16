@@ -42,7 +42,8 @@ test('Repeating lists each card’s annual fee, read-only and outside the need; 
   const line = plans.getByTestId('instalment-line');
   await expect(line).toContainText('Laptop · Fee Card');
   await expect(line).toContainText('750.000');
-  await expect(line).toContainText('1 of 12 · on the statement');
+  // Paid as the plan reads it (0124): nothing is due yet, so none is paid.
+  await expect(line).toContainText('0 of 12 paid · on the statement');
   // It is in no total: the hero names only the bill.
   expect(summaryBefore).toContain('150.000');
   expect(summaryBefore).not.toContain('750.000');

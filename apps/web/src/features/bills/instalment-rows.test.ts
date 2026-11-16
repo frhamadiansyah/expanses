@@ -40,6 +40,12 @@ const bill = (over: Partial<MonthlyBill>): MonthlyBill =>
   }) as MonthlyBill;
 
 describe('instalmentLines', () => {
+  // 0124: paid is what the plan's own page says (ticked, or covered by the card's payments), not the calendar.
+  it('says how many are paid, as the plan reads it', () => {
+    const statuses = { p1: Array.from({ length: 12 }, (_, i) => ({ number: i + 1, of: 12, statementOn: '2026-08-18', amountMinor: 100_000, status: (i < 2 ? 'paid' : 'billed') as 'paid' | 'billed' })) };
+    expect(instalmentLines([plan({})], cards, 'IDR', '2026-10-15', statuses)[0]!.detail).toBe('2 of 12 paid · on the statement');
+  });
+
   it('lists a running plan as "name · card" with how far through it is, and its monthly figure', () => {
     const [line] = instalmentLines([plan({})], cards, 'IDR', '2026-10-15');
     expect(line).toMatchObject({ title: 'Laptop · Visa', monthlyMinor: 100_000, currency: 'IDR', detail: '3 of 12 · on the statement' });

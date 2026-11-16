@@ -223,8 +223,8 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(held.getByRole('heading', { name: 'Instalments' })).not.toContainText('held');
   const plan = held.getByTestId('card-instalment');
   await expect(plan).toContainText('iBox Grand Indonesia');
-  await expect(plan).toContainText(/\d+ of 12 paid/);
-  await expect(plan).toContainText(/Rp\s1\.000\.000 a month/);
+  await expect(plan).toContainText(/\d+ of 12 paid · ends/);
+  await expect(plan).toContainText(/Rp\s[\d.]+ left/);
 
   // The bin is gone: the row is the way in, and it carries a chevron.
   await expect(plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' })).toHaveCount(0);

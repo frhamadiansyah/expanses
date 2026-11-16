@@ -6,7 +6,7 @@ import { ErrorBox } from '../../ui';
 import { Panel, PushedTitle, SCREEN } from '../../ui/native';
 import { repaidPercent } from '../loans/loan-view';
 import { allDebtsSubtitle, chipCounts, type DebtFilter, debtGroups, type DebtSort, filterDebts, type GroupedDebtRow, readSort, SORTS, sortDebts, writeSort } from './all-debts-view';
-import { useInstallments } from '../loans/queries';
+import { useAllPlanInstalments, useInstallments } from '../loans/queries';
 import { Hair } from './ByHandList';
 import { debtDestination } from './PayFirstRowView';
 import type { PlanDebt } from './plan-inputs';
@@ -160,7 +160,8 @@ export function AllDebtsPage() {
   // Grouped by whether a debt asks a fixed amount each month; a card's running instalment plans are rows of their own
   // there, and leave the card's own figure (option C). Late and Paid off list debts alone.
   const plans = useInstallments();
-  const groups = debtGroups(active, filter === 'all' || filter === 'active' ? (plans.data ?? []) : [], today);
+  const statuses = useAllPlanInstalments(today);
+  const groups = debtGroups(active, filter === 'all' || filter === 'active' ? (plans.data ?? []) : [], today, statuses.data ?? {});
 
   return (
     <div className={SCREEN}>

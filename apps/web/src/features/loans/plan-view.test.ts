@@ -1,6 +1,6 @@
 import { installmentSchedule } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { countingLine, mayCountTwice, noPurchaseWarning, planProgress } from './plan-view';
+import { countingLine, firstBilledDate, mayCountTwice, noPurchaseWarning, owedFooter, paidListRows, planProgress } from './plan-view';
 
 // Invented: a laptop of Rp 12.000.000, 12 × Rp 1.000.000 from December 2026, statement day the 18th.
 const plan = { totalMinor: 12_000_000, months: 12, monthlyMinor: 1_000_000, firstBilledMonth: '2026-12', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true };
@@ -21,10 +21,13 @@ describe('countingLine (the app decides how a plan counts, TF 139)', () => {
     );
   });
 
-  it('a plan with no purchase counts from the card’s start in the app, Uncategorised unless a category is chosen', () => {
+  it('a plan with no purchase counts only what is owed, Uncategorised unless a category is chosen', () => {
     const phone = { totalMinor: 24_000_000, months: 24, monthlyMinor: 1_000_000, firstBilledMonth: '2024-05', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true };
-    expect(rp(countingLine({ investment: false, monthlyMinor: 1_000_000, transactionId: null }, installmentSchedule(phone, 18), 'IDR', 1, { recordsFrom: '2025-10-01' }))).toBe(
+    expect(rp(countingLine({ investment: false, monthlyMinor: 1_000_000, transactionId: null }, installmentSchedule(phone, 18), 'IDR', 1, { paidSoFar: 17 }))).toBe(
       'Counts Rp 1.000.000 a month as Uncategorised spending, in each month from October to April 2026.',
+    );
+    expect(countingLine({ investment: false, monthlyMinor: 1_000_000, transactionId: null }, installmentSchedule(phone, 18), 'IDR', 1, { paidSoFar: 24 })).toBe(
+      'Every instalment is paid: nothing more counts as spending.',
     );
   });
 
@@ -73,3 +76,49 @@ describe('planProgress', () => {
   });
 });
 
+
+/*
+ * The Paid list (owner, 17 Nov 2026, mockup 1b). The owner's case, invented: 24 × Rp 1.000.000 first billed March 2025,
+ * statement day the 13th, due the 2nd; added 17 Nov 2026, so 1–20 ticked.
+ */
+describe('the Paid list', () => {
+  const ori = { totalMinor: 24_000_000, months: 24, monthlyMinor: 1_000_000, firstBilledMonth: '2025-03', rateBps: 0, conversionFeeMinor: 0, earnsPoints: false };
+  const bills = installmentSchedule(ori, 13);
+  const view = (rows: ReturnType<typeof paidListRows>) => rows.map((row) => [row.title, row.subtitle, row.ticked, row.tapTo]);
+
+  it('on the new plan’s sheet: every one owed, the latest two ticked, the older folded', () => {
+    expect(view(paidListRows({ schedule: bills, paidSoFar: 20, dueDay: 2, open: 2, expanded: false }))).toEqual([
+      ['24 of 24', '13 Feb 2027', false, 24],
+      ['23 of 24', '13 Jan 2027', false, 23],
+      ['22 of 24', '13 Dec 2026', false, 22],
+      ['21 of 24', '13 Nov 2026 · due 2 Dec', false, 21],
+      ['20 of 24', '13 Oct 2026', true, 19],
+      ['19 of 24', '13 Sep 2026', true, 18],
+      ['1–18 of 24', 'March 2025 – August 2026', true, null],
+    ]);
+    expect(paidListRows({ schedule: bills, paidSoFar: 20, dueDay: 2, open: 2, expanded: true })).toHaveLength(24);
+  });
+
+  it('on the plan’s page: billed and the next to come, the paid folded, a covered one not the list’s to untick', () => {
+    expect(view(paidListRows({ schedule: bills, paidSoFar: 20, dueDay: 2, today: '2026-11-17', open: 0, expanded: false }))).toEqual([
+      ['22 of 24', '13 Dec 2026 · upcoming', false, 22],
+      ['21 of 24', '13 Nov 2026 · due 2 Dec', false, 21],
+      ['1–20 of 24', 'Paid', true, null],
+    ]);
+    expect(view(paidListRows({ schedule: bills, paidSoFar: 20, dueDay: 2, today: '2026-12-03', covered: new Set([21]), open: 0, expanded: false })).slice(0, 2)).toEqual([
+      ['22 of 24', '13 Dec 2026 · due 2 Jan', false, 22],
+      ['21 of 24', '13 Nov 2026 · paid', true, null],
+    ]);
+  });
+
+  it('says what is owed, and where', () => {
+    expect(rp(owedFooter(ori, 20, 'IDR', 'Visa Kencana', false))).toBe('Owed: 21–24, Rp 4.000.000 — added to Visa Kencana’s balance.');
+    expect(rp(owedFooter(ori, 21, 'IDR', 'Visa Kencana', true))).toBe('Owed: 22–24, Rp 3.000.000 — held in Visa Kencana’s opening balance.');
+    expect(rp(owedFooter(ori, 23, 'IDR', 'Visa Kencana', false))).toBe('Owed: 24, Rp 1.000.000 — added to Visa Kencana’s balance.');
+    expect(owedFooter(ori, 24, 'IDR', 'Visa Kencana', false)).toBe('Owed: nothing. Every instalment is paid.');
+  });
+
+  it('shows First billed as the full date, on the card’s statement day', () => {
+    expect(firstBilledDate(bills)).toBe('13 March 2025');
+  });
+});

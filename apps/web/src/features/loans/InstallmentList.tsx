@@ -1,4 +1,4 @@
-import { formatMinor, groupTypedAmount, installmentSchedule, installmentSplit, isoDate, monthYear } from '@expanses/core';
+import { clampPaidSoFar, formatMinor, groupTypedAmount, installmentSchedule, installmentSplit, isoDate, monthYear, paidSoFarOn } from '@expanses/core';
 import { type CardInstallmentRow, deleteInstallment, saveInstallment, updateInstallment } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { ChevronRight } from 'lucide-react';
@@ -8,12 +8,14 @@ import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, ProgressBar, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { ROW_PAD_X, ROW_PAD_Y, rowHeight } from '../../ui/native/metrics';
 import { useMonthStart } from '../workspaces/queries';
 import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { Line, SUBTITLE, TextLine, TITLE } from '../cards/rows';
 import { blankPlanForm, type PlanForm, planFields, planFormOf, purchaseChoices, shownPurchase } from './plan-form';
-import { countingLine, mayCountTwice, noPurchaseWarning } from './plan-view';
-import { useCardLines, useCardRecordsFrom, useInstallments, usePlanCategoryChoices, useStatementDay } from './queries';
+import { PaidList } from './PaidList';
+import { countingLine, firstBilledDate, mayCountTwice, noPurchaseWarning, owedFooter, paidListRows, planProgress } from './plan-view';
+import { useAllPlanInstalments, useCardDays, useCardHasOpening, useCardLines, useInstallments, usePlanCategoryChoices } from './queries';
 
 /** The line a plan with no purchase chosen shows, above Save and on its page (`noPurchaseWarning`). */
 export function NoPurchaseWarning({ text }: { text: string | null }) {
@@ -41,12 +43,14 @@ export function categoryLabel(id: string, all: readonly { id: string; name: stri
 export const INVESTMENT_CHOICE = '__investment';
 
 /**
- * One plan on the card page: its name and what it still holds on the top line, then how far through its months it is and
- * what it bills a month, and the bar under them across the whole row. The whole row is the tap target; it opens the plan's own page.
+ * One plan on the card page: its name and what is left to pay on the top line, then how many are paid and when it ends,
+ * and the bar under them across the whole row. Paid is what the plan's own page says (`planInstalmentStatuses`): ticked,
+ * or covered by the card's payments — never the calendar. The whole row is the tap target; it opens the plan's own page.
  */
 export function InstallmentRow({ plan, currency, today, position, onOpen }: GroupChild & { plan: CardInstallmentRow; currency: string; today: string; onOpen: () => void }) {
-  const split = installmentSplit(plan, today);
-  const paid = plan.months - split.monthsLeft;
+  const progress = planProgress(plan.totalMinor, useAllPlanInstalments(today).data?.[plan.id] ?? []);
+  const paid = progress.paid;
+  const ends = progress.endsMonth ?? installmentSplit(plan, today).lastMonth;
   return (
     // Every figure of a plan is worth reading whole, so its lines wrap rather than truncate beside a figure.
     <Line position={position} testId="card-instalment" pad="0">
@@ -59,18 +63,48 @@ export function InstallmentRow({ plan, currency, today, position, onOpen }: Grou
       >
         <span className="flex w-full items-center gap-[6px]">
           <span className={`min-w-0 flex-1 ${TITLE}`}>{plan.description}</span>
-          <span className="tabular shrink-0 text-[15px] leading-[20px] text-[var(--ph-ink)]">{formatMinor(split.unbilledMinor, currency)}</span>
+          <span className="tabular shrink-0 text-[15px] leading-[20px] text-[var(--ph-ink)]">{formatMinor(progress.leftMinor, currency)} left</span>
           <ChevronRight size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
         </span>
         <ProgressBar className="my-[4px] w-full" currentMinor={paid} targetMinor={plan.months} label={`${plan.description}: ${paid} of ${plan.months} paid`} />
-        <span className={`flex w-full justify-between gap-[8px] ${SUBTITLE}`}>
-          <span>
-            {paid} of {plan.months} paid
-          </span>
-          <span className="shrink-0">{formatMinor(plan.monthlyMinor, currency)} a month</span>
+        <span className={`block w-full ${SUBTITLE}`}>
+          {paid} of {plan.months} paid · ends {monthYear(ends)}
         </span>
       </button>
     </Line>
+  );
+}
+
+/**
+ * First billed, as the full date the card bills it on (owner, 17 Nov 2026: "13 March 2025", on the card's statement
+ * day): a month is chosen, the day follows from the card. The month field lies over the row, as the date row's does.
+ */
+function FirstBilledRow({ month, shown, onChange, position }: GroupChild & { month: string; shown: string | null; onChange: (month: string) => void }) {
+  return (
+    <div className="relative" data-testid="plan-first-billed">
+      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
+      <div aria-hidden className="flex w-full items-center gap-3" style={{ minHeight: rowHeight(false), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+        <span className="shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-[20px]">First billed</span>
+        <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
+          <span className="truncate text-right text-[17px] leading-[22px] text-[var(--ph-ink-3)] md:text-[15px] md:leading-[20px]">{shown ?? 'Month'}</span>
+          <span className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">{'›'}</span>
+        </span>
+      </div>
+      <input
+        type="month"
+        aria-label="First billed"
+        value={month}
+        onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => {
+          try {
+            e.currentTarget.showPicker?.();
+          } catch {
+            // A browser that will not show its picker on a click still takes the keyboard.
+          }
+        }}
+        className="ph-focus-inset absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </div>
   );
 }
 
@@ -84,12 +118,17 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
   const today = isoDate();
   const formEl = useRef<HTMLFormElement>(null);
   const monthStart = useMonthStart();
-  const statementDay = useStatementDay(cardAccountId).data ?? 1;
+  const days = useCardDays(cardAccountId).data;
+  const statementDay = days?.statementDay ?? 1;
   /** The sheet: closed, a new plan, or the plan being edited. */
   const [sheet, setSheet] = useState<'new' | CardInstallmentRow | null>(null);
   const lines = useCardLines(cardAccountId, sheet !== null);
   const accounts = useAccounts().data ?? [];
-  const recordsFrom = useCardRecordsFrom(cardAccountId).data ?? null;
+  const hasOpening = useCardHasOpening(cardAccountId, sheet === 'new').data ?? false;
+  const cardName = accounts.find((account) => account.id === cardAccountId)?.name ?? 'the card';
+  /** A new plan with no purchase: how many its Paid list is ticked to, once touched; until then what was due before today. */
+  const [paidTouched, setPaidTouched] = useState<number | null>(null);
+  const [paidOpen, setPaidOpen] = useState(false);
   const categories = usePlanCategoryChoices(sheet !== null).data ?? [];
   // A new plan's Purchase follows the typed total until the owner touches it; an existing plan's is its own.
   const [purchaseTouched, setPurchaseTouched] = useState(false);
@@ -103,6 +142,8 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
     setError(null);
     setForm(target === 'new' ? blankPlanForm(today) : planFormOf(target, currency));
     setPurchaseTouched(target !== 'new');
+    setPaidTouched(null);
+    setPaidOpen(false);
     setSheet(target);
   };
   const close = () => {
@@ -117,7 +158,8 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
     setBusy(true);
     try {
       const fields = planFields({ ...form, transactionId: purchase }, currency, { trade });
-      if (sheet === 'new') await saveInstallment(database, ws, { cardAccountId, ...fields });
+      // With no purchase, what the Paid list says is paid; the rest goes on the card's balance.
+      if (sheet === 'new') await saveInstallment(database, ws, { cardAccountId, ...fields, ...(paid ? { paidSoFar: paid.paidSoFar } : {}) });
       else await updateInstallment(database, ws, { id: sheet.id, ...fields });
       await invalidate();
       close();
@@ -165,16 +207,27 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
   const investment = purchase ? trade : form.investment;
   const categoryName = form.categoryAccountId ? categoryLabel(form.categoryAccountId, categories) || null : null;
   const warning = noPurchaseWarning(mayCountTwice({ id: planId, transactionId: purchase, totalMinor: typedTotal }, lines.data ?? []), investment, categoryName);
-  // What the footer reads for the plan as typed: its months follow the card's statement day and the workspace's months.
-  const footer = (() => {
+  // The plan as typed: its months follow the card's statement day.
+  const typed = (() => {
     const months = Number(form.months);
-    if (!Number.isInteger(months) || months < 1 || !(typedTotal > 0) || !/^\d{4}-\d{2}$/.test(form.firstBilledMonth)) return undefined;
-    const typed = { totalMinor: typedTotal, months, monthlyMinor: Math.round(typedTotal / months), firstBilledMonth: form.firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: form.earnsPoints };
-    return countingLine({ investment, monthlyMinor: typed.monthlyMinor, transactionId: purchase }, installmentSchedule(typed, statementDay), currency, monthStart, {
-      categoryName: purchase ? purchaseCategoryName : categoryName,
-      recordsFrom,
-    });
+    if (!Number.isInteger(months) || months < 1 || months > 600 || !(typedTotal > 0) || !/^\d{4}-\d{2}$/.test(form.firstBilledMonth)) return null;
+    return { totalMinor: typedTotal, months, monthlyMinor: Math.round(typedTotal / months), firstBilledMonth: form.firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: form.earnsPoints };
   })();
+  const typedSchedule = typed ? installmentSchedule(typed, statementDay) : [];
+  // A new plan with no purchase (owner, 17 Nov 2026, mockup 1b): its instalments under Paid, those due before today ticked.
+  const paid = (() => {
+    if (sheet !== 'new' || purchase || !typed) return null;
+    const dueDay = days?.dueDay ?? null;
+    const paidSoFar = clampPaidSoFar(paidTouched ?? paidSoFarOn(typed, statementDay, dueDay, today), typed.months);
+    return { paidSoFar, rows: paidListRows({ schedule: typedSchedule, paidSoFar, dueDay, open: 2, expanded: paidOpen }), footer: owedFooter(typed, paidSoFar, currency, cardName, hasOpening) };
+  })();
+  // What the footer reads for the plan as typed: its months follow the card's statement day and the workspace's months.
+  const footer = typed
+    ? countingLine({ investment, monthlyMinor: typed.monthlyMinor, transactionId: purchase }, typedSchedule, currency, monthStart, {
+        categoryName: purchase ? purchaseCategoryName : categoryName,
+        paidSoFar: paid?.paidSoFar ?? (sheet !== null && sheet !== 'new' ? sheet.paidSoFar : 0),
+      })
+    : undefined;
   const node = (
     <>
       {sheet && (
@@ -184,7 +237,7 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
               <TextRow label="What it was" value={form.description} onChange={(e) => patch({ description: e.target.value })} placeholder="Name" />
               <TextRow label="Total" prefix={currency} value={form.total} inputMode="decimal" onChange={(e) => patch({ total: groupTypedAmount(e.target.value, currency) })} placeholder="Amount" required />
               <TextRow label="Months" value={form.months} inputMode="numeric" onChange={(e) => patch({ months: e.target.value })} />
-              <TextRow label="First billed" type="month" value={form.firstBilledMonth} onChange={(e) => patch({ firstBilledMonth: e.target.value })} />
+              <FirstBilledRow month={form.firstBilledMonth} shown={firstBilledDate(typedSchedule)} onChange={(firstBilledMonth) => patch({ firstBilledMonth })} />
               <SwitchRow label="Earns points" checked={form.earnsPoints} onChange={(earnsPoints) => patch({ earnsPoints })} />
               <SelectRow
                 label="Purchase"
@@ -230,6 +283,17 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
               <p data-testid="plan-counting" className="mx-[16px] mb-[18px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
                 {footer}
               </p>
+            )}
+            {paid && (
+              <PaidList
+                header="Paid"
+                rows={paid.rows}
+                currency={currency}
+                footer={<span data-testid="plan-owed">{paid.footer}</span>}
+                disabled={busy}
+                onTap={setPaidTouched}
+                onExpand={() => setPaidOpen(true)}
+              />
             )}
             {editSplit && (
               // What the row no longer spells out: how much is billed, what is still held and when it ends.

@@ -1,5 +1,5 @@
 import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
-import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, payCardPurchases, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
+import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, payCardPurchases, setPlanPaidSoFar, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Banknote, CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
@@ -171,8 +171,14 @@ export function StatementPanel({
     const by = cover.get(line.key)?.by ?? null;
     return by === null ? 'covered by an earlier credit' : `covered by ${by.spending ? 'refund' : 'payment'} ${day(by.occurredOn)}`;
   };
-  // A charge that shows as paid either way has its amount greyed.
-  const done = (line: StatementLine) => isCharge(line) && showsPaid(line, cover);
+  /*
+   * An instalment of a plan with no purchase (0124): its ✓ is the plan's Paid list's. Ticked, it and every one before it
+   * are paid; only the latest ticked can be unticked, which leaves the ones before it paid.
+   */
+  const planRow = (line: StatementLine) => line.instalment?.noPurchase === true;
+  const latestTicked = (line: StatementLine) => planRow(line) && line.paidOff && line.instalment!.number === line.instalment!.paidSoFar;
+  // A charge that shows as paid either way has its amount greyed; so does a plan's instalment ticked paid.
+  const done = (line: StatementLine) => (isCharge(line) && showsPaid(line, cover)) || (planRow(line) && line.paidOff);
   // A plan's instalments and the purchase it replaced are paid through the plan, not ticked off here; a purchase a
   // payment already covers is paid, so it cannot be ticked to be paid twice.
   const payable = (line: StatementLine) => line.owedMinor > 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo && !coveredWhole(line);
@@ -181,8 +187,15 @@ export function StatementPanel({
    * refund) whose credit was used up before the app — left standing, it would sit on the card as a credit for ever.
    * The receipt asks the ledger the same question (`paidOffMarkOf`), so the two never offer it differently.
    */
-  const settleable = (line: StatementLine) => carriesPaidOffMark(line) && !line.paidOff && !coveredWhole(line);
-  const settledWord = (line: StatementLine) => (line.owedMinor < 0 ? 'settled' : 'paid off');
+  const settleable = (line: StatementLine) => (carriesPaidOffMark(line) || planRow(line)) && !line.paidOff && !coveredWhole(line);
+  const settledWord = (line: StatementLine) => (planRow(line) ? 'paid' : line.owedMinor < 0 ? 'settled' : 'paid off');
+  /** The swipe's and the ⋯'s word for the mark. */
+  const markWord = (line: StatementLine) => (planRow(line) ? 'Paid' : line.owedMinor < 0 ? 'Settled' : 'Paid off');
+  /** Whether a line's mark can be taken back here: any paid-off purchase, and a plan's latest ticked instalment. */
+  const unmarkable = (line: StatementLine) => line.paidOff && (!planRow(line) || latestTicked(line));
+  /** Takes the mark back: a purchase is owed again; a plan's instalment is unticked, those before it stay paid. */
+  const unmark = (line: StatementLine) =>
+    run(() => (planRow(line) ? setPlanPaidSoFar(database, ws, line.instalment!.planId, line.instalment!.number - 1) : setSettledBeforeApp(database, ws, line.transactionId, false)));
   // Billed a statement late: the bank's posting date put it on a later statement than its purchase date.
   const lateOf = (line: StatementLine) => line.postedOn !== null && line.occurredOn < cycle.start;
   // Whether the fix that moves a purchase to the next statement applies: the phone's icon, the table's and the ⋯ agree.
@@ -199,7 +212,9 @@ export function StatementPanel({
   const payFrom = fromId || payers[0]?.id || '';
   const setAside = useSetAside(spendingDoor(payFrom, chosenMinor));
 
-  const markPaidOff = (line: StatementLine) => void run(() => setSettledBeforeApp(database, ws, line.transactionId, true));
+  // Ticking a plan's instalment ticks it and every one before it, as its Paid list does.
+  const markPaidOff = (line: StatementLine) =>
+    void run(() => (planRow(line) ? setPlanPaidSoFar(database, ws, line.instalment!.planId, line.instalment!.number) : setSettledBeforeApp(database, ws, line.transactionId, true)));
 
   async function run(work: () => Promise<unknown>) {
     setError(null);
@@ -296,9 +311,10 @@ export function StatementPanel({
       <button
         type="button"
         aria-label={`${line.description}, already ${settledWord(line)}`}
-        title={line.owedMinor < 0 ? 'Already settled' : 'Already paid off'}
+        title={planRow(line) ? 'Paid' : line.owedMinor < 0 ? 'Already settled' : 'Already paid off'}
         data-testid="statement-paid-off"
-        disabled={busy}
+        // A plan's instalment before its latest ticked one stays paid while the later one is.
+        disabled={busy || !unmarkable(line)}
         onClick={() => setUnmarking(line)}
         className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
       >
@@ -353,6 +369,7 @@ export function StatementPanel({
     if (line.splitCategories) out.push(line.splitCategories.join(' · '));
     // An instalment row names the purchase's category, as a purchase row on Cashflow does; its "1 of 12" is a pill.
     if (line.instalment) out.push([categoryNameOf(line.instalment.categoryId), 'instalment'].filter(Boolean).join(' · '));
+    if (planRow(line) && line.paidOff) out.push('paid');
     if (line.convertedTo) out.push(`converted to ${line.convertedTo.months} months, billed monthly`);
     // Which purchases have been settled one by one, kept apart from what the bank has billed.
     if (line.paidBy) out.push(`${s?.closed ? 'paid' : 'paid ahead'} ${day(line.paidBy.paidOn)}`);
@@ -414,7 +431,7 @@ export function StatementPanel({
           settleable(line)
             ? [
                 {
-                  label: line.owedMinor < 0 ? 'Settled' : 'Paid off',
+                  label: markWord(line),
                   name: `Mark ${line.description} already ${settledWord(line)}`,
                   icon: Check,
                   tone: 'primary',
@@ -522,7 +539,13 @@ export function StatementPanel({
                   {settleable(line) && (
                     <GlyphButton
                       label={`Mark ${line.description} already ${settledWord(line)}`}
-                      hint={line.owedMinor < 0 ? 'Credit used up before the app: nothing to take off the bill' : 'Already paid off before the app: nothing to pay'}
+                      hint={
+                        planRow(line)
+                          ? 'Paid: this instalment and every one before it'
+                          : line.owedMinor < 0
+                            ? 'Credit used up before the app: nothing to take off the bill'
+                            : 'Already paid off before the app: nothing to pay'
+                      }
                       glyph={<CircleCheck size={17} aria-hidden />}
                       disabled={busy}
                       onClick={() => markPaidOff(line)}
@@ -648,7 +671,7 @@ export function StatementPanel({
           <InsetGroup wide>
             {settleable(acting) && (
               <ActionRow
-                label={acting.owedMinor < 0 ? 'Settled' : 'Paid off'}
+                label={markWord(acting)}
                 icon={<CircleCheck size={16} aria-hidden />}
                 disabled={busy}
                 onClick={() => {
@@ -658,15 +681,15 @@ export function StatementPanel({
                 }}
               />
             )}
-            {acting.paidOff && (
+            {unmarkable(acting) && (
               <ActionRow
-                label={acting.owedMinor < 0 ? 'Not settled' : 'Not paid off'}
+                label={planRow(acting) ? 'Not paid' : acting.owedMinor < 0 ? 'Not settled' : 'Not paid off'}
                 icon={<CircleX size={16} aria-hidden />}
                 disabled={busy}
                 onClick={() => {
                   const line = acting;
                   setActing(null);
-                  void run(() => setSettledBeforeApp(database, ws, line.transactionId, false));
+                  void unmark(line);
                 }}
               />
             )}
@@ -761,9 +784,11 @@ export function StatementPanel({
       )}
 
       {unmarking && (
-        <Sheet grouped title={unmarking.owedMinor < 0 ? 'Already settled' : 'Already paid off'} onClose={() => setUnmarking(null)}>
+        <Sheet grouped title={planRow(unmarking) ? 'Paid' : unmarking.owedMinor < 0 ? 'Already settled' : 'Already paid off'} onClose={() => setUnmarking(null)}>
           <p className="px-[14px] pb-[10px] text-center text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
-            {unmarking.description} · {money(Math.abs(unmarking.owedMinor))} is recorded as {settledWord(unmarking)} before the app.
+            {planRow(unmarking)
+              ? `${unmarking.description} · ${unmarking.instalment!.number} of ${unmarking.instalment!.of} · ${money(unmarking.owedMinor)} is ticked paid. Not paid puts it back on what is owed.`
+              : `${unmarking.description} · ${money(Math.abs(unmarking.owedMinor))} is recorded as ${settledWord(unmarking)} before the app.`}
           </p>
           <button
             type="button"
@@ -772,11 +797,11 @@ export function StatementPanel({
             onClick={() => {
               const line = unmarking;
               setUnmarking(null);
-              void run(() => setSettledBeforeApp(database, ws, line.transactionId, false));
+              void unmark(line);
             }}
             className="ph-focus w-full rounded-[11px] bg-[var(--ph-surface)] py-[13px] text-[17px] text-[var(--ph-alarm)]"
           >
-            {unmarking.owedMinor < 0 ? 'Not settled' : 'Not paid off'}
+            {planRow(unmarking) ? 'Not paid' : unmarking.owedMinor < 0 ? 'Not settled' : 'Not paid off'}
           </button>
         </Sheet>
       )}

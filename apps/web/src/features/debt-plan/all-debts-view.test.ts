@@ -88,7 +88,7 @@ describe('the sort kept on the device', () => {
 
 describe('debtGroups (card instalments, option C)', () => {
   // Invented: a Rp 3.000.000 laptop on the BCA Visa over 6 × Rp 500.000 from October; on 4 Nov two are billed.
-  const laptop = { id: 'p1', cardAccountId: 'C1', transactionId: 't1', description: 'Laptop', createdAt: '2026-10-01', totalMinor: 3_000_000, months: 6, monthlyMinor: 500_000, firstBilledMonth: '2026-10', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true, countMode: 'each_month' as const, categoryAccountId: null, linkedToTrade: false };
+  const laptop = { id: 'p1', cardAccountId: 'C1', transactionId: 't1', description: 'Laptop', createdAt: '2026-10-01', totalMinor: 3_000_000, months: 6, monthlyMinor: 500_000, firstBilledMonth: '2026-10', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true, countMode: 'each_month' as const, categoryAccountId: null, linkedToTrade: false, paidSoFar: 0 };
 
   it('puts scheduled loans and each running plan under Fixed each month, the rest under No fixed amount', () => {
     const groups = debtGroups(sortDebts(debts, 'mostLeft'), [laptop], TODAY);
@@ -106,6 +106,13 @@ describe('debtGroups (card instalments, option C)', () => {
     expect(without.valueMinor).toBe(6_214_300);
     // Four instalments of Rp 500.000 still to bill.
     expect(withPlan.valueMinor).toBe(6_214_300 - 2_000_000);
+  });
+
+  // 0124: paid is what the plan's own page says (ticked, or covered by the card's payments), not the calendar.
+  it('reads what is paid from the plan’s instalments: the next to pay', () => {
+    const statuses = { p1: Array.from({ length: 6 }, (_, i) => ({ number: i + 1, of: 6, statementOn: `2026-${String(10 + i).padStart(2, '0')}-18`, amountMinor: 500_000, status: (i === 0 ? 'paid' : i === 1 ? 'billed' : 'upcoming') as 'paid' | 'billed' | 'upcoming' })) };
+    const plan = debtGroups(debts, [laptop], TODAY, statuses).fixed.find((row) => row.key === 'plan:p1')!;
+    expect(plan).toMatchObject({ subtitle: '2 of 6 next · ends Mar 2027', progress: { current: 1, target: 6 } });
   });
 
   it('leaves out a plan that has billed everything', () => {

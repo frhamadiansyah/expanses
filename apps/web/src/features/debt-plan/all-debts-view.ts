@@ -1,5 +1,5 @@
 import { installmentSplit } from '@expanses/core';
-import type { CardInstallmentRow } from '@expanses/db';
+import type { CardInstallmentRow, PlanInstalmentStatus } from '@expanses/db';
 import { repaidPercent, monthYearLabel } from '../loans/loan-view';
 import { dayMonth } from '../networth/debt-rows';
 import type { PlanDebt } from './plan-inputs';
@@ -114,7 +114,16 @@ const running = (plan: CardInstallmentRow, today: string) => installmentSplit(pl
  * owed. Nothing is counted twice: the plans' unbilled parts leave their card's figure for their own rows. Debts keep the
  * order they come in (the chosen sort); plans follow the loans.
  */
-export function debtGroups(debts: readonly PlanDebt[], plans: readonly CardInstallmentRow[], today: string): { fixed: GroupedDebtRow[]; noFixed: GroupedDebtRow[] } {
+export function debtGroups(
+  debts: readonly PlanDebt[],
+  plans: readonly CardInstallmentRow[],
+  today: string,
+  /**
+   * Each plan's instalments, paid, billed or to come (`planInstalmentStatuses`): what its row counts as paid, as the plan's
+   * own page does. A plan missing from it reads how many the calendar has billed.
+   */
+  statuses: Readonly<Record<string, readonly PlanInstalmentStatus[]>> = {},
+): { fixed: GroupedDebtRow[]; noFixed: GroupedDebtRow[] } {
   const owing = debts.filter(isActive);
   const live = plans.filter((plan) => running(plan, today));
   const heldBy = (cardAccountId: string) => live.filter((plan) => plan.cardAccountId === cardAccountId).reduce((sum, plan) => sum + installmentSplit(plan, today).unbilledMinor, 0);
@@ -135,16 +144,28 @@ export function debtGroups(debts: readonly PlanDebt[], plans: readonly CardInsta
   for (const plan of live) {
     const split = installmentSplit(plan, today);
     const billed = plan.months - split.monthsLeft;
+    // Paid as the plan's page says it (ticked, or covered by the card's payments): "21 of 24 next".
+    const own = statuses[plan.id];
+    const paid = own ? own.filter((row) => row.status === 'paid').length : null;
+    const ends = `ends ${monthYearLabel(split.lastMonth)}`;
+    const subtitle =
+      paid !== null && (paid > 0 || billed > 0)
+        ? paid < plan.months
+          ? `${paid + 1} of ${plan.months} next · ${ends}`
+          : `${plan.months} of ${plan.months} paid · ${ends}`
+        : billed > 0
+          ? `${billed} of ${plan.months} · ${ends}`
+          : `starts ${monthYearLabel(plan.firstBilledMonth)} · ${ends}`;
     fixed.push({
       key: `plan:${plan.id}`,
       name: plan.description,
-      subtitle: billed > 0 ? `${billed} of ${plan.months} · ends ${monthYearLabel(split.lastMonth)}` : `starts ${monthYearLabel(plan.firstBilledMonth)} · ends ${monthYearLabel(split.lastMonth)}`,
+      subtitle,
       valueMinor: plan.monthlyMinor,
       currency: currencyOf(plan.cardAccountId) ?? '',
       late: false,
-      progress: { current: billed, target: plan.months },
+      progress: { current: paid ?? billed, target: plan.months },
       debt: null,
-      plan: { cardAccountId: plan.cardAccountId, planId: plan.id, number: billed, of: plan.months },
+      plan: { cardAccountId: plan.cardAccountId, planId: plan.id, number: paid ?? billed, of: plan.months },
     });
   }
   const noFixed = owing

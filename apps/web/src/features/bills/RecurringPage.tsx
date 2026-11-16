@@ -11,7 +11,7 @@ import { usePurchasePayers } from '../sharing/queries';
 import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PushedTitle, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
-import { useInstallments } from '../loans/queries';
+import { useAllPlanInstalments, useInstallments } from '../loans/queries';
 import { instalmentLines } from './instalment-rows';
 import { MonthlyInstalments } from './MonthlyInstalments';
 import { PaySelectedBar } from './PaySelectedBar';
@@ -134,6 +134,7 @@ export function RecurringPage() {
   const fees = useUpcomingFees(today);
   const annualFees = useAnnualFees(today);
   const plans = useInstallments();
+  const planStatuses = useAllPlanInstalments(today);
   // A card's fee opens its Fee waiver page: the one place a fee year is recorded.
   const openFee = (fee: DueFee) => void navigate({ to: '/cards/$cardId/settings/fee-waiver', params: { cardId: fee.cardId } });
   const accounts = useAccounts().data ?? [];
@@ -345,7 +346,7 @@ export function RecurringPage() {
       <GoalsThisMonth onToast={setToast} />
 
       {/* Card instalment plans still running: read-only, after the last bill group, in no total (they go with the statement). */}
-      <MonthlyInstalments lines={instalmentLines(plans.data ?? [], accounts, ws.baseCurrency, today)} />
+      <MonthlyInstalments lines={instalmentLines(plans.data ?? [], accounts, ws.baseCurrency, today, planStatuses.data ?? {})} />
 
       {/* The month's regular buys, set on each holding's own page: due ones with Record, bought ones with the day. */}
       <MonthlyBuys />
