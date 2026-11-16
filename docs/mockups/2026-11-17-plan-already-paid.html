@@ -1,0 +1,99 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Already paid plans</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --tap:#ff3b30; --new:#1a7f37; --exp:#d70015; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:300px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .step { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--tap); color:#fff; font-size:13px; font-weight:700; text-align:center; line-height:22px; margin-right:6px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; min-height:540px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; }
+  .round { width:30px; height:30px; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; color:var(--tint); font-size:14px; margin-left:6px; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:60px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav b { font-size:15px; white-space:nowrap; }
+  .hero { text-align:center; margin-bottom:14px; } .ic { width:52px; height:52px; border-radius:50%; background:#e8eefc; margin:0 auto 6px; display:flex; align-items:center; justify-content:center; font-size:24px; }
+  .hero .amt { font-size:28px; font-weight:600; } .hero .nm { font-size:17px; font-weight:600; margin-top:2px; } .hero .s2 { font-size:13.5px; color:var(--ink3); }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:10px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .g { flex:1 0 auto; } .g:has(.s) { flex:1 1 0; min-width:0; } .a { font-size:15px; } .s { font-size:12.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .vd { color:var(--ink3); } .r .vd { overflow:hidden; text-overflow:ellipsis; min-width:0; } .chev { color:#c7c7cc; }
+  .kv { display:flex; justify-content:space-between; padding:8px 14px; font-size:14px; } .kv + .kv { border-top:.5px solid #eee; } .kv span:first-child { color:var(--ink3); }
+  .chips { display:flex; gap:6px; padding:10px 12px; } .chips span { flex:1; text-align:center; padding:7px 0; border-radius:9px; background:#eeeef0; font-size:14px; } .chips .on { background:var(--tint); color:#fff; font-weight:600; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:8px 12px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .big { font-size:22px; font-weight:700; }
+  .tap { outline:3px solid var(--tap); outline-offset:-3px; border-radius:10px; }
+  .new { outline:3px solid var(--new); outline-offset:-3px; border-radius:10px; position:relative; overflow:visible !important; }
+  .new::before { content:'NEW'; position:absolute; top:-9px; right:8px; font-size:9.5px; font-weight:800; color:#fff; background:var(--new); border-radius:4px; padding:1px 5px; z-index:2; }
+  .day { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:.5px solid var(--hair); } .day b { font-size:22px; } .day .d { flex:1; font-size:12px; color:var(--ink3); line-height:1.25; } .day .d strong { color:var(--ink); font-weight:600; }
+  .tx { display:flex; align-items:center; gap:10px; padding:9px 14px; white-space:nowrap; } .tx + .tx { border-top:.5px solid var(--hair); } .tx .ic2 { width:30px; height:30px; border-radius:50%; background:#e8eefc; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .tx .g { flex:1 1 0; min-width:0; overflow:hidden; } .wrap .r { white-space:normal; } .red { color:var(--exp); font-weight:600; } .pill { font-size:10.5px; color:var(--tint); background:#e5f0ff; border-radius:4px; padding:0 4px; margin-left:4px; font-weight:600; }
+  .grey { color:var(--ink3); text-decoration:none; }
+
+  .prompt { background:#fff; border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+  .prompt b { font-size:15px; } .prompt p { margin:4px 0 10px; font-size:13px; color:var(--ink3); line-height:1.35; }
+  .btns { display:flex; gap:8px; } .btns span { flex:1; text-align:center; padding:8px 0; border-radius:10px; font-size:14px; font-weight:600; }
+  .btns .p { background:var(--tint); color:#fff; } .btns .q { background:#eeeef0; color:var(--tint); }
+  .ok { color:#1a7f37; font-weight:600; } .due { color:#b25e00; font-weight:600; }
+  .tile { border-radius:14px; background:linear-gradient(135deg,#1d3d8f,#3b6fd8); color:#fff; padding:12px 14px; margin-bottom:10px; } .tile .b { font-size:20px; font-weight:700; margin-top:18px; }
+  .phone { min-height:0 !important; }
+  table.cmp { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:14px; max-width:1000px; margin-bottom:6px; }
+  table.cmp td, table.cmp th { padding:9px 14px; border-bottom:.5px solid #e5e5ea; text-align:left; vertical-align:top; }
+  table.cmp th { font-size:12px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; }
+  .bad { color:#d70015; } .good { color:#1a7f37; font-weight:600; }
+</style></head><body>
+<h1>Plans from before the app: say once how many are paid</h1>
+<p class="sub">Invented example: ORI030 bond, Rp 24.000.000 in 24 × Rp 1.000.000, first billed March 2025, on BCA Visa (statement day 13th, due the 2nd), a card with nothing else in the app. Today 17 Nov 2026. Green NEW = what is added. One answer — how many are already paid — and every page reads the same numbers.</p>
+
+<h2>Today (build 140) vs after</h2>
+<table class="cmp">
+<tr><th>Page</th><th>Today</th><th>After</th></tr>
+<tr><td>Wallet · BCA Visa balance</td><td class="bad">Rp 0 — the plan&#39;s debt is not on the card</td><td class="good">− Rp 4.000.000 (4 left)</td></tr>
+<tr><td>Net worth</td><td class="bad">Misses the Rp 4.000.000 owed</td><td class="good">Counts it</td></tr>
+<tr><td>Card page · Instalments box</td><td class="bad">"21 of 24" — from the calendar</td><td class="good">20 of 24 paid · Rp 4.000.000 left</td></tr>
+<tr><td>Plan page</td><td class="bad">"0 of 24 paid · Rp 24.000.000 left" (before 140) or a guess</td><td class="good">20 of 24 paid · Rp 4.000.000 left</td></tr>
+<tr><td>Statement 14 Sep – 13 Oct</td><td class="bad">Instalment 20 shown as not paid</td><td class="good">✓ Paid before the app · nothing due</td></tr>
+<tr><td>Statement 14 Oct – 13 Nov</td><td class="bad">Shown or not, depending on a guessed start date</td><td class="good">21 of 24 · Rp 1.000.000 · due 2 Dec</td></tr>
+<tr><td>Where the numbers come from</td><td class="bad">Each page guesses differently</td><td class="good">One answer: "Already paid 20 of 24"</td></tr>
+</table>
+
+<h2>1 · The one question</h2>
+<div class="row">
+  <div class="col"><p class="cap">A plan already in the app</p><p class="note">Its page asks once, at the top. The number is suggested from the calendar: every bill whose due date has passed.</p>
+    <div class="phone"><div class="nav"><span class="t">‹ Instalments</span><b>ORI030</b><span class="t">✎</span></div><div class="prompt new"><b>Paid before the app?</b><p>Bills up to 13 Oct 2026 were due by 2 Nov. The unpaid rest is added to BCA Visa&#39;s balance.</p><div class="r" style="padding:6px 0;min-height:0"><div class="g"><div class="a">Already paid</div></div><span>20 of 24 ›</span></div><div class="btns" style="margin-top:8px"><span class="p">Confirm</span><span class="q">Change</span></div></div><div class="panel"><div class="r "><div class="g"><div class="a">Amount</div></div><span>Rp 24.000.000</span></div><div class="r "><div class="g"><div class="a">Months</div></div><span>24</span></div><div class="r "><div class="g"><div class="a">Category</div></div><span>Investment (not spending)</span></div></div></div></div>
+  <div class="col"><p class="cap">A new plan, bought before the app</p><p class="note">"Already paid" sits in the sheet, suggested the same way; it shows only when the first bill is before today.</p>
+    <div class="phone"><div class="nav"><span class="t">Cancel</span><b>New instalment plan</b><span class="t"></span></div><div class="panel"><div class="r "><div class="g"><div class="a">What it was</div></div><span><span class=vd>ORI030</span></span></div><div class="r "><div class="g"><div class="a">Total</div></div><span><span class=vd>Rp 24.000.000</span></span></div><div class="r "><div class="g"><div class="a">Months</div></div><span><span class=vd>24</span></span></div><div class="r "><div class="g"><div class="a">First billed</div></div><span><span class=vd>March 2025</span></span></div><div class="r "><div class="g"><div class="a">Category</div></div><span><span class=vd>Investment</span></span></div></div><div class="panel new"><div class="r "><div class="g"><div class="a">Already paid</div></div><span><span class=vd>20 of 24 ›</span></span></div></div><div class="foot">The unpaid Rp 4.000.000 (21–24) is added to BCA Visa&#39;s balance today.</div><div class="panel"><div class="r" style="justify-content:center;color:var(--tint);font-weight:600">Save plan</div></div></div></div>
+</div>
+
+<h2>2 · After: every page says the same</h2>
+<div class="row">
+  <div class="col" style="width:250px"><p class="cap">Wallet</p><p class="note">The card owes what is left, not Rp 0.</p>
+    <div class="phone"><div class="tile new"><b>BCA Visa</b><div class="b">− Rp 4.000.000</div></div></div></div>
+  <div class="col" style="width:280px"><p class="cap">Card page · Instalments box</p><p class="note">Paid count, not the calendar.</p>
+    <div class="phone"><div class="hdr">Instalments</div><div class="panel new"><div class="r "><div class="g"><div class="a">ORI030</div><div class=s>20 of 24 paid · ends Feb 2027</div></div><span><span>Rp 4.000.000 left ›</span></span></div></div></div></div>
+  <div class="col" style="width:290px"><p class="cap">Plan page</p><p class="note">1–20 folded into one line.</p>
+    <div class="phone"><div class="panel new"><div class="r" style="display:block"><div style="display:flex;justify-content:space-between"><b>20 of 24 paid</b><span>Rp 4.000.000 left</span></div><div class="s">Ends February 2027 · Rp 1.000.000 a month</div></div></div><div class="hdr">Instalments</div><div class="panel"><div class="r "><div class="g"><div class="a">22 of 24</div><div class=s>13 Dec 2026 · upcoming</div></div><span>Rp 1.000.000</span></div><div class="r "><div class="g"><div class="a">21 of 24</div><div class=s>13 Nov 2026 · due 2 Dec</div></div><span><span class=due>Rp 1.000.000</span></span></div><div class="r "><div class="g"><div class="a">1–20 of 24</div><div class=s>Paid before the app</div></div><span><span class=ok>✓</span></span></div></div></div></div>
+  <div class="col" style="width:290px"><p class="cap">Debt-free › All debts</p><p class="note">Same 4 left.</p>
+    <div class="phone"><div class="hdr">Fixed each month</div><div class="panel new"><div class="r "><div class="g"><div class="a">ORI030</div><div class=s>BCA Visa · 21 of 24 next · ends Feb 2027</div></div><span>Rp 1.000.000</span></div></div></div></div>
+</div>
+
+<h2>3 · The statements</h2>
+<div class="row">
+  <div class="col" style="width:290px"><p class="cap">14 Sep – 13 Oct</p><p class="note">Instalment 20: paid before the app, nothing due.</p>
+    <div class="phone"><div class="nav"><span class="t">‹</span><b>14 Sep – 13 Oct 2026</b><span class="t">›</span></div><div class="panel new"><div class="r "><div class="g"><div class="a">ORI030 · 20 of 24</div><div class=s>Paid before the app</div></div><span><span class=ok>✓</span></span></div><div class="r "><div class="g"><div class="a"><b>Total bill</b></div></div><span><b>Rp 0</b></span></div></div></div></div>
+  <div class="col" style="width:290px"><p class="cap">14 Oct – 13 Nov</p><p class="note">Instalment 21: the bill to pay by 2 Dec.</p>
+    <div class="phone"><div class="nav"><span class="t">‹</span><b>14 Oct – 13 Nov 2026</b><span class="t">›</span></div><div class="panel new"><div class="r "><div class="g"><div class="a">ORI030 · 21 of 24</div><div class=s>13 Nov · due 2 Dec</div></div><span><span class=due>Rp 1.000.000</span></span></div><div class="r "><div class="g"><div class="a"><b>Total bill</b></div></div><span><b>Rp 1.000.000</b></span></div></div></div></div>
+  <div class="col" style="width:290px"><p class="cap">After paying on 2 Dec</p><p class="note">Record the card payment: 21 is paid on every page, Wallet − Rp 3.000.000.</p>
+    <div class="phone"><div class="nav"><span class="t">‹</span><b>14 Oct – 13 Nov 2026</b><span class="t">›</span></div><div class="panel"><div class="r "><div class="g"><div class="a">ORI030 · 21 of 24</div><div class=s>Paid 2 Dec</div></div><span><span class=ok>✓</span></span></div><div class="r "><div class="g"><div class="a"><b>Total bill</b></div></div><span><b>Rp 1.000.000 · paid</b></span></div></div></div></div>
+</div>
+
+<h2>What stays</h2>
+<div class="row"><div class="col" style="width:640px"><div class="wrap"><div class="panel">
+  <div class="r"><div class="g"><div class="a">Plans tied to a purchase in the app</div><div class="s">Unchanged: the purchase already put the debt on the card, payments mark instalments paid</div></div></div>
+  <div class="r"><div class="g"><div class="a">Changing "Already paid" later</div><div class="s">Plan page › ✎ › Already paid: the card&#39;s balance follows</div></div></div>
+  <div class="r"><div class="g"><div class="a">Removing the plan</div><div class="s">Takes its added balance off the card again</div></div></div>
+</div></div></div></div>
+
+</body></html>
