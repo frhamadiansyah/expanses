@@ -21,5 +21,12 @@
 	<array>
 		<string>group.com.cicis.app</string>
 	</array>
+	<!-- NFC e-money reader (spike, Nfc/EmoneyReaderPlugin.swift): an NFCTagReaderSession reads raw ISO7816 tags, so
+	     the TAG format is requested. The App ID needs the "NFC Tag Reading" capability for this to sign; automatic
+	     signing with -allowProvisioningUpdates may add it, otherwise it is enabled once in the developer portal. -->
+	<key>com.apple.developer.nfc.readersession.formats</key>
+	<array>
+		<string>TAG</string>
+	</array>
 </dict>
 </plist>

@@ -28,6 +28,7 @@ import { LoanCalculatorPage, loanSearch } from '../features/calculators/LoanCalc
 import { RetirementFundPage } from '../features/calculators/RetirementFundPage';
 import { WidgetSettingsPage } from '../features/account/WidgetSettingsPage';
 import { CaptureSettingsPage } from '../features/capture/CaptureSettingsPage';
+import { EmoneyReaderPage } from '../features/capture/emoney/EmoneyReaderPage';
 import { SourcePage } from '../features/capture/SourcePage';
 import { WayPage } from '../features/capture/WayPage';
 import { ImportPage } from '../features/import/ImportPage';
@@ -590,6 +591,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/widget', component: WidgetSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/sources/$sourceId', component: SourcePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/ways/$way', component: WayPage }),
+  // A spike: tap a Mandiri e-money card and see what it returns (card number, balance, raw responses). Diagnostic
+  // only — nothing is saved or sent. iPhone-only in practice; the page itself loads anywhere and says NFC is off.
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/capture/emoney', component: EmoneyReaderPage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
   // before the routes adopt them, not a screen anyone navigates to.
   createRoute({ getParentRoute: () => rootRoute, path: '/design-kit', component: KitPage }),

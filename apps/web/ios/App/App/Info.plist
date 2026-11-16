@@ -46,6 +46,15 @@
 	     as kept with the purchase. Add-only; refused, the photo is still kept in the app. -->
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Saves receipt photos taken in the app to Photos.</string>
+	<!-- NFC e-money reader (spike, Nfc/EmoneyReaderPlugin.swift). The prompt wording says what is read and that
+	     nothing leaves the phone. The select-identifiers list is the AIDs a reader session may select; Core NFC
+	     requires an e-money card's AID (0000000000000001) to be declared here before it can be chosen. -->
+	<key>NFCReaderUsageDescription</key>
+	<string>Reads the balance and card number of an e-money card held to the phone. Nothing is saved or sent.</string>
+	<key>com.apple.developer.nfc.readersession.iso7816.select-identifiers</key>
+	<array>
+		<string>0000000000000001</string>
+	</array>
 	<!-- Answered here so every upload does not stop to ask. Expanses uses no encryption beyond what iOS and
 	     HTTPS provide, which is the exemption this key claims. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
