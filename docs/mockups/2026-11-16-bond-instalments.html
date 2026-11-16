@@ -1,0 +1,114 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Bond instalments</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --tap:#ff3b30; --new:#1a7f37; --exp:#d70015; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:300px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .step { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--tap); color:#fff; font-size:13px; font-weight:700; text-align:center; line-height:22px; margin-right:6px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; min-height:540px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; }
+  .round { width:30px; height:30px; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; color:var(--tint); font-size:14px; margin-left:6px; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:60px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav b { font-size:15px; white-space:nowrap; }
+  .hero { text-align:center; margin-bottom:14px; } .ic { width:52px; height:52px; border-radius:50%; background:#e8eefc; margin:0 auto 6px; display:flex; align-items:center; justify-content:center; font-size:24px; }
+  .hero .amt { font-size:28px; font-weight:600; } .hero .nm { font-size:17px; font-weight:600; margin-top:2px; } .hero .s2 { font-size:13.5px; color:var(--ink3); }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:10px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .g { flex:1 0 auto; } .g:has(.s) { flex:1 1 0; min-width:0; } .a { font-size:15px; } .s { font-size:12.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .vd { color:var(--ink3); } .r .vd { overflow:hidden; text-overflow:ellipsis; min-width:0; } .chev { color:#c7c7cc; }
+  .kv { display:flex; justify-content:space-between; padding:8px 14px; font-size:14px; } .kv + .kv { border-top:.5px solid #eee; } .kv span:first-child { color:var(--ink3); }
+  .chips { display:flex; gap:6px; padding:10px 12px; } .chips span { flex:1; text-align:center; padding:7px 0; border-radius:9px; background:#eeeef0; font-size:14px; } .chips .on { background:var(--tint); color:#fff; font-weight:600; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:8px 12px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .big { font-size:22px; font-weight:700; }
+  .tap { outline:3px solid var(--tap); outline-offset:-3px; border-radius:10px; }
+  .new { outline:3px solid var(--new); outline-offset:-3px; border-radius:10px; position:relative; overflow:visible !important; }
+  .new::before { content:'NEW'; position:absolute; top:-9px; right:8px; font-size:9.5px; font-weight:800; color:#fff; background:var(--new); border-radius:4px; padding:1px 5px; z-index:2; }
+  .day { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:.5px solid var(--hair); } .day b { font-size:22px; } .day .d { flex:1; font-size:12px; color:var(--ink3); line-height:1.25; } .day .d strong { color:var(--ink); font-weight:600; }
+  .tx { display:flex; align-items:center; gap:10px; padding:9px 14px; white-space:nowrap; } .tx + .tx { border-top:.5px solid var(--hair); } .tx .ic2 { width:30px; height:30px; border-radius:50%; background:#e8eefc; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .tx .g { flex:1 1 0; min-width:0; overflow:hidden; } .wrap .r { white-space:normal; } .red { color:var(--exp); font-weight:600; } .pill { font-size:10.5px; color:var(--tint); background:#e5f0ff; border-radius:4px; padding:0 4px; margin-left:4px; font-weight:600; }
+  .grey { color:var(--ink3); text-decoration:none; }
+</style></head><body>
+<h1>Turn into instalments on a bond or stock bought with a card</h1>
+<p class="sub">Invented example: a retail government bond (ORI030), Rp 6.000.000 bought with BCA Visa on 10 Nov (statement day 18th), turned into 6 months at 0% = Rp 1.000.000 a month. Buying a bond is not spending, so its instalments never count as spending: each one is a card repayment. Red numbers = taps. Green NEW = what is added.</p>
+
+<h2>The bond purchase</h2>
+<div class="row">
+  <div class="col"><p class="cap"><span class="step">1</span>Open the buy, tap Instalments</p><p class="note">The buy's page as today (no category, Open holding), with the same new row a card purchase gets.</p>
+    <div class="phone">
+      <div class="top"><span style="color:var(--tint)">‹ Back</span><span></span></div>
+      <div class="hero"><div class="ic">🏛️</div><div class="amt">Rp 6.000.000</div><div class="nm">Buy ORI030</div><div class="s2">Government bonds · Family</div><div class="s2">Tuesday, 10 November 2026</div></div>
+      <div class="panel"><div class="kv"><span>Paid with</span><span>BCA Visa</span></div><div class="kv"><span>Amount</span><span>Rp 6.000.000</span></div></div>
+      <div class="panel new"><div class="r tap"><div class="g"><div class="a">Instalments</div></div><span class="vd">None</span><span class="chev">›</span></div></div>
+      <div class="panel"><div class="r" style="color:var(--tint)">Open holding</div></div>
+    </div></div>
+  <div class="col"><p class="cap"><span class="step">2</span>Choose months, Save</p><p class="note">The same sheet. Its footer says it is not spending; no choice to make.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">Cancel</span><b>Turn into instalments</b><span class="t"></span></div>
+      <div class="panel"><div class="r"><div class="g"><div class="a">Buy ORI030</div><div class="s">BCA Visa · 10 Nov 2026</div></div><span>Rp 6.000.000</span></div></div>
+      <div class="hdr">Months</div>
+      <div class="panel tap"><div class="chips"><span>3</span><span class="on">6</span><span>12</span><span>24</span><span>Other</span></div></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Each month</div></div><span class="vd">Rp 1.000.000</span></div>
+        <div class="r"><div class="g"><div class="a">First billed</div></div><span class="vd">December 2026</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Interest</div></div><span class="vd">0%</span><span class="chev">›</span></div>
+      </div>
+      <div class="foot new" style="padding:8px 10px;margin:0 0 12px;white-space:normal">An investment, not spending: each instalment is a card repayment, December 2026 to May 2027.</div>
+      <div class="panel tap"><div class="r" style="justify-content:center;color:var(--tint);font-weight:600">Save</div></div>
+    </div></div>
+  <div class="col"><p class="cap">After: the buy</p><p class="note">The row says the plan; tap it to open the plan's page.</p>
+    <div class="phone">
+      <div class="top"><span style="color:var(--tint)">‹ Back</span><span></span></div>
+      <div class="hero"><div class="ic">🏛️</div><div class="amt">Rp 6.000.000</div><div class="nm">Buy ORI030</div><div class="s2">Government bonds · Family</div><div class="s2">Tuesday, 10 November 2026</div></div>
+      <div class="panel"><div class="kv"><span>Paid with</span><span>BCA Visa</span></div><div class="kv"><span>Amount</span><span>Rp 6.000.000</span></div></div>
+      <div class="panel new"><div class="r"><div class="g"><div class="a">Instalments</div></div><span class="vd">6 × Rp 1.000.000</span><span class="chev">›</span></div></div>
+      <div class="panel"><div class="r" style="color:var(--tint)">Open holding</div></div>
+    </div></div>
+</div>
+
+<h2>Where it shows</h2>
+<div class="row">
+  <div class="col"><p class="cap">Cashflow · December</p><p class="note">Spending as usual: the bond instalment is not in it.</p>
+    <div class="phone" style="min-height:300px">
+      <div class="panel">
+        <div class="day"><b>18</b><div class="d"><strong>Friday</strong><br>December 2026</div><span>Rp 640.000</span></div>
+        <div class="tx"><div class="ic2">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><span class="red">Rp 640.000</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">Cashflow · December, Transfers filter on</p><p class="note">The instalment shows grey with the card's other repayments, not counted.</p>
+    <div class="phone" style="min-height:300px">
+      <div class="panel">
+        <div class="day"><b>18</b><div class="d"><strong>Friday</strong><br>December 2026</div><span>Rp 640.000</span></div>
+        <div class="tx new"><div class="ic2" style="background:#eee">🏛️</div><div class="g"><div class="a" style="color:var(--ink3)">ORI030</div><div class="s"><span class="pill" style="margin:0 4px 0 0">1 of 6</span>Repayment · BCA Visa</div></div><span class="grey">Rp 1.000.000</span></div>
+        <div class="tx"><div class="ic2">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><span class="red">Rp 640.000</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">Card statement · 18 Dec</p><p class="note">A normal row, as any instalment: the bank bills it.</p>
+    <div class="phone" style="min-height:300px">
+      <div class="nav"><span class="t">‹ BCA Visa</span><b>Statement 18 Dec</b><span class="t"></span></div>
+      <div class="panel" style="overflow:visible;padding-top:4px">
+        <div class="r new"><div class="g"><div class="a">ORI030 <span class="pill">1 of 6</span></div><div class="s">Instalment · 18 Dec</div></div><span>Rp 1.000.000</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Groceries</div><div class="s">Supermarket · 9 Dec</div></div><span>Rp 640.000</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">Debt-free › All debts</p><p class="note">Its own row under Fixed each month, like any plan.</p>
+    <div class="phone" style="min-height:300px">
+      <div class="nav"><span class="t">‹ Debt-free</span><b>All debts</b><span class="t"></span></div>
+      <div class="hdr">Fixed each month</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">KPR BCA</div><div class="s">ends Mar 2033</div></div><span>Rp 3.370.000</span></div>
+        <div class="r new"><div class="g"><div class="a">ORI030</div><div class="s">BCA Visa · 1 of 6</div></div><span>Rp 1.000.000</span></div>
+      </div>
+    </div></div>
+</div>
+
+<h2>What stays</h2>
+<div class="row"><div class="col" style="width:620px"><div class="wrap"><div class="panel">
+  <div class="r"><div class="g"><div class="a">Net worth and the bond</div><div class="s">The bond counts in full from 10 Nov; the card owes Rp 6.000.000 that day, falling as instalments are paid</div></div></div>
+  <div class="r"><div class="g"><div class="a">Financial health</div><div class="s">Counted once as money put away on 10 Nov; the instalments are debt repayments</div></div></div>
+  <div class="r"><div class="g"><div class="a">Stocks and funds bought with a card</div><div class="s">Same row and the same rule</div></div></div>
+</div></div></div></div>
+</body></html>
