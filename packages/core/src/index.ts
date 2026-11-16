@@ -79,6 +79,17 @@ export { isNotCountedKey, NOT_COUNTED_KEY, NOT_COUNTED_LINE } from './ledger/not
 export { transferName, type TransferName, type TransferSide } from './ledger/transfer-name';
 export { addMonths, daysInMonth, isoDate, lastNMonths, monthOf, monthRange } from './reports/periods';
 export {
+  billMonthIn,
+  isMonthStartDay,
+  MONTH_START_LAST,
+  monthPeriod,
+  monthPeriodDates,
+  type MonthStartDay,
+  monthStartLabel,
+  monthStartOf,
+  periodMonthOf,
+} from './reports/month-start';
+export {
   BILL_DUE_SOON_DAYS,
   billPill,
   billSchedule,
@@ -103,6 +114,7 @@ export {
   billWindow,
   type BillWindow,
   currentBillMonth,
+  thisBillMonth,
   dayMonth,
   daysFrom,
   monthName,

@@ -1,3 +1,4 @@
+import { billMonthIn, type MonthStartDay, periodMonthOf } from '../reports/month-start';
 import { addMonths, monthOf, monthRange } from '../reports/periods';
 
 /** How many days before its pay-by day a bill turns amber. */
@@ -37,6 +38,19 @@ export interface BillMonthsInput {
   yearlyMonth?: number | null;
   /** Months between occurrences of a bill that comes out every few months (2-11); null or 12 for a yearly one. */
   repeatEvery?: number | null;
+  /**
+   * The workspace's "Month starts on" (`month-start.ts`). The bill keeps its day and its bill months; "this month's"
+   * bill is the one whose day falls inside this month's dates. Absent or 1: the calendar month, as always.
+   */
+  startDay?: MonthStartDay;
+}
+
+/**
+ * The bill month that speaks for this month on `today`: the calendar month, or — for a workspace whose months start on
+ * another day — the month of the occurrence whose day falls inside this month's dates.
+ */
+export function thisBillMonth(today: string, outDay: number, startDay: MonthStartDay = 1): string {
+  return startDay === 1 ? monthOf(today) : billMonthIn(periodMonthOf(today, startDay), outDay, startDay);
 }
 
 export type BillRepeat = 'monthly' | 'yearly' | 'months';
@@ -142,8 +156,8 @@ export function billStanding(window: BillWindow, today: string, settled: BillSet
  * The month a bill's row speaks for today: last month while that is still unsettled (it has always come out by now),
  * otherwise this month. One month back only, and never before the bill was tracked.
  */
-export function currentBillMonth({ today, startsMonth, settled, yearlyMonth, repeatEvery }: BillMonthsInput): string {
-  const month = monthOf(today);
+export function currentBillMonth({ today, startsMonth, settled, yearlyMonth, repeatEvery, outDay, startDay }: BillMonthsInput): string {
+  const month = thisBillMonth(today, outDay, startDay);
   const previous = addMonths(month, -1);
   if (previous >= startsMonth && !settled[previous] && isOwedMonth(previous, yearlyMonth, repeatEvery, startsMonth)) return previous;
   // A yearly bill speaks for its next occurrence: this month's when it falls in it, else the next one, never before it began.
@@ -154,8 +168,8 @@ export function currentBillMonth({ today, startsMonth, settled, yearlyMonth, rep
  * Months a payment can be recorded for, oldest first; the first is the default. A paused month can still be paid on
  * purpose, so it is offered too — after every month that is owed, so it is never the one picked for a payment.
  */
-export function payableBillMonths({ today, startsMonth, settled, yearlyMonth, repeatEvery }: BillMonthsInput): string[] {
-  const month = monthOf(today);
+export function payableBillMonths({ today, startsMonth, settled, yearlyMonth, repeatEvery, outDay, startDay }: BillMonthsInput): string[] {
+  const month = thisBillMonth(today, outDay, startDay);
   const candidates =
     yearlyMonth == null
       ? [addMonths(month, -1), month, addMonths(month, 1)]
@@ -181,7 +195,7 @@ export function previousOwedMonth(from: string, yearlyMonth: number, every?: num
  * month, so the next one can be paid early even while the one out now is already settled.
  */
 export function latestLinkMonth(input: BillMonthsInput): string {
-  const month = monthOf(input.today);
+  const month = thisBillMonth(input.today, input.outDay, input.startDay);
   const months = [month, currentBillMonth(input), ...payableBillMonths(input)];
   if (input.yearlyMonth != null) {
     const after = addMonths(month, 1);
@@ -246,20 +260,22 @@ export function pausedMonths(from: string, until: string): string[] {
 
 /**
  * The first month a pause starting today would cover: this month, unless it is already paid or skipped, in which
- * case the next month that is not. Last month's bill, if still owed, stays owed: a pause looks ahead.
+ * case the next month that is not. Last month's bill, if still owed, stays owed: a pause looks ahead. `thisMonth` is
+ * the bill month speaking for this month (`thisBillMonth`), the calendar month unless the workspace's months start later.
  */
-export function pauseStart(today: string, settled: Readonly<Record<string, 'paid' | 'skipped' | 'paused'>>): string {
-  let month = monthOf(today);
+export function pauseStart(today: string, settled: Readonly<Record<string, 'paid' | 'skipped' | 'paused'>>, thisMonth: string = monthOf(today)): string {
+  let month = thisMonth;
   while (settled[month] === 'paid' || settled[month] === 'skipped') month = addMonths(month, 1);
   return month;
 }
 
 /**
  * The month a paused bill comes back: the month after the last paused month from this one on. Null when nothing from
- * this month on is paused, so a pause ends by itself once its months are past — nothing has to clear it.
+ * this month on is paused, so a pause ends by itself once its months are past — nothing has to clear it. `thisMonth` as
+ * for `pauseStart`.
  */
-export function pausedUntil(paused: Iterable<string>, today: string): string | null {
-  const month = monthOf(today);
+export function pausedUntil(paused: Iterable<string>, today: string, thisMonth: string = monthOf(today)): string | null {
+  const month = thisMonth;
   let last: string | null = null;
   for (const m of paused) if (m >= month && (last === null || m > last)) last = m;
   return last === null ? null : addMonths(last, 1);

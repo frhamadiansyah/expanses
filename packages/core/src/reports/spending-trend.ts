@@ -168,12 +168,12 @@ const REACH: Partial<Record<Period['kind'], { yearAgo: number; usual: number }>>
 };
 
 function nameOf(kind: Period['kind'], value: string, key: 'previous' | 'year-ago'): string {
-  const p = parsePeriod(value)!;
   switch (kind) {
     case 'week':
       return key === 'previous' ? 'last week' : `same week ${value.slice(0, 4)}`;
     case 'month':
-      return key === 'previous' ? MONTHS_LONG[monthIndex(p.from!)]! : `${MONTHS_SHORT[monthIndex(p.from!)]} ${value.slice(0, 4)}`;
+      // Named by the month's own key: a month starting on the 25th begins in the month before its name.
+      return key === 'previous' ? MONTHS_LONG[monthIndex(`${value}-01`)]! : `${MONTHS_SHORT[monthIndex(`${value}-01`)]} ${value.slice(0, 4)}`;
     case 'quarter':
       return `${value.slice(5)} ${value.slice(0, 4)}`;
     default:
@@ -199,7 +199,7 @@ export function spendingComparisons(period: Period, days: readonly DayTotal[], c
 
   /** The same stretch of an earlier period, or null when it starts before anything was recorded. */
   const stretch = (value: string) => {
-    const earlier = parsePeriod(value)!;
+    const earlier = parsePeriod(value, period.monthStart)!;
     if (!ctx.first || earlier.from! < ctx.first) return null;
     const to = Number.isFinite(length) ? sooner(addDays(earlier.from!, length - 1), earlier.to!) : earlier.to!;
     return sumBetween(days, earlier.from!, to);
@@ -236,5 +236,5 @@ export function trendWindow(period: Period, ctx: TrendContext): { from: string; 
   const reach = REACH[period.kind];
   if (!reach) return range;
   const back = stepPeriod(period.value, -Math.max(reach.yearAgo, reach.usual));
-  return { from: back ? parsePeriod(back)!.from! : range.from, to: range.to };
+  return { from: back ? parsePeriod(back, period.monthStart)!.from! : range.from, to: range.to };
 }

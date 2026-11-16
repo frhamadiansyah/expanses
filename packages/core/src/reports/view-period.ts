@@ -1,3 +1,4 @@
+import { monthPeriod, monthStartOf, type MonthStartDay } from './month-start';
 import { addMonths, daysInMonth, monthRange } from './periods';
 
 /**
@@ -15,6 +16,11 @@ export interface Period {
   from: string | null;
   /** Last day, inclusive. Null for all time. */
   to: string | null;
+  /**
+   * The day the workspace's months start on, when it is not the 1st: a month then covers `monthPeriod`'s days. Present
+   * only on a month read with such a day, so a period read without one is exactly what it always was.
+   */
+  monthStart?: MonthStartDay;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -47,7 +53,12 @@ export function weekOf(date: string): string {
   return `${year}-W${pad(Math.floor((day - weekOneMonday(year)) / 7) + 1)}`;
 }
 
-export function parsePeriod(value: string): Period | null {
+/**
+ * A period from its string. `startDay` is the workspace's "Month starts on" (`month-start.ts`): it moves a month's days
+ * and nothing else — a week, a quarter, a year and two chosen dates are the calendar's. With 1, or none, a month is the
+ * calendar month.
+ */
+export function parsePeriod(value: string, startDay: MonthStartDay = 1): Period | null {
   if (value === 'all') return { kind: 'all', value, from: null, to: null };
 
   let match = /^(\d{4})$/.exec(value);
@@ -57,7 +68,8 @@ export function parsePeriod(value: string): Period | null {
   if (match) {
     const month = Number(match[2]);
     if (month < 1 || month > 12) return null;
-    return { kind: 'month', value, ...monthRange(value) };
+    const day = monthStartOf(startDay);
+    return day === 1 ? { kind: 'month', value, ...monthRange(value) } : { kind: 'month', value, ...monthPeriod(value, day), monthStart: day };
   }
 
   match = /^(\d{4})-Q([1-4])$/.exec(value);
