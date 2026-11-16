@@ -1,4 +1,4 @@
-import { coverStatement, type Cycle, installmentSchedule, instalmentsFrom, nextStatementStart, planPurchaseOutcome, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
+import { coverStatement, type Cycle, installmentSchedule, instalmentsFrom, nextStatementStart, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
 import { cardRecordsFrom } from './instalment-spending';
 import { cardInstallments } from '../schema-loans';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -53,8 +53,8 @@ export interface StatementLine {
     countMode?: 'at_purchase' | 'each_month';
     categoryId?: string | null;
     /**
-     * A plan with no purchase, bought before the card's records in the app: its row's `transactionId` is the card's
-     * opening balance (or '' when the card has none), not a purchase — nothing to open, assign or mark paid off.
+     * A plan with no purchase (its purchase is not in the app): its row's `transactionId` is the card's opening balance
+     * (or '' when the card has none), not a purchase — nothing to open, assign or mark paid off.
      */
     noPurchase?: true;
   } | null;
@@ -62,6 +62,8 @@ export interface StatementLine {
   convertedTo: { planId: string; months: number } | null;
   /** A purchase or refund, as opposed to money moved onto the card. */
   spending: boolean;
+  /** An investment bought with the card (a bond, a stock, a fund): a charge on the card, never spending. */
+  trade?: true;
   /** The currency and amount the merchant charged, when the card converted it. */
   originalCurrency: string | null;
   originalAmountMinor: number | null;
@@ -126,14 +128,15 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const BEFORE_APP = 'before-app:';
 
 async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
-  const rows = await db.values<[string, string, string | null, string, string | null, number, number, string | null, string | null, string | null, number | null, number, string | null]>(sql`
+  const rows = await db.values<[string, string, string | null, string, string | null, number, number, string | null, string | null, string | null, number | null, number, string | null, number]>(sql`
     SELECT t.id, t.occurred_on, p.posted_on, t.description, t.card_id,
       -SUM(e.amount_minor),
       EXISTS (SELECT 1 FROM entries x JOIN accounts xa ON xa.id = x.account_id WHERE x.transaction_id = t.id AND xa.kind IN ('expense', 'income'))
         OR EXISTS (SELECT 1 FROM entries y WHERE y.transaction_id = t.id AND y.spend_category_id IS NOT NULL),
       pay.id, pay.occurred_on, t.original_currency, t.original_amount_minor,
       (SELECT COUNT(*) FROM card_settlements cs WHERE cs.payment_transaction_id = t.id),
-      t.external_ref
+      t.external_ref,
+      EXISTS (SELECT 1 FROM investment_trades it WHERE it.transaction_id = t.id)
     FROM transactions t
     JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
     LEFT JOIN card_postings p ON p.transaction_id = t.id
@@ -161,7 +164,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
   }
   const settled = new Set(rows.flatMap((row) => (row[12]?.startsWith(BEFORE_APP) ? [row[12].slice(BEFORE_APP.length)] : [])));
   return rows
-    .map(([transactionId, occurredOn, postedOn, description, cardId, owed, spending, paymentId, paidOn, originalCurrency, originalAmount, settles, ref]) => ({
+    .map(([transactionId, occurredOn, postedOn, description, cardId, owed, spending, paymentId, paidOn, originalCurrency, originalAmount, settles, ref, trade]) => ({
       transactionId,
       occurredOn,
       postedOn,
@@ -181,6 +184,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       paidOff: settled.has(transactionId),
       balancing: ref?.startsWith(BEFORE_APP) ?? false,
       ...(partNames.has(transactionId) ? { splitCategories: partNames.get(transactionId)! } : {}),
+      ...(Number(trade) === 1 ? { trade: true as const } : {}),
     }))
     .sort((a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId));
 }
@@ -228,29 +232,26 @@ async function billedLines(db: Db, ws: WorkspaceContext, cardAccountId: string):
       });
     }
   }
-  await beforeRecordsLinesTx(db, ws, cardAccountId, plans, lines, instalments, terms?.statementDay ?? 1);
+  await noPurchaseLinesTx(db, ws, cardAccountId, plans, lines, instalments, terms?.statementDay ?? 1);
   return [...lines, ...instalments].sort(
     (a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.key.localeCompare(b.key),
   );
 }
 
 /**
- * The statement rows of plans with no purchase that were bought before the card's records in the app (TF 136): the bank
- * still bills each of their months, so the statement must show them — from the records' start only; one billed before
- * is in no statement the app keeps.
+ * The statement rows of plans with no purchase (owner, 16 Nov 2026, simplified): such a plan's purchase is not in the
+ * app, but the bank bills each of its months, so the statement shows them — from the day the card starts in the app
+ * (its opening balance, else its first line); one billed before is in no statement the app keeps. In either Count
+ * spending mode: what the bank bills does not change with how it counts.
  *
  * The rule that keeps nothing counted twice: the card's opening balance is what the bank said was owed on that day,
  * the plan's unbilled months included (the card's debt splits into billed and unbilled, `installmentTotals`). So on the
- * statements the opening balance counts less by the instalments billed on or after its day — as a converted purchase
- * counts nothing — and each of them counts on its own statement, in its month. Over the plan's months they add back to
- * the opening, so the statements end where the card's balance is, and what a statement asks (closing, due, cover) is
- * what the bank bills. The balance itself, net worth and the ledger are never touched. A card with no opening balance
- * (kept from a counted-from day or its first purchase) held none of the debt: its rows simply count, as the bank bills.
- *
- * Only for a plan whose purchase window ends before the records start (`planPurchaseOutcome`'s `before-records`): one
- * whose purchase may be recorded here is left to the owner to tie (the warning), so it is never billed twice.
+ * statements the opening balance counts less by the instalments billed on or after its day (never more than it owed),
+ * and each of them counts on its own statement. Over the plan's months they add back to the opening, so the statements
+ * end where the card's balance is, and what a statement asks (closing, due, cover) is what the bank bills. The balance,
+ * net worth and the ledger are never touched. A card with no opening balance held none of the debt: its rows just count.
  */
-async function beforeRecordsLinesTx(
+async function noPurchaseLinesTx(
   db: Db,
   ws: WorkspaceContext,
   cardAccountId: string,
@@ -263,8 +264,6 @@ async function beforeRecordsLinesTx(
   if (unlinked.length === 0) return;
   const recordsFrom = await cardRecordsFrom(db, ws, cardAccountId);
   if (!recordsFrom) return;
-  const before = unlinked.filter((plan) => planPurchaseOutcome([], plan, recordsFrom).kind === 'before-records');
-  if (before.length === 0) return;
   const [openingRow] = await db.values<[string]>(sql`
     SELECT t.id FROM transactions t JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
     WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.occurred_on = ${recordsFrom}
@@ -273,7 +272,7 @@ async function beforeRecordsLinesTx(
     ORDER BY t.created_at LIMIT 1`);
   const opening = openingRow ? lines.find((line) => line.transactionId === openingRow[0]) : undefined;
   let held = 0;
-  for (const plan of before) {
+  for (const plan of unlinked) {
     for (const bill of instalmentsFrom(installmentSchedule(plan, statementDay), recordsFrom)) {
       held += bill.amountMinor;
       instalments.push({

@@ -187,7 +187,7 @@ describe('a plan saved by the old sheet, tied to its purchase on opening the app
     const h = await household({ asOldSheet: true });
     // Before: both count Family's part whole in November.
     expect((await familyFigures(h, h.dewi))['2026-11']).toMatchObject({ cashflow: FAMILY_PART });
-    expect(await autoLinkInstalmentPlans(h.fandri.database, h.fandri.ws)).toEqual({ linked: 1, beforeRecords: 0, left: 0 });
+    expect(await autoLinkInstalmentPlans(h.fandri.database, h.fandri.ws)).toEqual({ linked: 1, left: 0 });
     await h.home.settle();
     const mine = await familyFigures(h, h.fandri);
     expect(mine['2026-12']).toMatchObject({ cashflow: 666_667 });

@@ -1,15 +1,11 @@
 import { formatMinor, installmentSchedule, isoDate, monthName } from '@expanses/core';
-import { setInstallmentCountMode } from '@expanses/db';
 import { getRouteApi } from '@tanstack/react-router';
 import { useBack } from '../../app/BackHeader';
 import { Pencil } from 'lucide-react';
-import { useState } from 'react';
-import { useApp } from '../../app/context';
-import { useInvalidateAll } from '../../lib/queries';
-import { ErrorBox } from '../../ui';
+import { useAccounts } from '../../lib/queries';
 import { InsetGroup, InsetRow, ProgressBar, ReadOnlyRow } from '../../ui/native';
-import { categoryLabel, CountSpendingRow, NoPurchaseWarning, usePlanEditor } from '../loans/InstallmentList';
-import { countSpendingFooter, noPurchaseWarning, planProgress, purchaseStateOf } from '../loans/plan-view';
+import { categoryLabel, NoPurchaseWarning, usePlanEditor } from '../loans/InstallmentList';
+import { countingLine, mayCountTwice, noPurchaseWarning, planProgress } from '../loans/plan-view';
 import { useCardLines, useCardRecordsFrom, useInstallments, usePlanCategoryChoices, usePlanInstalments, useStatementDay } from '../loans/queries';
 import { useMonthStart } from '../workspaces/queries';
 import { CardScreen, useCardPage } from './card-page';
@@ -27,8 +23,7 @@ const dayMonthYear = (iso: string) => `${Number(iso.slice(8, 10))} ${monthName(i
  */
 export function CardInstalmentPlanPage() {
   const { cardId, planId } = route.useParams();
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
+  const accounts = useAccounts().data ?? [];
   const { page, gate } = useCardPage(cardId);
   const plans = useInstallments(cardId);
   const plan = (plans.data ?? []).find((row) => row.id === planId);
@@ -43,8 +38,6 @@ export function CardInstalmentPlanPage() {
   // Removed from its own page, the plan has no page left: back to where it was opened from.
   const goBack = useBack(fallback);
   const editor = usePlanEditor(cardId, page?.currency ?? '', { onRemoved: goBack });
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
 
   if (!page || !plan) {
     return (
@@ -57,23 +50,17 @@ export function CardInstalmentPlanPage() {
   const progress = planProgress(plan.totalMinor, statuses.data ?? []);
   const purchase = plan.transactionId ? (lines.data ?? []).find((line) => line.transactionId === plan.transactionId && !line.instalment) : undefined;
   const categoryName = plan.categoryAccountId ? categoryLabel(plan.categoryAccountId, categories) || null : null;
-  const footer = countSpendingFooter(plan, installmentSchedule(plan, statementDay), currency, monthStart, { categoryName, recordsFrom });
-  // A plan left with no purchase though one may be recorded (auto-link found none, or several): said until it is chosen.
-  const warning = noPurchaseWarning(purchaseStateOf(plan, lines.data ?? [], recordsFrom), plan.countMode, categoryName, true);
-
-  async function setMode(countMode: 'at_purchase' | 'each_month') {
-    if (!plan || countMode === plan.countMode) return;
-    setError(null);
-    setBusy(true);
-    try {
-      await setInstallmentCountMode(database, ws, plan.id, countMode);
-      await invalidate();
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // How it counts is the app's (TF 139): an investment buy, or Investment chosen with no purchase, is saving.
+  const investment = plan.countMode === 'at_purchase' && (plan.linkedToTrade || !plan.transactionId);
+  // A purchase counts in its own category, which its instalment rows name.
+  const ownRow = (lines.data ?? []).find((line) => line.instalment?.planId === plan.id && line.instalment.categoryId);
+  const purchaseCategory = ownRow?.instalment?.categoryId ? (accounts.find((account) => account.id === ownRow.instalment!.categoryId)?.name ?? null) : null;
+  const line = countingLine({ investment, monthlyMinor: plan.monthlyMinor, transactionId: plan.transactionId }, installmentSchedule(plan, statementDay), currency, monthStart, {
+    categoryName: plan.transactionId ? purchaseCategory : categoryName,
+    recordsFrom,
+  });
+  // A plan with no purchase while the card holds an untied purchase of its total: said until it is chosen.
+  const warning = noPurchaseWarning(mayCountTwice(plan, lines.data ?? []), investment, categoryName);
 
   return (
     <CardScreen
@@ -104,13 +91,13 @@ export function CardInstalmentPlanPage() {
           <ReadOnlyRow label="Months" value={String(plan.months)} />
           <ReadOnlyRow label="Each month" value={formatMinor(plan.monthlyMinor, currency)} />
           <ReadOnlyRow label="Purchase" value={purchase ? `${purchase.description} · ${dayMonthYear(purchase.occurredOn)}` : plan.transactionId ? 'Chosen' : 'None'} />
-          {!plan.transactionId && <ReadOnlyRow label="Category" value={categoryName ?? 'Uncategorised'} />}
+          {!plan.transactionId && <ReadOnlyRow label="Category" value={investment ? 'Investment (not spending)' : (categoryName ?? 'Personal · Uncategorised')} />}
         </InsetGroup>
 
-        <InsetGroup header="Count spending" footer={footer}>
-          <CountSpendingRow value={plan.countMode} onChange={(mode) => void setMode(mode)} disabled={busy} />
-        </InsetGroup>
-        <ErrorBox error={error} />
+        {/* How it counts, said plainly: the app decides it from the purchase or the category. */}
+        <p data-testid="plan-counting" className="mx-[16px] mb-[18px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+          {line}
+        </p>
         <NoPurchaseWarning text={warning} />
 
         <InsetGroup header="Instalments">

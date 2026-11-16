@@ -200,7 +200,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const caption = heroCaption(tx, kind.amountMinor);
   // A credit card purchase of this phone's own card can be turned into instalments; one already is reads its plan.
   const plan = (plans.data ?? []).find((row) => row.transactionId === tx.id) ?? null;
-  const instalmentCard = instalmentCardOf(tx, accounts);
+  // An investment bought with the card can be turned too (TF 139): never spending, so its plan counts At purchase.
+  const instalmentCard = instalmentCardOf(tx, accounts, { trade: isTrade });
   const spread = spreadCaption(plan, kind.currency);
   // One purchase split across workspaces, or with a part Not counted: each part, with the workspace it is counted in.
   const parts = splitParts(tx, accounts, book);
@@ -424,6 +425,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
             purchase={{ transactionId: tx.id, description: tx.description, occurredOn: tx.occurredOn, amountMinor: instalmentCard.amountMinor }}
             card={{ accountId: instalmentCard.cardAccountId, name: accounts.find((a) => a.id === instalmentCard.cardAccountId)?.name ?? '' }}
             currency={accounts.find((a) => a.id === instalmentCard.cardAccountId)?.currency ?? kind.currency}
+            investment={isTrade}
             onClose={() => setTurning(false)}
           />
         )}

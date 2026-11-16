@@ -143,16 +143,17 @@ describe('which debts count against income', () => {
   });
 });
 
-// A plan counting At purchase (0120): the purchase was the spending, so each instalment is a debt payment. One counting
-// Each month is spending instead, never also a debt payment (instalment-spending.test.ts).
-describe('instalments as debt payments', () => {
-  it('counts what the card billed during the period', async () => {
+// A plan with no purchase kept At purchase is an investment (TF 139): each instalment is money put away, never a debt
+// payment. A plan tied to a spending purchase counts Each month — spending, never also a debt payment
+// (instalment-spending.test.ts); only one still At purchase there is a debt payment (instalment-spending.test.ts too).
+describe('instalments of a plan with no purchase, At purchase', () => {
+  it('are put away as the card bills them, never a debt payment', async () => {
     // Billed from February: eleven instalments fall inside 2026.
     await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02', countMode: 'at_purchase' });
 
     const flows = await periodFlows(database, ws, YEAR);
-    expect(flows.debtPaymentsMinor).toBe(11_000_000);
-    expect(flows.nonMortgageDebtPaymentsMinor).toBe(11_000_000);
+    expect(flows.debtPaymentsMinor).toBe(0);
+    expect(flows.putAwayMinor).toBe(11_000_000);
   });
 
   it('counts nothing for a plan that starts after the period', async () => {
@@ -162,12 +163,12 @@ describe('instalments as debt payments', () => {
     expect(flows.debtPaymentsMinor).toBe(0);
   });
 
-  it('adds instalments to the loan payments, not instead of them', async () => {
+  it('leave the loan payments as they are', async () => {
     await kprTerms();
     await recordLoanPayment(database, ws, { accountId: kpr.id, occurredOn: '2026-01-25', moneyAccountId: bca.id, principalMinor: 1_849_866, interestMinor: 5_250_000 });
     await saveInstallment(database, ws, { cardAccountId: card.id, description: 'iBox', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-02', countMode: 'at_purchase' });
 
     const flows = await periodFlows(database, ws, YEAR);
-    expect(flows.debtPaymentsMinor).toBe(7_099_866 + 11_000_000);
+    expect(flows.debtPaymentsMinor).toBe(7_099_866);
   });
 });

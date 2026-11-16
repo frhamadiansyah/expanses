@@ -136,6 +136,8 @@ export interface ListRow {
     purchaseId: string | null;
     /** Sent by the payer's phone in a shared workspace: no plan here to open. */
     received?: boolean;
+    /** An investment's (TF 139): saving, never spending — read "Saving". */
+    investment?: boolean;
   };
   /** A purchase its plan spreads each month: listed on its day, counting nothing there; the months it is spread over. */
   spreadOver?: number;
@@ -254,8 +256,16 @@ export function instalmentRows(
     categoryId: null,
     categoryName: null,
     parentName: null,
-    transferName: 'Instalment',
-    instalment: { planId: line.planId, cardAccountId: line.cardAccountId, number: line.number, of: line.of, countMode: 'at_purchase', purchaseId: line.transactionId },
+    transferName: line.investment ? 'Saving' : 'Repayment',
+    instalment: {
+      planId: line.planId,
+      cardAccountId: line.cardAccountId,
+      number: line.number,
+      of: line.of,
+      countMode: 'at_purchase',
+      purchaseId: line.transactionId,
+      ...(line.investment ? { investment: true } : {}),
+    },
   }));
   return [...spending, ...repaying];
 }

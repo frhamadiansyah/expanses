@@ -9,10 +9,10 @@ export interface PlanForm {
   earnsPoints: boolean;
   /** The card purchase the plan was converted from; null for none chosen. */
   transactionId: string | null;
-  /** How its spending counts (option C): Each month for a new plan. */
-  countMode: InstalmentCountMode;
   /** With no purchase: the category it counts in; null is Uncategorised (0122). */
   categoryAccountId: string | null;
+  /** With no purchase: Investment (not spending) chosen in the Category row — saving, kept At purchase. */
+  investment: boolean;
 }
 
 /** The plan as the db takes it, without the card or the id. */
@@ -35,8 +35,8 @@ export const blankPlanForm = (today: string): PlanForm => ({
   firstBilledMonth: today.slice(0, 7),
   earnsPoints: false,
   transactionId: null,
-  countMode: 'each_month',
   categoryAccountId: null,
+  investment: false,
 });
 
 /** An existing plan's sheet: its own figures, in the shapes the fields take (the total grouped, as the amount field shows it). */
@@ -59,21 +59,26 @@ export const planFormOf = (
   firstBilledMonth: plan.firstBilledMonth,
   earnsPoints: plan.earnsPoints,
   transactionId: plan.transactionId ?? null,
-  countMode: plan.countMode ?? 'each_month',
   categoryAccountId: plan.categoryAccountId ?? null,
+  // A plan with no purchase kept At purchase reads as Investment.
+  investment: !plan.transactionId && plan.countMode === 'at_purchase',
 });
 
-/** The typed fields as numbers. A blank name becomes "Instalment plan"; a total is read as the grouped text of the amount field (dots are thousands, a comma is cents). */
-export const planFields = (form: PlanForm, currency: string): PlanFields => ({
+/**
+ * The typed fields as numbers. A blank name becomes "Instalment plan"; a total is read as the grouped text of the amount
+ * field (dots are thousands, a comma is cents). How it counts is the app's to decide (TF 139): a spending purchase Each
+ * month, an investment buy (`trade`) or Investment At purchase, a spending category Each month.
+ */
+export const planFields = (form: PlanForm, currency: string, opts: { trade?: boolean } = {}): PlanFields => ({
   description: form.description.trim() || 'Instalment plan',
   totalMinor: parseGroupedMajor(form.total, currency),
   months: Number(form.months),
   firstBilledMonth: form.firstBilledMonth,
   earnsPoints: form.earnsPoints,
   transactionId: form.transactionId,
-  countMode: form.countMode,
-  // A category is only the plan's own while no purchase is chosen; with one, the purchase's categories count.
-  categoryAccountId: form.transactionId ? null : form.categoryAccountId,
+  countMode: (form.transactionId ? opts.trade === true : form.investment) ? 'at_purchase' : 'each_month',
+  // A category is only the plan's own while no purchase is chosen and it is spending; with one, the purchase's count.
+  categoryAccountId: form.transactionId || form.investment ? null : form.categoryAccountId,
 });
 
 /** A card purchase the Purchase row offers: what it was, when, and what it charged. */
@@ -82,6 +87,8 @@ export interface PurchaseChoice {
   occurredOn: string;
   description: string;
   amountMinor: number;
+  /** An investment bought with the card: its plan counts At purchase. */
+  trade: boolean;
 }
 
 /**
@@ -95,7 +102,7 @@ export function purchaseChoices(
   limit = 40,
 ): PurchaseChoice[] {
   return purchaseCandidates(lines, planId)
-    .map((line) => ({ transactionId: line.transactionId, occurredOn: line.occurredOn, description: line.description, amountMinor: line.owedMinor }))
+    .map((line) => ({ transactionId: line.transactionId, occurredOn: line.occurredOn, description: line.description, amountMinor: line.owedMinor, trade: line.trade === true }))
     .sort((a, b) => Number(b.amountMinor === totalMinor) - Number(a.amountMinor === totalMinor) || b.occurredOn.localeCompare(a.occurredOn))
     .slice(0, limit);
 }

@@ -5,14 +5,14 @@ import { ChevronRight } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { type GroupChild, InsetGroup, InsetRow, ProgressBar, ReadOnlyRow, ROW_PAD_X, SegmentedControl, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { type GroupChild, InsetGroup, InsetRow, ProgressBar, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { useMonthStart } from '../workspaces/queries';
 import { ALERT_ROW, NoticeAlert } from '../../ui/native/NoticeAlert';
 import { Line, SUBTITLE, TextLine, TITLE } from '../cards/rows';
 import { blankPlanForm, type PlanForm, planFields, planFormOf, purchaseChoices, shownPurchase } from './plan-form';
-import { COUNT_SEGMENTS, countSpendingFooter, noPurchaseWarning, purchaseStateOf } from './plan-view';
+import { countingLine, mayCountTwice, noPurchaseWarning } from './plan-view';
 import { useCardLines, useCardRecordsFrom, useInstallments, usePlanCategoryChoices, useStatementDay } from './queries';
 
 /** The line a plan with no purchase chosen shows, above Save and on its page (`noPurchaseWarning`). */
@@ -37,17 +37,8 @@ export function categoryLabel(id: string, all: readonly { id: string; name: stri
   return row.bookName ? `${row.bookName} · ${name}` : name;
 }
 
-/** The Count spending control in a row of its own, with the hairline a row above it draws. */
-export function CountSpendingRow({ position, value, onChange, disabled }: GroupChild & { value: string; onChange: (mode: 'at_purchase' | 'each_month') => void; disabled?: boolean }) {
-  return (
-    <div className="relative" style={{ padding: `8px ${ROW_PAD_X}px` }} data-testid="count-spending">
-      {position?.separator && <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X }} />}
-      <fieldset disabled={disabled} className="contents">
-        <SegmentedControl segments={COUNT_SEGMENTS} value={value} onChange={(key) => onChange(key as 'at_purchase' | 'each_month')} label="Count spending" className="w-full" />
-      </fieldset>
-    </div>
-  );
-}
+/** The Category row's value for Investment (not spending): no category, kept At purchase. */
+export const INVESTMENT_CHOICE = '__investment';
 
 /**
  * One plan on the card page: its name and what it still holds on the top line, then how far through its months it is and
@@ -97,6 +88,7 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
   /** The sheet: closed, a new plan, or the plan being edited. */
   const [sheet, setSheet] = useState<'new' | CardInstallmentRow | null>(null);
   const lines = useCardLines(cardAccountId, sheet !== null);
+  const accounts = useAccounts().data ?? [];
   const recordsFrom = useCardRecordsFrom(cardAccountId).data ?? null;
   const categories = usePlanCategoryChoices(sheet !== null).data ?? [];
   // A new plan's Purchase follows the typed total until the owner touches it; an existing plan's is its own.
@@ -124,7 +116,7 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
     setError(null);
     setBusy(true);
     try {
-      const fields = planFields({ ...form, transactionId: purchase }, currency);
+      const fields = planFields({ ...form, transactionId: purchase }, currency, { trade });
       if (sheet === 'new') await saveInstallment(database, ws, { cardAccountId, ...fields });
       else await updateInstallment(database, ws, { id: sheet.id, ...fields });
       await invalidate();
@@ -161,20 +153,27 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
     }
   })();
   const planId = sheet && sheet !== 'new' ? sheet.id : null;
+  // A purchase counts in its own category: what the sheet's line names.
+  const purchaseCategoryName = (() => {
+    const id = (lines.data ?? []).find((line) => line.instalment?.planId === planId && line.instalment.categoryId)?.instalment?.categoryId;
+    return id ? (accounts.find((account) => account.id === id)?.name ?? null) : null;
+  })();
   const choices = purchaseChoices(lines.data ?? [], planId, typedTotal);
   const purchase = shownPurchase(form, typedTotal, lines.data ?? [], purchaseTouched);
+  // How it counts is the app's (TF 139): an investment buy, or Investment chosen with no purchase, is saving.
+  const trade = purchase !== null && (lines.data ?? []).some((line) => line.transactionId === purchase && line.trade);
+  const investment = purchase ? trade : form.investment;
   const categoryName = form.categoryAccountId ? categoryLabel(form.categoryAccountId, categories) || null : null;
-  const warning = noPurchaseWarning(
-    purchaseStateOf({ id: planId, transactionId: purchase, totalMinor: typedTotal, firstBilledMonth: form.firstBilledMonth }, lines.data ?? [], recordsFrom),
-    form.countMode,
-    categoryName,
-  );
+  const warning = noPurchaseWarning(mayCountTwice({ id: planId, transactionId: purchase, totalMinor: typedTotal }, lines.data ?? []), investment, categoryName);
   // What the footer reads for the plan as typed: its months follow the card's statement day and the workspace's months.
   const footer = (() => {
     const months = Number(form.months);
     if (!Number.isInteger(months) || months < 1 || !(typedTotal > 0) || !/^\d{4}-\d{2}$/.test(form.firstBilledMonth)) return undefined;
     const typed = { totalMinor: typedTotal, months, monthlyMinor: Math.round(typedTotal / months), firstBilledMonth: form.firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: form.earnsPoints };
-    return countSpendingFooter({ ...typed, countMode: form.countMode, transactionId: purchase }, installmentSchedule(typed, statementDay), currency, monthStart, { categoryName, recordsFrom });
+    return countingLine({ investment, monthlyMinor: typed.monthlyMinor, transactionId: purchase }, installmentSchedule(typed, statementDay), currency, monthStart, {
+      categoryName: purchase ? purchaseCategoryName : categoryName,
+      recordsFrom,
+    });
   })();
   const node = (
     <>
@@ -204,9 +203,16 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
                   </option>
                 ))}
               </SelectRow>
-              {/* With no purchase there is no category to take: the plan's own, in Personal (0122). */}
+              {/* With no purchase there is no category to take: the plan's own (0122, 0123), or Investment (not spending). */}
               {!purchase && (
-                <SelectRow label="Category" value={form.categoryAccountId ?? ''} onChange={(e) => patch({ categoryAccountId: e.target.value || null })}>
+                <SelectRow
+                  label="Category"
+                  value={form.investment ? INVESTMENT_CHOICE : (form.categoryAccountId ?? '')}
+                  onChange={(e) =>
+                    patch(e.target.value === INVESTMENT_CHOICE ? { investment: true, categoryAccountId: null } : { investment: false, categoryAccountId: e.target.value || null })
+                  }
+                >
+                  <option value={INVESTMENT_CHOICE}>Investment (not spending)</option>
                   <option value="">Personal · Uncategorised</option>
                   {categories
                     .map((category) => ({ id: category.id, label: categoryLabel(category.id, categories) }))
@@ -219,9 +225,12 @@ export function usePlanEditor(cardAccountId: string, currency: string, opts: { o
                 </SelectRow>
               )}
             </InsetGroup>
-            <InsetGroup header="Count spending" footer={footer}>
-              <CountSpendingRow value={form.countMode} onChange={(countMode) => patch({ countMode })} />
-            </InsetGroup>
+            {/* How it counts, said plainly: the app decides it from the purchase or the category. */}
+            {footer && (
+              <p data-testid="plan-counting" className="mx-[16px] mb-[18px] text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+                {footer}
+              </p>
+            )}
             {editSplit && (
               // What the row no longer spells out: how much is billed, what is still held and when it ends.
               <InsetGroup header="So far">

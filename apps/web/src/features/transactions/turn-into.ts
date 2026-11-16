@@ -48,6 +48,8 @@ export function turnIntoInput(
   purchase: { transactionId: string; description: string; amountMinor: number },
   cardAccountId: string,
   form: TurnForm,
+  /** An investment bought with the card: never spending, so the plan counts At purchase (TF 139). */
+  opts: { investment?: boolean } = {},
 ): SaveInstallmentInput | null {
   const months = turnMonths(form);
   const rateBps = interestBps(form.interest);
@@ -59,7 +61,7 @@ export function turnIntoInput(
     months,
     firstBilledMonth: form.firstBilledMonth,
     transactionId: purchase.transactionId,
-    countMode: 'each_month',
+    countMode: opts.investment ? 'at_purchase' : 'each_month',
     rateBps,
     earnsPoints: false,
   };
@@ -67,13 +69,17 @@ export function turnIntoInput(
 
 const monthYearWords = (month: string) => `${monthName(month, 'long')} ${month.slice(0, 4)}`;
 
-/** "Rp 2.000.000 counts as spending in each month from December 2026 to May 2027." */
-export function turnFooter(amountMinor: number, months: number | null, firstBilledMonth: string, statementDay: number, currency: string): string | undefined {
+/**
+ * "Rp 2.000.000 counts as spending in each month from December 2026 to May 2027." — or, for an investment, "An
+ * investment: Rp 1.000.000 a month counts as saving, not spending, December 2026 to May 2027."
+ */
+export function turnFooter(amountMinor: number, months: number | null, firstBilledMonth: string, statementDay: number, currency: string, investment = false): string | undefined {
   if (months === null || !(amountMinor > 0) || !/^\d{4}-\d{2}$/.test(firstBilledMonth)) return undefined;
   const plan = { totalMinor: amountMinor, months, monthlyMinor: eachMonthOf(amountMinor, months), firstBilledMonth, rateBps: 0, conversionFeeMinor: 0, earnsPoints: false };
   const schedule = installmentSchedule(plan, statementDay);
   const first = schedule[0]!.statementOn.slice(0, 7);
   const last = schedule.at(-1)!.statementOn.slice(0, 7);
+  if (investment) return `An investment: ${formatMinor(plan.monthlyMinor, currency)} a month counts as saving, not spending, ${first === last ? monthYearWords(first) : `${monthYearWords(first)} to ${monthYearWords(last)}`}.`;
   const span = first === last ? `in ${monthYearWords(first)}` : `in each month from ${monthYearWords(first)} to ${monthYearWords(last)}`;
   return `${formatMinor(plan.monthlyMinor, currency)} counts as spending ${span}.`;
 }
@@ -82,8 +88,20 @@ export function turnFooter(amountMinor: number, months: number | null, firstBill
  * The card a purchase can be turned into instalments on: a posted purchase paid with one of this phone's own credit
  * cards, and nothing else. Null for a debit card, cash, a deleted row, or a card on another member's placeholder.
  */
-export function instalmentCardOf(tx: Pick<TransactionView, 'status' | 'entries'>, own: readonly Pick<AccountRow, 'id' | 'subtype'>[]): { cardAccountId: string; amountMinor: number } | null {
+export function instalmentCardOf(
+  tx: Pick<TransactionView, 'status' | 'entries'>,
+  own: readonly Pick<AccountRow, 'id' | 'subtype'>[],
+  /** An investment buy (TF 139): its cash side is one of the card's lines; the holding takes the other. */
+  opts: { trade?: boolean } = {},
+): { cardAccountId: string; amountMinor: number } | null {
   if (tx.status !== 'posted') return null;
+  if (opts.trade) {
+    const charged = tx.entries.filter((entry) => entry.accountKind === 'liability' && entry.accountSubtype === 'credit_card' && entry.amountMinor < 0);
+    const ids = [...new Set(charged.map((entry) => entry.accountId))];
+    const card = ids.length === 1 ? own.find((account) => account.id === ids[0] && account.subtype === 'credit_card') : undefined;
+    const amountMinor = -charged.reduce((sum, entry) => sum + entry.amountMinor, 0);
+    return card && amountMinor > 0 ? { cardAccountId: card.id, amountMinor } : null;
+  }
   if (classify(tx as TransactionView).type !== 'expense') return null;
   const money = tx.entries.filter((entry) => entry.accountKind === 'asset' || entry.accountKind === 'liability');
   const ids = [...new Set(money.map((entry) => entry.accountId))];

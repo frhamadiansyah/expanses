@@ -33,6 +33,24 @@ export interface CardInstallmentRow extends CardInstallment {
    * tied to a purchase counts in the purchase's categories and never reads this.
    */
   categoryAccountId: string | null;
+  /**
+   * Tied to an investment bought with the card (a bond, a stock, a fund): never spending, so it always counts At
+   * purchase — each instalment a card repayment (`tradeRefusal`).
+   */
+  linkedToTrade: boolean;
+}
+
+/** Whether a transaction is an investment trade: buying a holding is not spending. */
+export async function isTradeTx(db: Db, transactionId: string): Promise<boolean> {
+  const rows = await db.values(sql`SELECT 1 FROM investment_trades WHERE transaction_id = ${transactionId} LIMIT 1`).catch(() => []);
+  return rows.length > 0;
+}
+
+/** A plan tied to an investment cannot count Each month: its instalments are repayments, never spending. */
+async function refuseEachMonthOnTradeTx(db: Db, transactionId: string | null, countMode: InstalmentCountMode): Promise<void> {
+  if (countMode === 'each_month' && transactionId && (await isTradeTx(db, transactionId))) {
+    throw new InstallmentDbError('An investment is not spending: its plan counts At purchase, each instalment a card repayment');
+  }
 }
 
 const categoryColumn = new WeakMap<Db, boolean>();
@@ -87,7 +105,7 @@ async function cardAccountTx(tx: Db, ws: WorkspaceContext, accountId: string): P
   if (row.subtype !== 'credit_card') throw new InstallmentDbError('Only a credit card carries instalment plans');
 }
 
-const toRow = (row: typeof cardInstallments.$inferSelect, countMode: InstalmentCountMode = 'at_purchase', categoryAccountId: string | null = null): CardInstallmentRow => ({
+const toRow = (row: typeof cardInstallments.$inferSelect, countMode: InstalmentCountMode = 'at_purchase', categoryAccountId: string | null = null, linkedToTrade = false): CardInstallmentRow => ({
   id: row.id,
   cardAccountId: row.cardAccountId,
   transactionId: row.transactionId,
@@ -102,6 +120,7 @@ const toRow = (row: typeof cardInstallments.$inferSelect, countMode: InstalmentC
   createdAt: row.createdAt,
   countMode,
   categoryAccountId,
+  linkedToTrade,
 });
 
 /**
@@ -156,6 +175,9 @@ export async function saveInstallment(database: Database, ws: WorkspaceContext, 
   await database.transaction(async (tx) => {
     await cardAccountTx(tx, ws, input.cardAccountId);
     if (input.transactionId) await purchaseForPlanTx(tx, ws, input.cardAccountId, input.transactionId, null);
+    // Each month unless said — At purchase for an investment, which is never spending.
+    const countMode = input.countMode ?? (input.transactionId && (await isTradeTx(tx, input.transactionId)) ? 'at_purchase' : 'each_month');
+    await refuseEachMonthOnTradeTx(tx, input.transactionId ?? null, countMode);
     // A shared purchase goes out again with its spread (card instalments C, sync).
     if (input.transactionId) await captureSpreadingTx(tx, input.transactionId);
     await tx.insert(cardInstallments).values({
@@ -174,7 +196,7 @@ export async function saveInstallment(database: Database, ws: WorkspaceContext, 
       earnsPoints: (input.earnsPoints ?? true) ? 1 : 0,
       createdAt: new Date().toISOString(),
     });
-    await writeCountModeTx(tx, ws, id, input.countMode ?? 'each_month');
+    await writeCountModeTx(tx, ws, id, countMode);
     if (input.categoryAccountId) await writeCategoryTx(tx, ws, id, input.categoryAccountId);
     if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, id);
     // With no purchase and Each month, it travels as a plan_spread (0123).
@@ -215,6 +237,11 @@ export async function updateInstallment(database: Database, ws: WorkspaceContext
       .where(and(eq(cardInstallments.id, input.id), eq(cardInstallments.workspaceId, ws.workspaceId)));
     if (found.length === 0) throw new InstallmentDbError('Plan not found in this workspace');
     if (input.transactionId) await purchaseForPlanTx(tx, ws, found[0]!.cardAccountId, input.transactionId, input.id);
+    {
+      const linked = input.transactionId === undefined ? found[0]!.transactionId : input.transactionId;
+      const [mode] = await tx.values<[string]>(sql`SELECT count_mode FROM card_installments WHERE id = ${input.id}`).catch(() => [] as [string][]);
+      await refuseEachMonthOnTradeTx(tx, linked, input.countMode ?? (isCountMode(mode?.[0]) ? mode[0] : 'at_purchase'));
+    }
     // The purchase it spread and the one it spreads now, when shared, go out again with their spreads.
     for (const id of new Set([found[0]!.transactionId, input.transactionId === undefined ? found[0]!.transactionId : input.transactionId])) if (id) await captureSpreadingTx(tx, id);
     await tx
@@ -248,6 +275,7 @@ export async function setInstallmentCountMode(database: Database, ws: WorkspaceC
       .from(cardInstallments)
       .where(and(eq(cardInstallments.id, id), eq(cardInstallments.workspaceId, ws.workspaceId)));
     if (!found) throw new InstallmentDbError('Plan not found in this workspace');
+    await refuseEachMonthOnTradeTx(tx, found.transactionId, countMode);
     if (found.transactionId) await captureSpreadingTx(tx, found.transactionId);
     await writeCountModeTx(tx, ws, id, countMode);
     if (await countModeColumnExists(tx)) await ensurePlanCategoryTx(tx, ws, id);
@@ -265,7 +293,13 @@ export async function listInstallmentsTx(db: Db, ws: WorkspaceContext, cardAccou
     ? and(eq(cardInstallments.workspaceId, ws.workspaceId), eq(cardInstallments.cardAccountId, cardAccountId))
     : eq(cardInstallments.workspaceId, ws.workspaceId);
   const rows = await db.select().from(cardInstallments).where(where).orderBy(asc(cardInstallments.createdAt));
-  if (rows.length === 0 || !(await countModeColumnExists(db))) return rows.map((row) => toRow(row));
+  const linked = rows.some((row) => row.transactionId)
+    ? new Set(
+        (await db.values<[string]>(sql`SELECT transaction_id FROM investment_trades WHERE transaction_id IN ${rows.flatMap((row) => (row.transactionId ? [row.transactionId] : []))}`).catch(() => [] as [string][])).map(([id]) => id),
+      )
+    : new Set<string>();
+  const onTrade = (row: (typeof rows)[number]) => row.transactionId !== null && linked.has(row.transactionId);
+  if (rows.length === 0 || !(await countModeColumnExists(db))) return rows.map((row) => toRow(row, 'at_purchase', null, onTrade(row)));
   const withCategory = await planCategoryColumnExists(db);
   const modes = new Map(
     (
@@ -276,7 +310,7 @@ export async function listInstallmentsTx(db: Db, ws: WorkspaceContext, cardAccou
   );
   return rows.map((row) => {
     const read = modes.get(row.id);
-    return toRow(row, isCountMode(read?.mode) ? read.mode : 'at_purchase', read?.category ?? null);
+    return toRow(row, isCountMode(read?.mode) ? read.mode : 'at_purchase', read?.category ?? null, onTrade(row));
   });
 }
 

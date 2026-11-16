@@ -442,10 +442,10 @@ export {
   matchPlanPurchase,
   type PartWeight,
   type PlanPurchaseLine,
-  planPurchaseOutcome,
   planPurchaseWindow,
   purchaseCandidates,
   splitByParts,
+  unlinkedPurchaseOfTotal,
 } from './loans/installments';
 export {
   type CoretaxCode,

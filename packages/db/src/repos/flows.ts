@@ -1,4 +1,4 @@
-import { addMonths, displayAmount, type MonthStartDay, type PartWeight, type PeriodFlows, periodMonthOf, type PlanGroup } from '@expanses/core';
+import { addMonths, displayAmount, installmentSchedule, instalmentsFrom, type MonthStartDay, type PartWeight, type PeriodFlows, periodMonthOf, type PlanGroup } from '@expanses/core';
 import { and, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -10,7 +10,7 @@ import { categoryIdsOfBook, hasBooks } from './books';
 import { monthStartFor } from './month-start';
 import { categoryIdsByKeyAll } from './categories';
 import { resolvedCategoryNeeds } from './category-needs';
-import { plansWithStatementDays, purchaseWholes, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
+import { isInvestmentPlan, plansWithStatementDays, purchaseWholes, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
 import { homeLoanAccountIds } from './loans';
 import { extrasTablesExist } from './transaction-extras';
 import { lineExclusionExists, splitExclusionExists } from './book-splits';
@@ -279,9 +279,12 @@ export async function periodFlows(
   // already sat in a savings pot or at the broker was counted when it moved there, so it is not counted again.
   const savingsAccounts = new Set<string>();
   for (const row of rows) if (row.kind === 'asset' && isSavingsDestination(row.accountId, row.subtype)) savingsAccounts.add(row.accountId);
+  // A buy turned into instalments on the card (TF 139) is put away a month at a time instead, below.
+  const spreadBuys = new Set(plans.filter(({ plan }) => isInvestmentPlan(plan) && plan.transactionId).map(({ plan }) => plan.transactionId!));
   for (const trade of tradeRows) {
     if (trade.kind !== 'buy' || trade.cashAccountId === null) continue;
     if (savingsAccounts.has(trade.cashAccountId)) continue;
+    if (trade.transactionId && spreadBuys.has(trade.transactionId)) continue;
     putAwayMinor += intoRead(trade.grossMinor + trade.feeMinor + trade.taxMinor, trade.occurredOn);
   }
 
@@ -322,10 +325,21 @@ export async function periodFlows(
     }
   }
 
-  // At purchase: an instalment billed in the period is a debt payment, though the purchase was spending once, on the day
-  // it happened. The card balance carries the debt in between.
+  // An investment's plan (TF 139: tied to a buy, or with no purchase and Investment chosen): each instalment is money
+  // put away in the month of its statement date — saving, never spending, never a debt payment — so the buy is put
+  // away once, over the plan's months. With no purchase, only what is billed from the card's start in the app.
   for (const { plan, statementDay, recordsFrom } of plans) {
-    if (plan.countMode === 'each_month') continue;
+    if (!isInvestmentPlan(plan)) continue;
+    for (const bill of instalmentsFrom(installmentSchedule(plan, statementDay), recordsFrom ?? null)) {
+      if (bill.statementOn < range.from || bill.statementOn > range.to) continue;
+      putAwayMinor += intoRead(bill.amountMinor, bill.statementOn);
+    }
+  }
+
+  // At purchase on a spending purchase (only a plan the app has not yet moved to Each month): an instalment billed in
+  // the period is a debt payment, though the purchase was spending once, on its day. The card carries the debt between.
+  for (const { plan, statementDay, recordsFrom } of plans) {
+    if (plan.countMode === 'each_month' || isInvestmentPlan(plan)) continue;
     for (let index = 0; index < plan.months; index += 1) {
       const month = addMonths(plan.firstBilledMonth, index);
       // Billed before the card's records start: inside its opening balance, in months the app was not kept — nowhere.

@@ -876,10 +876,11 @@ describe('card instalments (option C)', () => {
     expect(filterRows([row!], { ...EMPTY_FILTERS, type: 'expense' }, accounts)).toHaveLength(1);
   });
 
-  it('lists an At purchase instalment as a repayment, shown only with Transfers on', () => {
+  it('lists an investment’s instalment as Saving, never spending, shown only with Transfers on', () => {
     const { categoryId: _c, amountBaseMinor: amountMinor, ...rest } = line;
-    const [row] = instalmentRows({ lines: [], repayments: [{ ...rest, amountMinor }] }, accounts, 'IDR');
-    expect(row).toMatchObject({ type: 'transfer', spentMinor: 0, amountMinor: 1_000_000 });
+    const [row] = instalmentRows({ lines: [], repayments: [{ ...rest, amountMinor, investment: true }] }, accounts, 'IDR');
+    expect(row).toMatchObject({ type: 'transfer', spentMinor: 0, amountMinor: 1_000_000, transferName: 'Saving' });
+    expect(row!.instalment).toMatchObject({ investment: true });
     const cashflow = { shared: false, jointIds: new Set<string>() };
     expect(filterRows([row!], EMPTY_FILTERS, accounts, cashflow)).toEqual([]);
     expect(filterRows([row!], { ...EMPTY_FILTERS, showTransfers: true }, accounts, cashflow)).toHaveLength(1);

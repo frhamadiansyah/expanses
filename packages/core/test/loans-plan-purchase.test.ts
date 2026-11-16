@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstBilledMonthFor, instalmentsFrom, matchPlanPurchase, planPurchaseOutcome, planPurchaseWindow, type PlanPurchaseLine, purchaseCandidates } from '../src/index';
+import { firstBilledMonthFor, instalmentsFrom, matchPlanPurchase, planPurchaseWindow, type PlanPurchaseLine, purchaseCandidates, unlinkedPurchaseOfTotal } from '../src/index';
 
 /** Invented: a laptop of Rp 12.000.000 on 10 Nov 2026, 12 instalments first billed December 2026. */
 const line = (transactionId: string, occurredOn: string, owedMinor: number, extra: Partial<PlanPurchaseLine> = {}): PlanPurchaseLine => ({
@@ -65,27 +65,23 @@ describe('matchPlanPurchase', () => {
 });
 
 describe('purchaseCandidates', () => {
+  it('offers an investment bought with the card, never a payment', () => {
+    const kept = purchaseCandidates([line('bond', '2026-11-10', 6_000_000, { spending: false, trade: true }), line('pay', '2026-11-10', 6_000_000, { spending: false })], 'p1');
+    expect(kept.map((l) => l.transactionId)).toEqual(['bond']);
+  });
+
   it('keeps the card’s own charges that no other plan has', () => {
     const kept = purchaseCandidates([line('a', '2026-11-10', 100), line('b', '2026-11-10', -100), line('c', '2026-11-10', 100, { convertedTo: { planId: 'x' } })], 'p1');
     expect(kept.map((l) => l.transactionId)).toEqual(['a']);
   });
 });
 
-describe('planPurchaseOutcome', () => {
-  it('links the one match', () => {
-    expect(planPurchaseOutcome([line('laptop', '2026-11-10', 12_000_000)], plan, '2026-01-01')).toEqual({ kind: 'link', transactionId: 'laptop' });
-  });
-
-  it('counts each month with no purchase when the window ends before the card’s records start', () => {
-    // An 18-of-24 plan first billed June 2025 on a card the app has tracked since 1 Oct 2026.
-    expect(planPurchaseOutcome([], { id: 'p2', totalMinor: 24_000_000, firstBilledMonth: '2025-06' }, '2026-10-01')).toEqual({ kind: 'before-records' });
-  });
-
-  it('leaves a plan whose window is inside the records with none or several', () => {
-    expect(planPurchaseOutcome([], plan, '2026-01-01')).toEqual({ kind: 'unlinked' });
-    expect(planPurchaseOutcome([line('a', '2026-11-10', 12_000_000), line('b', '2026-11-11', 12_000_000)], plan, '2026-01-01')).toEqual({ kind: 'unlinked' });
-    // No records at all: nothing says it is older.
-    expect(planPurchaseOutcome([], plan, null)).toEqual({ kind: 'unlinked' });
+describe('unlinkedPurchaseOfTotal', () => {
+  it('says a plan with no purchase may count twice only while the card holds an untied purchase of its total', () => {
+    expect(unlinkedPurchaseOfTotal([line('laptop', '2026-11-10', 12_000_000)], plan)).toBe(true);
+    expect(unlinkedPurchaseOfTotal([line('laptop', '2026-11-10', 12_000_000, { convertedTo: { planId: 'other' } })], plan)).toBe(false);
+    expect(unlinkedPurchaseOfTotal([line('kopi', '2026-11-10', 50_000)], plan)).toBe(false);
+    expect(unlinkedPurchaseOfTotal([], plan)).toBe(false);
   });
 });
 
