@@ -137,6 +137,32 @@ describe('migration 0117 (income category names)', () => {
     expect(rows.filter((row) => row.key === 'income.gifts')).toEqual([]);
   });
 
+  it('moves a kept name with its row, so a share coming back does not take the rename for a change made while down', async () => {
+    const { database, ws } = await before0117();
+    const personal = await personalBook(database, ws);
+    const rows = await incomeOf(database, personal.id);
+    const salary = rows.find((row) => row.key === 'income.salary')!.id;
+    const bonus = rows.find((row) => row.key === 'income.bonus')!.id;
+    await database.execScript(`
+      UPDATE accounts SET name = 'Tunjangan' WHERE id = '${bonus}';
+      INSERT INTO sync_kept_clocks (book_id, entity, id, field, hlc, value_json) VALUES
+        ('${personal.id}', 'category', '${salary}', 'name', 'h1', '"Salary"'),
+        ('${personal.id}', 'category', '${salary}', 'icon', 'h1', 'null'),
+        ('${personal.id}', 'category', '${bonus}', 'name', 'h1', '"Bonus"');`);
+
+    await migrate(database);
+
+    const kept = await database.db.values<[string, string, string]>(sql`SELECT id, field, value_json FROM sync_kept_clocks ORDER BY id, field`);
+    expect(kept).toEqual(
+      [
+        [salary, 'icon', 'null'],
+        [salary, 'name', '"Salary, wage, or pay"'],
+        // Renamed by hand while the share was down: that change is still told apart, and still goes out.
+        [bonus, 'name', '"Bonus"'],
+      ].sort((a, b) => (a[0]! + a[1]! < b[0]! + b[1]! ? -1 : 1)),
+    );
+  });
+
   it('writes nothing to send', async () => {
     const { database } = await before0117();
     await migrate(database);

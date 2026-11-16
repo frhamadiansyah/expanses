@@ -6,7 +6,7 @@ import { accounts } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
-import { withCapture } from '../sync/capture';
+import { withCapture, withCaptureSuspended } from '../sync/capture';
 import { createAccountTx } from './accounts';
 import { uncategorisedIdOf } from './uncategorised';
 import { namespaceOf, uuidv5 } from '../sync/uuidv5';
@@ -31,7 +31,36 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
   // and neither the keys above nor the other books are lost with it. Run whatever Personal turned out to be — a joined
   // book standing in for Personal must not keep this device's own books from theirs.
   const added = await ensureAddedChildren(database, ws.workspaceId);
+  try {
+    await database.transaction((tx) => withCaptureSuspended(tx, () => renameSyncedFormerDefaultsTx(tx, ws.workspaceId)));
+  } catch (error) {
+    console.warn('The built-in income names could not be updated; trying again at the next open', error);
+  }
   return { keyed: [...result.keyed, ...added.keyed], created: [...result.created, ...added.created] };
+}
+
+/**
+ * Migration 0117's renames, for a row that reached this phone by sync after the migration ran: a phone that joins a
+ * book (or is handed it again) gets the rows as the book's log holds them, and a log written before the owner's phone
+ * upgraded still says "Salary". Each phone renames its own copy as the migration does — nothing sent, no clock moved —
+ * and only where the name was never written after the row was made: its clock is no later than the row's `kind`,
+ * which never changes. A name anyone typed, "Salary" again included, has a later clock and stays. Only actively shared
+ * books: one whose share is down compares its kept values when it comes back, and the migration saw the rest.
+ */
+async function renameSyncedFormerDefaultsTx(tx: Db, workspaceId: string): Promise<void> {
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_books'`)).length === 0) return;
+  for (const [key, former] of Object.entries(FORMER_DEFAULT_NAMES)) {
+    const name = DEFAULT_BY_KEY.get(key)!.name;
+    await tx.run(sql`
+      UPDATE accounts SET name = ${name}
+       WHERE workspace_id = ${workspaceId} AND subtype = 'category' AND kind = 'income' AND system_key = ${key}
+         AND name IN (${sql.join(former.map((old) => sql`${old}`), sql`, `)})
+         AND EXISTS (
+           SELECT 1 FROM sync_field_clocks n
+             JOIN sync_field_clocks k ON k.book_id = n.book_id AND k.entity = n.entity AND k.id = n.id AND k.field = 'kind'
+             JOIN shared_books s ON s.book_id = n.book_id AND s.state = 'active'
+            WHERE n.entity = 'category' AND n.id = accounts.id AND n.field = 'name' AND n.hlc <= k.hlc)`);
+  }
 }
 
 async function ensurePersonalKeys(database: Database, ws: WorkspaceContext): Promise<{ keyed: string[]; created: string[] }> {

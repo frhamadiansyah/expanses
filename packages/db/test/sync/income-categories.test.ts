@@ -115,4 +115,46 @@ describe('income categories in a shared book', () => {
       expect((await incomeIn(d, bookId)).find(([key]) => key === 'income.salary')?.[2]).toBe('Salary, wage, or pay');
     }
   });
+
+  it('a phone that joins after the owner upgraded is given the new names too, with nothing sent for them', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    await asBeforeTheUpgrade(fandri);
+    const bookId = await home.share(fandri);
+    await home.settle();
+    await upgrade(fandri);
+    await home.settle();
+
+    // Dewi's phone, on the new build, joins now: the book's log still holds the names from before the upgrade.
+    await home.join(dewi, fandri);
+    await home.settle();
+    const sentBefore = await outbox(dewi);
+    await ensureCategoryKeys(dewi.database, dewi.ws);
+    expect(await outbox(dewi)).toBe(sentBefore);
+    await home.settle();
+    expect(await names(dewi, bookId)).toEqual(NEW);
+    expect(await incomeIn(dewi, bookId)).toEqual(await incomeIn(fandri, bookId));
+    expect(await skipsOf(dewi.database)).toEqual([]);
+  });
+
+  it('keeps an old name typed again by hand, on a phone that joins later', async () => {
+    const home = new Household();
+    const fandri = await home.device('Fandri');
+    const dewi = await home.device('Dewi');
+    await asBeforeTheUpgrade(fandri);
+    const bookId = await home.share(fandri);
+    await home.settle();
+    await upgrade(fandri);
+    const [, salaryId] = (await incomeIn(fandri, bookId)).find(([key]) => key === 'income.salary')!;
+    await renameAccount(fandri.database, fandri.ws, salaryId, 'Salary');
+    await home.settle();
+
+    await home.join(dewi, fandri);
+    await home.settle();
+    await ensureCategoryKeys(dewi.database, dewi.ws);
+    await ensureCategoryKeys(fandri.database, fandri.ws);
+    await home.settle();
+    for (const d of [fandri, dewi]) expect((await incomeIn(d, bookId)).find(([key]) => key === 'income.salary')?.[2]).toBe('Salary');
+  });
 });
