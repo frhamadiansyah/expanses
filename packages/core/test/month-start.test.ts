@@ -191,3 +191,52 @@ describe('the bills of this month and the Cashflow trend, with months from the 2
     expect(previous).toMatchObject({ key: 'previous', label: 'October', againstMinor: 600, period: '2026-10' });
   });
 });
+
+describe('every month holds exactly one bill month, for every start day and every out day', () => {
+  it('consecutive months take consecutive bill months, and each bill counts on a day inside its month (36 months)', async () => {
+    const { billCountedOn } = await import('../src/index');
+    for (const day of DAYS) {
+      for (let out = 1; out <= 31; out += 1) {
+        let previous: string | null = null;
+        for (let month = '2026-01'; month <= '2028-12'; month = addMonths(month, 1)) {
+          const bill = billMonthIn(month, out, day);
+          if (previous !== null) expect([day, out, month, bill]).toEqual([day, out, month, addMonths(previous, 1)]);
+          previous = bill;
+          expect([day, out, month, periodMonthOf(billCountedOn(bill, out, day), day)]).toEqual([day, out, month, month]);
+        }
+      }
+    }
+  });
+
+  it('from the last day, a bill on the 31st counts by the one on the month’s first day; one on the 30th by the month’s own', async () => {
+    const { billCountedOn } = await import('../src/index');
+    expect(billMonthIn('2026-11', 31, MONTH_START_LAST)).toBe('2026-10');
+    expect(billCountedOn('2026-10', 31, MONTH_START_LAST)).toBe('2026-10-31');
+    expect(billMonthIn('2026-11', 30, MONTH_START_LAST)).toBe('2026-11');
+    expect(billMonthIn('2026-12', 30, MONTH_START_LAST)).toBe('2026-12');
+    // 30 Nov starts December, so November's bill on the 30th counts the day before.
+    expect(billCountedOn('2026-11', 30, MONTH_START_LAST)).toBe('2026-11-29');
+    expect(billMonthIn('2027-03', 29, MONTH_START_LAST)).toBe('2027-03');
+    expect(billCountedOn('2027-02', 29, MONTH_START_LAST)).toBe('2027-02-27');
+    // Starting on the 1st, the out day as always.
+    expect(billCountedOn('2027-02', 30, 1)).toBe('2027-02-28');
+  });
+});
+
+describe('a purchase linked to a bill goes to the bill month of its own month', () => {
+  it('from the 25th, internet on the 27th bought on 3 Nov links its October bill; on the 1st, November’s', async () => {
+    const { linkChoice } = await import('../src/index');
+    const input = { today: '2026-11-16', startsMonth: '2026-01', outDay: 27, payByDay: null, settled: {} };
+    expect(linkChoice('2026-11-03', { ...input, startDay: 25 })).toEqual({ month: '2026-10', ask: false });
+    expect(linkChoice('2026-11-26', { ...input, startDay: 25 })).toEqual({ month: '2026-11', ask: false });
+    expect(linkChoice('2026-11-03', input)).toEqual({ month: '2026-11', ask: false });
+    expect(linkChoice('2026-11-03', { ...input, startDay: 1 })).toEqual({ month: '2026-11', ask: false });
+  });
+
+  it('with a pay-by day, the window is read around that month: out 27 Oct, pay by 5 Nov, paid 3 Nov is October’s', async () => {
+    const { linkChoice } = await import('../src/index');
+    const input = { today: '2026-11-16', startsMonth: '2026-01', outDay: 27, payByDay: 5, settled: {}, startDay: 25 };
+    expect(linkChoice('2026-11-03', input)).toEqual({ month: '2026-10', ask: false });
+    expect(linkChoice('2026-11-28', input)).toEqual({ month: '2026-11', ask: false });
+  });
+});

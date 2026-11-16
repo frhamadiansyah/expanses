@@ -2,7 +2,9 @@ import { addMonths, expenseLines, incomeLines, MONTH_START_LAST, monthPeriod, pe
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  billLinkMonth,
   budgetSheetFor,
+  linkPurchaseToBill,
   categoryTotalsIn,
   createAccount,
   inBook,
@@ -188,6 +190,45 @@ describe('bills count in the month their date falls in', () => {
       (await categoryTotalsIn(h.database, h.ws, 'expense', range.from, range.to, { billMonths: true })).rows.find((r) => r.accountId === h.internet)?.amountBaseMinor ?? 0;
     expect(await of(nov)).toBe(385_000);
     expect(await of(dec)).toBe(0);
+  });
+});
+
+describe('linking a purchase to a bill, and the last day', () => {
+  it('from the 25th, internet on the 27th (no pay-by) bought on 3 Nov links its October bill, counted in November', async () => {
+    const h = await household();
+    const bill = await saveExpenseTemplate(h.database, h.ws, {
+      name: 'Kabel Nusantara', categoryAccountId: h.internet, moneyAccountId: h.bank.id, amountMinor: 385_000, dayOfMonth: 27, payByDay: null, startsMonth: '2026-10',
+    });
+    await setBookMonthStart(h.database, h.ws, h.book.id, 25);
+    const tx = await postTransaction(h.database, h.ws, {
+      occurredOn: '2026-11-03', description: 'Kabel Nusantara', lines: expenseLines({ categoryAccountId: h.internet, paymentAccountId: h.bank.id, amountMinor: 385_000, currency: 'IDR' }),
+    });
+    const choice = await billLinkMonth(h.database, h.ws, { templateId: bill, purchasedOn: '2026-11-03', today: '2026-11-16' });
+    expect(choice).toMatchObject({ month: '2026-10', ask: false });
+    await linkPurchaseToBill(h.database, h.ws, { templateId: bill, billMonth: choice.month, transactionId: tx, today: '2026-11-16' });
+    expect((await monthlyBills(h.database, h.ws, '2026-11-16')).find((b) => b.id === bill)).toMatchObject({ billMonth: '2026-10', state: 'paid' });
+    const nov = monthPeriod('2026-11', 25);
+    const totals = await categoryTotalsIn(h.database, h.ws, 'expense', nov.from, nov.to, { billMonths: true });
+    expect(totals.rows.find((r) => r.accountId === h.internet)?.amountBaseMinor).toBe(385_000);
+    // On the 1st the same purchase is November's.
+    await setBookMonthStart(h.database, h.ws, h.book.id, 1);
+    expect(await billLinkMonth(h.database, h.ws, { templateId: bill, purchasedOn: '2026-11-03', today: '2026-11-16' })).toMatchObject({ month: '2026-11' });
+  });
+
+  it('from the last day, November’s bill on the 30th, paid late, counts in November (31 Oct – 29 Nov), as the bills page has it', async () => {
+    const h = await household();
+    const bill = await saveExpenseTemplate(h.database, h.ws, {
+      name: 'Sewa gudang', categoryAccountId: h.internet, moneyAccountId: h.bank.id, amountMinor: 640_000, dayOfMonth: 30, payByDay: null, startsMonth: '2026-11',
+    });
+    await setBookMonthStart(h.database, h.ws, h.book.id, MONTH_START_LAST);
+    await recordBillPayments(h.database, h.ws, { paidOn: '2026-12-02', payments: [{ templateId: bill, billMonth: '2026-11', amountMinor: 640_000 }] });
+    const of = async (month: string) => {
+      const { from, to } = monthPeriod(month, MONTH_START_LAST);
+      return (await categoryTotalsIn(h.database, h.ws, 'expense', from, to, { billMonths: true })).rows.find((r) => r.accountId === h.internet)?.amountBaseMinor ?? 0;
+    };
+    expect(await of('2026-11')).toBe(640_000);
+    expect(await of('2026-12')).toBe(0);
+    expect((await monthlyBills(h.database, h.ws, '2026-11-20')).find((b) => b.id === bill)).toMatchObject({ billMonth: '2026-11', state: 'paid' });
   });
 });
 

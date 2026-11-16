@@ -79,6 +79,7 @@ export { isNotCountedKey, NOT_COUNTED_KEY, NOT_COUNTED_LINE } from './ledger/not
 export { transferName, type TransferName, type TransferSide } from './ledger/transfer-name';
 export { addMonths, daysInMonth, isoDate, lastNMonths, monthOf, monthRange } from './reports/periods';
 export {
+  billCountedOn,
   billMonthIn,
   isMonthStartDay,
   MONTH_START_LAST,

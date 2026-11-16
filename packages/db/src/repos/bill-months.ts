@@ -40,7 +40,13 @@ export const BILL_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
  */
 export const attributedOn = (startDay: MonthStartDay = 1): SQL => {
   // The bill's out day in its bill month, clamped to the month's end.
-  const outDay = sql`min(date(bp.bill_month || '-01', '+' || (et.day_of_month - 1) || ' days'), date(bp.bill_month || '-01', '+1 month', '-1 day'))`;
+  const clamped = sql`min(date(bp.bill_month || '-01', '+' || (et.day_of_month - 1) || ' days'), date(bp.bill_month || '-01', '+1 month', '-1 day'))`;
+  // With months from the last day, a bill not on the 31st that falls on its month's last day counts the day before:
+  // inside the month its bill month counts in (`billCountedOn`, core), not on the first day of the next.
+  const outDay =
+    monthStartOf(startDay) === MONTH_START_LAST
+      ? sql`(CASE WHEN et.day_of_month < 31 AND ${clamped} = date(bp.bill_month || '-01', '+1 month', '-1 day') THEN date(${clamped}, '-1 day') ELSE ${clamped} END)`
+      : clamped;
   // Starting on the 1st, the month it was paid in is its calendar month — the test as it always was, word for word.
   // Otherwise ("Month starts on", 0118) the payment and the bill must fall in the same one of the workspace's months.
   const sameMonth =

@@ -220,7 +220,10 @@ export function latestLinkMonth(input: BillMonthsInput): string {
  * or the settled one, asked. Bought before the bill started: its first occurrence, asked.
  */
 export function linkChoice(purchasedOn: string, input: BillMonthsInput): { month: string; ask: boolean } {
-  const month = purchasedOn.slice(0, 7);
+  // A monthly bill's months are read from the bill month that counts in the purchase's own month — the calendar
+  // month, or by the workspace's "Month starts on": from the 25th, a purchase on 3 Nov is November's, whose bill on
+  // the 27th is October's. A yearly bill's occurrences are read by their dates, so it keeps the calendar month.
+  const month = input.yearlyMonth == null ? thisBillMonth(purchasedOn, input.outDay, input.startDay) : purchasedOn.slice(0, 7);
   if (input.yearlyMonth == null) {
     // Bought before the bill started: its first month, asked — an earlier month is linked only when chosen.
     if (month < input.startsMonth) return { month: input.startsMonth, ask: true };

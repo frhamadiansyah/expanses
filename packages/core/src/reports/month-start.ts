@@ -99,15 +99,32 @@ export function monthStartLabel(startDay: MonthStartDay): string {
 }
 
 /**
- * The calendar month (a bill month) of the occurrence of a day-of-month that falls inside a named month: a bill out
- * on the 27th counts in "November" (25 Oct – 24 Nov) by its 27 October bill. The bill keeps its day and its months;
- * only which of them is "this month's" moves. With 1 it is the named month itself. When no occurrence falls inside
- * (a bill on the 30th in a month from 31 Oct to 29 Nov), the first one after it.
+ * The calendar month (a bill month) that counts in a named month: a bill out on the 27th counts in "November"
+ * (25 Oct – 24 Nov) by its 27 October bill. The bill keeps its day and its months; only which of them is "this
+ * month's" moves. Every named month holds exactly one bill month, and the next named month the next one.
+ *
+ * From the 2nd to the 28th that is the occurrence whose date falls inside the month's dates — always exactly one, since
+ * every month has at least 28 days. With 1 it is the named month itself. On the last day the dates cannot decide it (a
+ * month from 31 Oct to 29 Nov holds no bill on the 30th, the next holds two), so a bill on the 31st counts by the one
+ * out on the month's first day — the last day of the month before — and any other by the named month's own.
  */
 export function billMonthIn(month: string, outDay: number, startDay: MonthStartDay = 1): string {
   const day = monthStartOf(startDay);
   if (day === 1) return month;
+  if (day === MONTH_START_LAST) return outDay >= MONTH_START_LAST ? addMonths(month, -1) : month;
   const { from } = monthPeriod(month, day);
   const calendar = from.slice(0, 7);
   return startIn(calendar, outDay) >= from ? calendar : addMonths(calendar, 1);
+}
+
+/**
+ * The day a bill month's bill counts on in a month's totals: its out day (the month's last day when shorter) — except,
+ * on the last day of the month, a bill not on the 31st whose day is the month's last: that day starts the next month,
+ * so it counts the day before, inside the month `billMonthIn` gives it to. A bill paid inside that month counts on the
+ * day paid instead (`attributedOn` in the database).
+ */
+export function billCountedOn(billMonth: string, outDay: number, startDay: MonthStartDay = 1): string {
+  const out = startIn(billMonth, outDay);
+  if (monthStartOf(startDay) !== MONTH_START_LAST || outDay >= MONTH_START_LAST) return out;
+  return out === startIn(billMonth, MONTH_START_LAST) ? dayBefore(out) : out;
 }
