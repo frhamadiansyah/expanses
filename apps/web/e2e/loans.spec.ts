@@ -229,8 +229,20 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   // The bin is gone: the row is the way in, and it carries a chevron.
   await expect(plan.getByRole('button', { name: 'Remove iBox Grand Indonesia' })).toHaveCount(0);
 
-  // Tapping the row opens the plan; a new total and fewer months change its monthly figure and its last month.
-  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  // Tapping the row opens the plan's own page (card instalments, option C): its progress, Count spending, its months.
+  await plan.getByRole('button', { name: 'Open iBox Grand Indonesia' }).click();
+  const planPage = page.getByTestId('instalment-plan-page');
+  await expect(planPage).toBeVisible();
+  await expect(planPage.getByTestId('instalment-progress')).toContainText(/\d+ of 12 paid/);
+  // A new plan counts each month; with no purchase chosen the footer says where.
+  await expect(planPage.getByRole('radio', { name: 'Each month' })).toHaveAttribute('aria-checked', 'true');
+  await expect(planPage).toContainText('Under Uncategorised, as no purchase is chosen.');
+  await planPage.getByRole('radio', { name: 'At purchase' }).click();
+  await expect(planPage.getByRole('radio', { name: 'At purchase' })).toHaveAttribute('aria-checked', 'true');
+  await expect(planPage).toContainText('At purchase: no purchase is chosen, so nothing counts as spending.');
+
+  // ✎ opens the plan to change; a new total and fewer months change its monthly figure and its last month.
+  await page.getByRole('button', { name: 'Edit plan' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit instalment plan' });
   const endsBefore = (await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]!;
   await expect(edit.getByLabel('What it was')).toHaveValue('iBox Grand Indonesia');
@@ -245,24 +257,25 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await edit.getByLabel('Months').fill('6');
   await edit.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(edit).toHaveCount(0);
-  await expect(plan).toContainText(/\d+ of 6 paid/);
-  await expect(plan).toContainText(/Rp\s1\.500\.000 a month/);
-  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  await expect(planPage.getByTestId('instalment-progress')).toContainText(/\d+ of 6 paid/);
+  await expect(planPage.getByTestId('instalment-progress')).toContainText(/Rp\s1\.500\.000 a month/);
+  await page.getByRole('button', { name: 'Edit plan' }).click();
   expect((await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
   await edit.getByRole('button', { name: 'Close' }).click();
 
   // Removing asks first, in an alert; Not now keeps it, Remove plan takes it away and leaves the purchase alone.
-  await plan.getByRole('button', { name: 'Edit iBox Grand Indonesia' }).click();
+  await page.getByRole('button', { name: 'Edit plan' }).click();
   await edit.getByRole('button', { name: 'Remove plan' }).click();
   const alert = page.getByRole('alertdialog', { name: 'Remove plan' });
   await expect(alert).toContainText('The purchase it came from stays as it is.');
   await alert.getByRole('button', { name: 'Not now' }).click();
-  await expect(held.getByTestId('card-instalment')).toHaveCount(1);
+  await expect(planPage).toBeVisible();
   await edit.getByRole('button', { name: 'Remove plan' }).click();
   await alert.getByRole('button', { name: 'Remove plan' }).click();
   await expect(edit).toHaveCount(0);
-  // The last plan gone, the box goes from the card page too.
-  await expect(held).toHaveCount(0);
+  // Back where the plan was opened from, the card's page: the last plan gone, the box goes too.
+  await expect(planPage).toHaveCount(0);
+  await expect(page.getByTestId('card-instalments')).toHaveCount(0);
 });
 
 test('a loan in another currency is printed in its own currency, and the monthly total is converted', async ({ page }) => {

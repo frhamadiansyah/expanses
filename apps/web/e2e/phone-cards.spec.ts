@@ -257,7 +257,7 @@ test.describe('in the dark', () => {
   });
 });
 
-test('an instalment plan opens from its row to be changed or removed; the bin is gone', async ({ page }) => {
+test('an instalment plan opens its own page from its row, to be changed or removed; the bin is gone', async ({ page }) => {
   await openCard(page, { name: 'BCA KrisFlyer Visa Signature' });
   await page.goto('/wallet');
   await walletCard(page, 'BCA KrisFlyer Visa Signature').click();
@@ -276,20 +276,24 @@ test('an instalment plan opens from its row to be changed or removed; the bin is
   await expect(plan).toContainText(/\d+ of 12 paid/);
   await expect(plan).toContainText(/Rp\s1\.000\.000 a month/);
   await expect(plan.getByRole('button', { name: 'Remove Sofa' })).toHaveCount(0);
-  // The end month is the plan's own sheet's to say, no longer the row's.
-  await plan.getByRole('button', { name: 'Edit Sofa' }).click();
+  // The row opens the plan's own page; ✎ there opens the plan's sheet, which says the end month.
+  await plan.getByRole('button', { name: 'Open Sofa' }).click();
+  const planPage = page.getByTestId('instalment-plan-page');
+  await page.getByRole('button', { name: 'Edit plan' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit instalment plan' });
   const endsBefore = (await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1];
   await edit.getByLabel(/^Total/).fill('9000000');
   await edit.getByLabel('Months').fill('6');
   await edit.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(edit).toHaveCount(0);
-  await expect(plan).toContainText(/\d+ of 6 paid/);
-  await expect(plan).toContainText(/Rp\s1\.500\.000 a month/);
+  await expect(planPage.getByTestId('instalment-progress')).toContainText(/\d+ of 6 paid/);
+  await expect(planPage.getByTestId('instalment-progress')).toContainText(/Rp\s1\.500\.000 a month/);
 
-  await plan.getByRole('button', { name: 'Edit Sofa' }).click();
+  await page.getByRole('button', { name: 'Edit plan' }).click();
   expect((await edit.textContent())!.match(/Ends\s*([A-Z][a-z]+ \d{4})/)![1]).not.toBe(endsBefore);
   await edit.getByRole('button', { name: 'Remove plan' }).click();
   await page.getByRole('alertdialog', { name: 'Remove plan' }).getByRole('button', { name: 'Remove plan' }).click();
+  // Back on the card's page it was opened from.
+  await expect(planPage).toHaveCount(0);
   await expect(held).toHaveCount(0);
 });

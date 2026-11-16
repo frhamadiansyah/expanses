@@ -1,6 +1,6 @@
 import { installmentSchedule } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { countSpendingFooter } from './plan-view';
+import { countSpendingFooter, planProgress } from './plan-view';
 
 // Invented: a laptop of Rp 12.000.000, 12 × Rp 1.000.000 from December 2026, statement day the 18th.
 const plan = { totalMinor: 12_000_000, months: 12, monthlyMinor: 1_000_000, firstBilledMonth: '2026-12', rateBps: 0, conversionFeeMinor: 0, earnsPoints: true };
@@ -25,5 +25,26 @@ describe('countSpendingFooter', () => {
     expect(rp(countSpendingFooter({ ...plan, countMode: 'at_purchase', transactionId: 't1' }, schedule, 'IDR'))).toBe(
       'At purchase: the whole Rp 12.000.000 counts on the day of the purchase; each instalment repays the card.',
     );
+  });
+});
+
+describe('planProgress', () => {
+  const statuses = schedule.map((bill) => ({ ...bill, of: 12, status: (bill.number <= 2 ? 'paid' : bill.number === 3 ? 'billed' : 'upcoming') as 'paid' | 'billed' | 'upcoming' }));
+
+  it('counts what is paid and what is left, and lists the next one first, then newest first', () => {
+    const progress = planProgress(12_000_000, statuses);
+    expect(progress).toMatchObject({ paid: 2, billed: 3, of: 12, leftMinor: 10_000_000, endsMonth: '2027-11' });
+    expect(progress.rows.map((row) => [row.number, row.status])).toEqual([
+      [4, 'upcoming'],
+      [3, 'billed'],
+      [2, 'paid'],
+      [1, 'paid'],
+    ]);
+  });
+
+  it('lists only the next one before anything is billed', () => {
+    const progress = planProgress(12_000_000, statuses.map((row) => ({ ...row, status: 'upcoming' as const })));
+    expect(progress.rows.map((row) => row.number)).toEqual([1]);
+    expect(progress.leftMinor).toBe(12_000_000);
   });
 });

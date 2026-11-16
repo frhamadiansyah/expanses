@@ -1,4 +1,5 @@
 import { coverStatement, type Cycle, installmentSchedule, nextStatementStart, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
+import { cardInstallments } from '../schema-loans';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -351,6 +352,45 @@ function statementCoverOf(pool: readonly PoolLine[], cycle: Cycle, today: string
     out[key] = { coveredMinor: c.coveredMinor, leftMinor: c.leftMinor, whole: c.whole, creditKey: c.credit?.key ?? null };
   }
   return out;
+}
+
+/** One instalment of a plan and where it stands: billed on a statement that is paid, billed, or still to come. */
+export interface PlanInstalmentStatus {
+  number: number;
+  of: number;
+  statementOn: string;
+  amountMinor: number;
+  status: 'paid' | 'billed' | 'upcoming';
+}
+
+/**
+ * Each instalment of one plan and where it stands on a day: upcoming until its statement date, billed from then, and
+ * paid once the card's payments cover it on that statement (`statementCoverOf`, oldest first — what the statement's own
+ * ✓ says). A plan tied to no purchase on the card is on no statement, so its instalments are billed or upcoming only.
+ */
+export async function planInstalmentStatuses(database: Database, ws: WorkspaceContext, planId: string, today: string): Promise<PlanInstalmentStatus[]> {
+  const db = database.db;
+  const [found] = await db.select({ cardAccountId: cardInstallments.cardAccountId }).from(cardInstallments).where(and(eq(cardInstallments.id, planId), eq(cardInstallments.workspaceId, ws.workspaceId)));
+  if (!found) throw new StatementError('NOT_FOUND', 'That plan is not in this workspace');
+  const plan = (await listInstallmentsTx(db, ws, found.cardAccountId)).find((row) => row.id === planId)!;
+  const [terms] = await db
+    .select({ statementDay: cardTerms.statementDay })
+    .from(cardTerms)
+    .where(and(eq(cardTerms.accountId, plan.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+  const statementDay = terms?.statementDay ?? 1;
+  const all = await billedLines(db, ws, plan.cardAccountId);
+  const onStatement = all.some((line) => line.instalment?.planId === planId);
+  const pool = onStatement ? poolLinesOf(all) : [];
+  const covers = new Map<string, Record<string, StatementCover>>();
+  return installmentSchedule(plan, statementDay).map((bill) => {
+    let status: PlanInstalmentStatus['status'] = bill.statementOn > today ? 'upcoming' : 'billed';
+    if (status === 'billed' && onStatement) {
+      const cycle = statementCycleFor(bill.statementOn, statementDay);
+      if (!covers.has(cycle.start)) covers.set(cycle.start, statementCoverOf(pool, cycle, today));
+      if (covers.get(cycle.start)![`${planId}#${bill.number}`]?.whole) status = 'paid';
+    }
+    return { number: bill.number, of: plan.months, statementOn: bill.statementOn, amountMinor: bill.amountMinor, status };
+  });
 }
 
 /** Sets or clears the date the bank posted a card transaction. A purchase cannot be posted before it was made. */

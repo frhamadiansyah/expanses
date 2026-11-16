@@ -1,4 +1,4 @@
-import { formatMinor, installmentSchedule, monthName } from '@expanses/core';
+import { formatMinor, installmentSchedule, isoDate, monthName } from '@expanses/core';
 import { setInstallmentCountMode } from '@expanses/db';
 import { getRouteApi } from '@tanstack/react-router';
 import { useBack } from '../../app/BackHeader';
@@ -7,21 +7,23 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, ReadOnlyRow } from '../../ui/native';
+import { InsetGroup, InsetRow, ProgressBar, ReadOnlyRow } from '../../ui/native';
 import { CountSpendingRow, usePlanEditor } from '../loans/InstallmentList';
-import { countSpendingFooter } from '../loans/plan-view';
-import { useCardLines, useInstallments, useStatementDay } from '../loans/queries';
+import { countSpendingFooter, planProgress } from '../loans/plan-view';
+import { useCardLines, useInstallments, usePlanInstalments, useStatementDay } from '../loans/queries';
 import { useMonthStart } from '../workspaces/queries';
 import { CardScreen, useCardPage } from './card-page';
-import { TextLine } from './rows';
+import { Line, SUBTITLE, TextLine, TITLE } from './rows';
 
 const route = getRouteApi('/cards/$cardId/settings/instalments/$planId');
 
+const STATUS_WORD = { paid: 'paid', billed: 'billed', upcoming: 'upcoming' } as const;
 const dayMonthYear = (iso: string) => `${Number(iso.slice(8, 10))} ${monthName(iso.slice(0, 7), 'short')} ${iso.slice(0, 4)}`;
 
 /**
- * One instalment plan on a page of its own (card instalments, option C): its figures and how its spending counts
- * (At purchase | Each month). The instalment rows on the statement and on Cashflow open here; ✎ changes the plan.
+ * One instalment plan on a page of its own (card instalments, option C): how far it is — paid of its months, what is
+ * left, when it ends — how its spending counts (At purchase | Each month), and each of its instalments, newest first,
+ * paid, billed or upcoming. The instalment rows on the statement and on Cashflow open here; ✎ changes the plan.
  */
 export function CardInstalmentPlanPage() {
   const { cardId, planId } = route.useParams();
@@ -30,6 +32,8 @@ export function CardInstalmentPlanPage() {
   const { page, gate } = useCardPage(cardId);
   const plans = useInstallments(cardId);
   const plan = (plans.data ?? []).find((row) => row.id === planId);
+  const today = isoDate();
+  const statuses = usePlanInstalments(planId, today);
   const statementDay = useStatementDay(cardId).data ?? 1;
   const monthStart = useMonthStart();
   const lines = useCardLines(cardId, !!plan?.transactionId);
@@ -48,6 +52,7 @@ export function CardInstalmentPlanPage() {
     );
   }
   const currency = page.currency;
+  const progress = planProgress(plan.totalMinor, statuses.data ?? []);
   const purchase = plan.transactionId ? (lines.data ?? []).find((line) => line.transactionId === plan.transactionId && !line.instalment) : undefined;
   const footer = countSpendingFooter(plan, installmentSchedule(plan, statementDay), currency, monthStart);
 
@@ -74,6 +79,22 @@ export function CardInstalmentPlanPage() {
     >
       <div data-testid="instalment-plan-page">
         <InsetGroup>
+          <Line testId="instalment-progress">
+            <span className="flex w-full items-baseline justify-between gap-[8px]">
+              <span className={TITLE}>
+                {progress.paid} of {progress.of} paid
+              </span>
+              <span className="tabular shrink-0 text-[15px] leading-[20px] text-[var(--ph-ink)]">{formatMinor(progress.leftMinor, currency)} left</span>
+            </span>
+            <ProgressBar className="my-[6px] w-full" currentMinor={progress.paid} targetMinor={progress.of} label={`${plan.description}: ${progress.paid} of ${progress.of} paid`} />
+            <span className={`block ${SUBTITLE}`}>
+              {progress.endsMonth ? `Ends ${monthName(progress.endsMonth, 'long')} ${progress.endsMonth.slice(0, 4)} · ` : ''}
+              {formatMinor(plan.monthlyMinor, currency)} a month
+            </span>
+          </Line>
+        </InsetGroup>
+
+        <InsetGroup>
           <ReadOnlyRow label="Amount" value={formatMinor(plan.totalMinor, currency)} />
           <ReadOnlyRow label="Months" value={String(plan.months)} />
           <ReadOnlyRow label="Each month" value={formatMinor(plan.monthlyMinor, currency)} />
@@ -85,6 +106,22 @@ export function CardInstalmentPlanPage() {
         </InsetGroup>
         <ErrorBox error={error} />
 
+        <InsetGroup header="Instalments">
+          {progress.rows.length === 0 && <TextLine tone="ink-3">None yet</TextLine>}
+          {progress.rows.map((row) => (
+            <InsetRow
+              key={row.number}
+              testId="plan-instalment"
+              title={`${row.number} of ${row.of}`}
+              subtitle={`${dayMonthYear(row.statementOn)} · ${STATUS_WORD[row.status]}`}
+              value={formatMinor(row.amountMinor, currency)}
+              valueTone="ink"
+              // The statement it is billed on, where the payment that covers it is.
+              to="/cards/$cardId/statement"
+              params={{ cardId }}
+            />
+          ))}
+        </InsetGroup>
         {editor.node}
       </div>
     </CardScreen>

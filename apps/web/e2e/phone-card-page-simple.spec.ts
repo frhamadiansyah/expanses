@@ -102,8 +102,9 @@ test('a plan added and removed from the Instalments page shows and hides the box
   await sheet.getByRole('button', { name: 'Save plan' }).click();
   await expect(sheet).toHaveCount(0);
 
-  // Removed on the Instalments page itself: back to None, and the card page loses the box.
-  await page.getByRole('button', { name: 'Edit Sofa' }).click();
+  // Removed from the plan's own page: back to the Instalments page saying None, and the card page loses the box.
+  await page.getByRole('button', { name: 'Open Sofa' }).click();
+  await page.getByRole('button', { name: 'Edit plan' }).click();
   await page.getByRole('dialog', { name: 'Edit instalment plan' }).getByRole('button', { name: 'Remove plan' }).click();
   await page.getByRole('alertdialog', { name: 'Remove plan' }).getByRole('button', { name: 'Remove plan' }).click();
   await expect(page.getByTestId('card-instalment')).toHaveCount(0);

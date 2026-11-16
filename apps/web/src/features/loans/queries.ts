@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { cardStatement, cardStatementLines, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
+import { cardStatement, cardStatementLines, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, planInstalmentStatuses, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { cycleBack, dueDateAfter } from '../cards/statement-dates';
@@ -80,6 +80,13 @@ export function useStatementDay(cardAccountId: string) {
 export function useCardLines(cardAccountId: string, enabled = true) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['card-statement-lines', ws.workspaceId, cardAccountId], enabled, queryFn: () => cardStatementLines(database, ws, cardAccountId) });
+}
+
+/** Each instalment of one plan, paid, billed or still to come, on a day. */
+export function usePlanInstalments(planId: string, date?: string) {
+  const { database, ws } = useApp();
+  const onDate = date ?? isoDate();
+  return useQuery({ queryKey: ['plan-instalments', ws.workspaceId, planId, onDate], queryFn: () => planInstalmentStatuses(database, ws, planId, onDate) });
 }
 
 export function useInstallmentTotals(date?: string) {

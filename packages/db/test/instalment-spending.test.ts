@@ -217,3 +217,22 @@ describe('At purchase', () => {
     expect(total(await spentIn(h.database, h.ws, DEC))).toBe(640_000);
   });
 });
+
+describe('where each instalment stands', () => {
+  it('is upcoming, then billed on its statement date, then paid once a payment covers that statement', async () => {
+    const { planInstalmentStatuses, transferLines } = { ...(await import('../src/index')), ...(await import('@expanses/core')) };
+    const h = await laptop();
+    const before = await planInstalmentStatuses(h.database, h.ws, h.planId, '2026-12-10');
+    expect(before.map((row) => row.status)).toEqual(Array(12).fill('upcoming'));
+    const billed = await planInstalmentStatuses(h.database, h.ws, h.planId, '2026-12-20');
+    expect(billed.slice(0, 2).map((row) => [row.number, row.statementOn, row.status])).toEqual([
+      [1, '2026-12-18', 'billed'],
+      [2, '2027-01-18', 'upcoming'],
+    ]);
+    // The December statement (Rp 1.640.000) paid in full on 2 Jan.
+    await postTransaction(h.database, h.ws, { occurredOn: '2027-01-02', description: 'Pay the card', lines: transferLines({ fromAccountId: h.bank.id, toAccountId: h.card.id, amountMinor: 1_640_000, currency: 'IDR' }) });
+    const paid = await planInstalmentStatuses(h.database, h.ws, h.planId, '2027-01-05');
+    expect(paid[0]!.status).toBe('paid');
+    expect(paid[1]!.status).toBe('upcoming');
+  });
+});
