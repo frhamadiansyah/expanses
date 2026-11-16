@@ -256,6 +256,35 @@ describe('essential and lifestyle', () => {
     expect(sheet.essentialActualMinor + sheet.lifestyleActualMinor).toBe(sheet.spendingActualMinor);
   });
 
+  it('keeps Debts & savings spending apart from essential and lifestyle; the three add back to what was spent', () => {
+    const sheet = budgetSheet({
+      month: '2026-09',
+      categories: [
+        { id: 'groceries', parentId: null, name: 'Groceries' },
+        { id: 'dining', parentId: null, name: 'Dining' },
+        { id: 'cover', parentId: null, name: 'Cover' },
+      ],
+      amounts: [
+        { accountId: 'groceries', amountBaseMinor: 3_200_000 },
+        { accountId: 'dining', amountBaseMinor: 900_000 },
+        { accountId: 'cover', amountBaseMinor: 1_450_000 },
+      ],
+      caps: [],
+      incomePlanMinor: 0,
+      incomeActualMinor: 0,
+      debtPaymentsPlanMinor: 0,
+      debtPaymentsActualMinor: 0,
+      savings: [],
+      eventSpendingMinor: 0,
+      eventsInCaps: false,
+      needs: { groceries: 'essential', dining: 'lifestyle', cover: 'debts_savings' },
+    });
+    expect(sheet.debtsSavingsActualMinor).toBe(1_450_000);
+    expect(sheet.lifestyleActualMinor).toBe(900_000);
+    expect(sheet.essentialActualMinor).toBe(3_200_000);
+    expect(sheet.essentialActualMinor + sheet.lifestyleActualMinor + sheet.debtsSavingsActualMinor).toBe(sheet.spendingActualMinor);
+  });
+
   it('counts everything essential when no needs are given', () => {
     const sheet = budgetSheet({
       month: '2026-09',

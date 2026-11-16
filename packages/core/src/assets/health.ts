@@ -132,6 +132,8 @@ export function emergencyOutgoingMinor(
   flows: Pick<PeriodFlows, 'spendingMinor' | 'lifestyleSpendingMinor' | 'debtPrincipalMinor'>,
   base: EmergencyBase,
 ): number {
+  // The essential base leaves out lifestyle only: spending marked Debts & savings (insurance, donations, loan interest)
+  // goes on in an emergency, so it is sized with the essentials (owner, 16 Nov 2026).
   const spending = base === 'essential' ? flows.spendingMinor - flows.lifestyleSpendingMinor : flows.spendingMinor;
   return spending + flows.debtPrincipalMinor;
 }
