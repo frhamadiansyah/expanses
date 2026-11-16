@@ -28,7 +28,7 @@ async function month() {
   const { database, ws } = await setupDb();
   const bank = await createAccount(database, ws, { name: 'Bank A', kind: 'asset', subtype: 'bank', currency: 'IDR' });
   const pot = await createAccount(database, ws, { name: 'Pot B', kind: 'asset', subtype: 'savings', currency: 'IDR' });
-  const salary = await categoryId(database, ws, 'Salary');
+  const salary = await categoryId(database, ws, 'Salary, wage, or pay');
   const restaurants = await categoryId(database, ws, 'Restaurants');
   const groceries = await categoryId(database, ws, 'Groceries');
   const pay = (on: string, description: string, category: string, amount: number) =>

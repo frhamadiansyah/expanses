@@ -108,7 +108,7 @@ describe('migration 0117 (income category names)', () => {
     const before = { personal: await incomeOf(database, personal.id), business: await incomeOf(database, business) };
     expect(open(before.personal)).toEqual(OLD_LIST);
 
-    expect(await migrate(database)).toEqual([117]);
+    expect(await migrate(database)).toEqual(MIGRATIONS.map((m) => m.version).filter((v) => v >= 117));
 
     for (const [bookId, rows] of [[personal.id, before.personal], [business, before.business]] as const) {
       const after = await incomeOf(database, bookId);
