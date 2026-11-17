@@ -32,3 +32,11 @@ export function limitUsage(owedMinor: number, limitMinor: number | null, unbille
     usedPct: pct(used),
   };
 }
+
+/**
+ * The one figure on a card's back. A card owes, or the bank holds a credit on it — never both — so the label names
+ * which: "Outstanding" for what is owed, "Credit" for money paid past it. No second line is needed for either.
+ */
+export function cardBackFigure(owedMinor: number, creditMinor: number): { label: 'Outstanding' | 'Credit'; minor: number } {
+  return creditMinor > 0 ? { label: 'Credit', minor: creditMinor } : { label: 'Outstanding', minor: owedMinor };
+}

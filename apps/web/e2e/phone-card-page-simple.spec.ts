@@ -26,7 +26,7 @@ test('the card page keeps the tile, the buttons and the latest; fee, rewards and
 
   // The card page: no fee, rewards or points rows (the points are on the card's back); no Instalments box while there is no plan.
   await showCardBack(page);
-  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Owed now');
+  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Outstanding');
   await expect(page.getByTestId('card-annual-fee')).toHaveCount(0);
   await expect(page.getByTestId('card-rewards-setup')).toHaveCount(0);
   await expect(page.getByTestId('this-statement-points')).toHaveCount(0);

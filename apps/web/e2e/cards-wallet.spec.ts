@@ -44,9 +44,9 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   await expect(page.getByRole('heading', { name: 'Alpha Card', exact: true })).toBeFocused();
   const raised = wall.locator('[data-place="raised"]');
   expect(Math.round((await raised.boundingBox())!.width)).toBe(380);
-  // Turned over, the card's back is the card's own box: Owed now and the points on it.
+  // Turned over, the card's back is the card's own box: Outstanding and the points on it.
   await showCardBack(page);
-  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Owed now');
+  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Outstanding');
   await expect.poll(async () => Math.round((await page.getByTestId('tile-left-to-pay').boundingBox())!.width)).toBe(380);
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Points', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible();

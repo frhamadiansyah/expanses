@@ -29,7 +29,7 @@ export async function openWalletCard(page: Page, name: string) {
   await expect(page).toHaveURL(/\/cards\/[^/]+$/);
 }
 
-/** The card's hero is the card: face up to begin with, Owed now on the back, and nothing of it left under the card. */
+/** The card's hero is the card: face up to begin with, Outstanding on the back, and nothing of it left under the card. */
 export async function flipHero(page: Page, name: string) {
   await openWalletCard(page, name);
   const raised = page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]');
@@ -49,7 +49,7 @@ export async function flipHero(page: Page, name: string) {
   await turn.click();
   const back = page.getByTestId('tile-left-to-pay');
   await expect(back).toBeVisible();
-  await expect(back).toContainText('Owed now');
+  await expect(back).toContainText('Outstanding');
   await expect(back.getByTestId('tile-unpaid-balance')).toContainText('412.000');
   await expect(back.getByTestId('limit-bar')).toHaveCount(0);
   // No bonus yet and no rewards on this card: the slot says so rather than showing a ring.
