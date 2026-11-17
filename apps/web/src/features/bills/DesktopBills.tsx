@@ -703,7 +703,7 @@ function CalendarBox({
         <span className="flex items-center gap-[2px]">
           <button
             type="button"
-            aria-label="Calendar: previous month"
+            aria-label="Calendar: month before"
             onClick={() => onMonth(addMonths(month, -1))}
             className={STEP}
           >
@@ -711,7 +711,7 @@ function CalendarBox({
           </button>
           <button
             type="button"
-            aria-label="Calendar: next month"
+            aria-label="Calendar: month after"
             onClick={() => onMonth(addMonths(month, 1))}
             className={STEP}
           >
