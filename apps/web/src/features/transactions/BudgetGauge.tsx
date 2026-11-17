@@ -52,6 +52,7 @@ export function BudgetGauge({
   words = MONTH_WORDS,
   last,
   monthStart = 1,
+  plain = false,
 }: {
   progress: BudgetProgress;
   /** The money the figures are in: the workspace's own on a month, the owner's on an event. */
@@ -64,6 +65,11 @@ export function BudgetGauge({
   last?: { label: string; value: string };
   /** The day the workspace's months start on; the days left count to that month's last day. */
   monthStart?: number;
+  /**
+   * The arc alone, in the app's colour tokens (light and dark): no figures under it, the page saying them beside it —
+   * the wide screen's Budget box (Mac Budget). Left out, the gauge is the phone's, exactly as it was.
+   */
+  plain?: boolean;
 }) {
   const size = 320;
   const height = 182;
@@ -77,28 +83,29 @@ export function BudgetGauge({
   const used = progress.capsMinor > 0 ? Math.min(1, progress.spentMinor / progress.capsMinor) : 0;
   const left = progress.capsMinor - progress.spentMinor;
   // Red is for the month as a whole being over, not for one category: a single overspend is said in its own row.
-  const tone = left < 0 ? '#b91c1c' : '#16a34a';
+  const tone = plain ? (left < 0 ? 'var(--ph-alarm)' : 'var(--ph-up)') : left < 0 ? '#b91c1c' : '#16a34a';
   const [knobX, knobY] = point(centre, middle, radius, from + used * span);
   const days = daysLeft(month, today, monthStart);
 
   return (
     <div>
-      <svg viewBox={`0 0 ${size} ${height}`} className="mx-auto block w-full max-w-[300px]" role="img" aria-label={`${formatMinor(Math.abs(left), currency)} ${(left < 0 ? words.over : words.left).toLowerCase()}`}>
-        <path d={arc(centre, middle, radius, from, from + span)} stroke="#e8ecf1" strokeWidth={width} strokeLinecap="round" fill="none" />
+      <svg viewBox={`0 0 ${size} ${plain ? middle + width : height}`} className={plain ? 'block w-full' : 'mx-auto block w-full max-w-[300px]'} role="img" aria-label={`${formatMinor(Math.abs(left), currency)} ${(left < 0 ? words.over : words.left).toLowerCase()}`}>
+        <path d={arc(centre, middle, radius, from, from + span)} stroke={plain ? 'var(--ph-track)' : '#e8ecf1'} strokeWidth={width} strokeLinecap="round" fill="none" />
         <path d={arc(centre, middle, radius, from, from + Math.max(0.02, used * span))} stroke={tone} strokeWidth={width} strokeLinecap="round" fill="none" />
-        <circle cx={knobX} cy={knobY} r={7.5} fill="#ffffff" stroke={tone} strokeWidth={4} />
-        <text x={centre} y={middle - 44} textAnchor="middle" className="fill-slate-500 text-[11.5px]">
+        <circle cx={knobX} cy={knobY} r={7.5} fill={plain ? 'var(--ph-surface)' : '#ffffff'} stroke={tone} strokeWidth={4} />
+        <text x={centre} y={middle - 44} textAnchor="middle" className={plain ? 'fill-[var(--ph-ink-3)] text-[15px]' : 'fill-slate-500 text-[11.5px]'}>
           {left < 0 ? words.over : words.left}
         </text>
-        <text x={centre} y={middle - 16} textAnchor="middle" className="text-[25px] font-bold" fill={tone}>
+        <text x={centre} y={plain ? middle - 12 : middle - 16} textAnchor="middle" className={plain ? 'text-[29px] font-semibold' : 'text-[25px] font-bold'} fill={plain && left >= 0 ? 'var(--ph-ink)' : tone}>
           {formatMinor(Math.abs(left), currency)}
         </text>
-        {progress.overCount > 0 && (
+        {!plain && progress.overCount > 0 && (
           <text x={centre} y={middle} textAnchor="middle" className="text-[11px] font-semibold" fill="#b91c1c">
             {words.overCount(progress.overCount)}
           </text>
         )}
       </svg>
+      {!plain && (
       <div className="flex text-center">
         {[
           [words.set, formatMinor(progress.capsMinor, currency)],
@@ -111,6 +118,7 @@ export function BudgetGauge({
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
