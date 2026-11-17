@@ -12,7 +12,7 @@ import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { formToPost, settledAmount } from '../transactions/tx-form';
 import { ratesForSave } from '../transactions/tx-save';
-import { bankRateText, currencyName, moveDescription, moveDraft, moveView, pocketsOf, swapPockets, withPockets } from './pockets';
+import { currencyName, figureFace, figureFromTyped, moveDescription, moveDraft, moveView, pocketsOf, swapPockets, withPockets } from './pockets';
 import { MovePocketRow } from './MovePocketRow';
 import { useHeldRates } from './queries';
 
@@ -99,7 +99,8 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     <div className={SCREEN}>
       <LargeTitle title="Move between pockets" back={parent.name} onBack={back} />
       <ErrorBox error={error} />
-      <InsetGroup header="From">
+      {/* Layout B (owner, 17 Nov 2026): one box, the two pockets its rows, the ⇅ on the hairline between them. */}
+      <InsetGroup className="!mb-[22px]">
         <MovePocketRow
           word="From"
           current={choice(from)}
@@ -107,37 +108,35 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
           onPick={(id) => choose({ moneyId: id })}
           figure={{
             'aria-label': `Leaves ${view.leaves.currency}`,
-            value: view.leaves.value,
-            onChange: (e) => set({ amount: e.target.value }),
+            value: figureFace(view.leaves.value, view.leaves.currency),
+            onChange: (e) => set({ amount: figureFromTyped(e.target.value, view.leaves.currency) }),
             onBlur: () => settle('amount', view.leaves.value, view.leaves.currency),
           }}
         />
-      </InsetGroup>
-      <div className="flex justify-center pb-[2px]">
-        <button
-          type="button"
-          aria-label="Swap"
-          onClick={() => {
-            setNeedsRate(null);
-            setDraft(swapPockets);
-          }}
-          className="ph-focus ph-tap flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-2)]"
-        >
-          <ArrowUpDown size={15} aria-hidden />
-        </button>
-      </div>
-      <InsetGroup header="To">
         <MovePocketRow
           word="To"
           current={choice(to)}
           choices={choices}
           onPick={(id) => choose({ toId: id })}
+          onLine={
+            <button
+              type="button"
+              aria-label="Swap"
+              onClick={() => {
+                setNeedsRate(null);
+                setDraft(swapPockets);
+              }}
+              className="ph-focus ph-tap flex h-[32px] w-[32px] items-center justify-center rounded-full border-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-surface)] text-[var(--ph-ink-2)]"
+            >
+              <ArrowUpDown size={15} aria-hidden />
+            </button>
+          }
           figure={
             view.arrives
               ? {
                   'aria-label': `Arrives ${view.arrives.currency}`,
-                  value: view.arrives.value,
-                  onChange: (e) => set({ toAmount: e.target.value }),
+                  value: figureFace(view.arrives.value, view.arrives.currency),
+                  onChange: (e) => set({ toAmount: figureFromTyped(e.target.value, view.arrives!.currency) }),
                   onBlur: () => settle('toAmount', view.arrives!.value, view.arrives!.currency),
                 }
               : null
@@ -147,8 +146,8 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       <InsetGroup>
         <ReadOnlyRow
           label="Rate"
-          value={bankRateText(view.bankRate, view.leaves.currency, view.arrives?.currency ?? view.leaves.currency)}
-          info="What arrives for one unit that leaves, from the two figures typed."
+          value={view.rateText}
+          info="The bank’s rate, worked out from the two figures typed."
         />
         <TextRow label="Date" type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} />
         {needsRate && (

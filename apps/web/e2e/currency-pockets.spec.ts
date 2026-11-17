@@ -103,7 +103,7 @@ test('moving between pockets moves what the screen shows, with nothing under the
   await pickPocket(page, 'To', 'SGD');
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
-  await expect(page.getByText('1 USD = 1,2760 SGD')).toBeVisible();
+  await expect(page.getByText('1 USD = 1,276 SGD', { exact: true })).toBeVisible();
   // An exchange's gain or loss counts nowhere (owner, 17 Nov 2026): no Cost and no Exchange loss under the figures.
   await expect(page.getByText(/Exchange (loss|gain)|recorded as/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'About Cost' })).toHaveCount(0);
