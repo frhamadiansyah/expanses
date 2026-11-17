@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cx } from '../../ui';
+import { SidePeek } from '../../ui/native/SidePeek';
 import { useTwoTap } from '../../ui/two-tap';
 
 /** One transaction as the side peek shows it, worked out by the page from the row. */
@@ -24,7 +24,6 @@ export interface PeekView {
 
 const BUTTON = 'rounded-[6px] border px-3 py-[4px] text-[13px] disabled:opacity-40';
 const PLAIN = 'border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
-const STEP = 'flex h-[22px] w-[22px] items-center justify-center rounded-[5px] text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)] hover:text-[var(--ph-ink)] disabled:opacity-30';
 
 /** Delete asks twice, in place, as the receipt's and the old table's do: the state dies with the button. */
 function DeletePeek({ busy, onConfirm }: { busy: boolean; onConfirm: () => void }) {
@@ -73,28 +72,7 @@ export function CashflowPeek({
   onDelete: () => void;
 }) {
   return (
-    <aside
-      aria-label="Transaction details"
-      data-testid="cashflow-peek"
-      style={{ top }}
-      className="ph-peek fixed right-0 bottom-0 z-20 flex w-[330px] max-w-full flex-col overflow-y-auto border-l border-[var(--ph-chevron)] bg-[var(--ph-surface)] pt-[6px] shadow-[-12px_0_30px_rgba(0,0,0,0.12)]"
-    >
-      <h2 className="flex items-start justify-between gap-2 px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
-        <span className="min-w-0 break-words" data-testid="peek-title">
-          {view.title}
-        </span>
-        <span className="flex shrink-0 items-center gap-[2px]">
-          <button type="button" aria-label="Previous transaction" title="Previous (↑)" disabled={first} onClick={() => onStep(-1)} className={STEP}>
-            <ChevronUp size={15} aria-hidden />
-          </button>
-          <button type="button" aria-label="Next transaction" title="Next (↓)" disabled={last} onClick={() => onStep(1)} className={STEP}>
-            <ChevronDown size={15} aria-hidden />
-          </button>
-          <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={cx(STEP, 'ml-1')}>
-            <X size={15} aria-hidden />
-          </button>
-        </span>
-      </h2>
+    <SidePeek top={top} label="Transaction details" testId="cashflow-peek" title={view.title} titleTestId="peek-title" noun="transaction" first={first} last={last} onStep={onStep} onClose={onClose}>
       <div className="px-[14px] pb-[10px]">
         <div data-testid="peek-amount" className={cx('text-[22px] font-semibold tabular-nums', view.income ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink)]')}>
           {view.amount}
@@ -119,6 +97,6 @@ export function CashflowPeek({
         </button>
         {view.canDelete && <DeletePeek key={view.id} busy={busy} onConfirm={onDelete} />}
       </div>
-    </aside>
+    </SidePeek>
   );
 }

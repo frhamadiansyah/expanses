@@ -46,3 +46,4 @@ export { type TreePlace, TreeLines, TreeStem } from './TreeLines';
 export { iconCentre } from './metrics';
 export { Notice, NOTICE_BUTTON, NoticeButton } from './Notice';
 export { noticeLook, type NoticeKind, type NoticeLook } from './notice-look';
+export { SidePeek } from './SidePeek';
