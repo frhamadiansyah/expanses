@@ -10,6 +10,7 @@
  */
 import {
   type Candidate,
+  CARD_CASHBACK,
   type CaptureLine,
   cardTopUpLines,
   expenseLines,
@@ -546,6 +547,8 @@ async function guessFromCard(database: Database, ws: WorkspaceContext, cardAccou
     WHERE e.workspace_id = ${ws.workspaceId}
       AND t.status = 'posted'
       AND a.kind = 'expense'
+      -- Cashback & Rewards is money back into the card, never a purchase's category: no evidence for a row.
+      AND (a.system_key IS NULL OR a.system_key <> ${CARD_CASHBACK.key})
       AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
       ${inBook}
     ORDER BY t.occurred_on DESC, t.created_at DESC

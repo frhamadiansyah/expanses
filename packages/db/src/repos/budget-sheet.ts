@@ -1,4 +1,4 @@
-import { type BudgetSheet, budgetSheet, isUncategorisedKey, monthPeriod } from '@expanses/core';
+import { type BudgetSheet, budgetSheet, isCardCashbackKey, isUncategorisedKey, monthPeriod } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -98,11 +98,16 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
   // Uncategorised carries no cap and has no line here (it is a wait for a category, not a category); what is in it
   // still counts as spent.
   const unfiled = new Set(categories.filter((category) => isUncategorisedKey(category.systemKey)).map((category) => category.id));
+  // Cashback & Rewards into a credit card has no line and takes no cap either: it lowers what was spent, never a
+  // category's figure, so Groceries keeps its full amount against its budget.
+  const cashback = new Set(categories.filter((category) => isCardCashbackKey(category.systemKey)).map((category) => category.id));
+  const lined = (id: string) => !unfiled.has(id) && !cashback.has(id);
   const sheet = budgetSheet({
     month,
-    categories: categories.filter((category) => !unfiled.has(category.id)),
-    amounts: amounts.rows.filter((row) => !unfiled.has(row.accountId)),
+    categories: categories.filter((category) => lined(category.id)),
+    amounts: amounts.rows.filter((row) => lined(row.accountId)),
     unfiledMinor: amounts.rows.filter((row) => unfiled.has(row.accountId)).reduce((sum, row) => sum + row.amountBaseMinor, 0),
+    cashbackMinor: amounts.rows.filter((row) => cashback.has(row.accountId)).reduce((sum, row) => sum + row.amountBaseMinor, 0),
     caps: budgets.map((row) => ({ categoryId: row.categoryAccountId, amountMinor: row.amountMinor })),
     incomePlanMinor: income.amountMinor,
     incomeActualMinor: flows.incomeMinor,

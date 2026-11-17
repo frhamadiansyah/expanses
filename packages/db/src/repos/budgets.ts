@@ -1,4 +1,4 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetShare, isUncategorisedKey, perMonthMinor, resolveCaps, uuidv7 } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetShare, isCardCashbackKey, isUncategorisedKey, perMonthMinor, resolveCaps, uuidv7 } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -77,6 +77,8 @@ export async function spendingCategoryRefusal(db: Db, ws: WorkspaceContext, cate
   if (account.subtype !== 'category' || account.kind !== 'expense') return 'NOT_A_CATEGORY';
   // Uncategorised only holds what waits for a category: a cap on it would budget for not choosing one.
   if (isUncategorisedKey(account.systemKey)) return 'NOT_A_CATEGORY';
+  // Cashback & Rewards into a credit card is money back, never spending to cap or to call essential or lifestyle.
+  if (isCardCashbackKey(account.systemKey)) return 'NOT_A_CATEGORY';
   return (await otherBook(db, ws, categoryAccountId)) ? 'OTHER_BOOK' : null;
 }
 

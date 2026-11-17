@@ -26,6 +26,7 @@ export * from './repos/deposit-automation';
 export * from './repos/categories';
 export * from './repos/category-start';
 export { uncategorisedCategory, uncategorisedIdOf, uncategorisedTransactionIds } from './repos/uncategorised';
+export { cardCashbackCategory, cardCashbackIdOf } from './repos/card-cashback';
 export * from './repos/category-looks';
 export * as categoryColoursSchema from './schema-category-colours';
 export * from './repos/mcc';
