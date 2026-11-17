@@ -1128,7 +1128,7 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   await expect(andi.getByTestId('wallet-filter')).toContainText('Spending money · 2');
   await expect(faces).toHaveCount(2);
   await andi.getByTestId('wallet-cards-row').click();
-  await expect(andi.getByTestId('wallet-filter')).toContainText('Owed on cards · 1');
+  await expect(andi.getByTestId('wallet-filter')).toContainText('Outstanding on cards · 1');
   await expect(grid).toContainText('Rina Card');
   await shot(andi, info, 'wj2-grid');
 
