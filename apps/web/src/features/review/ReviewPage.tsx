@@ -7,6 +7,7 @@ import {
   moveIntoSharedEvent,
   ownerScope,
   sharedEventOf,
+  type DraftEdit,
   type DraftRow,
   dismissDraft,
   editDraft,
@@ -23,7 +24,7 @@ import { Check, Camera, Images, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBackToCashflow } from '../../app/from-search';
-import { usePhone } from '../../app/use-phone';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { captureBytes, native } from '../../capture/native';
 import { nextWaitingStatement, onWaitingStatement } from '../../capture/statements';
 import { useScanReceipt } from '../../capture/use-scan';
@@ -36,13 +37,14 @@ import { type ToastIcon, UndoToast } from '../../ui/UndoToast';
 import { CategoryOptions } from '../cards/options';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
 import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
-import { answerPatch, captureRowView, effectiveCategory, type ReadingWithLines } from './capture-view';
+import { answerPatch, asksForSourceAccount, captureRowView, effectiveCategory, type ReadingWithLines, sourceSide } from './capture-view';
 import { CaptureTypeMark } from './CaptureTypeMark';
 import { CaptureViewer } from './CaptureViewer';
 import { DraftDays } from './DraftDays';
 import { DraftSheet } from './DraftSheet';
 import { keepsPicture } from './keep-picture';
-import { corrections, draftPatch, foreignPair, quickCharge, recordsOnForm, savedWhere } from './draft-form';
+import { type Correction, corrections, draftPatch, foreignPair, quickCharge, recordsOnForm, savedWhere } from './draft-form';
+import { DesktopReview } from './DesktopReview';
 import { useCards } from '../cards/card-queries';
 import { chargedFigure, type FormDraft } from '../transactions/tx-form';
 import { useCaptureSources, useDraftCategoryGuesses, useDrafts } from './queries';
@@ -55,6 +57,9 @@ import type { SwipeAction, SwipeHint } from '../../ui/SwipeRow';
 /** What a draft's account was charged, in the account's own currency, for a figure read in another one. */
 type Charged = { amountMinor: number; currency: string };
 
+/** What a record gesture came to: posted (and as what), or stopped at a question — the form, the set-aside sheet, an error. */
+type RecordOutcome = { kind: 'recorded'; transactionId: string; charged: Charged | null } | { kind: 'stopped' };
+
 /**
  * Captured spending, waiting to be confirmed.
  *
@@ -62,7 +67,8 @@ type Charged = { amountMinor: number; currency: string };
  * change its statement layout without warning: a broken parser fills this queue with nonsense, which
  * is a nuisance, rather than the books, which would be a problem.
  *
- * A desktop reads the queue as a table, every column in place, exactly as it did before. A phone reads it as rows
+ * A wide screen works the queue as Mac Review (`DesktopReview`): a table filled in place, with a side peek, every write
+ * one of this page's own. A phone held sideways reads it as a table, every column in place. A phone reads it as rows
  * — a chevron into the sheet that holds what a row had no width for, and the two answers themselves one gesture
  * away: right to record, left to discard. The gesture is only safe because it asks what the Record button asks —
  * a purchase that takes promised money still gets its question first, and a draft with no account or category has
@@ -75,6 +81,10 @@ export function ReviewPage() {
   const queryClient = useQueryClient();
   const resolveRates = useResolveRates();
   const phone = usePhone();
+  // A wide screen — the Mac app, a desktop browser — works the queue as Mac Review's table (`DesktopReview`); a phone,
+  // held either way, keeps its own.
+  const sideways = useSideways();
+  const desk = !phone && !sideways;
   const drafts = useDrafts();
   const guesses = useDraftCategoryGuesses(drafts.data ?? []).data;
   const accounts = useAccounts().data ?? [];
@@ -185,12 +195,12 @@ export function ReviewPage() {
    * and transfers do not, because nothing about them is spending. The picture's fate is settled afterwards — see
    * `settlePicture`: the app's camera's picture is kept with the purchase, any other let go (`keepsPicture`).
    */
-  async function record(draft: DraftRow, opts: { undoable?: boolean } = {}) {
+  async function record(draft: DraftRow, opts: { undoable?: boolean; silent?: boolean } = {}): Promise<RecordOutcome> {
     setError(null);
     // Captured in event mode for a shared event: recording moves it into the event, so it is done on the form, seen.
     if (recordsOnForm(draft, sharedSummaries)) {
       setEditing(draft.id);
-      return;
+      return { kind: 'stopped' };
     }
     const keepPhoto = keepsPicture(draft);
     // A category the row showed from the merchant's history is written onto the draft before it is recorded.
@@ -200,7 +210,7 @@ export function ReviewPage() {
         await editDraft(database, ws, draft.id, { categoryAccountId: guessed });
       } catch (e) {
         setError(e);
-        return;
+        return { kind: 'stopped' };
       }
     }
     /*
@@ -213,7 +223,7 @@ export function ReviewPage() {
       const charge = quickCharge(draft, pair, await dayRates(draft, pair), ws.baseCurrency);
       if (charge.kind === 'ask') {
         setEditing(draft.id);
-        return;
+        return { kind: 'stopped' };
       }
       charged = { amountMinor: charge.amountMinor, currency: charge.currency };
     }
@@ -225,19 +235,83 @@ export function ReviewPage() {
         asks = await asksAboutSetAside(database, ws, door);
       } catch (e) {
         setError(e);
-        return;
+        return { kind: 'stopped' };
       }
       if (asks) {
         setAsking({ id: draft.id, door: door!, undoable: opts.undoable ?? false, keepPhoto, charged });
-        return;
+        return { kind: 'stopped' };
       }
     }
+    let posted: string | null = null;
     await run(draft.id, async () => {
       const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, { setAside: null, keepPhoto, charged });
+      posted = transactionId;
       await settlePicture(draft, transactionId, keptImage);
       // A charge nobody saw before it posted is always said, with the way back, whichever button recorded it — and so is
       // where a transfer went, since Cashflow does not list it. A transfer with a fee is listed, and recorded as it always was.
-      if (opts.undoable || charged || savedWhere(draft, accounts, cards) !== null) resolved(draft, 'recorded', transactionId, undefined, charged);
+      // Several recorded at once (`recordReady`) say it all in one toast instead.
+      if (!opts.silent && (opts.undoable || charged || savedWhere(draft, accounts, cards) !== null)) resolved(draft, 'recorded', transactionId, undefined, charged);
+    });
+    return posted === null ? { kind: 'stopped' } : { kind: 'recorded', transactionId: posted, charged };
+  }
+
+  /**
+   * Mac Review's "Record N ready": each ready draft recorded in turn by `record`, exactly as its own Record would, and
+   * one toast for them all, whose Undo takes every one of them back. A draft that asks a question (the set-aside sheet,
+   * the form for a rate) stops the walk there, with its question open; what is left stays ready.
+   */
+  async function recordReady(ready: readonly DraftRow[]) {
+    const done: { draft: DraftRow; transactionId: string; charged: Charged | null }[] = [];
+    for (const draft of ready) {
+      const outcome = await record(draft, { silent: true });
+      if (outcome.kind !== 'recorded') break;
+      done.push({ draft, transactionId: outcome.transactionId, charged: outcome.charged });
+    }
+    if (done.length === 0) return;
+    if (done.length === 1) {
+      resolved(done[0]!.draft, 'recorded', done[0]!.transactionId, undefined, done[0]!.charged);
+      return;
+    }
+    void expiring.current?.();
+    expiring.current = null;
+    // A charge nobody saw, and where a transfer went, are said here too (`resolved` says them for one).
+    const said = done.flatMap(({ draft, charged }) => {
+      const where = savedWhere(draft, accounts, cards);
+      return [...(charged ? [`${draft.description} · ${formatMinor(charged.amountMinor, charged.currency)}`] : []), ...(where ? [`${draft.description}: ${where}`] : [])];
+    });
+    setToast({
+      icon: 'recorded',
+      text: `Recorded ${done.length} captures`,
+      ...(said.length > 0 ? { detail: said.join(' · ') } : {}),
+      undo: async () => {
+        for (const { draft, transactionId } of [...done].reverse()) await undo(draft, transactionId);
+      },
+    });
+  }
+
+  /**
+   * A field changed in place on Mac Review (the peek, a table cell): written onto the draft as the draft sheet writes
+   * the form back before it records (`recordForm`) — each field corrected against what was read shown to the source
+   * first, so the next capture from it is read right.
+   */
+  function editInPlace(draft: DraftRow, patch: DraftEdit, learn: readonly Correction[]) {
+    void run(draft.id, async () => {
+      for (const { field, value } of learn) await learnFromCorrection(database, draft.id, field, value).catch(() => undefined);
+      await editDraft(database, ws, draft.id, patch);
+    });
+  }
+
+  /**
+   * An account picked in place. On the side its source speaks for, while nobody has answered for that source, the pick
+   * is the draft sheet's "Which account is this?" answer (`onAnswerSource`): remembered for every capture from it.
+   */
+  function pickAccount(draft: DraftRow, side: 'money' | 'to', accountId: string, cardId: string | null) {
+    void run(draft.id, async () => {
+      const source = sourceOf(draft);
+      const field = side === 'to' ? 'toAccountId' : 'accountId';
+      if (source && asksForSourceAccount(draft, source) && sourceSide(draft) === field) await setSourceAccount(database, source.id, accountId, ws.workspaceId);
+      // A card is a way to pay: it says nothing about money arriving or moving (`draftPatch`).
+      await editDraft(database, ws, draft.id, side === 'to' ? { toAccountId: accountId } : { accountId, ...(draft.kind === 'expense' ? { cardId } : {}) });
     });
   }
 
@@ -435,8 +509,9 @@ export function ReviewPage() {
   );
 
   if (editingDraft) {
+    // Mac Review draws its page edge to edge; the draft sheet keeps the column every form sits in.
     return (
-      <div className={SCREEN}>
+      <div className={cx(SCREEN, desk && 'mx-auto max-w-4xl')}>
         <ErrorBox error={error} />
         <DraftSheet
           // A different draft is a different form: nothing typed for one may carry over to the next.
@@ -464,6 +539,35 @@ export function ReviewPage() {
         />
         {overlays}
       </div>
+    );
+  }
+
+  if (desk) {
+    return (
+      <DesktopReview
+        drafts={list}
+        loaded={drafts.isSuccess}
+        error={error ?? scan.error ?? drafts.error}
+        busy={busy}
+        guesses={guesses}
+        sourceOf={sourceOf}
+        sharedEvents={sharedSummaries}
+        accounts={accounts}
+        cards={cards}
+        bookName={openBook?.name ?? 'This workspace'}
+        scan={{ busy: scan.busy, scan: () => void scan.scan() }}
+        actions={{
+          onRecord: (draft) => void record(draft, { undoable: true }),
+          onRecordReady: (ready) => void recordReady(ready),
+          onDiscard: (draft) => void discard(draft, true),
+          onOpenForm: openDraft,
+          onView: (draft) => setViewing({ draft, focus: null }),
+          onEdit: editInPlace,
+          onPickAccount: pickAccount,
+        }}
+      >
+        {overlays}
+      </DesktopReview>
     );
   }
 

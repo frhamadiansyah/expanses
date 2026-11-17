@@ -2,9 +2,10 @@ import { countPendingDrafts, type DraftRow, guessCategoryFromHistory, listDrafts
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
-export function useDrafts(status: DraftRow['status'] = 'pending') {
+/** The drafts in one state: the queue (pending), or what it became — recorded or discarded — read only when asked for. */
+export function useDrafts(status: DraftRow['status'] = 'pending', enabled = true) {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['drafts', ws.workspaceId, status], queryFn: () => listDrafts(database, ws, status) });
+  return useQuery({ queryKey: ['drafts', ws.workspaceId, status], queryFn: () => listDrafts(database, ws, status), enabled });
 }
 
 /** How many captures are waiting, for the badge that says there is anything to do. */

@@ -261,7 +261,7 @@ export function footerStatus(input: {
  * history (`?account=`), which keeps its list, and not on a phone, held either way, where each is the phone's own page
  * in the column.
  */
-const EDGE_TO_EDGE_WIDE = ['/transactions', '/budget', '/bills'];
+const EDGE_TO_EDGE_WIDE = ['/transactions', '/budget', '/bills', '/review'];
 export function edgeToEdge(pathname: string, phoneShell: boolean, accountScoped = false): boolean {
   return pathname === '/overview' || (!phoneShell && !accountScoped && EDGE_TO_EDGE_WIDE.includes(pathname));
 }

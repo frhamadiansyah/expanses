@@ -148,3 +148,62 @@ export function queueKey(key: string): QueueKey {
       return null;
   }
 }
+
+/** How a capture came in, said after its time in the peek: "from a notification", "from an import". */
+const FROM_PHRASES: Record<CaptureType, string> = {
+  sms: 'from an SMS',
+  whatsapp: 'from WhatsApp',
+  notification: 'from a notification',
+  email: 'from an email',
+  screenshot: 'from a screenshot',
+  photo: 'from a photo',
+  nfc: 'from a card tap',
+};
+const SOURCE_PHRASES: Record<DraftRow['source'], string> = {
+  csv: 'from an import',
+  manual: 'added by hand',
+  voice: 'from a voice note',
+  receipt: 'from a receipt',
+  email: 'from an email',
+  notification: 'from a notification',
+  screen: 'from a screenshot',
+  photo: 'from a photo',
+};
+
+export function fromPhrase(draft: Pick<DraftRow, 'source'>, type: CaptureType | null): string {
+  return type ? FROM_PHRASES[type] : SOURCE_PHRASES[draft.source];
+}
+
+/**
+ * The table's columns that step aside, by the room its box has, so no figure is cut: the account it was paid with goes
+ * last (it is a question the row asks), then When, the row's Discard (the peek and ⌫ still discard), and From first —
+ * the peek says both where a capture came from and when. Zero (not measured yet) shows them all.
+ */
+export interface DeskColumns {
+  paidWith: boolean;
+  when: boolean;
+  discard: boolean;
+  from: boolean;
+}
+
+/** Tick, Description at its narrowest, Amount, Category and Record: the columns that always stay. */
+const BASE_WIDTH = 30 + 150 + 100 + 150 + 76;
+const STEP_ASIDE: readonly (readonly [keyof DeskColumns, number])[] = [
+  ['paidWith', 150],
+  ['when', 110],
+  ['discard', 70],
+  ['from', 100],
+];
+
+export function deskColumns(width: number): DeskColumns {
+  const shown: DeskColumns = { paidWith: true, when: true, discard: true, from: true };
+  if (width === 0) return shown;
+  let used = BASE_WIDTH;
+  let room = true;
+  for (const [key, needs] of STEP_ASIDE) {
+    room = room && used + needs <= width;
+    shown[key] = room;
+    if (room) used += needs;
+  }
+  return shown;
+}

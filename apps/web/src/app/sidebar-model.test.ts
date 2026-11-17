@@ -198,7 +198,7 @@ describe('the status line at the foot', () => {
 });
 
 describe('which pages run edge to edge', () => {
-  it('Overview always; Cashflow and Budget on a wide screen only, never in the phone shell or for one account', () => {
+  it('Overview always; Cashflow, Budget, Bills and Review on a wide screen only, never in the phone shell or for one account', () => {
     expect(edgeToEdge('/overview', false)).toBe(true);
     expect(edgeToEdge('/overview', true)).toBe(true);
     expect(edgeToEdge('/transactions', false)).toBe(true);
@@ -212,5 +212,7 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/bills', false)).toBe(true);
     expect(edgeToEdge('/bills', true)).toBe(false);
     expect(edgeToEdge('/bills/yearly', false)).toBe(false);
+    expect(edgeToEdge('/review', false)).toBe(true);
+    expect(edgeToEdge('/review', true)).toBe(false);
   });
 });

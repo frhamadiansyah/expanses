@@ -1,6 +1,6 @@
 import type { DraftRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { deskState, fromTag, newestFirst, paidWithOf, peekAfterGone, queueCounts, queueKey, whenText } from './review-desk-model';
+import { deskColumns, deskState, fromPhrase, fromTag, newestFirst, paidWithOf, peekAfterGone, queueCounts, queueKey, whenText } from './review-desk-model';
 
 const draft = (over: Partial<DraftRow> = {}): DraftRow => ({
   id: 'd1',
@@ -145,5 +145,31 @@ describe('queueKey', () => {
     expect(queueKey('ArrowDown')).toBe('down');
     expect(queueKey('Escape')).toBe('close');
     expect(queueKey('a')).toBeNull();
+  });
+});
+
+describe('fromPhrase', () => {
+  it('says how a capture came in, after its time', () => {
+    expect(fromPhrase({ source: 'notification' }, 'notification')).toBe('from a notification');
+    expect(fromPhrase({ source: 'notification' }, 'sms')).toBe('from an SMS');
+    expect(fromPhrase({ source: 'csv' }, null)).toBe('from an import');
+    expect(fromPhrase({ source: 'manual' }, null)).toBe('added by hand');
+  });
+});
+
+describe('deskColumns', () => {
+  it('shows every column on a wide box, and before it is measured', () => {
+    expect(deskColumns(0)).toEqual({ paidWith: true, when: true, discard: true, from: true });
+    // A 1280 window: the sidebar takes 250 and the page's sides 40.
+    expect(deskColumns(990)).toEqual({ paidWith: true, when: true, discard: true, from: true });
+  });
+
+  it('beside the peek, From steps aside first, then Discard and When; Paid with stays longest', () => {
+    expect(deskColumns(900)).toEqual({ paidWith: true, when: true, discard: true, from: false });
+    // A 1440 window with the peek open (322 of it).
+    expect(deskColumns(828)).toEqual({ paidWith: true, when: true, discard: false, from: false });
+    // A 1280 window with the peek open.
+    expect(deskColumns(668)).toEqual({ paidWith: true, when: false, discard: false, from: false });
+    expect(deskColumns(600)).toEqual({ paidWith: false, when: false, discard: false, from: false });
   });
 });
