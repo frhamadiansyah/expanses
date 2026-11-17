@@ -152,6 +152,8 @@
   --mac-accent: #0a7cff;
   --mac-zebra: #f7f7f9;
   --mac-head: #fafafa;
+  /* A row or bar picked out in the accent's wash (Mac Bills: the calendar's chosen day in the table, the ticked bar). */
+  --mac-accent-wash: #eef5ff;
 
   /*
    * Whose an item is, in a household's Net worth (joint-net-worth §8.2; owner rings, 12 Nov): the ring round a row's
@@ -242,6 +244,7 @@
     --mac-accent: #0a84ff;
     --mac-zebra: rgb(255 255 255 / 0.035);
     --mac-head: #232325;
+    --mac-accent-wash: rgb(10 132 255 / 0.16);
 
     /* The owner rings as iOS lifts the same hues for a dark ground. */
     --owner-blue: #0a84ff;

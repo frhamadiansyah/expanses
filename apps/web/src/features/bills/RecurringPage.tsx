@@ -6,11 +6,13 @@ import { ListChecks, Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useBackToCashflow, useFrom } from '../../app/from-search';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { useAccounts, useInvalidateAll, useIsBookShared, useMemberPayers } from '../../lib/queries';
 import { usePurchasePayers } from '../sharing/queries';
 import { ErrorBox, Money } from '../../ui';
 import { type CornerAction, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PushedTitle, SCREEN } from '../../ui/native';
 import { BillRow } from './BillRow';
+import { DesktopBills } from './DesktopBills';
 import { useAllPlanInstalments, useInstallments } from '../loans/queries';
 import { instalmentLines } from './instalment-rows';
 import { MonthlyInstalments } from './MonthlyInstalments';
@@ -114,11 +116,21 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
 }
 
 /**
+ * Bills: on a wide screen (the Mac app, a desktop browser) the Mac page (`DesktopBills`); on a phone, held either way,
+ * the phone's own page, exactly as it was.
+ */
+export function RecurringPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopBills /> : <PhoneRecurringPage />;
+}
+
+/**
  * The month's bills, most urgent first: what is still to pay, what is late, and what is done. A row pays or skips with a
  * swipe on a phone, or through its ⋯ menu with a mouse; either way an Undo follows for a few seconds. Under them, the
  * month's monthly buys.
  */
-export function RecurringPage() {
+function PhoneRecurringPage() {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();

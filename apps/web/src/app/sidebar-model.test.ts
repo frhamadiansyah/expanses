@@ -209,5 +209,8 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/budget', false)).toBe(true);
     expect(edgeToEdge('/budget', true)).toBe(false);
     expect(edgeToEdge('/budget/edit', false)).toBe(false);
+    expect(edgeToEdge('/bills', false)).toBe(true);
+    expect(edgeToEdge('/bills', true)).toBe(false);
+    expect(edgeToEdge('/bills/yearly', false)).toBe(false);
   });
 });

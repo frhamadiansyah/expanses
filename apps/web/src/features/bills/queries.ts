@@ -1,10 +1,26 @@
-import { billDetail, billLinkCandidates, billLinkMonths, billLinkRefusal, billMonthsBefore, billOfPurchase, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
+import { billDetail, billLinkCandidates, billLinkMonths, billLinkRefusal, billMonthsBefore, billOfPurchase, billsInMonth, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
+import { asMonthlyBill } from './bills-desk-model';
 
 export function useMonthlyBills(today: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['monthly-bills', ws.workspaceId, ws.bookId ?? null, today], queryFn: () => monthlyBills(database, ws, today) });
+}
+
+/**
+ * Several of the workspace's months ("Month starts on") at once, each month's bills read as the list's rows
+ * (`billsInMonth`, `asMonthlyBill`), keyed by month: the Mac page's bars of bills each month, and its table for a month
+ * other than this one. A month before a bill was tracked holds it when a payment was linked to it, as its history does.
+ */
+export function useBillsInMonths(months: readonly string[], today: string) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['monthly-bills', 'months', ws.workspaceId, ws.bookId ?? null, [...months], today],
+    queryFn: async () =>
+      Object.fromEntries(await Promise.all(months.map(async (month) => [month, (await billsInMonth(database, ws, month, today, { workspaceMonth: true, paidBeforeStart: true })).map(asMonthlyBill)] as const))),
+    enabled: months.length > 0,
+  });
 }
 
 export function useYearlyBills(today: string) {
