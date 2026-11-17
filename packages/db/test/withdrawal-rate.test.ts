@@ -268,14 +268,16 @@ describe('recalcForeignTx: where a gain or loss may go (§5, R7, R8)', () => {
     return { ...t, business, fee, back };
   }
 
-  it('never puts a pair on a transaction filed in a workspace: its own foreign lines take the whole cost', async () => {
+  it('never puts a pair on a transaction filed in a workspace: the fee is its own lira at their cost, the gap stays on the exchange', async () => {
     const t = await feeInBusiness();
     await t.recalc();
-    // ₺500 at 525 is 262.500; the rupiah received keeps its 250.000, so the fee carries the 12.500 the pair would have.
+    // ₺500 at 525 is 262.500; the rupiah received keeps its 250.000. The fee is its ₺20 at 525 (10.500) alone (owner,
+    // 17 Nov 2026: was the whole 12.500 the pair would have held); the 2.000 the rate kept stays on Currency Exchange,
+    // counted nowhere.
     expect((await t.bases(t.back))[t.lira]).toBe(-262_500);
-    expect((await t.bases(t.back))[t.fee]).toBe(12_500);
+    expect((await t.bases(t.back))[t.fee]).toBe(10_500);
     expect(await t.resultLine(t.back)).toEqual([]);
-    expect(await t.exchangeBase(t.back)).toBe(0);
+    expect(await t.exchangeBase(t.back)).toBe(2_000);
     expect(await t.database.db.values(sql`SELECT count(*) FROM fx_gain_loss`)).toEqual([[0]]);
     expect(await t.database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${t.back}`)).toEqual([[t.business]]);
     expect(await checkLedgerIntegrity(t.database, t.ws)).toEqual([]);
