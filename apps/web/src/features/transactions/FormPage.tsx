@@ -21,7 +21,8 @@ import { SharedExpenseCard } from './SharedExpenseCard';
 import { type CardFollowUp, TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
 import { newScreenTitle } from './new-search';
-import { cardPaySeed } from '../cards/card-pay';
+import { cardPaySeed, isCardPayment, statementPaySeed } from '../cards/card-pay';
+import { useStatementPay, useStatementPaySave } from '../cards/StatementPay';
 
 /**
  * `/transactions/new` — the card as a screen.
@@ -39,7 +40,7 @@ export function NewTransactionRoute() {
   // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither. An
   // event's Add spending names the event, and a plan item's "Buy it now" the item and the tab the plan was read in.
   const search = newRoute.useSearch();
-  const { mode, account, to, item, expense, ws: tab, amount, note, date, partner, pay, fixed } = search;
+  const { mode, account, to, item, expense, ws: tab, amount, note, date, partner, pay, fixed, purchases, start, end, today } = search;
   /*
    * Event mode (screen 3): a new purchase opens with the event already set, the amount in its "Add in" currency. Read
    * once the mode is settled, as the card reads its seed once. ✕ on the chip leaves this one transaction out.
@@ -77,6 +78,13 @@ export function NewTransactionRoute() {
    * chosen. Never an event's, a trade's or a plan item's: those addresses carry no `pay`.
    */
   const paying = !opening && !trading && pay ? pay : null;
+  /*
+   * The statement's Pay for ticked purchases (owner, 17 Nov 2026): the same screen, the purchases listed under it, the
+   * amount their total and fixed, saved by `payCardPurchases` as the old "Pay N purchases" sheet saved it.
+   */
+  const statementAddress = paying && purchases && start && end && today ? { pay: paying, purchases, start, end, today } : null;
+  const statementPay = useStatementPay(statementAddress);
+  const paysPurchases = useStatementPaySave(statementAddress, statementPay.purchases, statementPay.currency);
 
   /*
    * "Buy it now": the payment is also the item, so Save ties the two together with the id it posted. The payment it
@@ -164,8 +172,14 @@ export function NewTransactionRoute() {
        * Back and Save land on the event again.
        */}
       {/* A share that ended here takes nothing new (§8.6): the notice above says why, and there is no form to fill. */}
-      {readOnly ? null : waiting ? (
+      {readOnly ? null : waiting || statementPay.pending ? (
         <Card>Loading…</Card>
+      ) : statementAddress && statementPay.purchases.length === 0 ? (
+        // Paid meanwhile — on this phone or another — or unreadable: nothing is offered to pay twice.
+        <>
+          <PushedTitle title="Pay credit card" back="Back" onBack={back} />
+          <Card>{statementPay.error ? 'The statement could not be read.' : 'Those purchases are already paid.'}</Card>
+        </>
       ) : (
         <TransactionCard
           full
@@ -177,10 +191,11 @@ export function NewTransactionRoute() {
           // Pay and Spend are one kind each, with no tabs at all.
           fixedMode={trading || !!paying || (!!fixed && !opening)}
           payCard={!!paying}
+          {...(paysPurchases ? { paysPurchases } : {})}
           // The tab bar's + leaves Trade for the plain Add form, so the card is built afresh rather than keeping the trade draft.
           // Leaving a shared event's card by its chip's ✕ builds the plain card afresh too.
           key={trading ? 'trade' : paying ? `pay-${paying}` : leftOut ? 'add-left-out' : 'add'}
-          seed={paying ? cardPaySeed(paying, amount) : {
+          seed={paying ? (statementAddress ? statementPaySeed(paying, statementPay.purchases, statementPay.currency) : cardPaySeed(paying, amount)) : {
             moneyId: account,
             toId: to,
             ...(partner ? { partnerItemId: partner } : {}),
@@ -264,6 +279,11 @@ export function EditTransactionRoute() {
   }, [refused, transactionId]);
 
   if (!tx || !changeable || !fromEvent.isSuccess || fromEvent.data) return <Card>Loading…</Card>;
+  /*
+   * A payment into a credit card (owner, 17 Nov 2026) opens as "Edit payment", in the Pay screen's layout: no tabs, To
+   * the card and fixed, From in the card's currency, no Exclude from report. It saves as every edit saves.
+   */
+  const cardPayment = isCardPayment(tx);
   return (
     <div className={SCREEN}>
       {/* An edit voids the original and posts a new id, so the transaction this URL names is gone once it
@@ -271,9 +291,11 @@ export function EditTransactionRoute() {
           screen's place in the history, so Back from the list does not open an edit of a transaction now void. */}
       <TransactionCard
         full
-        title="Edit transaction"
+        title={cardPayment ? 'Edit payment' : 'Edit transaction'}
         label="Edit a transaction"
         initial={tx}
+        fixedMode={cardPayment}
+        payCard={cardPayment}
         onBack={back}
         onSaveStart={() => {
           saving.current = true;

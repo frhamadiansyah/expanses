@@ -148,6 +148,14 @@ export interface CardFinish {
   accountAsk?: { side: 'money' | 'to'; label: string; note: string; onAnswer: (accountId: string) => void };
 }
 
+/** See `TransactionCard`'s `paysPurchases`. */
+export interface PaysPurchases {
+  /** Drawn under the card's rows: the purchases the payment is for. */
+  list: ReactNode;
+  /** Saves the form in the caller's own way; a throw is shown on the card, as a failed save is. */
+  save: (draft: FormDraft, setAside: SetAsideChoice | null) => Promise<void>;
+}
+
 /**
  * A save that answers something more than the ledger — "Buy it now", whose payment is also the item it bought.
  *
@@ -192,6 +200,12 @@ export function TransactionCard(props: {
    * It saves as every new transfer saves, which posts what the old Pay sheet's Record payment posted (`card-pay.test.ts`).
    */
   payCard?: boolean;
+  /**
+   * The statement's Pay for ticked purchases (owner, 17 Nov 2026), with `payCard`: the amount is their total and fixed,
+   * `list` names them under the card's rows, and Save is `save`'s — `payCardPurchases`, which marks exactly those
+   * purchases paid — rather than a plain transfer. What it cannot record is not offered: no fee, no goal, no photos.
+   */
+  paysPurchases?: PaysPurchases;
   /**
    * Save lives in the sheet's header (✕ … ✓) rather than a bar at the card's foot: the form takes this id so the
    * header's ✓ can submit it, and says whether it would save so the ✓ is dimmed until then.
@@ -246,6 +260,7 @@ function CardBody({
   seed,
   fixedMode,
   payCard = false,
+  paysPurchases,
   headerSave,
   onDone,
   full,
@@ -266,6 +281,7 @@ function CardBody({
   seed?: CardSeed;
   fixedMode?: boolean;
   payCard?: boolean;
+  paysPurchases?: PaysPurchases;
   headerSave?: { formId: string; onReady: (ready: boolean) => void };
   onDone: () => void;
   full?: boolean;
@@ -666,6 +682,13 @@ function CardBody({
       // Moving a top-up to another workspace names that workspace's Top-ups, never the open one's.
       const filed = withTopUps(categorised, topsUp ? (moveTo ? await topUpsCategory(database, inBook(ws, moveTo)) : bookTopUps || (await topUpsCategory(database, ws))) : '');
       const post = formToPost(filed, accounts);
+      // The statement's Pay for ticked purchases: checked as a transfer above, saved by the statement's own call.
+      if (paysPurchases) {
+        await paysPurchases.save(filed, setAside.choice);
+        await invalidate();
+        onDone();
+        return;
+      }
       let posted: string | null = null;
       /*
        * Into a shared event by the Event row (shared events §6, D2): the purchase is saved with no tag and then moved
@@ -792,7 +815,8 @@ function CardBody({
   const feeFrom = accounts.find((account) => account.id === draft.moneyId);
   const feeTo = accounts.find((account) => account.id === draft.toId);
   const feeCurrency = feeFrom?.currency ?? ws.baseCurrency;
-  const offersFee = !finish?.rowOnly && draft.mode === 'transfer' && offersTransferFee(feeFrom, feeTo, accountsLocked);
+  // Not on the statement's Pay: `payCardPurchases` records the payment alone, so a fee typed there would be dropped.
+  const offersFee = !finish?.rowOnly && !paysPurchases && draft.mode === 'transfer' && offersTransferFee(feeFrom, feeTo, accountsLocked);
   const defaultFeeCategory =
     accounts.find((account) => account.systemKey === 'miscellaneous.fees_charges' && (allBooks.length < 2 || categoryBooks[account.id] === ws.bookId))?.id ?? '';
   /*
@@ -1283,6 +1307,7 @@ function CardBody({
               set={set}
               selectOnOpen={!!duplicateOf}
               noRefund={!!finish}
+              fixed={!!paysPurchases}
               {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => (draft.photoIds.length === 0 ? receiptInput.current?.click() : setSheet('photos')) } } : {})}
               {...(transferSecond ? { second: transferSecond } : {})}
             />
@@ -1376,7 +1401,9 @@ function CardBody({
         )}
       </div>
 
-      {draft.mode === 'transfer' && !initial && goals.length > 0 && (
+      {paysPurchases?.list}
+
+      {draft.mode === 'transfer' && !initial && !paysPurchases && goals.length > 0 && (
         <FormRows>
           <FormRow
             icon={
@@ -1415,7 +1442,7 @@ function CardBody({
         </p>
       )}
       {/* One implementation of §4's rows, for adding and for correcting alike. */}
-      {detailsOpen && !finish?.rowOnly && (
+      {detailsOpen && !finish?.rowOnly && !paysPurchases && (
         <section aria-label="More details">
           {/*
             A transfer's For goal is one of the details, first in their group. Offered only while adding — `formToPost`
@@ -1454,7 +1481,8 @@ function CardBody({
         shadow — the secondary ink, so it follows the theme. It keeps the 44 pt reach the drawn 40 px does not
         have, and keeps `aria-expanded`, because the word is now the only thing that tells the two states apart.
       */}
-      {!finish?.rowOnly && (
+      {/* The statement's Pay has nothing to add: its one detail, Photos, is not something `payCardPurchases` keeps. */}
+      {!finish?.rowOnly && !paysPurchases && (
       <button
         type="button"
         aria-expanded={detailsOpen}
