@@ -77,7 +77,9 @@ test('a refund typed with a minus nets the category it went back under: the car 
   // Money back goes into the card it was paid with.
   await form.getByRole('button', { name: /^Into/ }).click();
   await choosePayment(page, 'Travel Card', 'Into');
-  await expect(page.getByTestId('refund-caption')).toHaveText('Refund: money back to Travel Card');
+  // No line under the amount says so (owner, 17 Nov 2026): the green figure and Into already do.
+  await expect(page.getByTestId('refund-caption')).toHaveCount(0);
+  await expect(form.getByText(/money back to/i)).toHaveCount(0);
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Ride hailing', exact: true }).click();
   await form.getByLabel('Note').fill('Deposit back');
