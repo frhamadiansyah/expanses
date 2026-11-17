@@ -1,0 +1,122 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Card cashback</title><style>
+  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --tap:#ff3b30; --new:#1a7f37; --exp:#d70015; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
+  h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .row { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:300px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
+  .step { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--tap); color:#fff; font-size:13px; font-weight:700; text-align:center; line-height:22px; margin-right:6px; }
+  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; min-height:540px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; }
+  .round { width:30px; height:30px; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; color:var(--tint); font-size:14px; margin-left:6px; }
+  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:60px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav b { font-size:15px; white-space:nowrap; }
+  .hero { text-align:center; margin-bottom:14px; } .ic { width:52px; height:52px; border-radius:50%; background:#e8eefc; margin:0 auto 6px; display:flex; align-items:center; justify-content:center; font-size:24px; }
+  .hero .amt { font-size:28px; font-weight:600; } .hero .nm { font-size:17px; font-weight:600; margin-top:2px; } .hero .s2 { font-size:13.5px; color:var(--ink3); }
+  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
+  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
+  .r { display:flex; gap:10px; align-items:center; padding:10px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
+  .g { flex:1 0 auto; } .g:has(.s) { flex:1 1 0; min-width:0; } .a { font-size:15px; } .s { font-size:12.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
+  .vd { color:var(--ink3); } .r .vd { overflow:hidden; text-overflow:ellipsis; min-width:0; } .chev { color:#c7c7cc; }
+  .kv { display:flex; justify-content:space-between; padding:8px 14px; font-size:14px; } .kv + .kv { border-top:.5px solid #eee; } .kv span:first-child { color:var(--ink3); }
+  .chips { display:flex; gap:6px; padding:10px 12px; } .chips span { flex:1; text-align:center; padding:7px 0; border-radius:9px; background:#eeeef0; font-size:14px; } .chips .on { background:var(--tint); color:#fff; font-weight:600; }
+  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:8px 12px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .big { font-size:22px; font-weight:700; }
+  .tap { outline:3px solid var(--tap); outline-offset:-3px; border-radius:10px; }
+  .new { outline:3px solid var(--new); outline-offset:-3px; border-radius:10px; position:relative; overflow:visible !important; }
+  .new::before { content:'NEW'; position:absolute; top:-9px; right:8px; font-size:9.5px; font-weight:800; color:#fff; background:var(--new); border-radius:4px; padding:1px 5px; z-index:2; }
+  .day { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:.5px solid var(--hair); } .day b { font-size:22px; } .day .d { flex:1; font-size:12px; color:var(--ink3); line-height:1.25; } .day .d strong { color:var(--ink); font-weight:600; }
+  .tx { display:flex; align-items:center; gap:10px; padding:9px 14px; white-space:nowrap; } .tx + .tx { border-top:.5px solid var(--hair); } .tx .ic2 { width:30px; height:30px; border-radius:50%; background:#e8eefc; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .tx .g { flex:1 1 0; min-width:0; overflow:hidden; } .wrap .r { white-space:normal; } .red { color:var(--exp); font-weight:600; } .pill { font-size:10.5px; color:var(--tint); background:#e5f0ff; border-radius:4px; padding:0 4px; margin-left:4px; font-weight:600; }
+  .grey { color:var(--ink3); text-decoration:none; }
+
+
+  .grn { color:var(--new); font-weight:600; } .amtbox { text-align:center; padding:14px 0 6px; } .amtbox .big2 { font-size:34px; font-weight:600; }
+  .modes { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:0 0 12px; } .modes span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .modes .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+  .tot { display:flex; justify-content:space-between; padding:8px 14px; font-size:14px; } .tot + .tot { border-top:.5px solid #eee; } .tot.b { font-weight:700; font-size:15px; }
+  .cmp { display:flex; gap:20px; flex-wrap:wrap; } .cmp .col { width:300px; } .tx .a { white-space:normal; }
+</style>
+</head><body>
+<h1>Cashback on a credit card: Cashback &amp; Rewards, not income</h1>
+<p class="sub">Invented example: a promo gives Rp 75.000 cashback on BCA Visa on 20 Nov. November purchases add up to Rp 8.450.000. Red = taps. Green NEW = what is added. The rule: <b>cashback into a credit card lowers the month's total spending; it never adds to income.</b> Cashback into a bank, cash or e-wallet stays income, as today.</p>
+
+<h2>Adding it</h2>
+<p class="lead">Typed the same way as a refund (Expense, minus first, Into the card). Once the money goes into a credit card, the category list has Cashback &amp; Rewards at the top. The receipt then says Cashback, not Refund.</p>
+<div class="row">
+  <div class="col"><p class="cap"><span class="step">1</span>Minus amount, Into the card</p><p class="note">As today: Expense, type −75.000, the Paid with row turns into Into.</p>
+    <div class="phone">
+      <div class="nav"><span class="t">Cancel</span><b>New</b><span class="t">Save</span></div>
+      <div class="modes"><span class="on">Expense</span><span>Income</span><span>Transfer</span></div>
+      <div class="amtbox"><div class="big2 grn">−Rp 75.000</div></div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">Into</div></div><span class="vd">BCA Visa</span><span class="chev">›</span></div>
+        <div class="r tap"><div class="g"><div class="a">Category</div></div><span class="vd">Choose</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Date</div></div><span class="vd">20 Nov 2026</span><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">Note</div></div><span class="vd">Promo cashback</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap"><span class="step">2</span>Pick Cashback &amp; Rewards</p><p class="note">Only offered when the money goes into a credit card. Other categories stay below (a real refund of a purchase still picks the purchase's category).</p>
+    <div class="phone">
+      <div class="nav"><span class="t">‹ Back</span><b>Category</b><span class="t"></span></div>
+      <div class="panel new"><div class="r tap"><div class="ic2" style="width:30px;height:30px;border-radius:50%;background:#e3f5e8;display:flex;align-items:center;justify-content:center">％</div><div class="g"><div class="a">Cashback &amp; Rewards</div><div class="s">Lowers total spending · not income</div></div></div></div>
+      <div class="hdr">Refund of a purchase</div>
+      <div class="panel">
+        <div class="r"><div class="g"><div class="a">🍜 Food &amp; Drinks</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">🛍 Shopping</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">🚗 Transport</div></div><span class="chev">›</span></div>
+        <div class="r"><div class="g"><div class="a">⋯ More</div></div><span class="chev">›</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">After: the receipt</p><p class="note">Says Cashback, green. No "Refund" word anywhere.</p>
+    <div class="phone">
+      <div class="top"><span style="color:var(--tint)">‹ Back</span><span><span class="round">✎</span><span class="round">⧉</span></span></div>
+      <div class="hero"><div class="ic" style="background:#e3f5e8">％</div><div class="amt grn">+Rp 75.000</div><div class="nm">Cashback &amp; Rewards</div><div class="s2">Promo cashback</div><div class="s2">Friday, 20 November 2026</div></div>
+      <div class="panel"><div class="kv"><span>Into</span><span>BCA Visa</span></div><div class="kv"><span>Counts as</span><span>Lowers spending</span></div></div>
+    </div></div>
+</div>
+
+<h2>Where it shows</h2>
+<div class="row">
+  <div class="col"><p class="cap">Cashflow list</p><p class="note">A green + row on its day, like any money in.</p>
+    <div class="phone" style="min-height:300px">
+      <div class="panel">
+        <div class="day"><b>20</b><div class="d"><strong>Friday</strong><br>November 2026</div><span>Rp 245.000</span></div>
+        <div class="tx new"><div class="ic2" style="background:#e3f5e8">％</div><div class="g"><div class="a">Cashback &amp; Rewards</div><div class="s">Promo cashback · BCA Visa</div></div><span class="grn">+Rp 75.000</span></div>
+        <div class="tx"><div class="ic2">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><span class="red">Rp 320.000</span></div>
+      </div>
+    </div></div>
+  <div class="col"><p class="cap">Cashflow totals · November</p><p class="note">Spending is purchases minus cashback. Income does not move.</p>
+    <div class="phone" style="min-height:300px">
+      <div class="panel">
+        <div class="tot"><span>Income</span><span class="grn">Rp 15.000.000</span></div>
+        <div class="tot b"><span>Spending</span><span class="red">Rp 8.375.000</span></div>
+      </div>
+      <div class="hdr">Spending by category</div>
+      <div class="panel">
+        <div class="tot"><span>🍜 Food &amp; Drinks</span><span>Rp 3.100.000</span></div>
+        <div class="tot"><span>🛍 Shopping</span><span>Rp 2.850.000</span></div>
+        <div class="tot"><span>🏠 Home</span><span>Rp 2.500.000</span></div>
+        <div class="tot new"><span>％ Cashback &amp; Rewards</span><span class="grn">−Rp 75.000</span></div>
+      </div>
+      <div class="foot">Food, Shopping and Home keep their full amounts; budgets do not change.</div>
+    </div></div>
+  <div class="col"><p class="cap">Card statement</p><p class="note">A credit on the bill; what is due goes down.</p>
+    <div class="phone" style="min-height:300px">
+      <div class="hdr">BCA Visa · 19 Nov – 18 Dec</div>
+      <div class="panel">
+        <div class="tx"><div class="ic2">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">20 Nov</div></div><span>Rp 320.000</span></div>
+        <div class="tx new"><div class="ic2" style="background:#e3f5e8">％</div><div class="g"><div class="a">Cashback &amp; Rewards</div><div class="s">20 Nov</div></div><span class="grn">−Rp 75.000</span></div>
+      </div>
+      <div class="panel"><div class="tot b"><span>Total so far</span><span>Rp 245.000</span></div></div>
+    </div></div>
+</div>
+
+<h2>The same cashback, two places it can land</h2>
+<div class="row"><div class="col" style="width:620px"><div class="wrap"><div class="panel">
+    <div class="r"><div class="g"><div class="a">Into a credit card</div><div class="s">Cashback &amp; Rewards · lowers total spending · not income</div></div><span class="grn">NEW</span></div>
+    <div class="r"><div class="g"><div class="a">Into a bank, cash or e-wallet (e.g. GoPay)</div><div class="s">Income › Cashback &amp; Rewards · adds to income · as today</div></div><span class="vd">Same</span></div>
+    <div class="r"><div class="g"><div class="a">Refund of a purchase on the card</div><div class="s">Picks the purchase's category · lowers that category · as today</div></div><span class="vd">Same</span></div>
+</div></div></div></div>
+</body></html>
