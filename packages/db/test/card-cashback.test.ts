@@ -1,4 +1,5 @@
 import { CARD_CASHBACK, expenseLines, incomeLines, refundLines, statementCycleFor } from '@expanses/core';
+import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   budgetSheetFor,
@@ -61,6 +62,19 @@ describe('Cashback & Rewards into a credit card', () => {
     const there = await cardCashbackCategory(database, { ...ws, bookId: business });
     expect(there).not.toBe(cashback);
     expect(await cardCashbackCategory(database, { ...ws, bookId: business })).toBe(there);
+  });
+
+  it('is never made twice in a workspace whose categories were copied from one already holding it', async () => {
+    const { database, ws, cashback } = await november();
+    const personal = (await listAccounts(database, ws)).find((a) => a.id === cashback)!;
+    expect(personal.systemKey).toBe(CARD_CASHBACK.key);
+    const books = await database.db.values<[string]>(sql`SELECT book_id FROM book_categories WHERE category_account_id = ${cashback}`);
+    const copy = await createBook(database, ws, { name: 'Side shop', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: books[0]![0] });
+    const there = await cardCashbackCategory(database, { ...ws, bookId: copy });
+    const inCopy = await database.db.values<[string]>(sql`
+      SELECT a.id FROM accounts a JOIN book_categories bc ON bc.category_account_id = a.id WHERE bc.book_id = ${copy} AND a.system_key = ${CARD_CASHBACK.key}`);
+    expect(inCopy.map((row) => row[0])).toEqual([there]);
+    expect(there).not.toBe(cashback);
   });
 
   it('lowers what the card owes, and the statement shows it as a credit, the bill Rp 245.000', async () => {

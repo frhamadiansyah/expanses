@@ -19,10 +19,18 @@ export async function cardCashbackIdOf(bookOrWorkspaceId: string): Promise<strin
 }
 
 /**
- * Cashback & Rewards in one book, inserted if absent. A row already holding the id keeps whatever it carries (renamed,
- * archived): it was put that way on purpose. Capture is the caller's.
+ * Cashback & Rewards in one book, inserted if absent. The book's own open row with the key comes first — a workspace
+ * whose categories were copied from another's carries one under a new id — so a book never holds two. A row already
+ * holding the id keeps whatever it carries (renamed, archived): it was put that way on purpose. Capture is the caller's.
  */
 async function ensureCardCashbackRowTx(tx: Db, workspaceId: string, bookId: string | null): Promise<string> {
+  const [held] = await tx.values<[string]>(sql`
+    SELECT a.id FROM accounts a
+     WHERE a.workspace_id = ${workspaceId} AND a.subtype = 'category' AND a.kind = ${CARD_CASHBACK.kind}
+       AND a.system_key = ${CARD_CASHBACK.key} AND a.archived_at IS NULL
+       ${bookId ? sql`AND a.id IN (SELECT category_account_id FROM book_categories WHERE book_id = ${bookId})` : sql``}
+     ORDER BY a.created_at, a.id LIMIT 1`);
+  if (held) return held[0];
   const id = await cardCashbackIdOf(bookId ?? workspaceId);
   const [found] = await tx.values<[string]>(sql`SELECT id FROM accounts WHERE id = ${id}`);
   if (!found) {
