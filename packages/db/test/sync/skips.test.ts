@@ -1,18 +1,19 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { inBook, saveBudget } from '../../src/index';
 import { encodeHlc } from '../../src/sync/hlc';
 import type { Op } from '../../src/sync/types';
-import { categoryOf, Household, type Device } from './household';
+import { categoryOf, Household, type Device, type PhoneErrors } from './household';
 
 /*
  * §7.1 (task 4 fix round 1): apply skips only an op every receiver would refuse the same way — a SQLite constraint, a
  * posting or ledger refusal on the carried data, a parent that is gone — and records each skip in `sync_skipped`.
  * Anything else is a bug: the entry's transaction rolls back and the cursor stays before it.
  */
-async function household() {
+async function household(phoneErrors?: PhoneErrors) {
   const home = new Household();
-  const fandri = await home.device('Fandri');
-  const dewi = await home.device('Dewi');
+  const fandri = await home.device('Fandri', undefined, 'IDR', undefined, { phoneErrors });
+  const dewi = await home.device('Dewi', undefined, 'IDR', undefined, { phoneErrors });
   const bookId = await home.share(fandri);
   await home.join(dewi, fandri);
   await home.settle();
@@ -149,5 +150,44 @@ describe('what apply skips, and what it refuses to', () => {
     await appendOps(home, fandri, [{ entity: 'budget_share', id: budgetId, op: 'upsert', fields: { basis: 'take-home', shareBp: 1500 } }]);
     await dewi.engine.syncOnce(bookId);
     expect(await dewi.database.db.values(sql`SELECT basis, share_bp FROM budget_shares WHERE budget_id = ${budgetId}`)).toEqual([['take-home', 1500]]);
+  });
+});
+
+/*
+ * On a phone SQLite is sqlite-wasm in a web worker, and a refusal reaches apply as the worker passes it: its message
+ * alone from a worker built before the sync refusal fix (no `code` — the phone's sync stopped at the entry and asked
+ * for it again for ever), and with its code carried since (2026-11-17).
+ */
+describe.each<PhoneErrors>(['message', 'carried'])("a phone's SQLite refusal, as the worker passes it (%s)", (shape) => {
+  it('a CHECK the carried data breaks is skipped and recorded, the entry after it still applies, and the pull goes on', async () => {
+    const { home, fandri, dewi, bookId } = await household(shape);
+    await saveBudget(fandri.database, inBook(fandri.ws, bookId), { categoryAccountId: await categoryOf(fandri.database, bookId, 'Groceries'), amountMinor: 100_000 });
+    await home.settle();
+    const [[budgetId]] = (await dewi.database.db.values<[string]>(sql`SELECT id FROM budgets`)) as [[string]];
+    const groceries = await categoryOf(dewi.database, bookId, 'Groceries');
+    const money = { lines: [{ categoryId: groceries, amountMinor: 1_000, currency: 'IDR', amountBaseMinor: 1_000, memo: null }], originalCurrency: null, originalAmountMinor: null, paidBy: fandri.memberId, paidLabel: 'BCA' };
+    const check = await appendOps(home, fandri, [{ entity: 'budget_frequency', id: budgetId, op: 'upsert', fields: { frequency: 'hourly', amountAsSetMinor: 5 } }]);
+    const good = await appendOps(home, fandri, [purchase('01a0e100-0000-7000-8000-0000000000d1', '2026-09-10', money)]);
+
+    const result = await dewi.engine.syncOnce(bookId);
+    expect(result.skipped.map((s) => [s.seq, s.entity, s.id])).toEqual([[check, 'budget_frequency', budgetId]]);
+    // Recorded in the same words a computer's SQLite gives, sqlite-wasm's prefix not repeated after the code.
+    expect(result.skipped[0]!.error).toMatch(/^SQLITE_CONSTRAINT_CHECK: CHECK constraint failed: frequency IN/);
+    const recorded = await dewi.database.db.values<[number, string]>(sql`SELECT seq, entity FROM sync_skipped WHERE book_id = ${bookId}`);
+    expect(recorded).toEqual([[check, 'budget_frequency']]);
+    expect(await cursor(dewi, bookId)).toBe(good);
+    expect((await dewi.database.db.values(sql`SELECT 1 FROM sync_lineage WHERE lineage_id = '01a0e100-0000-7000-8000-0000000000d1'`)).length).toBe(1);
+    // Nothing of the refused change landed.
+    expect(await dewi.database.db.values(sql`SELECT 1 FROM budget_frequencies WHERE budget_id = ${budgetId}`)).toEqual([]);
+  });
+
+  it('a UNIQUE clash with a row only this phone has still stops the pull, the cursor before it', async () => {
+    const { home, fandri, dewi, bookId } = await household(shape);
+    const before = await cursor(dewi, bookId);
+    await appendOps(home, fandri, [{ entity: 'category', id: '01a0e100-0000-7000-8000-00000000bee2', op: 'upsert', fields: { name: 'Clash', parentId: null, kind: 'equity', subtype: 'equity', currency: 'IDR', icon: null, systemKey: 'opening_balance', sortOrder: 0, archivedAt: null } }]);
+    const failed = await dewi.engine.syncOnce(bookId).then(() => null, (error: unknown) => error as Error & { cause?: Error });
+    expect(failed?.cause?.message).toMatch(/^SQLITE_CONSTRAINT_UNIQUE: sqlite3 result code 2067: UNIQUE constraint failed/);
+    expect(await cursor(dewi, bookId)).toBe(before);
+    expect(await dewi.database.db.values(sql`SELECT 1 FROM sync_skipped`)).toEqual([]);
   });
 });
