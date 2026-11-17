@@ -302,6 +302,77 @@ export async function categoryTotalsIn(
   };
 }
 
+/** One transaction (or one instalment of a spread purchase) as it counts toward a category total. */
+export interface CategoryItem {
+  /** The transaction it is, or the purchase an instalment spreads; null for a plan with no purchase. */
+  transactionId: string | null;
+  /** The day it counts on: the bill's month for a bill payment, the statement date for an instalment. */
+  onDate: string;
+  description: string;
+  /** What it adds to the categories asked for, in the workspace's currency, spending positive. */
+  amountMinor: number;
+  /** An instalment of a purchase spread each month: which of how many. */
+  instalment?: { number: number; of: number };
+}
+
+/**
+ * What a category total is made of: each transaction counted toward `categoryIds` in [from, to], read through the same
+ * rows and options `categoryTotalsIn` adds up — so the items add up to the categories' totals (a Budget line's Spent).
+ * Newest first.
+ */
+export async function categoryItemsIn(
+  database: Database,
+  ws: WorkspaceContext,
+  kind: 'expense' | 'income',
+  categoryIds: readonly string[],
+  from: string,
+  to: string,
+  opts: CategoryTotalsOptions = {},
+): Promise<{ items: CategoryItem[]; currency: string }> {
+  const money = await bookMoneyFor(database, ws);
+  if (categoryIds.length === 0) return { items: [], currency: money.currency };
+  const spread = await spreadPlans(database, ws, kind);
+  const { where, onDate, share } = await categoryRows(database, ws, kind, from, to, opts, spread.ids);
+  const rows = await database.db
+    .select({
+      transactionId: transactions.id,
+      description: transactions.description,
+      amountMinor: entries.amountMinor,
+      amountBaseMinor: entries.amountBaseMinor,
+      currency: entries.currency,
+      onDate,
+      share,
+    })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .innerJoin(accounts, eq(entries.accountId, accounts.id))
+    .where(and(where, inArray(entries.accountId, [...categoryIds])));
+
+  const byTx = new Map<string, { onDate: string; description: string; amount: number }>();
+  for (const row of rows) {
+    // As the totals read it: the base figure as booked, or — reading in another currency — converted on the day it counts.
+    const amount = money.converts ? money.convert(displayAmount(kind, Number(row.amountMinor)), row.currency, row.onDate) : displayAmount(kind, Number(row.amountBaseMinor));
+    if (amount === null) continue;
+    const held = byTx.get(row.transactionId) ?? { onDate: row.onDate, description: row.description, amount: 0 };
+    held.amount += amount * Number(row.share ?? 0);
+    byTx.set(row.transactionId, held);
+  }
+  const items: CategoryItem[] = [...byTx]
+    .map(([transactionId, held]) => ({ transactionId, onDate: held.onDate, description: held.description, amountMinor: Math.round(held.amount) }))
+    .filter((item) => item.amountMinor !== 0);
+  const wanted = new Set(categoryIds);
+  for (const line of await spreadIn(database, ws, kind, from, to, opts, spread)) {
+    if (!wanted.has(line.categoryId)) continue;
+    const amount = money.converts ? money.convert(line.amountBaseMinor, ws.baseCurrency, line.statementOn) : line.amountBaseMinor;
+    if (amount === null || amount === 0) continue;
+    const same = items.find((item) => item.instalment && item.transactionId === line.transactionId && item.instalment.number === line.number && item.onDate === line.statementOn);
+    if (same) same.amountMinor += Math.round(amount);
+    else items.push({ transactionId: line.transactionId, onDate: line.statementOn, description: line.description, amountMinor: Math.round(amount), instalment: { number: line.number, of: line.of } });
+  }
+  items.sort((a, b) => b.onDate.localeCompare(a.onDate) || b.amountMinor - a.amountMinor);
+  return { items, currency: money.currency };
+}
+
 /**
  * The same money as `categoryTotalsIn`, added up by day instead of by category: the bars on the Cashflow card.
  *
