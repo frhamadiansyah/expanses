@@ -12,6 +12,7 @@ import {
   ownerScope,
   personalBook,
   postTransaction,
+  recalcPendingForeign,
   removeTransferFromSharedEvent,
   replaceTransaction,
   sharedEventOf,
@@ -344,6 +345,41 @@ describe('lira changed back with a lira fee typed beside it (owner, 17 Nov 2026)
     // pair: its gap moves off Currency Exchange onto the pair, both counting nowhere.)
     const held = (m: Record<string, number>) => pick(m, [s.wife.cash, s.wife.bank, s.lira]);
     expect(held(await money(s))).toEqual(held(before));
+  });
+});
+
+describe('a lira fee the old rule valued, valued again after the update (owner, 17 Nov 2026)', () => {
+  it('the payer’s phone values it again from the queue and the partner’s copy follows; balances do not move', async () => {
+    const s = await familyAndTrip();
+    const fees = await categoryOf(s.wife.database, s.family, 'Fees & charges');
+    await atm(s.wife, s.family, s.lira, s.exchange);
+    await postTransaction(s.wife.database, inBook(s.wife.ws, s.family), {
+      occurredOn: '2026-10-08',
+      description: 'Kiosk change back',
+      fileTransfer: true,
+      ratesToBase: { TRY: 560 },
+      lines: exchangeWithFeeLines({ fromAccountId: s.lira, fromAmountMinor: 100_000, fromCurrency: 'TRY', toAccountId: s.wife.cash, toAmountMinor: 540_000, toCurrency: 'IDR', exchangeAccountId: s.exchange, feeMinor: 5_000, feeCategoryId: fees }),
+    });
+    await s.settle();
+    const feeLine = sql`SELECT e.id FROM entries e JOIN transactions t ON t.id = e.transaction_id WHERE t.status = 'posted' AND t.description = 'Kiosk change back' AND e.account_id = ${fees}`;
+    // Both phones as an older build left them: Rp 69.000 on the fee (TRY 50 at 580, and the Rp 40.000 the kiosk kept).
+    await s.wife.database.db.run(sql`UPDATE entries SET amount_base_minor = 69000 WHERE id IN (${feeLine})`);
+    await s.wife.database.db.run(sql`UPDATE entries SET amount_base_minor = 540000 WHERE currency = 'TRY' AND account_id = ${s.exchange} AND transaction_id IN (SELECT id FROM transactions WHERE description = 'Kiosk change back' AND status = 'posted')`);
+    await s.husband.database.db.run(sql`UPDATE entries SET amount_base_minor = 69000 WHERE id IN (${feeLine})`);
+    const feeBase = async (d: Device) => (await d.database.db.values<[number]>(sql`SELECT amount_base_minor FROM entries WHERE id IN (${feeLine})`)).map(([base]) => Number(base));
+    for (const d of [s.wife, s.husband]) expect(await familySpend(s, d)).toBe(69_000);
+    const before = pick(await nativeBalances(s.wife.database, s.wife.ws), [s.wife.cash, s.wife.bank, s.lira]);
+
+    // The update: the lira account is queued (0125) and the queue's run values the fee again, with capture on.
+    await s.wife.database.db.run(sql`INSERT OR REPLACE INTO fx_recalc_pending (account_id, from_date) VALUES (${s.lira}, '2026-10-08')`);
+    await recalcPendingForeign(s.wife.database);
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    expect(await feeBase(s.wife)).toEqual([29_000]);
+    expect(await feeBase(s.husband)).toEqual([29_000]);
+    for (const d of [s.wife, s.husband]) expect(await familySpend(s, d)).toBe(29_000);
+    expect(pick(await nativeBalances(s.wife.database, s.wife.ws), [s.wife.cash, s.wife.bank, s.lira])).toEqual(before);
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
   });
 });
 
