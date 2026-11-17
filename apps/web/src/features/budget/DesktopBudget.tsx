@@ -280,11 +280,15 @@ export function DesktopBudget() {
         </button>
       </header>
 
-      <div className="space-y-[14px] px-[20px] py-[16px]">
+      {/*
+       * While the peek is open the whole page makes room for it, boxes and table alike, so it covers no figure; the boxes
+       * go by the room they have (a container query, not the window's width), so they wrap rather than squeeze.
+       */}
+      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peekLine && 'mr-[322px]')}>
         <ErrorBox error={sheetQuery.error} />
         <Unconverted missing={sheet?.unconverted ?? []} currency={currency} />
         {sheet && view && (
-          <div className="grid grid-cols-1 items-stretch gap-[14px] md:grid-cols-2 xl:grid-cols-[1.45fr_1fr_0.95fr]">
+          <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[478px]:grid-cols-2 @min-[990px]:grid-cols-[1.45fr_1fr_0.95fr]">
             {tab === 'spending' ? (
               <>
                 <MonthBudgetBox title={thisMonth ? 'This month’s budget' : `${monthLabel(month)} budget`} sheet={sheet} view={view} currency={currency} month={month} today={today} monthStart={monthStart} daysNote={daysNote} />
@@ -302,7 +306,7 @@ export function DesktopBudget() {
         )}
 
         {sheet && table && (
-          <section className={cx(BOX, 'overflow-hidden [contain:inline-size]', peekLine && 'mr-[322px]')} aria-label="Categories">
+          <section className={cx(BOX, 'overflow-hidden [contain:inline-size]')} aria-label="Categories">
             <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
               Categories
               <span className={NOTE}>Type a budget into its cell (an amount, or a % of its parent) · Tab moves down · ▼ folds a group</span>
