@@ -72,6 +72,36 @@ describe('revalueTransaction: moves and exchanges', () => {
     });
   });
 
+  it('changes pounds back with a fee typed beside them: the fee is its own pounds at their cost, the rest is the gap (owner, 17 Nov 2026)', () => {
+    // £1.000 out at 21.000 a pound (Rp 21.000.000): £5 fee, £995 changed for Rp 20.600.000. The fee's stored figure is
+    // whatever an earlier pass left on it (Rp 400.000, the whole gap): never read.
+    const lines = [
+      line('pocket', 'GBP', -100_000, -21_000_000, 'lot'),
+      line('xGBP', 'GBP', 99_500, 20_600_000, 'exchange'),
+      line('bank', 'IDR', 20_600_000, 20_600_000, 'money'),
+      line('xIDR', 'IDR', -20_600_000, -20_600_000, 'exchange'),
+      line('fee', 'GBP', 500, 400_000, 'other'),
+    ];
+    expect(revalueTransaction({ lines, baseCurrency: 'IDR', outCosts: { pocket: 21_000_000 } })).toEqual({
+      bases: { pocket: -21_000_000, xGBP: 20_895_000, bank: 20_600_000, xIDR: -20_600_000, fee: 105_000 },
+      gainLossBaseMinor: -295_000,
+    });
+  });
+
+  it('prices a fee at the pounds’ own cost, whatever the day’s rate, rounded toward zero', () => {
+    const lines = [
+      line('pocket', 'GBP', -100_001, -21_000_210, 'lot'),
+      line('xGBP', 'GBP', 99_668, 20_930_280, 'exchange'),
+      line('bank', 'IDR', 20_000_000, 20_000_000, 'money'),
+      line('xIDR', 'IDR', -20_000_000, -20_000_000, 'exchange'),
+      line('fee', 'GBP', 333, 69_930, 'other'),
+    ];
+    const { bases } = revalueTransaction({ lines, baseCurrency: 'IDR', outCosts: { pocket: 22_000_000 } });
+    // 22.000.000 × 333 / 100.001 = 73.259,2…: the fee takes 73.259, the exchange line the rest of the pounds' cost.
+    expect(bases.fee).toBe(73_259);
+    expect(bases.xGBP! + bases.fee!).toBe(22_000_000);
+  });
+
   it('changes lira into euros: the euros keep their own figure, and the difference is booked (R6)', () => {
     const lines = [line('pocket', 'TRY', -100_000, -512_000, 'lot'), line('xTRY', 'TRY', 100_000, 512_000, 'exchange'), line('eur', 'EUR', 2_900, 507_500, 'lot'), line('xEUR', 'EUR', -2_900, -507_500, 'exchange')];
     expect(revalueTransaction({ lines, baseCurrency: 'IDR', outCosts: { pocket: 525_000 } })).toEqual({

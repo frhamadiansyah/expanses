@@ -82,7 +82,8 @@ export interface Revalued {
  * - Within one currency (no exchange line): spending, a move to another pocket, a card paid — the cost is shared over the
  *   other lines by their day figures (R5); a pocket on the other side takes it as carried.
  * - Across currencies, between the owner's own accounts (something received is a money account or another pocket): what
- *   was received keeps its own figure, and the gap is the gain or loss (R6).
+ *   was received keeps its own figure, and the gap is the gain or loss (R6). A fee typed beside it in the currency that
+ *   left is those units at their cost, never the gap (owner, 17 Nov 2026).
  * - Across currencies, spending only (a shared event's expense in another currency): the cost is shared over the
  *   received lines not in the base currency; base-currency lines keep their figure, and only a gap they leave is a gain
  *   or loss (R7).
@@ -149,6 +150,20 @@ export function revalueTransaction(input: RevalueInput): Revalued {
     const free = received.filter((l) => l.currency !== baseCurrency);
     const fixed = received.filter((l) => l.currency === baseCurrency).reduce((sum, l) => sum + bases[l.entryId]!, 0);
     if (free.length > 0) share(free, costOf(leaving) - fixed);
+  } else {
+    // A fee typed beside a change between the owner's own accounts (owner, 17 Nov 2026): money spent out of the lots
+    // that left, in their currency, so it is those units at their cost — the fee alone. What the bank's rate kept stays
+    // with the exchange, the gap below, and counts nowhere. Shared with the exchange lines of that currency by amount,
+    // so the fee's part is rounded toward zero and the exchange takes the remainder (`rebalance`).
+    for (const currency of new Set(leaving.map((l) => l.currency))) {
+      if (currency === baseCurrency) continue;
+      const spent = received.filter((l) => l.role === 'other' && l.currency === currency && l.amountMinor > 0);
+      if (spent.length === 0) continue;
+      const changed = exchange.filter((l) => l.currency === currency);
+      const targets = [...spent, ...changed];
+      const parts = spreadBase(costOf(leaving.filter((l) => l.currency === currency)), targets.map((l) => l.amountMinor));
+      spent.forEach((l, i) => (bases[l.entryId] = parts[i]!));
+    }
   }
   rebalance();
   return { bases, gainLossBaseMinor: 0 - exchange.reduce((sum, l) => sum + bases[l.entryId]!, 0) }; // `0 -`, so no gain is never -0
