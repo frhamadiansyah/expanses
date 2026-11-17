@@ -35,6 +35,15 @@ export interface NewTransactionSearch {
    * no tabs, To fixed on the card, From left to be chosen — with `amount` the figure the card page fills in.
    */
   pay?: string;
+  /**
+   * The statement's Pay for ticked purchases: their ids, comma-joined, and the statement they were ticked on — its
+   * first and last day and the day it was read — so the screen lists exactly what the statement listed. Read only with
+   * `pay`, and only all four together.
+   */
+  purchases?: string;
+  start?: string;
+  end?: string;
+  today?: string;
   /** Opened for one kind only (a card's Spend): no Expense / Income / Transfer tabs, and the title names the kind. */
   fixed?: true;
 }
@@ -73,5 +82,8 @@ export const newTransactionSearch = (search: Record<string, unknown>): NewTransa
   ...(text(search.event) && !text(search.item) && !text(search.expense) ? carried(search) : {}),
   // A card's Pay carries the figure it fills in; the card is To, so nothing else of the address is read for it.
   ...(text(search.pay) ? { pay: text(search.pay), ...(text(search.amount) ? { amount: text(search.amount) } : {}) } : {}),
+  ...(text(search.pay) && text(search.purchases) && text(search.start) && text(search.end) && text(search.today)
+    ? { purchases: text(search.purchases), start: text(search.start), end: text(search.end), today: text(search.today) }
+    : {}),
   ...(isOn(search.fixed) ? { fixed: true as const } : {}),
 });

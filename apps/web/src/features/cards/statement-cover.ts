@@ -39,3 +39,10 @@ export function paidCountText(paid: number, of: number): string | null {
   if (of === 0) return null;
   return paid === of ? 'All paid' : `${paid} of ${of} paid`;
 }
+
+/**
+ * Whether a statement line can be ticked and paid on its own: a purchase still owed, not already paid one by one or
+ * off before the app, not a plan's instalment or a purchase turned into one, and not covered whole by a payment.
+ */
+export const payableLine = (line: StatementLine, cover: ReadonlyMap<string, LineCover>) =>
+  line.owedMinor > 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo && cover.get(line.key)?.whole !== true;
