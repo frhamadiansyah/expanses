@@ -1,4 +1,4 @@
-import { type BudgetLine, daysFrom, monthPeriod, roundUpToMajor } from '@expanses/core';
+import { type BudgetLine, type BudgetSheet, daysFrom, monthPeriod, roundUpToMajor } from '@expanses/core';
 
 /*
  * What the Budget page draws, worked out from the sheet: which lines are over, which are capped and how they fold,
@@ -214,4 +214,71 @@ export function historyOf(months: readonly (readonly BudgetLine[])[], currency: 
       { lastMinor: Math.max(0, list[0] ?? 0), averageMinor: roundUpToMajor(Math.ceil(list.reduce((sum, minor) => sum + minor, 0) / months.length), currency) },
     ]),
   );
+}
+
+export type SplitSheetKey = 'essential' | 'lifestyle' | 'debtsSavings';
+
+/** The budget sheet's month as the Essential and lifestyle sheet reads it. */
+export type SplitSheetInput = Pick<
+  BudgetSheet,
+  'spendingActualMinor' | 'essentialActualMinor' | 'lifestyleActualMinor' | 'debtsSavingsActualMinor' | 'cashbackActualMinor'
+>;
+
+export interface SplitSheetView {
+  /** What was bought: what was spent before card cashback. The three rows add back to it. */
+  boughtMinor: number;
+  /** Essential, Lifestyle and Debts & savings, each a share of what was bought ("62%", or "—" with nothing bought). */
+  rows: { key: SplitSheetKey; percent: string; amountMinor: number }[];
+  /** The bar's three widths, 0 to 100, from the parts above nought; null when none is. */
+  bar: Record<SplitSheetKey, number> | null;
+  /** Card cashback, signed (below nought when money came back), or null in a month with none. */
+  cashbackMinor: number | null;
+  /** What was spent: what was bought less the cashback. */
+  spentMinor: number;
+}
+
+/** Whole percents that add up to `total`, each as close to its exact share as the total allows. */
+function wholePercents(values: readonly number[], total: number): number[] {
+  const floors = values.map(Math.floor);
+  let short = total - floors.reduce((sum, value) => sum + value, 0);
+  const order = values.map((value, index) => ({ index, rest: value - Math.floor(value) })).sort((a, b) => b.rest - a.rest || a.index - b.index);
+  for (const { index } of order) {
+    if (short <= 0) break;
+    floors[index] = floors[index]! + 1;
+    short -= 1;
+  }
+  return floors;
+}
+
+/**
+ * Budget › ⋯ › Essential and lifestyle (owner, 17 Nov 2026): shares of what was BOUGHT, so card cashback can neither
+ * push Essential and Lifestyle past 100% nor turn Debts & savings negative. The cashback is a line of its own under the
+ * three, and Spent stays what was bought less it.
+ */
+export function splitSheetView(sheet: SplitSheetInput): SplitSheetView {
+  const cashback = sheet.cashbackActualMinor;
+  const boughtMinor = sheet.spendingActualMinor - cashback;
+  const amounts: Record<SplitSheetKey, number> = {
+    essential: sheet.essentialActualMinor,
+    lifestyle: sheet.lifestyleActualMinor,
+    // The budget sheet counts the cashback with Debts & savings; what was bought there is the rest.
+    debtsSavings: sheet.debtsSavingsActualMinor - cashback,
+  };
+  const keys: SplitSheetKey[] = ['essential', 'lifestyle', 'debtsSavings'];
+  const parts = keys.map((key) => amounts[key]);
+  const exact = parts.map((part) => (boughtMinor > 0 ? (part / boughtMinor) * 100 : 0));
+  // Rounded to add up to 100 when every part is a share; a part refunded below nought keeps its own sign instead.
+  const percents = parts.every((part) => part >= 0) ? wholePercents(exact, 100) : exact.map(Math.round);
+  const above = parts.map((part) => Math.max(0, part));
+  const whole = above.reduce((sum, part) => sum + part, 0);
+  return {
+    boughtMinor,
+    rows: keys.map((key, index) => ({ key, percent: boughtMinor > 0 ? `${percents[index]}%` : '—', amountMinor: amounts[key] })),
+    bar:
+      boughtMinor > 0 && whole > 0
+        ? { essential: (above[0]! / whole) * 100, lifestyle: (above[1]! / whole) * 100, debtsSavings: (above[2]! / whole) * 100 }
+        : null,
+    cashbackMinor: cashback === 0 ? null : cashback,
+    spentMinor: sheet.spendingActualMinor,
+  };
 }
