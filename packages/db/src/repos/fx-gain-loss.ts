@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
 import { entries } from '../schema';
-import { captureRevaluingTx } from '../sync/capture';
+import { captureRevaluingTx, withCaptureFirst } from '../sync/capture';
 import { ensureSystemAccountTx } from './accounts';
 import { splitBooksOfTx } from './book-splits';
 import { hasBooks, personalBookIdTx } from './books';
@@ -92,13 +92,19 @@ export async function gainLossPairOfTx(db: Db, transactionId: string, baseCurren
   return { ...shaped, amountMinor: Number(category[3]), key: category[1], registered: false };
 }
 
-/** Personal's Exchange gain or Exchange loss, made there the first time one is needed (the ensure-by-key path, R8). */
+/**
+ * Personal's Exchange gain or Exchange loss, made there the first time one is needed (the ensure-by-key path, R8). Made,
+ * it travels ahead of everything else the db transaction sends (`withCaptureFirst`): the shared purchase its line goes
+ * on was often touched earlier, and must not reach a partner's phone before the category it names.
+ */
 export function exchangeCategoryTx(db: Db, ws: WorkspaceContext, gain: boolean): Promise<string> {
   const personal: WorkspaceContext = { workspaceId: ws.workspaceId, baseCurrency: ws.baseCurrency };
-  return ensureCategoryByKeyTx(
-    db,
-    personal,
-    gain ? { key: EXCHANGE_GAIN_KEY, name: EXCHANGE_GAIN_NAME, kind: 'income' } : { key: EXCHANGE_LOSS_KEY, name: EXCHANGE_LOSS_NAME, kind: 'expense' },
+  return withCaptureFirst(db, () =>
+    ensureCategoryByKeyTx(
+      db,
+      personal,
+      gain ? { key: EXCHANGE_GAIN_KEY, name: EXCHANGE_GAIN_NAME, kind: 'income' } : { key: EXCHANGE_LOSS_KEY, name: EXCHANGE_LOSS_NAME, kind: 'expense' },
+    ),
   );
 }
 

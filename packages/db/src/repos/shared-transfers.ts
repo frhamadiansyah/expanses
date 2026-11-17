@@ -1,4 +1,4 @@
-import { type TransferName, type TransferSide, transferName } from '@expanses/core';
+import { isExchangeResultKey, type TransferName, type TransferSide, transferName } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -28,9 +28,12 @@ async function memberOfTx(tx: Db, bookId: string): Promise<string | null> {
 async function figureOfTx(tx: Db, transactionId: string): Promise<{ occurredOn: string; description: string; amountMinor: number; currency: string; fromName: string | null; toName: string | null; fromItem: string | null; toItem: string | null } | null> {
   const [head] = await tx.values<[string, string, string]>(sql`SELECT occurred_on, description, status FROM transactions WHERE id = ${transactionId}`);
   if (!head || head[2] !== 'posted') return null;
-  const lines = await tx.values<[number, string, string, string, string]>(sql`
-    SELECT e.amount_minor, e.currency, a.kind, a.id, a.name FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId}`);
-  if (lines.some(([, , kind]) => kind === 'income' || kind === 'expense')) return null;
+  const lines = await tx.values<[number, string, string, string, string, string | null]>(sql`
+    SELECT e.amount_minor, e.currency, a.kind, a.id, a.name, a.system_key FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId}`);
+  // An exchange's gain or loss line (the withdrawal rate's pair, which an older build wrote on a change back) is no
+  // category anyone chose and counts nowhere: the transfer is still a transfer. The recalculation takes the pair off a
+  // transfer with a redacted row (fx-costs.ts).
+  if (lines.some(([, , kind, , , key]) => (kind === 'income' || kind === 'expense') && !isExchangeResultKey(key))) return null;
   // The legs are the accounts money left and reached. Between two currencies the row also carries the app's own
   // Currency Exchange lines (equity, the spread): never the figure, or a TRY withdrawal would read as the rupiah the
   // exchange line holds. Equity lines only when there is no money leg at all, as every row was read before.
