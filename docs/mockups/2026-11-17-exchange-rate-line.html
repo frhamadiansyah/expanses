@@ -1,13 +1,20 @@
 <!doctype html><html><head><meta charset="utf-8"><title>Exchange rate line</title><style>
 body{margin:0;padding:24px;font:15px -apple-system,system-ui,sans-serif;background:#e5e5ea}
 h1{font-size:22px;margin:0 0 4px}.sub{color:#555;margin:0 0 18px;max-width:900px;line-height:1.45}
+h2{font-size:18px;margin:28px 0 10px}
 .row{display:flex;gap:24px;flex-wrap:wrap}.col{width:330px}.cap{font-weight:700;margin:0 0 4px}.note{font-size:13px;color:#555;margin:0 0 10px;min-height:36px;line-height:1.4}
 img{width:330px;border-radius:24px;box-shadow:0 1px 3px rgba(0,0,0,.15);display:block}
 .lab{display:inline-block;font-size:10px;font-weight:800;color:#fff;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:2px}.t{background:#8e8e93}.n{background:#1a7f37}
 </style></head><body>
-<h1>Transfer GBP → IDR: only the Rate line stays</h1>
-<p class="sub">Invented example: £1.000 from BCA GBP, Rp 20.700.000 into BCA Tahapan. The grey lines sit under the white box, above "Add more details". After: Cost and "Exchange loss … (recorded as spending)" are gone; the Rate line stays, showing BCA's rate against the market. Nothing counts as spending or income; a typed fee in Fees &amp; charges still counts as a fee.</p>
+<h1>Transfer GBP → IDR: no lines while typing, the rate on the saved receipt</h1>
+<p class="sub">Invented example: £1.000 from BCA GBP, Rp 20.700.000 into BCA Tahapan. Nothing counts as spending or income; a fee typed in Fees &amp; charges still counts as a fee. TODAY = real screenshots; AFTER = the same screenshots with the change.</p>
+<h2>1 · New transaction</h2>
 <div class="row">
- <div class="col"><p class="cap"><span class="lab t">TODAY</span>Real app</p><p class="note">Rate · Cost · Exchange loss (recorded as spending)</p><img src="exchange/today-transfer.png"></div>
- <div class="col"><p class="cap"><span class="lab n">AFTER</span>Build 144</p><p class="note">Rate only</p><img src="exchange/after-transfer.png"></div>
+ <div class="col"><p class="cap"><span class="lab t">TODAY</span>While typing</p><p class="note">Rate · Cost · Exchange loss (recorded as spending) under the box.</p><img src="exchange/today-transfer.png"></div>
+ <div class="col"><p class="cap"><span class="lab n">AFTER</span>While typing</p><p class="note">No lines at all.</p><img src="exchange/after-transfer.png"></div>
+</div>
+<h2>2 · The saved transfer's receipt</h2>
+<div class="row">
+ <div class="col"><p class="cap"><span class="lab t">TODAY</span>Receipt</p><p class="note">Cost "at the withdrawal rate" and Withdrawn "From the 17 Nov withdrawal".</p><img src="exchange/today-receipt.png"></div>
+ <div class="col"><p class="cap"><span class="lab n">AFTER</span>Receipt</p><p class="note">One Rate row: the rate received, and how far it was from the market that day. Cost and Withdrawn go.</p><img src="exchange/after-receipt.png"></div>
 </div></body></html>
