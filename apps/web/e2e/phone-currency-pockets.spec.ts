@@ -26,6 +26,41 @@ test('by thumb: open the account, a pocket, and move between pockets one key at 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test('by thumb: Move is one box — no From/To headings, From · and To · under the names, grouped figures, the receipt’s Rate (layout B)', async ({ page }) => {
+  // Invented: £1.500 at 21.000, Rp 5.000.000; £1.000 out, Rp 20.700.000 in.
+  await mockRates(page, { GBP: 21_000 });
+  await openWithPockets(page, {
+    name: 'Valas Plus',
+    pockets: [
+      { currency: 'GBP', balance: '1500.00', rate: '21000' },
+      { currency: 'IDR', balance: '5000000' },
+    ],
+  });
+  await walletCard(page, 'Valas Plus').tap();
+  await page.getByRole('link', { name: 'Move', exact: true }).tap();
+  await expect(page.getByRole('heading', { name: /^(From|To)$/ })).toHaveCount(0);
+  await expect(page.getByText('From · £1.500,00 available', { exact: true })).toBeVisible();
+  await expect(page.getByText('To · Rp 5.000.000 available', { exact: true })).toBeVisible();
+  const leaves = page.getByLabel('Leaves GBP');
+  const arrives = page.getByLabel('Arrives IDR');
+  await leaves.pressSequentially('1000');
+  await expect(leaves).toHaveValue('1.000');
+  await arrives.pressSequentially('20700000');
+  await expect(arrives).toHaveValue('20.700.000');
+  await arrives.blur();
+  await expect(leaves).toHaveValue('1.000,00');
+  await expect(page.getByText('Rp 20.700 per GBP', { exact: true })).toBeVisible();
+  // The ⇅ sits inside the one box, between the two pockets.
+  const box = await page.getByRole('button', { name: 'From, British Pound' }).locator('xpath=ancestor::section[1]').boundingBox();
+  const swap = await page.getByRole('button', { name: 'Swap' }).boundingBox();
+  expect(swap!.y).toBeGreaterThan(box!.y);
+  expect(swap!.y + swap!.height).toBeLessThan(box!.y + box!.height);
+  await page.getByRole('button', { name: 'Move', exact: true }).tap();
+  await expect(page.getByTestId('pocket-GBP')).toContainText('500,00');
+  await expect(page.getByTestId('pocket-IDR')).toContainText('25.700.000');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test('the account page reads in the dark', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await mockRates(page, { SGD: 12_680 });

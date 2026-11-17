@@ -52,9 +52,10 @@ test('lira withdrawn at 525 is spent at 525, the receipt names the withdrawal, a
   await mockRates(page, { TRY: 512 });
   await openWithPockets(page, TRAVEL);
 
-  // The withdrawal: Rp 5.250.000 for ₺10.000. Nothing is shown under the figures (owner, 17 Nov 2026).
+  // The withdrawal: Rp 5.250.000 for ₺10.000. Nothing is shown under the figures (owner, 17 Nov 2026); the Rate row
+  // reads as the receipt does (layout B, 17 Nov 2026).
   await move(page, TRAVEL.name, 'IDR', 'TRY', '5250000', '10000');
-  await expect(page.getByText(/per TRY/)).toHaveCount(0);
+  await expect(page.getByText(/per TRY/)).toHaveText(['Rp 525 per TRY']);
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-TRY')).toContainText('10.000,00');
 
@@ -76,7 +77,7 @@ test('lira withdrawn at 525 is spent at 525, the receipt names the withdrawal, a
   // ₺500 changed back for Rp 250.000 (the day's 512 is held now). They cost Rp 262.500, but the difference counts nowhere
   // (owner, 17 Nov 2026): no Cost, no Exchange loss, no Rate under the figures while typing.
   await move(page, TRAVEL.name, 'TRY', 'IDR', '500', '250000');
-  await expect(page.getByText(/per TRY/)).toHaveCount(0);
+  await expect(page.getByText(/per TRY/)).toHaveText(['Rp 500 per TRY']);
   await expect(page.getByText(/Exchange (loss|gain)|recorded as/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-TRY')).toContainText('9.050,00');
