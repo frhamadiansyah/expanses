@@ -1,0 +1,254 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mac native layouts</title><style>
+:root{--ink:#1d1d1f;--ink2:#3c3c43;--ink3:#86868b;--hair:#e5e5ea;--side:#ececef;--accent:#0a7cff;--up:#248a3d;--down:#d70015;--win:#fff}
+*{box-sizing:border-box}
+body{margin:0;padding:28px;background:#d9d9de;font:13px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+h1{font-size:22px;margin:0 0 4px}.sub{color:#555;margin:0 0 22px;max-width:1150px;line-height:1.45;font-size:14px}
+h2{font-size:18px;margin:34px 0 4px}.lead{color:#555;margin:0 0 14px;max-width:1150px;line-height:1.45;font-size:14px}
+.win{width:1180px;height:720px;background:var(--win);border-radius:11px;box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 22px 60px rgba(0,0,0,.25);display:flex;overflow:hidden}
+/* sidebar */
+.side{width:214px;background:var(--side);border-right:.5px solid #d6d6db;padding:14px 10px;display:flex;flex-direction:column}
+.lights{display:flex;gap:8px;padding:2px 6px 18px}.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.ws{display:flex;align-items:center;gap:8px;padding:4px 8px 12px}.ws b{font-size:13px}.ws span{color:var(--ink3);font-size:11px}
+.av{width:22px;height:22px;border-radius:50%;background:#8e8e93;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sh{font-size:11px;font-weight:600;color:var(--ink3);padding:10px 8px 4px}
+.it{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;height:26px;color:var(--ink)}
+.it svg{width:15px;height:15px;stroke:var(--accent);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.it.on{background:rgba(0,0,0,.08)}
+.it .n{margin-left:auto;color:var(--ink3);font-size:12px;font-variant-numeric:tabular-nums}
+.foot{margin-top:auto;padding:8px;color:var(--ink3);font-size:11px;display:flex;align-items:center;gap:6px}.dot{width:7px;height:7px;border-radius:50%;background:var(--up)}
+/* main */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.tb{height:52px;display:flex;align-items:center;gap:10px;padding:0 14px 0 18px;border-bottom:.5px solid var(--hair)}
+.tb .t{font-size:15px;font-weight:600}.tb .ts{color:var(--ink3);font-size:12px;margin-left:2px}
+.sp{flex:1}
+.seg{display:flex;background:#e9e9ec;border-radius:7px;padding:2px;font-size:12px}.seg span{padding:3px 11px;border-radius:5px;color:var(--ink2)}.seg .on{background:#fff;box-shadow:0 .5px 1.5px rgba(0,0,0,.18);color:var(--ink);font-weight:500}
+.nav{display:flex;align-items:center;gap:2px;font-size:13px}.nav i{font-style:normal;color:var(--ink3);width:22px;text-align:center;font-size:15px}
+.search{width:190px;height:26px;border-radius:7px;background:#ededf0;color:var(--ink3);display:flex;align-items:center;padding:0 8px;gap:6px;font-size:12px}
+.tbb{width:28px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:17px}
+.tbb:hover{background:#ededf0}
+.body{flex:1;display:flex;min-height:0}
+/* A: list + detail */
+.list{width:380px;border-right:.5px solid var(--hair);overflow:hidden}
+.dh{display:flex;justify-content:space-between;padding:12px 16px 4px;font-size:11px;font-weight:600;color:var(--ink3)}
+.row{display:flex;align-items:center;gap:10px;padding:7px 12px;margin:0 6px;border-radius:7px}
+.row .ic{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.row .g{flex:1;min-width:0}.row .a{font-size:13px}.row .s{font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .m{font-variant-numeric:tabular-nums;font-size:13px}
+.row.sel{background:var(--accent);color:#fff}.row.sel .s{color:rgba(255,255,255,.8)}
+.detail{flex:1;padding:28px 34px;overflow:hidden}
+.big{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums}.cap{color:var(--ink3);margin-top:2px}
+.grp{margin-top:20px;border:.5px solid var(--hair);border-radius:9px}
+.kv{display:flex;padding:8px 12px;font-size:13px}.kv+.kv{border-top:.5px solid var(--hair)}.kv span:first-child{width:130px;color:var(--ink3)}
+.btns{display:flex;gap:8px;margin-top:18px}.btn{padding:4px 12px;border-radius:6px;background:#f2f2f4;border:.5px solid #d1d1d6;font-size:13px}.btn.red{color:var(--down)}
+/* B: table */
+.strip{display:flex;gap:36px;padding:16px 22px 12px;border-bottom:.5px solid var(--hair)}
+.strip div{display:flex;flex-direction:column}.strip span{font-size:11px;color:var(--ink3)}.strip b{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;font-weight:600;color:var(--ink3);text-align:left;padding:7px 10px;border-bottom:.5px solid var(--hair);background:#fafafa;position:sticky;top:0}
+td{padding:5px 10px;white-space:nowrap}
+tr:nth-child(even) td{background:#f7f7f9}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.sel td{background:var(--accent)!important;color:#fff}
+.pill{display:inline-flex;align-items:center;gap:6px}.pill i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.status{height:26px;border-top:.5px solid var(--hair);display:flex;align-items:center;padding:0 14px;color:var(--ink3);font-size:11px;gap:14px}
+.newrow td{color:var(--ink3);background:#fff!important;border-top:.5px dashed #d1d1d6}
+/* C: settings-style overview */
+.over{flex:1;background:#f5f5f7;padding:22px 28px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;gap:18px;align-content:start}
+.box{background:#fff;border-radius:10px;border:.5px solid #e2e2e7}
+.box h3{font-size:13px;font-weight:600;margin:0;padding:10px 14px 6px}
+.br{display:flex;align-items:center;padding:8px 14px;font-size:13px}.br+.br{border-top:.5px solid var(--hair)}
+.br .l{flex:1}.br .v{font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:3px;background:#e9e9ec;margin:2px 14px 12px;overflow:hidden}.bar i{display:block;height:100%;background:var(--up);border-radius:3px}
+.green{color:var(--up)}.red{color:var(--down)}.grey{color:var(--ink3)}
+.note{font-size:12.5px;color:#555;margin:10px 0 0;max-width:1180px;line-height:1.45}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="flow" viewBox="0 0 24 24"><path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/></symbol>
+<symbol id="wal" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></symbol>
+<symbol id="pie" viewBox="0 0 24 24"><path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></symbol>
+<symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+<symbol id="flag" viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 1-1h12l-2 4 2 4H5"/></symbol>
+<symbol id="trend" viewBox="0 0 24 24"><path d="M22 7 13.5 15.5 8.5 10.5 2 17M16 7h6v6"/></symbol>
+<symbol id="tag" viewBox="0 0 24 24"><path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/></symbol>
+<symbol id="home" viewBox="0 0 24 24"><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="bank" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M19 21V10M9 21V10M15 21V10M2 10l10-7 10 7z"/></symbol>
+<symbol id="card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></symbol>
+<symbol id="cash" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></symbol>
+</defs></svg>
+<style>
+.ov{flex:1;background:#f5f5f7;padding:18px 22px;overflow:hidden;display:grid;grid-template-columns:2fr 1fr;gap:14px;align-content:start}
+.ov .box h3{display:flex;justify-content:space-between;align-items:baseline}.ov .box h3 span{font-weight:400;color:var(--ink3);font-size:11.5px}
+.headline{padding:0 14px}.headline b{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}.chip{display:inline-block;margin-left:8px;font-size:11px;color:var(--up);background:#e8f5ec;border-radius:5px;padding:1px 6px;vertical-align:4px}
+.legend{display:flex;gap:12px;font-size:11px;color:var(--ink3);padding:6px 14px 0}.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.row3{grid-column:1 / span 2;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.acc{padding:6px 14px}.acc div{display:flex;justify-content:space-between;font-size:13px}.acc .tr{height:4px;border-radius:2px;background:#ececf0;margin:5px 0 8px}.acc .tr i{display:block;height:100%;border-radius:2px;background:#1d1d1f}
+.look{margin:4px 12px 8px;padding:8px 10px;background:#f5f5f7;border-radius:8px}.look b{font-size:12.5px;font-weight:600}.look p{margin:2px 0 0;font-size:11.5px;color:var(--ink3)}
+.d{display:flex;align-items:center;gap:10px;padding:6px 14px;font-size:13px}.d+.d{border-top:.5px solid var(--hair)}.d .dt{width:34px;text-align:center;border:.5px solid #d6d6db;border-radius:6px;font-size:12px;font-weight:600;line-height:1.1;padding:2px 0}.d .dt small{display:block;font-size:9px;color:var(--ink3);font-weight:400}.d .l{flex:1}
+.pbtn{padding:4px 11px;border-radius:6px;background:var(--ink);color:#fff;font-size:12.5px;font-weight:500}
+.gbtn{padding:4px 10px;border-radius:6px;border:.5px solid #d1d1d6;background:#fff;font-size:12.5px}
+.tabs{display:flex;gap:4px;font-size:12.5px}.tabs span{padding:3px 10px;border-radius:6px;color:var(--ink2)}.tabs .on{background:#e9e9ec;color:var(--ink);font-weight:500}
+.cfwrap{flex:1;display:flex;min-height:0}.cfmain{flex:1;display:flex;flex-direction:column;min-width:0}
+.insp{width:270px;border-left:.5px solid var(--hair);padding:18px 18px;background:#fbfbfc}.insp .big{font-size:22px}
+td.edit{outline:2px solid var(--accent);outline-offset:-2px;background:#fff!important;color:var(--ink)!important}
+.hint{font-size:11px;color:var(--ink3);padding:6px 14px;border-bottom:.5px solid var(--hair);display:flex;gap:16px}
+</style><style>.bd{margin-left:auto;background:#d70015;color:#fff;font-size:10.5px;font-weight:600;border-radius:9px;padding:0 6px;line-height:16px}
+.side .foot{border-top:.5px solid #d6d6db;padding-top:8px}</style>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/></symbol>
+<symbol id="gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/></symbol>
+<symbol id="plane" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></symbol>
+<symbol id="ladder" viewBox="0 0 24 24"><path d="M4 20 20 4M9 20l11-11M4 15 15 4"/></symbol>
+</defs></svg><style>.box h3{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.row .ic{background:#f2f2f4}.gbtn,.pbtn,.nav,.seg span{white-space:nowrap}.search{width:150px}</style><style>.box span{white-space:nowrap}.box div>span+span{margin-left:14px}td.budg{color:#0a7cff}tr.par td{background:#fbfbfc}</style><h1>Mac redesign · step 7: Wallet</h1>
+<p class="sub">Invented household; the card faces stand in for the app's real card art (each bank's own face, as on the iPhone). Same style as the other pages.</p>
+<h2>1 · Wallet</h2><p class="lead">On top: the Balance (spending money minus what is due on cards, with its 30-day line) and where the money sits. Below: every account as its card face, grouped — bank accounts, cash &amp; e-wallets, credit cards (what is due now), foreign currency — with each group's total. "List" switches the cards to plain rows.</p><div class="win" style="height:800px"><div class="side">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="ws"><span class="av">H</span><div><b>Household</b><br><span>IDR · shared</span></div></div>
+  <div class="it"><svg><use href="#home"/></svg>Overview</div>
+  <div class="it"><svg><use href="#flow"/></svg>Cashflow</div>
+  <div class="it"><svg><use href="#pie"/></svg>Budget</div>
+  <div class="it"><svg><use href="#cal"/></svg>Bills<span class="n">3</span></div>
+  <div class="it"><svg><use href="#inbox"/></svg>Review<span class="bd">4</span></div>
+  <div class="sh">Money</div>
+  <div class="it on"><svg><use href="#wal"/></svg>Wallet</div>
+  <div class="it"><svg><use href="#trend"/></svg>Net worth</div>
+  <div class="it"><svg><use href="#gift"/></svg>Points</div>
+  <div class="sh">Plans</div>
+  <div class="it"><svg><use href="#flag"/></svg>Goals</div>
+  <div class="it"><svg><use href="#plane"/></svg>Events</div>
+  <div class="it"><svg><use href="#ladder"/></svg>Debt-free plan<span class="bd">3 late</span></div>
+  <div class="sh">Accounts</div>
+  <div class="it"><svg><use href="#bank"/></svg>BCA · IDR<span class="n">142,5 jt</span></div>
+  <div class="it"><svg><use href="#bank"/></svg>Mandiri<span class="n">61,2 jt</span></div>
+  <div class="it"><svg><use href="#card"/></svg>BCA Visa<span class="n">−8,4 jt</span></div>
+  <div class="it"><svg><use href="#cash"/></svg>GoPay<span class="n">1,9 jt</span></div>
+  <div class="foot" style="margin-top:auto"><i class="dot"></i>Synced with iPhone · backed up 09:12</div>
+ </div><div class="main"><div class="tb"><span class="t">Wallet</span><span class="sp"></span><div class="seg"><span class="on">Cards</span><span>List</span></div><span class="gbtn">Points</span><span class="gbtn">Reorder</span><span class="pbtn">＋ Add account</span></div>
+ <div style="position:relative;flex:1;background:#f5f5f7;padding:16px 20px;display:grid;grid-template-columns:1.6fr 1fr;grid-template-rows:auto 1fr;gap:14px;min-height:0">
+  <div class="box"><h3>Balance<span style="font-weight:400;color:var(--ink3);font-size:11.5px">spending money − outstanding on cards</span></h3>
+ <div style="display:flex;align-items:center;gap:22px;padding:0 14px 12px"><div><b style="font-size:26px;font-weight:600">Rp 420.162.000</b><div class="grey" style="font-size:12px;margin-top:2px">+Rp 3,1 jt in 30 days</div></div>
+ <svg width="280" height="64" viewBox="0 0 280 64"><polyline points="0,40.0 9,37.4 18,35.1 27,33.2 36,31.8 45,31.0 54,30.9 63,31.5 72,32.5 81,33.8 90,35.1 99,36.4 108,37.3 117,37.8 126,37.6 135,36.8 144,35.3 153,33.3 162,30.9 171,28.3 180,25.8 189,23.5 198,21.6 207,20.3 216,19.7 225,19.7 234,20.3 243,21.3 252,22.7 261,24.0 270,25.3" fill="none" stroke="#248a3d" stroke-width="2"/><line x1="0" x2="280" y1="63" y2="63" stroke="#ececf0"/></svg></div>
+ <div class="br"><span class="l"><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#248a3d;margin-right:6px"></i>Spending money</span><span class="v">Rp 438.762.000</span></div>
+ <div class="br"><span class="l"><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d70015;margin-right:6px"></i>Outstanding on cards</span><span class="v">−Rp 18.600.000</span></div></div><div class="box"><h3>Where the money sits</h3>
+ <div style="display:flex;height:10px;margin:2px 14px 10px;border-radius:5px;overflow:hidden"><i style="width:70%;background:#1f6fc4"></i><i style="width:21%;background:#d46b10"></i><i style="width:9%;background:#2f8f3a"></i></div>
+ <div class="br"><span class="l">BCA Tahapan</span><span class="v grey">70%</span></div>
+ <div class="br"><span class="l">Jenius Maxi Saver</span><span class="v grey">21%</span></div>
+ <div class="br"><span class="l">Wise · others</span><span class="v grey">9%</span></div></div>
+  <div class="box" style="grid-column:1 / span 2;overflow:hidden"><h3>Accounts<span style="font-weight:400;color:var(--ink3);font-size:11.5px">Drag to reorder · click a card to see it</span></h3>
+   <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px 16px;padding:4px 16px 16px"><div style="grid-column:1 / span 5;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#86868b;margin-top:6px"><span>BANK ACCOUNTS</span><span>Rp 437.900.000</span></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#3aa0e8,#1f6fc4);box-shadow:0 0 0 3px #0a7cff;position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">BCA</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 306 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 1023</div></div>
+ <div style="font-size:12.5px;margin-top:6px">BCA Tahapan</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#f18f3b,#d46b10);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Jenius</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 92,5 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 8821</div></div>
+ <div style="font-size:12.5px;margin-top:6px">Jenius Maxi Saver</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#9fe870,#2f8f3a);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Wise</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 39,1 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 0412</div></div>
+ <div style="font-size:12.5px;margin-top:6px">Wise</div></div><div style="grid-column:1 / span 5;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#86868b;margin-top:6px"><span>CASH &amp; E-WALLETS</span><span>Rp 862.000</span></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#8e8e93,#5b5b60);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Cash</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 193 rb</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#aaa"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• </div></div>
+ <div style="font-size:12.5px;margin-top:6px">Wallet cash</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#00aed6,#007f9e);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">GoPay</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 669 rb</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#aaa"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• </div></div>
+ <div style="font-size:12.5px;margin-top:6px">GoPay</div></div><div style="grid-column:1 / span 5;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#86868b;margin-top:6px"><span>CREDIT CARDS · OUTSTANDING</span><span>−Rp 18,6 jt</span></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#4d5b7c,#283350);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">BCA</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">−7,2 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 1467</div></div>
+ <div style="font-size:12.5px;margin-top:6px">BCA KrisFlyer Visa</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#7a1b1b,#4a0c0c);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">CIMB</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">−3,9 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 5510</div></div>
+ <div style="font-size:12.5px;margin-top:6px">CIMB Niaga World</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#2b2b2b,#000);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Mandiri</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">−7,5 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 2290</div></div>
+ <div style="font-size:12.5px;margin-top:6px">Mandiri Marriott Bonvoy</div></div><div style="grid-column:1 / span 5;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#86868b;margin-top:6px"><span>FOREIGN CURRENCY</span><span>≈ Rp 4,1 jt</span></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#b8860b,#7a5a08);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Cash</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">฿ 8.860</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#ccc"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• </div></div>
+ <div style="font-size:12.5px;margin-top:6px">Baht cash</div></div></div></div>
+ </div></div></div>
+<h2>2 · A card clicked</h2><p class="lead">The side peek shows the account: balance, Transfer / Move / Statement / Edit (Pay for a card), and the last few transactions. Double-click opens the full account or card page.</p><div class="win" style="height:800px"><div class="side">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="ws"><span class="av">H</span><div><b>Household</b><br><span>IDR · shared</span></div></div>
+  <div class="it"><svg><use href="#home"/></svg>Overview</div>
+  <div class="it"><svg><use href="#flow"/></svg>Cashflow</div>
+  <div class="it"><svg><use href="#pie"/></svg>Budget</div>
+  <div class="it"><svg><use href="#cal"/></svg>Bills<span class="n">3</span></div>
+  <div class="it"><svg><use href="#inbox"/></svg>Review<span class="bd">4</span></div>
+  <div class="sh">Money</div>
+  <div class="it on"><svg><use href="#wal"/></svg>Wallet</div>
+  <div class="it"><svg><use href="#trend"/></svg>Net worth</div>
+  <div class="it"><svg><use href="#gift"/></svg>Points</div>
+  <div class="sh">Plans</div>
+  <div class="it"><svg><use href="#flag"/></svg>Goals</div>
+  <div class="it"><svg><use href="#plane"/></svg>Events</div>
+  <div class="it"><svg><use href="#ladder"/></svg>Debt-free plan<span class="bd">3 late</span></div>
+  <div class="sh">Accounts</div>
+  <div class="it"><svg><use href="#bank"/></svg>BCA · IDR<span class="n">142,5 jt</span></div>
+  <div class="it"><svg><use href="#bank"/></svg>Mandiri<span class="n">61,2 jt</span></div>
+  <div class="it"><svg><use href="#card"/></svg>BCA Visa<span class="n">−8,4 jt</span></div>
+  <div class="it"><svg><use href="#cash"/></svg>GoPay<span class="n">1,9 jt</span></div>
+  <div class="foot" style="margin-top:auto"><i class="dot"></i>Synced with iPhone · backed up 09:12</div>
+ </div><div class="main"><div class="tb"><span class="t">Wallet</span><span class="sp"></span><div class="seg"><span class="on">Cards</span><span>List</span></div><span class="gbtn">Points</span><span class="gbtn">Reorder</span><span class="pbtn">＋ Add account</span></div>
+ <div style="position:relative;flex:1;background:#f5f5f7;padding:16px 20px;display:grid;grid-template-columns:1.6fr 1fr;grid-template-rows:auto 1fr;gap:14px;min-height:0"><div style="position:absolute;top:0;right:0;bottom:0;width:340px;background:#fff;border-left:.5px solid #d1d1d6;box-shadow:-12px 0 30px rgba(0,0,0,.12);z-index:5">
+ <div style="display:flex;justify-content:space-between;padding:14px 16px 6px"><b style="font-size:13px">BCA Tahapan</b><span class="grey">⌃ ⌄ &nbsp;✕</span></div>
+ <div style="padding:0 16px 10px"><div style="font-size:22px;font-weight:600">Rp 306.000.000</div><div class="grey" style="font-size:12px">Current account · IDR · ···· 1023</div></div>
+ <div class="btns" style="padding:0 16px 12px;margin-top:0"><span class="btn">Transfer</span><span class="btn">Move</span><span class="btn">Statement</span><span class="btn">Edit</span></div>
+ <div style="border-top:.5px solid var(--hair);font-size:11px;font-weight:600;color:#86868b;padding:10px 16px 4px">RECENT</div>
+ <div class="br"><span class="l">PLN token</span><span class="v">−500.000</span></div><div class="br"><span class="l">Salary</span><span class="v green">+38.000.000</span></div><div class="br"><span class="l">Home loan</span><span class="v">−4.950.000</span></div><div class="br"><span class="l">To BCA Visa</span><span class="v">−8.400.000</span></div>
+ <div class="br" style="color:#0a7cff"><span class="l">All transactions ›</span></div></div>
+  <div class="box"><h3>Balance<span style="font-weight:400;color:var(--ink3);font-size:11.5px">spending money − outstanding on cards</span></h3>
+ <div style="display:flex;align-items:center;gap:22px;padding:0 14px 12px"><div><b style="font-size:26px;font-weight:600">Rp 420.162.000</b><div class="grey" style="font-size:12px;margin-top:2px">+Rp 3,1 jt in 30 days</div></div>
+ <svg width="280" height="64" viewBox="0 0 280 64"><polyline points="0,40.0 9,37.4 18,35.1 27,33.2 36,31.8 45,31.0 54,30.9 63,31.5 72,32.5 81,33.8 90,35.1 99,36.4 108,37.3 117,37.8 126,37.6 135,36.8 144,35.3 153,33.3 162,30.9 171,28.3 180,25.8 189,23.5 198,21.6 207,20.3 216,19.7 225,19.7 234,20.3 243,21.3 252,22.7 261,24.0 270,25.3" fill="none" stroke="#248a3d" stroke-width="2"/><line x1="0" x2="280" y1="63" y2="63" stroke="#ececf0"/></svg></div>
+ <div class="br"><span class="l"><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#248a3d;margin-right:6px"></i>Spending money</span><span class="v">Rp 438.762.000</span></div>
+ <div class="br"><span class="l"><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d70015;margin-right:6px"></i>Outstanding on cards</span><span class="v">−Rp 18.600.000</span></div></div><div class="box"><h3>Where the money sits</h3>
+ <div style="display:flex;height:10px;margin:2px 14px 10px;border-radius:5px;overflow:hidden"><i style="width:70%;background:#1f6fc4"></i><i style="width:21%;background:#d46b10"></i><i style="width:9%;background:#2f8f3a"></i></div>
+ <div class="br"><span class="l">BCA Tahapan</span><span class="v grey">70%</span></div>
+ <div class="br"><span class="l">Jenius Maxi Saver</span><span class="v grey">21%</span></div>
+ <div class="br"><span class="l">Wise · others</span><span class="v grey">9%</span></div></div>
+  <div class="box" style="grid-column:1 / span 2;overflow:hidden"><h3>Accounts<span style="font-weight:400;color:var(--ink3);font-size:11.5px">Drag to reorder · click a card to see it</span></h3>
+   <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px 16px;padding:4px 16px 16px"><div style="grid-column:1 / span 5;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#86868b;margin-top:6px"><span>BANK ACCOUNTS</span><span>Rp 437.900.000</span></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#3aa0e8,#1f6fc4);box-shadow:0 0 0 3px #0a7cff;position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">BCA</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 306 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 1023</div></div>
+ <div style="font-size:12.5px;margin-top:6px">BCA Tahapan</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#f18f3b,#d46b10);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Jenius</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 92,5 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 8821</div></div>
+ <div style="font-size:12.5px;margin-top:6px">Jenius Maxi Saver</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#9fe870,#2f8f3a);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Wise</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 39,1 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 0412</div></div>
+ <div style="font-size:12.5px;margin-top:6px">Wise</div></div><div style="grid-column:1 / span 5;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#86868b;margin-top:6px"><span>CASH &amp; E-WALLETS</span><span>Rp 862.000</span></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#8e8e93,#5b5b60);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Cash</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 193 rb</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#aaa"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• </div></div>
+ <div style="font-size:12.5px;margin-top:6px">Wallet cash</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#00aed6,#007f9e);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">GoPay</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">Rp 669 rb</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#aaa"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• </div></div>
+ <div style="font-size:12.5px;margin-top:6px">GoPay</div></div><div style="grid-column:1 / span 5;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#86868b;margin-top:6px"><span>CREDIT CARDS · OUTSTANDING</span><span>−Rp 18,6 jt</span></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#4d5b7c,#283350);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">BCA</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">−7,2 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 1467</div></div>
+ <div style="font-size:12.5px;margin-top:6px">BCA KrisFlyer Visa</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#7a1b1b,#4a0c0c);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">CIMB</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">−3,9 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 5510</div></div>
+ <div style="font-size:12.5px;margin-top:6px">CIMB Niaga World</div></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#2b2b2b,#000);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Mandiri</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">−7,5 jt</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#d4b05a"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• 2290</div></div>
+ <div style="font-size:12.5px;margin-top:6px">Mandiri Marriott Bonvoy</div></div><div style="grid-column:1 / span 5;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#86868b;margin-top:6px"><span>FOREIGN CURRENCY</span><span>≈ Rp 4,1 jt</span></div><div style="width:100%"><div style="aspect-ratio:1.586;border-radius:12px;background:linear-gradient(135deg,#b8860b,#7a5a08);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;color:#fff;padding:10px 12px">
+ <div style="font-weight:700;font-size:13px;letter-spacing:.3px">Cash</div><div style="position:absolute;right:12px;top:10px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">฿ 8.860</div>
+ <div style="position:absolute;left:12px;top:44%;width:30px;height:22px;border-radius:5px;background:#ccc"></div>
+ <div style="position:absolute;left:12px;bottom:9px;font-size:10.5px;letter-spacing:1px;opacity:.9">•••• </div></div>
+ <div style="font-size:12.5px;margin-top:6px">Baht cash</div></div></div></div>
+ </div></div></div>
+</body></html>
