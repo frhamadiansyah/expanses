@@ -66,9 +66,9 @@ describe('the Categories table', () => {
       ['line:Groceries', 'Groceries', 1, 'budgeted'],
       ['line:Supplies', 'Supplies', 1, 'budgeted'],
       // Nothing budgeted in either and both spent: by what they spent, a spending sub-category one step in. Pets spent nothing.
-      ['none:Electronics', 'Electronics', 0, 'none'],
-      ['none:Phones', 'Phones', 1, 'none'],
-      ['none:Gifts', 'Gifts', 0, 'none'],
+      ['line:Electronics', 'Electronics', 0, 'none'],
+      ['line:Phones', 'Phones', 1, 'none'],
+      ['line:Gifts', 'Gifts', 0, 'none'],
     ]);
     expect(table.noBudgetCount).toBe(2);
   });

@@ -33,7 +33,7 @@ export type CellEdit =
   | 'sheet';
 
 export interface DeskRow {
-  /** Unique in the table: `group:`, `line:` or `none:` and the category's id (a parent's own budget is its `line:`). */
+  /** Unique in the table: `group:` or `line:` and the category's id (a parent's own budget is its `line:`), the same in either section. */
   key: string;
   kind: 'group' | 'line';
   section: 'budgeted' | 'none';
@@ -168,11 +168,11 @@ export function deskTable(lines: readonly BudgetLine[], budgets: readonly Budget
     .filter((root) => !coveredOf(root).any && root.totalMinor > 0)
     .sort((a, b) => b.totalMinor - a.totalMinor || a.name.localeCompare(b.name));
   for (const root of unbudgeted) {
-    rows.push(lineRow(root, { key: `none:${root.id}`, label: root.name, depth: 0, groupId: null, section: 'none' }, storedOf.get(root.id)));
+    rows.push(lineRow(root, { key: `line:${root.id}`, label: root.name, depth: 0, groupId: null, section: 'none' }, storedOf.get(root.id)));
     const spending = flatten(root.children)
       .filter((child) => child.totalMinor > 0)
       .sort((a, b) => b.totalMinor - a.totalMinor || a.name.localeCompare(b.name));
-    for (const child of spending) rows.push(lineRow(child, { key: `none:${child.id}`, label: child.name, depth: 1, groupId: null, section: 'none' }, storedOf.get(child.id)));
+    for (const child of spending) rows.push(lineRow(child, { key: `line:${child.id}`, label: child.name, depth: 1, groupId: null, section: 'none' }, storedOf.get(child.id)));
   }
   return { rows, total, noBudgetCount: unbudgeted.length };
 }
