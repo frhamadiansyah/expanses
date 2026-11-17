@@ -38,8 +38,9 @@ test('the two pages are one, and what is left of them is all here', async ({ pag
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
 
-  // The home route hands over, so an old link, a bookmark and the PWA's own start page all land here.
-  await page.goto('/');
+  // The home route hands over on a phone (a wide screen opens on Overview, overview.spec.ts), so an old link, a
+  // bookmark and the PWA's own start page land here; on this wide screen the address is opened directly.
+  await page.goto('/net-worth');
   await expect(page).toHaveURL(/\/net-worth$/);
 
   // What the Dashboard had.
@@ -411,7 +412,7 @@ test('an empty account in a currency with no rate does not stop net worth: zero 
   await openAccount(page, { subtype: 'bank', name: 'Rupiah Saver', balance: '50000000' });
   await openAccount(page, { subtype: 'bank', name: 'Dollar Saver', currency: 'USD' });
 
-  await page.goto('/');
+  await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('50.000.000');
   await expect(page.getByTestId('net-worth')).not.toContainText('rate yet');
 
@@ -430,7 +431,7 @@ test('a currency with no rate stops net worth, the balance sheet and the ratios,
   // $1.000 held, and then no USD rate anywhere on the device.
   await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
 
-  await page.goto('/');
+  await page.goto('/net-worth');
   // Before, the dashboard printed Rp 50.000.000 as the net worth, the USD account silently at 0.
   await expect(page.getByTestId('net-worth')).toContainText('No USD rate yet');
   await expect(page.getByTestId('net-worth')).not.toContainText('50.000.000');

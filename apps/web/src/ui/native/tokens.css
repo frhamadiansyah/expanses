@@ -140,6 +140,11 @@
   --ph-side-hover: rgb(0 0 0 / 0.04);
   --ph-side-top: 14px;
 
+  /* The wide screen's Overview (Mac Overview A): its grey page, and the hatched "Expected" bars' fill and stripe. */
+  --ov-ground: #f5f5f7;
+  --ov-expected-fill: #eef7f0;
+  --ov-expected-line: #9fd3ad;
+
   /*
    * Whose an item is, in a household's Net worth (joint-net-worth §8.2; owner rings, 12 Nov): the ring round a row's
    * icon circle. Each member picks one (`RING_COLOURS`, in this order); one who never picks has the colour of their
@@ -219,6 +224,11 @@
     --ph-side: #232325;
     --ph-side-on: rgb(255 255 255 / 0.1);
     --ph-side-hover: rgb(255 255 255 / 0.05);
+
+    /* The Overview's page under its boxes, and Expected's hatching, lifted for a dark ground. */
+    --ov-ground: #000000;
+    --ov-expected-fill: #12261a;
+    --ov-expected-line: #2f7d4a;
 
     /* The owner rings as iOS lifts the same hues for a dark ground. */
     --owner-blue: #0a84ff;

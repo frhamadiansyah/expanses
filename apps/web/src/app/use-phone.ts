@@ -3,6 +3,12 @@ import { useEffect, useState } from 'react';
 /** Tailwind's md, the width the sidebar appears at. Below it, the phone shell takes over. */
 const PHONE = '(max-width: 767px)';
 
+/** Whether the app's start page is Overview: on a screen wide enough for the sidebar, not on a phone (held either way). */
+export function opensOnOverview(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return !window.matchMedia(PHONE).matches && !window.matchMedia(SIDEWAYS).matches;
+}
+
 /**
  * Whether the shell should draw its phone parts at all.
  *

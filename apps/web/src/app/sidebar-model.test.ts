@@ -18,9 +18,9 @@ import {
 const account = (id: string, name: string, subtype: AccountRow['subtype'], currency = 'IDR') => ({ id, name, subtype, currency }) as AccountRow;
 
 describe('the sidebar groups (option A)', () => {
-  it('reads Cashflow, Budget, Bills, Review; then Money and Plans, with no Overview yet', () => {
+  it('reads Overview, Cashflow, Budget, Bills, Review; then Money and Plans', () => {
     expect(SIDEBAR_GROUPS.map((group) => [group.title, group.items.map((item) => item.label)])).toEqual([
-      [null, ['Cashflow', 'Budget', 'Bills', 'Review']],
+      [null, ['Overview', 'Cashflow', 'Budget', 'Bills', 'Review']],
       ['Money', ['Wallet', 'Net worth', 'Points']],
       ['Plans', ['Goals', 'Events', 'Debt-free plan']],
     ]);

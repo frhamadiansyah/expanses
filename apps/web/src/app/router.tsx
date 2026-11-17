@@ -73,6 +73,8 @@ import { EditAssetRoute } from '../features/networth/EditAssetPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { AttentionPage } from '../features/networth/AttentionPage';
 import { FinancialHealthPage } from '../features/networth/FinancialHealthPage';
+import { DesktopOverviewPage } from '../features/overview/OverviewPage';
+import { opensOnOverview } from './use-phone';
 import { HealthSettingsPage } from '../features/networth/HealthSettingsPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
 import { GoalRoute } from '../features/goals/GoalPage';
@@ -224,9 +226,11 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: '/',
     beforeLoad: () => {
-      throw redirect({ to: '/net-worth' });
+      // A wide screen (the Mac app, a desktop browser) opens on Overview (Mac Overview A); a phone keeps Net worth.
+      throw redirect({ to: opensOnOverview() ? '/overview' : '/net-worth' });
     },
   }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/overview', component: DesktopOverviewPage }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/transactions',

@@ -15,7 +15,7 @@ test('groups by job, accounts with balances, the fold remembered', async ({ page
   const side = page.locator('aside');
   const nav = side.getByRole('navigation', { name: 'Sections' });
 
-  await expect(nav.getByRole('link')).toHaveText([/^Cashflow/, /^Budget/, /^Bills/, /^Review/, /^Wallet/, /^Net worth/, /^Points/, /^Goals/, /^Events/, /^Debt-free plan/]);
+  await expect(nav.getByRole('link')).toHaveText([/^Overview/, /^Cashflow/, /^Budget/, /^Bills/, /^Review/, /^Wallet/, /^Net worth/, /^Points/, /^Goals/, /^Events/, /^Debt-free plan/]);
   await expect(nav.getByText('Money', { exact: true })).toBeVisible();
   await expect(nav.getByText('Plans', { exact: true })).toBeVisible();
   // Nothing the old sidebar listed below the line is a row any more: Categories, Backup and Account are in Settings.

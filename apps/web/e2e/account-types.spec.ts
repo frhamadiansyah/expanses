@@ -25,7 +25,7 @@ test('a digital wallet and a fund account hold money, and only the wallet is spe
   await expectWalletFigure(page, 'GoPay', '455.000');
 
   // Both are money the owner holds, so net worth counts them and the wallet's spending came off it.
-  await page.goto('/');
+  await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('8.455.000');
 
   // A wallet has no day the money comes back: the deposit's terms card belongs to deposits only.
@@ -44,7 +44,7 @@ test('a deposit funded from an account moves the money, and says where it came f
   // 0102 · … Rp 50.000.000" — so the name is a prefix and the figure is read off the row.
   await expect(page.getByRole('link', { name: /^BCA Tahapan/ })).toContainText('50.000.000');
   await expect(page.getByRole('link', { name: /^bluuu/ })).toContainText('50.000.000');
-  await page.goto('/');
+  await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('100.000.000');
 
   // And its ledger shows one transfer naming both accounts, not an opening balance.

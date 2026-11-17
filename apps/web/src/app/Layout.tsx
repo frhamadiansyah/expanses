@@ -101,7 +101,8 @@ export function Layout() {
       <main className={cx('relative flex-1', phoneShell ? 'pb-32' : 'pb-8')} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         {/* Out of view the moment anything has scrolled under the status bar; watched, not listened to. */}
         <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
-        <div className="mx-auto max-w-4xl p-4 md:p-8">
+        {/* Overview draws its own title bar and grey page edge to edge (Mac Overview A); every other page sits in the column. */}
+        <div className={pathname === '/overview' ? 'w-full' : 'mx-auto max-w-4xl p-4 md:p-8'}>
           <InstallHint />
           {/* What just happened to their data comes before the standing reminder about backing it up. */}
           <AfterUpdateCard />

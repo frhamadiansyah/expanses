@@ -8,6 +8,7 @@ import {
   CalendarRange,
   CreditCard,
   Flag,
+  House,
   Inbox,
   Landmark,
   PieChart,
@@ -44,6 +45,7 @@ export const SIDEBAR_GROUPS: readonly SidebarGroup[] = [
   {
     title: null,
     items: [
+      { to: '/overview', label: 'Overview', icon: House },
       { to: '/transactions', label: 'Cashflow', icon: ArrowLeftRight },
       { to: '/budget', label: 'Budget', icon: PieChart },
       { to: '/bills', label: 'Bills', icon: CalendarDays, badge: 'bills' },

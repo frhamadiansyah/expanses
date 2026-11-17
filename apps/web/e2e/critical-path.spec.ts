@@ -27,6 +27,6 @@ test('card purchase counts once as spending; the statement is paid from the card
   await page.goto('/spending');
   await expect(page.getByTestId('period-total')).toContainText('500.000');
 
-  await page.goto('/');
+  await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('19.500.000');
 });
