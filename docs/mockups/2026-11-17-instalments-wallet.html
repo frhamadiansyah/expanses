@@ -12,11 +12,18 @@ img{width:300px;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.15);display:
 <div class="row">
  <div class="col"><p class="cap"><span class="lab t">TODAY</span>Balance −Rp 6.500.000</p><p class="note">Owed on cards counts all 6 instalments, so the balance goes below zero.</p><img src="instalments-wallet/w-today.png"></div>
  <div class="col"><p class="cap"><span class="lab n">1</span>Same figures, explained</p><p class="note">Balance still −Rp 6.500.000; one grey line says Rp 10.000.000 of what is owed is instalments not billed yet.</p><img src="instalments-wallet/w-opt1.png"></div>
- <div class="col"><p class="cap"><span class="lab n">2</span>Only what is due counts</p><p class="note">Owed on cards −Rp 2.500.000 → Balance Rp 3.500.000. "Instalments later Rp 10.000.000" is shown in grey, not in the balance. The card tile shows Rp 2.500.000.</p><img src="instalments-wallet/w-opt2.png"></div>
+ <div class="col"><p class="cap"><span class="lab n">2</span>Only what is due counts</p><p class="note">"Owed on cards" becomes "Outstanding on cards" −Rp 2.500.000 (what is due: purchases + instalments billed) → Balance Rp 3.500.000. No third row. The card tile shows Rp 2.500.000.</p><img src="instalments-wallet/w-opt2.png"></div>
 </div>
 <h2>The card's back</h2>
 <div class="row">
  <div class="col"><p class="cap"><span class="lab t">TODAY</span>Outstanding Rp 12.500.000</p><p class="note">The whole plan is in the figure.</p><img src="instalments-wallet/b-today.png"></div>
  <div class="col"><p class="cap"><span class="lab n">1</span>Same figure, explained</p><p class="note">"Rp 10.000.000 of it in later instalments" under it. Matches the bank's outstanding.</p><img src="instalments-wallet/b-opt1.png"></div>
  <div class="col"><p class="cap"><span class="lab n">2</span>What is due, the rest under it</p><p class="note">Outstanding Rp 2.500.000; "+ Rp 10.000.000 in later instalments" under it. Available stays Rp 17.500.000 (the bank still holds the plan on the limit).</p><img src="instalments-wallet/b-opt2.png"></div>
+</div>
+<h2>The card's back, option 2 without the "+ … later instalments" line</h2>
+<p class="sub">Outstanding shows only what is due (Rp 2.500.000). Where the later instalments show instead:</p>
+<div class="row">
+ <div class="col"><p class="cap"><span class="lab t">TODAY</span>Card page</p><p class="note">Outstanding Rp 12.500.000; the Instalments box under the buttons says "Rp 12.000.000 left · 0 of 6 paid".</p><img src="instalments-wallet/b-today-full.png"></div>
+ <div class="col"><p class="cap"><span class="lab n">A</span>In the Instalments box</p><p class="note">Nothing extra on the card. The Instalments box header says "Rp 10.000.000 later"; each plan says what is still to come ("Rp 10.000.000 later · 1 of 6 billed").</p><img src="instalments-wallet/b-optA.png"></div>
+ <div class="col"><p class="cap"><span class="lab n">B</span>In the available line</p><p class="note">The line under the bar already exists: "Rp 17.500.000 available · Rp 10.000.000 in instalments" — the hatched part of the bar is exactly that.</p><img src="instalments-wallet/b-optB.png"></div>
 </div></body></html>
