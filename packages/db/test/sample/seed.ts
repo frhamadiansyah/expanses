@@ -782,9 +782,30 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
    */
   if (has(62)) {
     await captureDrafts(database, ws, [
-      { source: 'csv', occurredOn: addDays(today, -2), description: 'APOTEK K24 KEMANG', amountMinor: 186_500, currency: 'IDR', accountId: bca.id, externalRef: 'sample:k24', categoryAccountId: null },
+      // A bank's notification and an e-ticket's email keep the words they came with, which Mac Review's peek shows.
+      {
+        source: 'notification',
+        occurredOn: addDays(today, -2),
+        description: 'APOTEK K24 KEMANG',
+        amountMinor: 186_500,
+        currency: 'IDR',
+        accountId: bca.id,
+        externalRef: 'sample:k24',
+        categoryAccountId: null,
+        rawPayload: 'BCA\nTransaksi debit Rp186.500 di APOTEK K24 KEMANG berhasil.',
+      },
       { source: 'csv', occurredOn: addDays(today, -1), description: 'SUPERINDO KEBAYORAN 0912', amountMinor: 412_300, currency: 'IDR', accountId: bca.id, externalRef: 'sample:superindo', categoryAccountId: await cat('household.groceries') },
-      { source: 'email', occurredOn: today, description: 'TIKET.COM KAI JKT-BDG', amountMinor: 320_000, currency: 'IDR', accountId: krisflyer.id, externalRef: 'sample:kai', categoryAccountId: null },
+      {
+        source: 'email',
+        occurredOn: today,
+        description: 'TIKET.COM KAI JKT-BDG',
+        amountMinor: 320_000,
+        currency: 'IDR',
+        accountId: krisflyer.id,
+        externalRef: 'sample:kai',
+        categoryAccountId: null,
+        rawPayload: 'tiket.com: pembayaran berhasil\nKereta Jakarta - Bandung, 1 dewasa\nTotal IDR 320.000',
+      },
     ]);
     await createDraft(database, ws, { source: 'manual', occurredOn: today, description: 'Pak Joko car wash', amountMinor: 0, currency: 'IDR', accountId: cash.id });
   }
