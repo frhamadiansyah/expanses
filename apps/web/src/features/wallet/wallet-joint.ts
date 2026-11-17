@@ -27,7 +27,7 @@ export interface JointCard {
   itemId: string;
   owner: string;
   ownerName: string;
-  /** Money (it adds to Spending money) or a credit card (what it owes adds to Owed on cards). */
+  /** Money (it adds to Spending money) or a credit card (what it owes adds to Outstanding on cards). */
   side: 'money' | 'credit';
   subtype: string;
   /** Its name, without the last four digits its owner's phone added to it. */

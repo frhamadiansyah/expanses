@@ -177,7 +177,7 @@ describe('a row tapped filters the grid', () => {
     expect(total).toBe(box.spendingMinor);
   });
 
-  it('Owed on cards keeps every credit card, one owing nothing too, and they add up to its figure', () => {
+  it('Outstanding on cards keeps every credit card, one owing nothing too, and they add up to its figure', () => {
     const shown = filteredCards(cards, 'cards', money, credit);
     expect(shown.map((c) => c.key)).toEqual(['card-1234', 'card-0']);
     const owed = shown.reduce((sum, c) => sum + Math.max(0, -(balances[c.key as keyof typeof balances] ?? 0)), 0);
@@ -191,7 +191,7 @@ describe('a row tapped filters the grid', () => {
 
 /*
  * The partner's joint account and joint card (mockup 2026-11-12-wallet-joint-items, A1): Andi's Payroll 4,3 jt and
- * Rina's joint savings 8 jt are Spending money; Andi's card 1,25 jt and Rina's joint card 850 rb are Owed on cards.
+ * Rina's joint savings 8 jt are Spending money; Andi's card 1,25 jt and Rina's joint card 850 rb are Outstanding on cards.
  */
 describe('the partner’s joint items in the Balance', () => {
   const accounts = [account('payroll', 'bank'), card('card-1234')];
@@ -205,7 +205,7 @@ describe('the partner’s joint items in the Balance', () => {
   ];
   const base: WalletBoxInput = { book, balances, credit, baseCurrency: 'IDR', rates: {}, setAsides: [], bills: [bill('Bills', { amountMinor: 1_150_000 })], month: '2026-11' };
 
-  it('adds joint money to Spending money and what a joint card owes to Owed on cards', () => {
+  it('adds joint money to Spending money and what a joint card owes to Outstanding on cards', () => {
     expect(walletBox({ ...base, joint })).toMatchObject({ spendingMinor: 12_300_000, cardsMinor: 2_100_000, billsMinor: 1_150_000, balanceMinor: 9_050_000, estimated: false, accounts: 2 });
   });
 
@@ -260,5 +260,36 @@ describe('the partner’s joint items in the Balance', () => {
     const owed = filteredCards(cards, 'cards', ...walletFilterSets(money, credit, joint));
     expect(owed.map((c) => c.key)).toEqual(['card-1234', 'joint:card']);
     expect(-balances['card-1234'] + joint[1]!.minor).toBe(box.cardsMinor);
+  });
+});
+
+/*
+ * Outstanding on cards counts only what is due now (owner, 17 Nov 2026): BCA Tahapan 6.000.000; BCA Visa owes
+ * 12.500.000, of which 10.000.000 is a laptop's instalments not billed yet. Outstanding on cards 2.500.000, Balance 3.500.000.
+ */
+describe('instalments not billed yet stay out of the Balance', () => {
+  const accounts = [account('tahapan', 'bank'), card('visa'), card('mandiri')];
+  const input = (later: Record<string, number>): WalletBoxInput => ({
+    book: spendingBook(accounts),
+    balances: { tahapan: 6_000_000, visa: -12_500_000, mandiri: 0 },
+    credit: walletCredit(accounts),
+    baseCurrency: 'IDR',
+    rates: {},
+    setAsides: [],
+    bills: [],
+    month: '2026-11',
+    laterOnCards: later,
+  });
+
+  it('counts the card at what is due now', () => {
+    expect(walletBox(input({ visa: 10_000_000 }))).toMatchObject({ spendingMinor: 6_000_000, cardsMinor: 2_500_000, balanceMinor: 3_500_000 });
+  });
+
+  it('counts the whole balance with no plans', () => {
+    expect(walletBox(input({}))).toMatchObject({ cardsMinor: 12_500_000, balanceMinor: -6_500_000 });
+  });
+
+  it('never counts a card below nothing, nor a card owing nothing for its plans', () => {
+    expect(walletBox(input({ visa: 20_000_000, mandiri: 3_000_000 }))).toMatchObject({ cardsMinor: 0, balanceMinor: 6_000_000 });
   });
 });

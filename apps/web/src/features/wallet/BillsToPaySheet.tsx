@@ -8,7 +8,7 @@ import type { BillToPay } from './wallet-balance';
 
 /** Under the list: what the row counts, and what it leaves out. */
 export const BILLS_TO_PAY_FOOTER =
-  'Bills not yet paid this month. A bill drops off once paid; paid with a credit card, it is counted in Owed on cards instead. Skipped and paused bills are left out.';
+  'Bills not yet paid this month. A bill drops off once paid; paid with a credit card, it is counted in Outstanding on cards instead. Skipped and paused bills are left out.';
 
 /** The line under a bill's name: the day it is due, "about" when its amount varies, and what its fund already set aside. */
 export function billToPaySubtitle(bill: BillToPay): string {
