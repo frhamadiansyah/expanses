@@ -184,6 +184,8 @@ export interface CardFollowUp {
  */
 export function TransactionCard(props: {
   initial?: TransactionView;
+  /** Opens with the split sheet up, for an edit asked for by the wide Cashflow's Split (Mac Cashflow D). */
+  openSplit?: boolean;
   /**
    * Start an add from this transaction: every entry field is copied, the amount is selected to be typed over, and
    * Save posts a new, independent transaction. Never an edit — `initial` is what edits.
@@ -274,8 +276,10 @@ function CardBody({
   photoIds,
   defaultPay,
   eventChip,
+  openSplit = false,
 }: {
   initial?: TransactionView;
+  openSplit?: boolean;
   duplicateOf?: TransactionView;
   mode?: FormMode;
   seed?: CardSeed;
@@ -418,7 +422,7 @@ function CardBody({
     setReceipt(null);
   };
 
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos' | 'feeCategory' | 'tradeMoney' | 'investment'>(null);
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'split' | 'move' | 'photos' | 'feeCategory' | 'tradeMoney' | 'investment'>(openSplit ? 'split' : null);
   /*
    * A saved transaction moved to another workspace on its Edit screen: the workspace it goes to, or null while it stays.
    * Its category is swapped for that workspace's copy as the move is chosen, and the save says to move it.

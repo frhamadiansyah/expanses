@@ -269,7 +269,13 @@ const routeTree = rootRoute.addChildren([
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // The card again, on one transaction — a phone's Edit, from the receipt or the row's swipe.
-  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/edit', component: EditTransactionRoute }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/transactions/$transactionId/edit',
+    component: EditTransactionRoute,
+    // The wide Cashflow's Split opens the edit with its split sheet up.
+    validateSearch: (search: Record<string, unknown>): { split?: true } => (search.split === true || search.split === 'true' ? { split: true } : {}),
+  }),
   // The same linking, from the purchase: which bill, then which month of it.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/bill', component: LinkToBillRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/bill/$billId', component: LinkBillMonthRoute }),

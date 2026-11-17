@@ -232,6 +232,8 @@ const route = getRouteApi('/transactions/$transactionId/edit');
  */
 export function EditTransactionRoute() {
   const { transactionId } = route.useParams();
+  // `?split=true`: the wide Cashflow's Split, which opens this screen with its split sheet up.
+  const { split } = route.useSearch();
   const router = useRouter();
   const { database, ws } = useApp();
   const navigate = useNavigate();
@@ -294,6 +296,7 @@ export function EditTransactionRoute() {
         title={cardPayment ? 'Edit payment' : 'Edit transaction'}
         label="Edit a transaction"
         initial={tx}
+        openSplit={split === true && !cardPayment}
         fixedMode={cardPayment}
         payCard={cardPayment}
         onBack={back}
