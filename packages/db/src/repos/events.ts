@@ -11,6 +11,7 @@ import { type EventItemRow, listEventItems } from './event-items';
 import { EventError, type EventRow, eventOf, ofBook, toEventRow as toRow } from './event-scope';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
 import { partCountedWhere } from './book-splits';
+import { notExchangeResult } from './exchange-result';
 import { eventTagRefusalTx } from './shared-workspace-rows';
 
 // The error, the row and the two scoping helpers live in event-scope so the item repository can share them
@@ -304,6 +305,8 @@ export async function eventPlanFor(database: Database, ws: WorkspaceContext, eve
         eq(transactions.status, 'posted'),
         eq(transactions.eventId, eventId),
         eq(accounts.kind, 'expense'),
+        // An exchange's gain or loss is no event's spending either (owner, 17 Nov 2026).
+        notExchangeResult(accounts.systemKey),
         ...(await ofBook(database, ws, entries.accountId)),
         // Drops the same rows `categoryRows` does, so the event's Spent and the category report go on agreeing.
         ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),

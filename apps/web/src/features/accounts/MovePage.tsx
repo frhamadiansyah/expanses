@@ -1,25 +1,20 @@
-import { evaluateAmount, formatMinor, isoDate } from '@expanses/core';
-import { type AccountRow, exchangeResultOf, postTransaction } from '@expanses/db';
+import { formatMinor, isoDate } from '@expanses/core';
+import { type AccountRow, postTransaction } from '@expanses/db';
 import { ArrowUpDown } from 'lucide-react';
 import { useNavigate, useParams, useRouter } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
-import { exchangeResultLine } from '../../lib/withdrawal-rate';
 import { useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, TextRow } from '../../ui/native';
 import { useCanHold } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { useTransferPreview } from '../transactions/transfer-preview';
-import { formToPost, type MoneyFieldSpec, settledAmount } from '../transactions/tx-form';
+import { formToPost, settledAmount } from '../transactions/tx-form';
 import { ratesForSave } from '../transactions/tx-save';
-import { bankRateText, currencyName, moveDescription, moveDraft, moveView, pocketsOf, swapPockets, withPockets } from './pockets';
+import { currencyName, figureFace, figureFromTyped, moveDescription, moveDraft, moveView, pocketsOf, swapPockets, withPockets } from './pockets';
 import { MovePocketRow } from './MovePocketRow';
 import { useHeldRates } from './queries';
-
-/** Only reached once `moveView` has read both figures (it returns a cost only then): not a second reader. */
-const evaluateOrZero = (field: MoneyFieldSpec) => evaluateAmount(field.value, field.currency) ?? 0;
 
 export function MovePage() {
   const { accountId = '' } = useParams({ strict: false }) as { accountId?: string };
@@ -57,15 +52,11 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  /** The gain or loss the ledger recorded, kept only when it is not the one the screen showed (R15, spec §10.3 of pockets). */
-  const [recorded, setRecorded] = useState<number | null>(null);
   const set = (patch: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...patch }));
   const from = pockets.find((p) => p.id === draft.moneyId)!;
   const to = pockets.find((p) => p.id === draft.toId)!;
   const held = useHeldRates([from.currency!, to.currency!], draft.occurredOn);
   const view = moveView(draft, accounts, ws.baseCurrency, held.data?.rates ?? {});
-  // Withdrawal rate §7: the Rate against the market, and out of a foreign pocket its cost and gain or loss.
-  const preview = useTransferPreview(draft, accounts, null);
   const rateDate = draft.occurredOn > isoDate() ? isoDate() : draft.occurredOn;
   const canHold = useCanHold();
   const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
@@ -86,17 +77,8 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       const post = formToPost(final, accounts);
       if (post.kind !== 'post') throw new Error('A move between pockets is a plain transfer');
       const ratesToBase = await ratesForSave({ database, ws, draft: final, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Rate' });
-      const id = await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+      await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
       await invalidate();
-      // What arrived is valued at the day's rate the save fetched, which need not be the one on screen. When the gain or
-      // loss the ledger now holds differs from the one shown, say so instead of leaving the screen's figure standing.
-      if (preview.gainLossBaseMinor !== null) {
-        const gainLoss = await exchangeResultOf(database, id);
-        if (gainLoss !== preview.gainLossBaseMinor) {
-          setRecorded(gainLoss);
-          return;
-        }
-      }
       await navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } });
     } catch (e) {
       setError(e);
@@ -113,32 +95,12 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     setDraft((d) => withPockets(d, patch));
   };
 
-  if (recorded !== null) {
-    const line = exchangeResultLine(recorded, ws.baseCurrency);
-    return (
-      <div className={SCREEN}>
-        <LargeTitle title="Moved" back={parent.name} onBack={back} />
-        <InsetGroup header="Recorded">
-          <ReadOnlyRow
-            testId="recorded-spread"
-            label={line.title}
-            value={`${line.figure} (${line.note})`}
-            tone="ink"
-            info={`The move was recorded at the rates for ${rateDate}, not the ones the screen showed, so this is the result the ledger holds.`}
-          />
-        </InsetGroup>
-        <InsetGroup>
-          <InsetRow title="Done" action onClick={() => void navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } })} />
-        </InsetGroup>
-      </div>
-    );
-  }
-
   return (
     <div className={SCREEN}>
       <LargeTitle title="Move between pockets" back={parent.name} onBack={back} />
       <ErrorBox error={error} />
-      <InsetGroup header="From">
+      {/* Layout B (owner, 17 Nov 2026): one box, the two pockets its rows, the ⇅ on the hairline between them. */}
+      <InsetGroup className="!mb-[22px]">
         <MovePocketRow
           word="From"
           current={choice(from)}
@@ -146,37 +108,35 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
           onPick={(id) => choose({ moneyId: id })}
           figure={{
             'aria-label': `Leaves ${view.leaves.currency}`,
-            value: view.leaves.value,
-            onChange: (e) => set({ amount: e.target.value }),
+            value: figureFace(view.leaves.value, view.leaves.currency),
+            onChange: (e) => set({ amount: figureFromTyped(e.target.value, view.leaves.currency) }),
             onBlur: () => settle('amount', view.leaves.value, view.leaves.currency),
           }}
         />
-      </InsetGroup>
-      <div className="flex justify-center pb-[2px]">
-        <button
-          type="button"
-          aria-label="Swap"
-          onClick={() => {
-            setNeedsRate(null);
-            setDraft(swapPockets);
-          }}
-          className="ph-focus ph-tap flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-2)]"
-        >
-          <ArrowUpDown size={15} aria-hidden />
-        </button>
-      </div>
-      <InsetGroup header="To">
         <MovePocketRow
           word="To"
           current={choice(to)}
           choices={choices}
           onPick={(id) => choose({ toId: id })}
+          onLine={
+            <button
+              type="button"
+              aria-label="Swap"
+              onClick={() => {
+                setNeedsRate(null);
+                setDraft(swapPockets);
+              }}
+              className="ph-focus ph-tap flex h-[32px] w-[32px] items-center justify-center rounded-full border-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-surface)] text-[var(--ph-ink-2)]"
+            >
+              <ArrowUpDown size={15} aria-hidden />
+            </button>
+          }
           figure={
             view.arrives
               ? {
                   'aria-label': `Arrives ${view.arrives.currency}`,
-                  value: view.arrives.value,
-                  onChange: (e) => set({ toAmount: e.target.value }),
+                  value: figureFace(view.arrives.value, view.arrives.currency),
+                  onChange: (e) => set({ toAmount: figureFromTyped(e.target.value, view.arrives!.currency) }),
                   onBlur: () => settle('toAmount', view.arrives!.value, view.arrives!.currency),
                 }
               : null
@@ -186,36 +146,14 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       <InsetGroup>
         <ReadOnlyRow
           label="Rate"
-          value={preview.rateText ?? bankRateText(view.bankRate, view.leaves.currency, view.arrives?.currency ?? view.leaves.currency)}
-          info="What arrives for one unit that leaves, from the two figures typed."
+          value={view.rateText}
+          info="The bank’s rate, worked out from the two figures typed."
         />
         <TextRow label="Date" type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} />
         {needsRate && (
           <TextRow label={`Rate: ${ws.baseCurrency} per 1 ${needsRate}`} value={draft.manualRate} onChange={(e) => set({ manualRate: e.target.value })} inputMode="decimal" />
         )}
       </InsetGroup>
-      {preview.result && (
-        <InsetGroup>
-          <ReadOnlyRow
-            testId="exchange-cost"
-            label="Cost"
-            value={preview.costText ?? '—'}
-            tone="ink"
-            info={
-              preview.stale
-                ? `At the last-known ${[view.leaves.currency, view.arrives?.currency].filter(Boolean).join(', ')} rates: moving it fetches the day’s rates and records the result at those, which may differ. Cost is what ${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} cost when it came in, oldest first.`
-                : `Cost is what ${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} cost when it came in, oldest first; what arrives is valued at the day’s rate.`
-            }
-          />
-          <InsetRow
-            testId="spread"
-            title={preview.stale ? `${preview.result.title} (last known)` : preview.result.title}
-            value={`${preview.result.figure} (${preview.result.note})`}
-            valueTone="ink"
-            chevron={false}
-          />
-        </InsetGroup>
-      )}
       {setAside.node}
       <InsetGroup>
         <InsetRow title="Move" action onClick={() => !busy && setAside.ready && void save()} className={busy || !setAside.ready ? 'opacity-40' : undefined} />

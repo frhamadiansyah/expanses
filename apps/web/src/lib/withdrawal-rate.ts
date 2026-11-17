@@ -1,4 +1,4 @@
-import { convertMinor, currencyInfo, formatMinor } from '@expanses/core';
+import { currencyInfo, formatMinor } from '@expanses/core';
 import type { ForeignLotsView } from '@expanses/db';
 import { shortDate } from '../features/transactions/quick-row';
 
@@ -50,11 +50,19 @@ function costLine(cost: { costBaseMinor: number | null; uncoveredMinor: number; 
 }
 
 /**
- * A cross-currency transfer's Rate row (§7, R15): "Rp 525 per TRY (market 512, +2,5 %)" — the foreign currency priced
- * in the base, against the day's rate held for it. Null when neither side is the base currency: that pair keeps its
- * plain "1 USD = 1,2760 SGD".
+ * A saved transfer between currencies, on its receipt (owner, 17 Nov 2026): the Rate row — "Rp 20.700 per GBP", the
+ * foreign currency priced in the base — and under it how far that was from the market rate held for the day: "market
+ * 21.000 · −1,4 %", or nothing when none is held. Null when neither side is the base currency, or both are one currency.
+ * It says what the bank gave, never that the difference counts anywhere: an exchange's gain or loss counts nowhere.
  */
-export function transferRateText(input: { fromMinor: number; fromCurrency: string; toMinor: number; toCurrency: string; baseCurrency: string; ratesToBase: Rates }): string | null {
+export function transferRateParts(input: {
+  fromMinor: number;
+  fromCurrency: string;
+  toMinor: number;
+  toCurrency: string;
+  baseCurrency: string;
+  ratesToBase: Rates;
+}): { rate: string; market: string | null } | null {
   const { fromMinor, fromCurrency, toMinor, toCurrency, baseCurrency, ratesToBase } = input;
   if (!(fromMinor > 0) || !(toMinor > 0) || fromCurrency === toCurrency) return null;
   const fromBase = fromCurrency === baseCurrency;
@@ -63,43 +71,13 @@ export function transferRateText(input: { fromMinor: number; fromCurrency: strin
   const baseMinor = fromBase ? fromMinor : toMinor;
   const foreignMinor = fromBase ? toMinor : fromMinor;
   const price = baseMinor / 10 ** currencyInfo(baseCurrency).exponent / (foreignMinor / 10 ** currencyInfo(foreign).exponent);
-  const head = `${currencyInfo(baseCurrency).symbol} ${number(price)} per ${foreign}`;
+  const rate = `${currencyInfo(baseCurrency).symbol} ${number(price)} per ${foreign}`;
   const market = ratesToBase[foreign];
-  if (market === undefined || !(market > 0)) return head;
+  if (market === undefined || !(market > 0)) return { rate, market: null };
   const percent = (price / market - 1) * 100;
   const sign = percent > 0 ? '+' : percent < 0 ? '−' : '±';
-  return `${head} (market ${number(market)}, ${sign}${Math.abs(percent).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %)`;
+  return { rate, market: `market ${number(market)} · ${sign}${Math.abs(percent).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %` };
 }
-
-/**
- * An exchange out of a foreign account before it is saved (§5, §7): what arrived, at its own value — its amount in the
- * base currency, else the day's rate held for it (R6) — less what the foreign money cost. Null without a cost or a rate.
- */
-export function exchangeOutPreview(input: { costBaseMinor: number | null; receivedMinor: number; receivedCurrency: string; baseCurrency: string; ratesToBase: Rates }): { receivedBaseMinor: number; gainLossBaseMinor: number } | null {
-  if (input.costBaseMinor === null) return null;
-  let receivedBaseMinor = input.receivedMinor;
-  if (input.receivedCurrency !== input.baseCurrency) {
-    const rate = input.ratesToBase[input.receivedCurrency];
-    if (rate === undefined || !(rate > 0)) return null;
-    receivedBaseMinor = convertMinor(input.receivedMinor, input.receivedCurrency, input.baseCurrency, rate);
-  }
-  return { receivedBaseMinor, gainLossBaseMinor: receivedBaseMinor - input.costBaseMinor };
-}
-
-export interface ExchangeResultLine {
-  title: string;
-  figure: string;
-  note: string;
-}
-
-/** "Exchange loss Rp 10.000 (recorded as spending)" in its three parts (§7). */
-export function exchangeResultLine(gainLossBaseMinor: number, baseCurrency: string): ExchangeResultLine {
-  if (gainLossBaseMinor < 0) return { title: 'Exchange loss', figure: formatMinor(-gainLossBaseMinor, baseCurrency), note: 'recorded as spending' };
-  if (gainLossBaseMinor > 0) return { title: 'Exchange gain', figure: formatMinor(gainLossBaseMinor, baseCurrency), note: 'recorded as income' };
-  return { title: 'No exchange gain or loss', figure: formatMinor(0, baseCurrency), note: 'nothing recorded' };
-}
-
-export const exchangeResultText = (line: ExchangeResultLine) => `${line.title} ${line.figure} (${line.note})`;
 
 /** The receipt's "From the 12 Nov withdrawal" or "From 2 withdrawals" (§7). */
 export function fromWithdrawalsText(uses: readonly { lotId: string; lotDate: string }[], today: string): string | null {

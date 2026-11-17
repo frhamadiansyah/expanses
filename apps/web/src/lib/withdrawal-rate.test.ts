@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exchangeOutPreview, exchangeResultLine, exchangeResultText, foreignMoney, fromWithdrawalsText, receiptWithdrawalLine, transferRateText, withdrawalRateLine, withdrawalsLeftView } from './withdrawal-rate';
+import { foreignMoney, fromWithdrawalsText, receiptWithdrawalLine, transferRateParts, withdrawalRateLine, withdrawalsLeftView } from './withdrawal-rate';
 
 /* Withdrawal rate §7's copy, word for word (with the app's ’). Invented figures. Intl writes a no-break space after Rp. */
 const plain = (text: string | null) => text?.replace(/ /g, ' ') ?? null;
@@ -22,22 +22,20 @@ describe('the withdrawal rate’s words (§7)', () => {
     expect(plain(receiptWithdrawalLine({ costBaseMinor: 238_900, uncoveredMinor: 30_000, ratePerUnit: 530.9 }, 'TRY', 'IDR'))).toBe('≈ Rp 238.900 · ₺ 300 at the day’s rate (no withdrawal recorded)');
   });
 
-  it('writes a transfer’s Rate against the market when one side is the base currency (R15)', () => {
-    const rates = { TRY: 512 };
-    expect(plain(transferRateText({ fromMinor: 5_250_000, fromCurrency: 'IDR', toMinor: 1_000_000, toCurrency: 'TRY', baseCurrency: 'IDR', ratesToBase: rates }))).toBe('Rp 525 per TRY (market 512, +2,5 %)');
-    expect(plain(transferRateText({ fromMinor: 50_000, fromCurrency: 'TRY', toMinor: 250_000, toCurrency: 'IDR', baseCurrency: 'IDR', ratesToBase: rates }))).toBe('Rp 500 per TRY (market 512, −2,3 %)');
-    expect(plain(transferRateText({ fromMinor: 5_250_000, fromCurrency: 'IDR', toMinor: 1_000_000, toCurrency: 'TRY', baseCurrency: 'IDR', ratesToBase: {} }))).toBe('Rp 525 per TRY');
-    expect(transferRateText({ fromMinor: 50_000, fromCurrency: 'USD', toMinor: 63_800, toCurrency: 'SGD', baseCurrency: 'IDR', ratesToBase: rates })).toBeNull();
-  });
-
-  it('works out an exchange out of a foreign account, and says the gain or loss (§5, §7)', () => {
-    expect(exchangeOutPreview({ costBaseMinor: 262_500, receivedMinor: 250_000, receivedCurrency: 'IDR', baseCurrency: 'IDR', ratesToBase: {} })).toEqual({ receivedBaseMinor: 250_000, gainLossBaseMinor: -12_500 });
-    expect(exchangeOutPreview({ costBaseMinor: 8_125_000, receivedMinor: 63_800, receivedCurrency: 'SGD', baseCurrency: 'IDR', ratesToBase: { SGD: 12_680 } })).toEqual({ receivedBaseMinor: 8_089_840, gainLossBaseMinor: -35_160 });
-    expect(exchangeOutPreview({ costBaseMinor: 1, receivedMinor: 1, receivedCurrency: 'SGD', baseCurrency: 'IDR', ratesToBase: {} })).toBeNull();
-    expect(exchangeOutPreview({ costBaseMinor: null, receivedMinor: 1, receivedCurrency: 'IDR', baseCurrency: 'IDR', ratesToBase: {} })).toBeNull();
-    expect(plain(exchangeResultText(exchangeResultLine(-12_500, 'IDR')))).toBe('Exchange loss Rp 12.500 (recorded as spending)');
-    expect(plain(exchangeResultText(exchangeResultLine(7_500, 'IDR')))).toBe('Exchange gain Rp 7.500 (recorded as income)');
-    expect(exchangeResultLine(0, 'IDR').title).toBe('No exchange gain or loss');
+  it('writes a transfer’s Rate, and under it how far it was from the market, when one side is the base currency', () => {
+    const rates = { TRY: 512, GBP: 21_000 };
+    const parts = (input: Parameters<typeof transferRateParts>[0]) => {
+      const out = transferRateParts(input);
+      return out && { rate: plain(out.rate), market: plain(out.market) };
+    };
+    expect(parts({ fromMinor: 5_250_000, fromCurrency: 'IDR', toMinor: 1_000_000, toCurrency: 'TRY', baseCurrency: 'IDR', ratesToBase: rates })).toEqual({ rate: 'Rp 525 per TRY', market: 'market 512 · +2,5 %' });
+    expect(parts({ fromMinor: 50_000, fromCurrency: 'TRY', toMinor: 250_000, toCurrency: 'IDR', baseCurrency: 'IDR', ratesToBase: rates })).toEqual({ rate: 'Rp 500 per TRY', market: 'market 512 · −2,3 %' });
+    // The owner's example (17 Nov 2026): £1.000 changed for Rp 20.700.000, the market at 21.000.
+    expect(parts({ fromMinor: 100_000, fromCurrency: 'GBP', toMinor: 20_700_000, toCurrency: 'IDR', baseCurrency: 'IDR', ratesToBase: rates })).toEqual({ rate: 'Rp 20.700 per GBP', market: 'market 21.000 · −1,4 %' });
+    // No rate held for the day: the rate alone.
+    expect(parts({ fromMinor: 5_250_000, fromCurrency: 'IDR', toMinor: 1_000_000, toCurrency: 'TRY', baseCurrency: 'IDR', ratesToBase: {} })).toEqual({ rate: 'Rp 525 per TRY', market: null });
+    expect(transferRateParts({ fromMinor: 50_000, fromCurrency: 'USD', toMinor: 63_800, toCurrency: 'SGD', baseCurrency: 'IDR', ratesToBase: rates })).toBeNull();
+    expect(transferRateParts({ fromMinor: 50_000, fromCurrency: 'IDR', toMinor: 50_000, toCurrency: 'IDR', baseCurrency: 'IDR', ratesToBase: rates })).toBeNull();
   });
 
   it('names the withdrawals a spend came from', () => {

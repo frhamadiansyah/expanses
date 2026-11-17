@@ -2,6 +2,7 @@ import { CASH_ITEMS, CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, typ
 import { type AccountRow, SPENDABLE_SUBTYPES, pocketParentIds, spendingSwitchOn } from '@expanses/db';
 import { typedNameOf } from '../../lib/account-name';
 import { keptForSpending } from '../../lib/account-types';
+import { transferRateParts } from '../../lib/withdrawal-rate';
 import { amountFields, emptyForm, type FormDraft, type MoneyFieldSpec, receivedField } from '../transactions/tx-form';
 
 type Rates = Readonly<Record<string, number>>;
@@ -84,6 +85,8 @@ export interface MoveView {
   arrives: MoneyFieldSpec | null;
   bankRate: number | null;
   cost: ExchangeCost | null;
+  /** The Rate row's value: "Rp 20.700 per GBP" as the receipt writes it, or "1 USD = 1,276 SGD" with no base side. */
+  rateText: string;
 }
 
 /** What the Move screen draws — every figure from the kit's own field records, read by `evaluateAmount`. */
@@ -92,13 +95,57 @@ export function moveView(draft: FormDraft, accounts: readonly AccountRow[], base
   const arrives = receivedField(draft, accounts);
   const out = evaluateAmount(leaves.value, leaves.currency);
   const into = arrives ? evaluateAmount(arrives.value, arrives.currency) : null;
-  if (!arrives || out === null || into === null) return { leaves, arrives, bankRate: null, cost: null };
+  if (!arrives || out === null || into === null) return { leaves, arrives, bankRate: null, cost: null, rateText: '—' };
   const legs = { fromMinor: out, fromCurrency: leaves.currency, toMinor: into, toCurrency: arrives.currency };
-  return { leaves, arrives, bankRate: impliedRate(legs), cost: exchangeCost({ ...legs, baseCurrency, ratesToBase }) };
+  const bankRate = impliedRate(legs);
+  // The receipt's own words when one side is the base (owner, 17 Nov 2026), so the screen and the receipt read alike.
+  const rateText = transferRateParts({ ...legs, baseCurrency, ratesToBase })?.rate ?? bankRateText(bankRate, leaves.currency, arrives.currency);
+  return { leaves, arrives, bankRate, cost: exchangeCost({ ...legs, baseCurrency, ratesToBase }), rateText };
 }
 
+/**
+ * The bank's rate between two currencies, neither of them the base: "1 USD = 1,276 SGD". At most four decimals with
+ * the trailing noughts dropped; under one, four significant figures instead, so a small rate is never written as 0.
+ */
 export const bankRateText = (rate: number | null, from: string, to: string, locale = 'id-ID') =>
-  rate === null ? '—' : `1 ${from} = ${rate.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ${to}`;
+  rate === null
+    ? '—'
+    : `1 ${from} = ${rate.toLocaleString(locale, rate >= 1 ? { maximumFractionDigits: 4 } : { maximumSignificantDigits: 4 })} ${to}`;
+
+/** The plain figure a Move field's draft holds: digits, and a dot for the decimal mark — "1000.5", "100.", "". */
+const PLAIN_FIGURE = /^(\d*)(?:\.(\d*))?$/;
+
+/**
+ * A Move figure as its field shows it: the draft's plain "1000.50" grouped as the app writes money, "1.000,50". A
+ * decimal mark typed with nothing after it yet stays on screen ("100,"). Anything else is shown as it is.
+ */
+export function figureFace(value: string, _currency: string): string {
+  const plain = PLAIN_FIGURE.exec(value);
+  if (!plain) return value;
+  const [, whole = '', cents] = plain;
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return cents === undefined ? grouped : `${grouped || '0'},${cents}`;
+}
+
+/**
+ * What a Move field's typing means, back in the draft's plain form, so the save reads it exactly as before. A comma is
+ * the decimal mark and a dot a thousands mark, as the field writes them — except a dot just typed at the end, or one
+ * lone dot after more than three digits (a pasted "1000.00"), which is the decimal mark: a decimal pad shows a dot or
+ * a comma by the phone's language. Cents beyond the currency's own are dropped; a currency with none takes none.
+ */
+export function figureFromTyped(raw: string, currency: string): string {
+  const { exponent } = currencyInfo(currency);
+  const text = raw.replace(/[^\d.,]/g, '');
+  let mark = text.indexOf(',');
+  if (mark < 0 && exponent > 0) {
+    const dots = text.split('.').length - 1;
+    const last = text.lastIndexOf('.');
+    if (last >= 0 && (last === text.length - 1 || (dots === 1 && last > 3))) mark = last;
+  }
+  const whole = (mark < 0 ? text : text.slice(0, mark)).replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  if (mark < 0 || exponent === 0) return whole;
+  return `${whole || '0'}.${text.slice(mark + 1).replace(/\D/g, '').slice(0, exponent)}`;
+}
 
 /** "1 pocket", "3 pockets". */
 export const pocketCount = (n: number) => `${n} ${n === 1 ? 'pocket' : 'pockets'}`;

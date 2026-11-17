@@ -53,6 +53,7 @@ import { useDuplicable } from './duplicable';
 import { rowByLine } from '../sharing/JointAccountRows';
 import { TwoTapDelete } from './TwoTapDelete';
 import { useWithdrawalsUsed } from '../../lib/withdrawal-queries';
+import { useHeldRates } from '../accounts/queries';
 
 const route = getRouteApi('/transactions/$transactionId');
 
@@ -134,6 +135,10 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const onEvent = useQuery({ queryKey: ['event-transfer', transactionId], queryFn: () => eventTransferOf(database, transactionId) }).data ?? null;
   // Withdrawal rate §7: the withdrawals a spend from foreign money came from.
   const withdrawal = useWithdrawalsUsed(tx?.id ?? null).data ?? null;
+  // The market rates held for the day, for a transfer between currencies' Rate row (owner, 17 Nov 2026). Only the
+  // currencies its money moved in; the base is never asked for.
+  const moneyCurrencies = (tx?.entries ?? []).filter((entry) => entry.accountKind === 'asset' || entry.accountKind === 'liability').map((entry) => entry.currency);
+  const heldRates = useHeldRates(new Set(moneyCurrencies).size > 1 ? moneyCurrencies : [], tx?.occurredOn ?? today).data?.rates ?? {};
   // The recurring bill this purchase settles a month of, when it does (linked afterwards, or paid from the bill).
   const bill = useBillOfPurchase(transactionId).data ?? null;
   /*
@@ -177,6 +182,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     payer: payerOf(tx.id),
     withdrawal,
     today,
+    ratesToBase: heldRates,
   });
 
   /*
@@ -378,7 +384,16 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
             {lines.map((line) => (
               <div key={line.label} className="flex justify-between gap-4 py-2 text-sm">
                 <span className="text-slate-500">{line.label}</span>
-                <span className={cx('tabular text-right', line.tone === 'points' && 'font-medium text-emerald-700')}>{line.value}</span>
+                <span className={cx('tabular text-right', line.tone === 'points' && 'font-medium text-emerald-700')}>
+                  {line.detail ? (
+                    <>
+                      <span className="block">{line.value}</span>
+                      <span className="block text-[13px] text-slate-500">{line.detail}</span>
+                    </>
+                  ) : (
+                    line.value
+                  )}
+                </span>
               </div>
             ))}
           </Card>

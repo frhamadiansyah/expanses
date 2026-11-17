@@ -1,7 +1,19 @@
 import { exchangeLines, expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { createAccount, listTransactions, postTransaction, replaceTransaction, systemAccountId, upsertRate } from '../../src/index';
+import {
+  budgetSheetFor,
+  categoryTotalsIn,
+  createAccount,
+  essentialSplitIn,
+  inBook,
+  listTransactions,
+  periodFlows,
+  postTransaction,
+  replaceTransaction,
+  systemAccountId,
+  upsertRate,
+} from '../../src/index';
 import { categoryOf, type Device, Household } from './household';
 
 /*
@@ -138,6 +150,41 @@ describe('the withdrawal rate in a household', () => {
     expect(await loss()).toEqual([10_000]);
     const exchangeLeft = await h.fandri.database.db.values(sql`SELECT sum(amount_base_minor) FROM entries WHERE transaction_id = ${(await exchangeHere()).id} AND account_id = ${h.exchange}`);
     expect(exchangeLeft).toEqual([[0]]);
+  });
+
+  it('an exchange’s loss counts nowhere on either phone, though both hold the pair (owner, 17 Nov 2026)', async () => {
+    const h = await pair();
+    await h.withdraw('2026-11-02', 5_250_000, 1_000_000);
+    await h.changeBack('2026-11-20', 50_000, 250_000);
+    await h.home.settle();
+    const NOV = { from: '2026-11-01', to: '2026-11-30' };
+    const figures = async (d: Device) => {
+      const out: number[] = [];
+      for (const ws of [d.ws, inBook(d.ws, h.bookId)]) {
+        const total = (rows: { amountBaseMinor: number }[]) => rows.reduce((sum, row) => sum + row.amountBaseMinor, 0);
+        const flows = await periodFlows(d.database, ws, NOV);
+        const split = await essentialSplitIn(d.database, ws, NOV.from, NOV.to, { excludeEvents: true });
+        out.push(
+          total((await categoryTotalsIn(d.database, ws, 'expense', NOV.from, NOV.to, { billMonths: true })).rows),
+          total((await categoryTotalsIn(d.database, ws, 'income', NOV.from, NOV.to, { billMonths: true })).rows),
+          flows.spendingMinor,
+          flows.incomeMinor,
+          split.split.spendingMinor,
+        );
+      }
+      const sheet = await budgetSheetFor(d.database, inBook(d.ws, h.bookId), '2026-11');
+      out.push(sheet.spendingActualMinor, sheet.incomeActualMinor);
+      return out;
+    };
+    /** The Exchange loss line each phone holds on the change back, by its category's key. */
+    const loss = (d: Device) =>
+      d.database.db.values(sql`
+        SELECT e.amount_minor FROM entries e JOIN accounts a ON a.id = e.account_id JOIN transactions t ON t.id = e.transaction_id
+        WHERE t.status = 'posted' AND t.occurred_on = '2026-11-20' AND a.system_key = 'expense.exchange_loss'`);
+    expect(await loss(h.fandri)).toEqual([[12_500]]);
+    expect(await loss(h.dewi)).toEqual([[12_500]]);
+    expect(await figures(h.fandri)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(await figures(h.dewi)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
   it('never fails a sync over an account it cannot recalculate', async () => {

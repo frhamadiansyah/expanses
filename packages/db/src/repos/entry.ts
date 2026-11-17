@@ -1,4 +1,4 @@
-import { CARD_CASHBACK, capturedCategory, merchantKey, UNCATEGORISED } from '@expanses/core';
+import { CARD_CASHBACK, capturedCategory, EXCHANGE_RESULT_KEYS, merchantKey, UNCATEGORISED } from '@expanses/core';
 import { and, desc, eq, inArray, isNull, like, notInArray, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -7,9 +7,10 @@ import { eventOnlyExists, notShareCategory } from './event-only';
 
 /**
  * Filed under Uncategorised: saved with its category left for later, so no evidence of one. Nor is Cashback & Rewards
- * into a credit card: it is money back, chosen only for money back into a card, and never a purchase's category.
+ * into a credit card: it is money back, chosen only for money back into a card, and never a purchase's category. Nor
+ * an exchange's gain or loss, the withdrawal rate's own line on a transfer, which no form ever files a purchase under.
  */
-const notUncategorised = or(isNull(accounts.systemKey), notInArray(accounts.systemKey, [UNCATEGORISED.expense.key, UNCATEGORISED.income.key, CARD_CASHBACK.key]));
+const notUncategorised = or(isNull(accounts.systemKey), notInArray(accounts.systemKey, [UNCATEGORISED.expense.key, UNCATEGORISED.income.key, CARD_CASHBACK.key, ...EXCHANGE_RESULT_KEYS]));
 
 /** How far back to look for a merchant already seen. Enough for a year of daily spending. */
 const HISTORY_LIMIT = 3000;

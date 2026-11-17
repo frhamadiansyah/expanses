@@ -24,5 +24,13 @@ export function isFxLotAccount(account: { kind: string; subtype: string; currenc
   return account.kind === 'asset' && FX_LOT_SUBTYPES.includes(account.subtype) && account.currency !== null && account.currency !== baseCurrency;
 }
 
-/** Whether a category is one of the two an exchange's gain or loss is filed under. */
+/**
+ * The two categories an exchange's gain or loss is filed under. Neither counts anywhere (owner, 17 Nov 2026): a bank's
+ * worse-than-market rate is neither spending nor a fee, and a gain is no income. The withdrawal rate still writes the pair
+ * (it closes the exchange account in the owner's currency); every reader that adds up spending or income leaves it out.
+ * Balances and net worth never read a category, so they are the same either way.
+ */
+export const EXCHANGE_RESULT_KEYS: readonly string[] = [EXCHANGE_GAIN_KEY, EXCHANGE_LOSS_KEY];
+
+/** Whether a category is one of the two an exchange's gain or loss is filed under: one that counts nowhere. */
 export const isExchangeResultKey = (key: string | null | undefined): boolean => key === EXCHANGE_GAIN_KEY || key === EXCHANGE_LOSS_KEY;

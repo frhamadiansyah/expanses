@@ -1,6 +1,6 @@
 import { formatMinor, isCardCashbackKey, monthName } from '@expanses/core';
 import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, SplitBook, TransactionView, WithdrawalsUsed } from '@expanses/db';
-import { fromWithdrawalsText, receiptWithdrawalLine } from '../../lib/withdrawal-rate';
+import { fromWithdrawalsText, receiptWithdrawalLine, transferRateParts } from '../../lib/withdrawal-rate';
 import { classify } from './classify';
 import { isNotCountedLine } from './list-model';
 import type { PurchasePoints } from '../../lib/purchase-points';
@@ -16,6 +16,8 @@ import { formatPoints } from '../cards/useCardPoints';
 export interface ReceiptLine {
   label: string;
   value: string;
+  /** A second, grey line under the value: the market beside a transfer's Rate. */
+  detail?: string;
   /** The points line, which the list already paints in the programme's colour. */
   tone?: 'points';
 }
@@ -44,6 +46,8 @@ export interface ReceiptInput {
   withdrawal?: WithdrawalsUsed | null;
   /** Today, for "From the 12 Nov withdrawal" (a withdrawal in another year names its year). */
   today?: string;
+  /** The market rates held for the transaction's day, to the base: what a transfer between currencies is read against. */
+  ratesToBase?: Readonly<Record<string, number>>;
 }
 
 /** Money accounts: the two kinds whose entry says what was actually charged or received. */
@@ -93,6 +97,26 @@ function pointsText(points: PurchasePoints): string {
 }
 
 /**
+ * A transfer between two currencies, one of them the base (`transferRateParts`): its Rate row's two lines. What was
+ * changed is the exchange account's line in the currency that left — never a fee charged beside it — and what arrived.
+ */
+function exchangeRateOf(tx: TransactionView, baseCurrency: string, ratesToBase: Readonly<Record<string, number>>) {
+  if (classify(tx).type !== 'transfer') return null;
+  const { left, into } = paidEntry(tx);
+  const from = left[0];
+  if (!from || !into || from.currency === into.currency) return null;
+  const changed = tx.entries.find((entry) => entry.accountSystemKey === 'currency_exchange' && entry.currency === from.currency && entry.amountMinor > 0);
+  return transferRateParts({
+    fromMinor: changed?.amountMinor ?? -from.amountMinor,
+    fromCurrency: from.currency,
+    toMinor: into.amountMinor,
+    toCurrency: into.currency,
+    baseCurrency,
+    ratesToBase,
+  });
+}
+
+/**
  * B8's lines in B8's order, **leaving out every line there is nothing to say about**: a receipt with no points,
  * nobody owing and no event is two lines, not nine of them holding a dash.
  */
@@ -136,8 +160,12 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   if (cashback) lines.push({ label: 'Cashback', value: 'Lowers spending' });
   else if (refund) lines.push({ label: 'Refund', value: 'Money back' });
   if (paid && !across) lines.push({ label: 'Total', value: `${refund ? '+' : ''}${formatMinor(Math.abs(paid.amountMinor), currency)}` });
+  // A transfer between currencies (owner, 17 Nov 2026): one Rate row, what the bank gave against the day's market. Its
+  // Cost and Withdrawn go: the difference from what the money cost counts nowhere, so the receipt does not weigh it.
+  const rate = exchangeRateOf(tx, input.currency, input.ratesToBase ?? {});
+  if (rate) lines.push({ label: 'Rate', value: rate.rate, ...(rate.market ? { detail: rate.market } : {}) });
   // Withdrawal rate §7: what the foreign money cost, and which withdrawals it came from.
-  if (input.withdrawal) {
+  else if (input.withdrawal) {
     const cost = receiptWithdrawalLine(input.withdrawal, input.withdrawal.currency, input.currency);
     if (cost) lines.push({ label: 'Cost', value: cost });
     const from = fromWithdrawalsText(input.withdrawal.uses, input.today ?? tx.occurredOn);

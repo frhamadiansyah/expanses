@@ -52,10 +52,10 @@ test('lira withdrawn at 525 is spent at 525, the receipt names the withdrawal, a
   await mockRates(page, { TRY: 512 });
   await openWithPockets(page, TRAVEL);
 
-  // The withdrawal: Rp 5.250.000 for ₺10.000. The device holds no lira rate before its first save, so the Rate row
-  // has no market to compare with yet; the move back below has one.
+  // The withdrawal: Rp 5.250.000 for ₺10.000. Nothing is shown under the figures (owner, 17 Nov 2026); the Rate row
+  // reads as the receipt does (layout B, 17 Nov 2026).
   await move(page, TRAVEL.name, 'IDR', 'TRY', '5250000', '10000');
-  await expect(page.getByText(/^Rp 525 per TRY/)).toBeVisible();
+  await expect(page.getByText(/per TRY/)).toHaveText(['Rp 525 per TRY']);
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-TRY')).toContainText('10.000,00');
 
@@ -74,16 +74,24 @@ test('lira withdrawn at 525 is spent at 525, the receipt names the withdrawal, a
   await expect(page.getByTestId('fx-cost')).toContainText('5.013.750');
   await expect(page.locator('[data-testid^="lot-"]')).toContainText('₺ 9.550 of ₺ 10.000 · Rp 525');
 
-  // ₺500 changed back for Rp 250.000 (the day's 512 is held now): they cost Rp 262.500, so Rp 12.500 is lost, recorded
-  // as spending.
+  // ₺500 changed back for Rp 250.000 (the day's 512 is held now). They cost Rp 262.500, but the difference counts nowhere
+  // (owner, 17 Nov 2026): no Cost, no Exchange loss, no Rate under the figures while typing.
   await move(page, TRAVEL.name, 'TRY', 'IDR', '500', '250000');
-  await expect(page.getByText('Rp 500 per TRY (market 512, −2,3 %)')).toBeVisible();
-  await expect(page.getByTestId('exchange-cost')).toContainText('262.500');
-  await expect(page.getByTestId('spread')).toContainText('Exchange loss');
-  await expect(page.getByTestId('spread')).toContainText('12.500');
-  await expect(page.getByTestId('spread')).toContainText('recorded as spending');
+  await expect(page.getByText(/per TRY/)).toHaveText(['Rp 500 per TRY']);
+  await expect(page.getByText(/Exchange (loss|gain)|recorded as/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-TRY')).toContainText('9.050,00');
+
+  // Its receipt: one Rate row, the market under it — no Cost, no Withdrawn, nothing that says it counts.
+  await page.getByTestId('account-recent-row').filter({ hasText: /TRY → IDR/ }).first().click();
+  await expect(page.getByText('Rp 500 per TRY', { exact: true })).toBeVisible();
+  await expect(page.getByText('market 512 · −2,3 %', { exact: true })).toBeVisible();
+  await expect(page.getByText(/at the withdrawal rate|withdrawal$|Exchange (loss|gain)|recorded as/)).toHaveCount(0);
+
+  // November's spending is the dinner alone: the change back is no row and no figure on Cashflow.
+  await page.goto('/transactions');
+  await expect(page.getByText(/TRY → IDR/)).toHaveCount(0);
+  await expect(page.getByText(/Exchange (loss|gain)/)).toHaveCount(0);
 });
 
 test('lira spent before any withdrawal was recorded says so, on the Add screen, the receipt and the pocket', async ({ page }) => {

@@ -78,7 +78,6 @@ import { MoreDetails } from './MoreDetails';
 import { TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from './TradeRows';
 import { NoteSuggestions } from './NoteSuggestions';
 import { partnerTitle, partnerTransferSections } from './member-transfer';
-import { TransferRates } from './TransferRates';
 import { WithdrawalLine } from './WithdrawalLine';
 import { PaymentSheet, chosenPayment, removedCardPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
@@ -476,7 +475,6 @@ function CardBody({
   const toAccount = byId.get(draft.toId);
   // The Received row reads the same record the save reads (`receivedField`), so the two cannot disagree on its currency.
   const received = receivedField(draft, accounts);
-  const crossCurrency = received !== null;
   const canHold = useCanHold();
   // What Save would send, read by the function that builds it (a category not chosen yet does not hide the door).
   const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
@@ -1392,9 +1390,6 @@ function CardBody({
           />
         </FormRows>
       )}
-
-      {/* Withdrawal rate §7, R15: the Rate against the market, and out of foreign cash its cost and gain or loss. */}
-      {draft.mode === 'transfer' && crossCurrency && <TransferRates draft={draft} accounts={accounts} editingId={initial?.id ?? null} />}
 
       {/*
         §4's rows, every one of them, behind one way in — B2's green "Add more details" under the card. The card

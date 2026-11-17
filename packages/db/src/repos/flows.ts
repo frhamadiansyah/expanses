@@ -1,4 +1,4 @@
-import { addMonths, displayAmount, installmentSchedule, instalmentsFrom, type MonthStartDay, type PartWeight, type PeriodFlows, periodMonthOf, type PlanGroup } from '@expanses/core';
+import { addMonths, displayAmount, isExchangeResultKey, installmentSchedule, instalmentsFrom, type MonthStartDay, type PartWeight, type PeriodFlows, periodMonthOf, type PlanGroup } from '@expanses/core';
 import { and, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -112,6 +112,7 @@ export async function periodFlows(
       amountBaseMinor: entries.amountBaseMinor,
       kind: accounts.kind,
       subtype: accounts.subtype,
+      systemKey: accounts.systemKey,
       occurredOn: transactions.occurredOn,
     })
     .from(entries)
@@ -201,7 +202,8 @@ export async function periodFlows(
     // and is named in `missing`; which side of the ledger a row is on is still read from the owner's figure, so a
     // missing rate never turns a loan payment into something else.
     const read = (money.converts ? money.convert(row.amountMinor, row.currency, row.occurredOn) : row.amountBaseMinor) ?? 0;
-    const counted = !excludedIds.has(row.transactionId) && !excludedParts.has(`${row.transactionId}:${row.accountId}`);
+    // An exchange's gain or loss is neither income nor spending (owner, 17 Nov 2026); the rolls below never read a category.
+    const counted = !excludedIds.has(row.transactionId) && !excludedParts.has(`${row.transactionId}:${row.accountId}`) && !isExchangeResultKey(row.systemKey);
     if (row.kind === 'expense' && spread.has(row.transactionId)) {
       // spread over its plan's months: counted below, one instalment at a time
     } else if (counted && row.kind === 'income' && !realizedGains.has(row.accountId) && counts(row.accountId)) {

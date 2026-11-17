@@ -716,7 +716,7 @@ export {
 export { balances, fewestPayments, type SuggestedPayment } from './shared-events/balances';
 export { defaultSplitCosts, isOnePotSplit, onePotSplit } from './shared-events/split-costs';
 export { type MyLineAccounts, type MyLines, myExpenseLines, mySettlementLines, type PaidFromAccount } from './shared-events/lines';
-export { EXCHANGE_GAIN_KEY, EXCHANGE_GAIN_NAME, EXCHANGE_LOSS_KEY, EXCHANGE_LOSS_NAME, FX_LOT_SUBTYPES, isExchangeResultKey, isFxLotAccount } from './fx/keys';
+export { EXCHANGE_GAIN_KEY, EXCHANGE_GAIN_NAME, EXCHANGE_LOSS_KEY, EXCHANGE_LOSS_NAME, EXCHANGE_RESULT_KEYS, FX_LOT_SUBTYPES, isExchangeResultKey, isFxLotAccount } from './fx/keys';
 export {
   chronological,
   fifoCosts,

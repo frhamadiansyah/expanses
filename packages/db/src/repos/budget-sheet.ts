@@ -1,4 +1,4 @@
-import { type BudgetSheet, budgetSheet, isCardCashbackKey, isUncategorisedKey, monthPeriod } from '@expanses/core';
+import { type BudgetSheet, budgetSheet, isCardCashbackKey, isExchangeResultKey, isUncategorisedKey, monthPeriod } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -101,7 +101,9 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
   // Cashback & Rewards into a credit card has no line and takes no cap either: it lowers what was spent, never a
   // category's figure, so Groceries keeps its full amount against its budget.
   const cashback = new Set(categories.filter((category) => isCardCashbackKey(category.systemKey)).map((category) => category.id));
-  const lined = (id: string) => !unfiled.has(id) && !cashback.has(id);
+  // Exchange gain and Exchange loss count nowhere (owner, 17 Nov 2026): no line, no cap, nothing in the month's figures.
+  const exchange = new Set(categories.filter((category) => isExchangeResultKey(category.systemKey)).map((category) => category.id));
+  const lined = (id: string) => !unfiled.has(id) && !cashback.has(id) && !exchange.has(id);
   const sheet = budgetSheet({
     month,
     categories: categories.filter((category) => lined(category.id)),
