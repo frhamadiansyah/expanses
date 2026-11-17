@@ -158,3 +158,24 @@ export async function chooseCardPayFrom(form: Locator, from: string): Promise<vo
   await form.getByRole('button', { name: 'From' }).click();
   await choosePayment(form.page(), from, 'From');
 }
+
+/**
+ * The statement's Pay for the ticked purchases (owner, 17 Nov 2026): the same "Pay credit card" screen, the purchases
+ * listed under "Paying N purchases", the amount their total and fixed. Returns the form.
+ */
+export async function openStatementPay(page: Page): Promise<Locator> {
+  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Pay credit card', exact: true })).toBeVisible();
+  const form = addForm(page);
+  await expect(form.getByTestId('pay-card-to')).toBeVisible();
+  return form;
+}
+
+/** Pays the ticked purchases from `from` on that screen, and is back on the statement. */
+export async function payStatementPurchases(page: Page, from: string): Promise<void> {
+  const form = await openStatementPay(page);
+  await chooseCardPayFrom(form, from);
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  await expect(page).toHaveURL(/\/cards\/[^/]+\/statement/);
+}

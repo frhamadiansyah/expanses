@@ -15,6 +15,15 @@ export function cycleBack(today: string, statementDay: number, back: number): Cy
   return cycle;
 }
 
+/**
+ * The statement page's address: how many statements back is on screen, left out for the current one. Kept there rather
+ * than in the page alone, so Back from a screen it opened — the Pay for ticked purchases — lands on the same statement.
+ */
+export function statementSearch(search: Record<string, unknown>): { back?: number } {
+  const back = Number(search.back);
+  return Number.isInteger(back) && back > 0 ? { back } : {};
+}
+
 /** The first due day after a statement date: one rule with the plans' instalments (`instalmentDueOn`). */
 export { dueDateAfter };
 

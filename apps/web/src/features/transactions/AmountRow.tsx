@@ -183,6 +183,7 @@ export function AmountRow({
   noRefund = false,
   anyCurrency = false,
   locked = false,
+  fixed = false,
   photos,
   second,
 }: {
@@ -200,6 +201,11 @@ export function AmountRow({
   anyCurrency?: boolean;
   /** Every figure and the flag drawn, none of them a control: a shared expense another member paid (D8). */
   locked?: boolean;
+  /**
+   * The figure drawn as it is, at full strength, and not a control: no keypad, no ✕ — a total worked out elsewhere (the
+   * statement's Pay for ticked purchases). The flag stays only drawn.
+   */
+  fixed?: boolean;
   /**
    * The transaction's photos, on this row: a grey camera at its end — with how many there are, once there are any —
    * that opens them. A receipt is where the amount comes from, so its way in is the amount's row.
@@ -228,7 +234,7 @@ export function AmountRow({
   // Household sharing spec §4.4 last line: a shared book's currency is the book's own, fixed for every member, so
   // the flag is drawn but never a control — the same "drawn, not a control" shape a transfer's flag already has.
   const sharedBook = useIsBookShared();
-  const choosable = currencyChoosable(draft) && (anyCurrency || !sharedBook) && !locked;
+  const choosable = currencyChoosable(draft) && (anyCurrency || !sharedBook) && !locked && !fixed;
   const named = currencyShown(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);
@@ -348,7 +354,7 @@ export function AmountRow({
               className={cx(fieldBase, refund && 'text-[var(--ph-up)]')}
               selectOnOpen={selectOnOpen}
               refund={refundable}
-              disabled={locked}
+              disabled={locked || fixed}
             />
           </span>
           {other && (
@@ -371,12 +377,12 @@ export function AmountRow({
                   className={cx(fieldBase, refund && 'text-[var(--ph-up)]')}
                   placeholder={other.placeholder}
                   refund={!second && refund}
-                  disabled={locked}
+                  disabled={locked || fixed}
                 />
               </span>
             </>
           )}
-          {draft.amount !== '' && !locked && (
+          {draft.amount !== '' && !locked && !fixed && (
             <button
               type="button"
               aria-label="Clear amount"
@@ -387,7 +393,7 @@ export function AmountRow({
               <X size={12} aria-hidden />
             </button>
           )}
-          {photos && !locked && (
+          {photos && !locked && !fixed && (
             <button
               type="button"
               aria-label={photos.count > 0 ? `Photos, ${photos.count}` : 'Photos'}

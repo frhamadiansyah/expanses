@@ -13,6 +13,14 @@ describe('the Add screen opened by a card’s Pay or Spend', () => {
     expect(newTransactionSearch({ amount: '5' })).toEqual({});
   });
 
+  it('reads the statement’s Pay: the purchases ticked and the statement they were ticked on, all four or none', () => {
+    const statement = { pay: 'card-1', purchases: 'a,b', start: '2026-07-21', end: '2026-08-20', today: '2026-09-01' };
+    expect(newTransactionSearch(statement)).toEqual(statement);
+    // Half an address is no statement to read: the screen opens as the card's own Pay.
+    expect(newTransactionSearch({ ...statement, today: '' })).toEqual({ pay: 'card-1' });
+    expect(newTransactionSearch({ purchases: 'a', start: '2026-07-21', end: '2026-08-20', today: '2026-09-01' })).toEqual({});
+  });
+
   it('reads Spend’s one kind: no tabs', () => {
     expect(newTransactionSearch({ mode: 'expense', account: 'card-1', fixed: true })).toEqual({ mode: 'expense', account: 'card-1', fixed: true });
     expect(newTransactionSearch({ mode: 'expense', account: 'card-1', fixed: '1' })).toEqual({ mode: 'expense', account: 'card-1', fixed: true });
