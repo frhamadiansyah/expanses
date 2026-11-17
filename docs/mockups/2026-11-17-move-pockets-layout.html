@@ -1,0 +1,64 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Move page layouts</title><style>
+body{margin:0;padding:24px;font:15px -apple-system,system-ui,sans-serif;background:#e5e5ea;color:#000}
+h1{font-size:22px;margin:0 0 4px}.sub{color:#555;margin:0 0 18px;max-width:1150px;line-height:1.45}
+.row{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}.col{width:330px}.cap{font-weight:700;margin:0 0 4px}.note{font-size:13px;color:#555;margin:0 0 10px;min-height:54px;line-height:1.4}
+.shot{width:330px;border-radius:24px;box-shadow:0 1px 3px rgba(0,0,0,.15);display:block}
+.lab{display:inline-block;font-size:10px;font-weight:800;color:#fff;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:2px}.t{background:#8e8e93}.n{background:#1a7f37}
+.ph{width:390px;zoom:.846;background:#f2f2f7;border-radius:28px;box-shadow:0 1px 3px rgba(0,0,0,.15);padding:14px 0 0;height:688px;box-sizing:border-box;position:relative;overflow:hidden;font-size:17px}
+.hd{display:flex;align-items:center;gap:16px;padding:0 12px 18px}.hd b{font-size:22px;font-weight:600}.circ{width:44px;height:44px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:20px}
+.pn{background:#fff;border-radius:14px;margin:0 12px}
+.box{display:flex;align-items:center;padding:10px 14px;min-height:44px}.box .g{flex:1;min-width:0}.s{font-size:13px;color:#8e8e93}.amt{font-size:19px;font-variant-numeric:tabular-nums}
+.swap{width:32px;height:32px;border-radius:50%;background:#e4e4e9;display:flex;align-items:center;justify-content:center;font-size:15px;margin:0 auto}
+.kv{display:flex;align-items:center;padding:0 14px;min-height:48px}.kv+.kv{border-top:.5px solid #d8d8dc}.kv span:first-child{flex:1}.gr{color:#8e8e93}
+.btn{background:#fff;border-radius:14px;margin:14px 12px 0;text-align:center;padding:14px 0}
+.dock{position:absolute;left:12px;right:12px;bottom:14px;height:64px;border-radius:32px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-around;color:#3c3c43;font-size:22px}
+.dock i{width:40px;height:40px;border-radius:50%;background:#111;color:#fff;font-style:normal;display:flex;align-items:center;justify-content:center}
+.fi{width:30px;height:30px;border-radius:50%;background:#f0f0f3;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;margin-right:12px}
+.fr{display:flex;align-items:stretch;padding-left:14px}.fr .fi{align-self:center}.fr .c{flex:1;display:flex;align-items:center;min-height:50px;padding-right:14px}.fr+.fr .c{border-top:.5px solid #d8d8dc}
+.pair{display:flex;align-items:center;flex:1;gap:10px}.pair .bar{width:1px;height:26px;background:#d8d8dc}
+.step{display:flex;align-items:center;gap:8px;flex:1}.step span{background:#f0f0f3;border-radius:10px;padding:7px 0;flex:1;text-align:center;font-size:15px}.step i{font-style:normal;width:30px;height:30px;border-radius:50%;background:#f0f0f3;display:flex;align-items:center;justify-content:center}
+</style></head><body>
+<h1>Move between pockets: three tighter layouts</h1>
+<p class="sub">Invented example: BCA with a GBP pocket (£1.500) and an IDR pocket (Rp 5.000.000); £1.000 out, Rp 20.700.000 in. All three: no FROM / TO words above the boxes, slimmer boxes, a wider gap with the swap between them, amounts written with dots, Rate as "Rp 20.700 per GBP" (BCA's rate, from the two amounts), Cost and Exchange gone. The first picture is today's real screen.</p>
+<div class="row">
+ <div class="col"><p class="cap"><span class="lab t">TODAY (144)</span>Real screen</p><p class="note">FROM / TO above tall boxes; amounts without dots.</p><img class="shot" src="move/now-144.png"></div>
+
+ <div class="col"><p class="cap"><span class="lab n">A</span>Two slim boxes, no labels</p><p class="note">The ⇅ between the boxes shows the direction; nothing above them. Closest to today.</p>
+  <div class="ph">
+   <div class="hd"><span class="circ">‹</span><b>Move between pockets</b></div>
+   <div class="pn"><div class="box"><div class="g">British Pound<div class="s">£1.500,00 available</div></div><span class="amt">1.000,00</span></div></div>
+   <div style="padding:18px 0"><div class="swap">⇅</div></div>
+   <div class="pn"><div class="box"><div class="g">Indonesian Rupiah<div class="s">Rp 5.000.000 available</div></div><span class="amt">20.700.000</span></div></div>
+   <div class="pn" style="margin-top:22px"><div class="kv"><span>Rate <span class="gr">ⓘ</span></span><span>Rp 20.700 per GBP</span></div><div class="kv"><span>Date</span><span>17/11/2026 &nbsp;▦</span></div></div>
+   <div class="btn">Move</div>
+   <div class="dock"><span>⇆</span><span>↗</span><i>＋</i><span>▭</span><span>◯</span></div>
+  </div></div>
+
+ <div class="col"><p class="cap"><span class="lab n">B</span>One box, swap on the line</p><p class="note">Both pockets in one box; the ⇅ sits on the line between them. "From" / "To" as the grey word under each name.</p>
+  <div class="ph">
+   <div class="hd"><span class="circ">‹</span><b>Move between pockets</b></div>
+   <div class="pn" style="position:relative">
+    <div class="box" style="min-height:58px"><div class="g">British Pound<div class="s">From · £1.500,00 available</div></div><span class="amt">1.000,00</span></div>
+    <div style="border-top:.5px solid #d8d8dc;margin:0 14px"></div>
+    <div class="swap" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;border:.5px solid #d8d8dc">⇅</div>
+    <div class="box" style="min-height:58px"><div class="g">Indonesian Rupiah<div class="s">To · Rp 5.000.000 available</div></div><span class="amt">20.700.000</span></div>
+   </div>
+   <div class="pn" style="margin-top:22px"><div class="kv"><span>Rate <span class="gr">ⓘ</span></span><span>Rp 20.700 per GBP</span></div><div class="kv"><span>Date</span><span>17/11/2026 &nbsp;▦</span></div></div>
+   <div class="btn">Move</div>
+   <div class="dock"><span>⇆</span><span>↗</span><i>＋</i><span>▭</span><span>◯</span></div>
+  </div></div>
+
+ <div class="col"><p class="cap"><span class="lab n">C</span>Like the Transfer screen</p><p class="note">The same rows as ＋ › Transfer: ↗ From, ↙ To, both amounts on one row, Rate, the ‹ date › stepper.</p>
+  <div class="ph">
+   <div class="hd"><span class="circ">‹</span><b>Move between pockets</b></div>
+   <div class="pn">
+    <div class="fr"><span class="fi">↗</span><div class="c"><span style="flex:1">British Pound</span><span class="gr" style="font-size:15px">From ›</span></div></div>
+    <div class="fr"><span class="fi">↙</span><div class="c"><span style="flex:1">Indonesian Rupiah</span><span class="gr" style="font-size:15px">To ›</span></div></div>
+    <div class="fr"><span class="fi">🇬🇧</span><div class="c"><div class="pair"><span><span class="gr" style="font-size:14px">GBP</span> 1.000,00</span><span class="bar"></span><span><span class="gr" style="font-size:14px">IDR</span> 20.700.000</span></div></div></div>
+    <div class="fr"><span class="fi">%</span><div class="c"><span style="flex:1">Rate</span><span>Rp 20.700 per GBP</span></div></div>
+    <div class="fr"><span class="fi">▦</span><div class="c"><div class="step"><i>‹</i><span>Tue, 17 Nov 2026</span><i>›</i></div></div></div>
+   </div>
+   <div class="btn">Move</div>
+   <div class="dock"><span>⇆</span><span>↗</span><i>＋</i><span>▭</span><span>◯</span></div>
+  </div></div>
+</div></body></html>
