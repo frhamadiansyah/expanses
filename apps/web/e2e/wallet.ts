@@ -311,7 +311,7 @@ export async function walletReorder(page: Page) {
 }
 
 /**
- * The Balance box's rows (owner, 12 Nov): Spending money and Owed on cards filter the grid to the cards they are made
+ * The Balance box's rows (owner, 12 Nov): Spending money and Outstanding on cards filter the grid to the cards they are made
  * of — ✓ on the one tapped, a header with its count and Show all — and Bills still to pay takes this month's unpaid
  * bills off the Balance and opens them as a sheet, clearing a filter first. A row tapped again, or Show all, brings
  * every card back.
@@ -327,7 +327,7 @@ export async function balanceRows(page: Page) {
   await pickView(page, 'Grid');
   const box = page.getByTestId('wallet-balance');
   const spending = box.getByRole('button', { name: /^Spending money/ });
-  const cards = box.getByRole('button', { name: /^Owed on cards/ });
+  const cards = box.getByRole('button', { name: /^Outstanding on cards/ });
   const bills = box.getByRole('button', { name: /^Bills still to pay/ });
   const faces = page.getByTestId('wallet-grid').getByTestId('wallet-card');
   const header = page.getByTestId('wallet-filter');
@@ -348,11 +348,11 @@ export async function balanceRows(page: Page) {
   await expect(faces).toHaveCount(2);
   await expect(walletCard(page, 'Blue Card')).toHaveCount(0);
 
-  // Owed on cards: only the credit card; the same row again brings every card back.
+  // Outstanding on cards: only the credit card; the same row again brings every card back.
   await cards.click();
   await expect(cards).toHaveAttribute('aria-pressed', 'true');
   await expect(spending).toHaveAttribute('aria-pressed', 'false');
-  await expect(header).toContainText('Owed on cards · 1');
+  await expect(header).toContainText('Outstanding on cards · 1');
   await expect(faces).toHaveCount(1);
   await expect(walletCard(page, 'Blue Card')).toBeVisible();
   await cards.click();
@@ -376,7 +376,7 @@ export async function balanceRows(page: Page) {
   await expect(sheet.getByTestId('bill-to-pay')).toHaveCount(2);
   await expect(sheet).toContainText('Phone');
   await expect(sheet).toContainText('Gym');
-  await expect(sheet).toContainText('Bills not yet paid this month. A bill drops off once paid; paid with a credit card, it is counted in Owed on cards instead. Skipped and paused bills are left out.');
+  await expect(sheet).toContainText('Bills not yet paid this month. A bill drops off once paid; paid with a credit card, it is counted in Outstanding on cards instead. Skipped and paused bills are left out.');
   await expect(spending).toHaveAttribute('aria-pressed', 'false');
   await expect(faces).toHaveCount(3);
 

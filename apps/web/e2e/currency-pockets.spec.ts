@@ -448,7 +448,7 @@ test('the tile names the rate it lacks instead of adding up the rest', async ({ 
   await expect(page.getByText(/No USD rate yet, so what is left to spend cannot be worked out/)).toBeVisible();
   // No figure and no working either: a spendable total that leaves the dollars out would be a lie with a number on it.
   await expect(page.getByText('Spending money')).toHaveCount(0);
-  await expect(page.getByText('Owed on cards')).toHaveCount(0);
+  await expect(page.getByText('Outstanding on cards')).toHaveCount(0);
   // The account's own card names it too, in place of a total.
   await expect(walletCard(page, 'Unpriced Valas')).toHaveAccessibleName(/No USD rate yet/);
 });
