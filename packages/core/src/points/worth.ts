@@ -1,5 +1,5 @@
 import { currencyInfo } from '../money/currencies';
-import { MoneyError } from '../money/money';
+import { currencyText, MoneyError } from '../money/money';
 import type { Redemption } from './recommend';
 
 /**
@@ -76,12 +76,15 @@ export function parseValuePerPoint(text: string, currency: string): number {
 /** The scaled value as money, as many decimals as it has and no more than the currency shows: "Rp 110", "Rp 0,5". */
 export function formatValuePerPoint(scaled: number, currency: string, locale = 'id-ID'): string {
   const { exponent } = currencyInfo(currency);
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: exponent,
-    maximumFractionDigits: exponent + 4,
-  }).format(scaled / (VALUE_PER_POINT_SCALE * 10 ** exponent));
+  return currencyText(
+    new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: exponent,
+      maximumFractionDigits: exponent + 4,
+    }),
+    scaled / (VALUE_PER_POINT_SCALE * 10 ** exponent),
+  );
 }
 
 /** A value per point as it is being typed, grouped in id-ID as it goes: digits with a dot every three and one decimal comma. */

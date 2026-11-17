@@ -27,6 +27,7 @@ export { type DatedRate, pickRate } from './money/rates';
 export {
   assertMinor,
   convertMinor,
+  currencyText,
   formatMinor,
   minorToMajorString,
   MoneyError,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   convertMinor,
   currencyInfo,
+  currencyText,
   formatMinor,
   minorToMajorString,
   MoneyError,
@@ -73,6 +74,19 @@ describe('formatting', () => {
   it('formats with currency exponent', () => {
     expect(nbsp(formatMinor(500000, 'IDR'))).toBe('Rp 500.000');
     expect(nbsp(formatMinor(123456, 'USD', 'en-US'))).toBe('$1,234.56');
+  });
+  it('puts a no-break space between a lettered symbol and its digits, whatever the engine’s locale data gave', () => {
+    // Safari's id-ID data prints "Rp14.000" (Chromium's "Rp 14.000"): the parts as Safari hands them over.
+    const parts = (list: [Intl.NumberFormatPartTypes, string][]) => ({ formatToParts: () => list.map(([type, value]) => ({ type, value })) }) as unknown as Intl.NumberFormat;
+    expect(currencyText(parts([['currency', 'Rp'], ['integer', '14'], ['group', '.'], ['integer', '000']]), 14000)).toBe('Rp\u00a014.000');
+    expect(currencyText(parts([['minusSign', '-'], ['currency', 'Rp'], ['integer', '14']]), -14)).toBe('-Rp\u00a014');
+    // A symbol that is a sign of its own ("US$", "€") takes none, and one already spaced is left alone.
+    expect(currencyText(parts([['currency', 'US$'], ['integer', '14']]), 14)).toBe('US$14');
+    expect(currencyText(parts([['currency', '€'], ['integer', '14']]), 14)).toBe('€14');
+    expect(currencyText(parts([['currency', 'Rp'], ['literal', '\u00a0'], ['integer', '14']]), 14)).toBe('Rp\u00a014');
+    // After the figure ("14 kr" in a locale that writes it there), the space goes before the symbol.
+    expect(currencyText(parts([['integer', '14'], ['currency', 'kr']]), 14)).toBe('14\u00a0kr');
+    expect(formatMinor(500000, 'IDR')).toBe('Rp\u00a0500.000');
   });
   it('renders form input strings', () => {
     expect(minorToMajorString(500000, 'IDR')).toBe('500000');

@@ -1,4 +1,4 @@
-import { currencyInfo, formatMinor } from '@expanses/core';
+import { currencyInfo, currencyText, formatMinor } from '@expanses/core';
 import type { AccountRow, MonthlyBill } from '@expanses/db';
 import {
   ArrowLeftRight,
@@ -133,7 +133,8 @@ export function billsDueCount(rows: readonly Pick<MonthlyBill, 'state'>[]): numb
 
 /**
  * A balance short enough for a sidebar row: rupiah in millions ("142,5 jt") and billions ("1,2 M"), as Net worth's
- * axis prints them; any other currency in whole units ("US$ 1.840"). Below a million rupiah, whole rupiah.
+ * axis prints them; any other currency in whole units ("US$1.840"). Below a million rupiah, whole rupiah ("Rp 193.000", the
+ * no-break space `currencyText` gives a lettered symbol in every engine).
  */
 export function compactMoney(minor: number, currency: string): string {
   const major = minor / 10 ** currencyInfo(currency).exponent;
@@ -141,7 +142,7 @@ export function compactMoney(minor: number, currency: string): string {
   const sign = major < 0 ? '−' : '';
   if (currency === 'IDR' && abs >= 1e9) return `${sign}${(abs / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 1 })} M`;
   if (currency === 'IDR' && abs >= 1e6) return `${sign}${(abs / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`;
-  const whole = new Intl.NumberFormat('id-ID', { style: 'currency', currency, maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(abs);
+  const whole = currencyText(new Intl.NumberFormat('id-ID', { style: 'currency', currency, maximumFractionDigits: 0, minimumFractionDigits: 0 }), abs);
   return `${sign}${whole}`;
 }
 

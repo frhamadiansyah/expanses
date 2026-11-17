@@ -109,15 +109,37 @@ function parseAtExponent(input: string, currency: string, exponent: number): num
   return negative ? -minor : minor;
 }
 
+const NUMBER_PART = new Set<Intl.NumberFormatPartTypes>(['integer', 'fraction', 'nan', 'infinity']);
+
+/**
+ * A currency-style figure with the no-break space a lettered symbol takes beside its digits: "Rp 14.000", "SGD 2.140",
+ * while "US$1.840" and "€14" stay as they are. Chromium's locale data already puts it there; Safari's (and so the
+ * app's own web view, on a phone and on a Mac) prints "Rp14.000". The space is put in here, so every screen reads the
+ * same figure whichever engine draws it.
+ */
+export function currencyText(format: Intl.NumberFormat, value: number): string {
+  const parts = format.formatToParts(value);
+  return parts
+    .map((part, i) => {
+      const next = parts[i + 1];
+      if (!next) return part.value;
+      const lettered = (text: string, at: 'start' | 'end') => (at === 'end' ? /\p{L}$/u : /^\p{L}/u).test(text);
+      const gap = (part.type === 'currency' && NUMBER_PART.has(next.type) && lettered(part.value, 'end')) || (NUMBER_PART.has(part.type) && next.type === 'currency' && lettered(next.value, 'start'));
+      return gap ? `${part.value}\u00a0` : part.value;
+    })
+    .join('');
+}
+
 export function formatMinor(amountMinor: number, currency: string, locale = 'id-ID'): string {
   assertMinor(amountMinor);
   const { exponent } = currencyInfo(currency);
-  return new Intl.NumberFormat(locale, {
+  const format = new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
     minimumFractionDigits: exponent,
     maximumFractionDigits: exponent,
-  }).format(amountMinor / 10 ** exponent);
+  });
+  return currencyText(format, amountMinor / 10 ** exponent);
 }
 
 /** Minor units in a decimal string without currency symbol, for form inputs. */

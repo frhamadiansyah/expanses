@@ -90,11 +90,10 @@ describe('compact balances', () => {
   });
 
   it('prints under a million rupiah, and every other currency, in whole units', () => {
-    // The space after the symbol is the locale data's to give (a no-break space, or none): compared without it.
-    const bare = (text: string) => text.replace(/\s/g, '');
-    expect(bare(compactMoney(950_000, 'IDR'))).toBe('Rp950.000');
-    expect(bare(compactMoney(184_000, 'USD'))).toBe('US$1.840');
-    expect(bare(compactMoney(-184_050, 'USD'))).toBe('−US$1.841');
+    // Rupiah's lettered symbol takes a no-break space before its digits, as the rest of the app prints it; "US$" none.
+    expect(compactMoney(950_000, 'IDR')).toBe('Rp\u00a0950.000');
+    expect(compactMoney(184_000, 'USD')).toBe('US$1.840');
+    expect(compactMoney(-184_050, 'USD')).toBe('−US$1.841');
   });
 });
 

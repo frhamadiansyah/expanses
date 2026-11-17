@@ -1,3 +1,5 @@
+import { currencyText } from '@expanses/core';
+
 /**
  * The handful of commands an e-money card is sent, and the one rule they all pass: read only.
  *
@@ -127,7 +129,7 @@ export function maskCardNumber(digits: string): string {
 
 /** "Rp 12.345" — the whole-rupiah figure a card holds. */
 export function formatRupiah(amount: number): string {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
+  return currencyText(new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }), amount);
 }
 
 /**

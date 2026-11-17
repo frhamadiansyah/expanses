@@ -1,5 +1,5 @@
 import { currencyInfo } from '../money/currencies';
-import { assertMinor } from '../money/money';
+import { assertMinor, currencyText } from '../money/money';
 
 /** Units are stored as integers of one millionth of a unit: 4 decimals for fund units, 0,0001 g for gold. */
 export const UNITS_SCALE = 1_000_000;
@@ -78,12 +78,15 @@ export function parsePriceMicro(input: string, currency: string): number {
 
 export function formatPriceMicro(priceMicro: number, currency: string, locale = 'id-ID'): string {
   const { exponent } = currencyInfo(currency);
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: exponent,
-    maximumFractionDigits: exponent + 2,
-  }).format(priceMicro / (PRICE_SCALE * 10 ** exponent));
+  return currencyText(
+    new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: exponent,
+      maximumFractionDigits: exponent + 2,
+    }),
+    priceMicro / (PRICE_SCALE * 10 ** exponent),
+  );
 }
 
 /** Units × price in minor units, rounded half away from zero. Exact for values beyond 2^53 before scaling. */
