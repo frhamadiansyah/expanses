@@ -100,7 +100,7 @@ test('a click opens a card’s side peek — its figure, what it is, Transfer an
   // Its last rows, the purchase among them; the opening balance is not.
   await expect(peek(page).getByTestId('peek-recent-row')).toHaveCount(1);
   await expect(peek(page).getByTestId('peek-recent-row')).toContainText('Noodle House');
-  await expect(peek(page).getByTestId('peek-recent-row')).toContainText('50.000');
+  await expect(peek(page).getByTestId('peek-recent-row')).toContainText(/-Rp\s?50\.000/);
   await expect(peek(page).getByRole('link', { name: 'All transactions' })).toHaveAttribute('href', /\/transactions\?account=/);
 
   // The page makes room: the peek covers no face.

@@ -197,7 +197,10 @@ function PeekRecent({ accountId, ids }: { accountId: string; ids: readonly strin
         {rows.map((row) => {
           const look = amountLook(row, 'balance');
           const transfer = row.type !== 'expense' && row.type !== 'income';
-          const money = look.plus ? `+${formatMinor(Math.abs(row.amountMinor), row.currency)}` : formatMinor(row.amountMinor, row.currency);
+          // The phone's reading of the row (`amountLook`), with its direction written as Mac tables write it: spending
+          // with a minus, money in with a plus and in green, a transfer as it moved.
+          const abs = Math.abs(row.amountMinor);
+          const money = look.plus || look.sign > 0 ? `+${formatMinor(abs, row.currency)}` : look.sign < 0 ? formatMinor(-abs, row.currency) : formatMinor(row.amountMinor, row.currency);
           return (
             <li key={row.id}>
               <button
