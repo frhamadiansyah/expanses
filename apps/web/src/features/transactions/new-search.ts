@@ -30,9 +30,27 @@ export interface NewTransactionSearch {
   currency?: string;
   note?: string;
   date?: string;
+  /**
+   * A credit card's round Pay: the card it pays, by account id. The screen opens as a transfer locked to paying it —
+   * no tabs, To fixed on the card, From left to be chosen — with `amount` the figure the card page fills in.
+   */
+  pay?: string;
+  /** Opened for one kind only (a card's Spend): no Expense / Income / Transfer tabs, and the title names the kind. */
+  fixed?: true;
+}
+
+/** The Add screen's bar: what the screen is for, never an account's name (owner, 17 Nov 2026). */
+export function newScreenTitle(search: Pick<NewTransactionSearch, 'pay' | 'fixed' | 'mode'>): string {
+  if (search.pay) return 'Pay credit card';
+  if (search.fixed && search.mode === 'expense') return 'New expense';
+  if (search.fixed && search.mode === 'income') return 'New income';
+  if (search.fixed && search.mode === 'transfer') return 'New transfer';
+  return 'New transaction';
 }
 
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+/** A flag in a link: `?fixed=1`, `?fixed=true`, or `true` once the router has parsed it. */
+const isOn = (value: unknown) => value === true || value === 1 || value === '1' || value === 'true';
 
 const carried = (search: Record<string, unknown>): Partial<NewTransactionSearch> => ({
   ...(text(search.amount) ? { amount: text(search.amount) } : {}),
@@ -53,4 +71,7 @@ export const newTransactionSearch = (search: Record<string, unknown>): NewTransa
   // A partner's item pays a purchase of the workspace's own, never an event's: an event drops it.
   ...(text(search.partner) && !text(search.event) ? { partner: text(search.partner) } : {}),
   ...(text(search.event) && !text(search.item) && !text(search.expense) ? carried(search) : {}),
+  // A card's Pay carries the figure it fills in; the card is To, so nothing else of the address is read for it.
+  ...(text(search.pay) ? { pay: text(search.pay), ...(text(search.amount) ? { amount: text(search.amount) } : {}) } : {}),
+  ...(isOn(search.fixed) ? { fixed: true as const } : {}),
 });
