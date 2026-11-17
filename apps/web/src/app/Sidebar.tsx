@@ -45,8 +45,8 @@ const ROW = 'flex h-[26px] items-center gap-2 rounded-[6px] px-2 text-[13px] tex
 const ROW_ON = 'bg-[var(--ph-side-on)] hover:bg-[var(--ph-side-on)]';
 const ICON = 'h-[15px] w-[15px] shrink-0 text-[var(--ph-dot)]';
 const HEADER = 'px-2 pt-3 pb-1 text-[11px] font-semibold text-[var(--ph-ink-3)]';
-const GREY = 'ml-auto text-[12px] text-[var(--ph-ink-3)] tabular-nums';
-const PILL = 'ml-auto rounded-full bg-[var(--ph-alarm)] px-[6px] text-[10.5px] leading-4 font-semibold text-white tabular-nums';
+const GREY = 'ml-auto shrink-0 whitespace-nowrap pl-2 text-[12px] text-[var(--ph-ink-3)] tabular-nums';
+const PILL = 'ml-auto shrink-0 whitespace-nowrap rounded-full bg-[var(--ph-alarm)] px-[6px] text-[10.5px] leading-4 font-semibold text-white tabular-nums';
 
 /**
  * The money accounts and cards of the open workspace, with Wallet's figure for each, in Wallet's order. The figures
@@ -105,7 +105,7 @@ function NavRow({ to, params, label, icon, on, right, name }: { to: string; para
   return (
     <Link to={to} params={params} className={cx(ROW, on && ROW_ON)} aria-current={on ? 'page' : undefined} aria-label={name}>
       {icon}
-      <span className="min-w-0 truncate">{label}</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
       {right}
     </Link>
   );
