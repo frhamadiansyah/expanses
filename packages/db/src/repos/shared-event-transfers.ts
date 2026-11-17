@@ -5,6 +5,7 @@ import type { Database, Db, Tx } from '../database';
 import { captureRevaluingTx, localDeviceId, withCapture } from '../sync/capture';
 import { meetsVersion } from '../sync/events/version';
 import { namespaceOf, uuidv5 } from '../sync/uuidv5';
+import { markForeignDirtyTx } from './fx-pending';
 import { postTransactionTx, replaceTransactionTx } from './ledger';
 import { eventBookOfEventTx, type EventBookRow } from './shared-event-records';
 import { postEventRecordTx } from './shared-event-postings';
@@ -246,13 +247,17 @@ export async function transferIntoEventTx(tx: Tx, ws: WorkspaceContext, transact
   const lines = await ledgerLinesTx(tx, transactionId);
   if (lines.length === 0) return null;
   const row = await liveRowTx(tx, transactionId);
-  const categories = lines.filter((l) => l.kind === 'income' || l.kind === 'expense');
+  // A pair an older build wrote on a change back (the withdrawal rate's gain or loss, counted nowhere) is no category:
+  // the row is still the transfer it was, and the recalculation takes the pair off once it is listed (below).
+  const pair = lines.some((l) => isExchangeResultKey(l.systemKey));
+  const shape = lines.filter((l) => !isExchangeResultKey(l.systemKey));
+  const categories = shape.filter((l) => l.kind === 'income' || l.kind === 'expense');
   const fee = row ? null : typedFeeOf(lines);
   let bookId: string;
   if (row) {
     if (row.eventBookId !== null) return 'Already in a shared event';
     bookId = row.bookId;
-  } else if ((categories.length === 0 && transferShaped(lines)) || (fee && transferShaped(lines.filter((l) => l !== fee.fee)))) {
+  } else if ((categories.length === 0 && transferShaped(shape)) || (fee && transferShaped(lines.filter((l) => l !== fee.fee)))) {
     const filed = await sharedFiledBookTx(tx, transactionId);
     if (!filed) return unsharedTransferRefusalTx(tx, transactionId);
     // A shared workspace's purchase another member paid is theirs to move (D3): only its recorder's phone splits it.
@@ -306,6 +311,9 @@ export async function transferIntoEventTx(tx: Tx, ws: WorkspaceContext, transact
   if (!listed) throw new Error('The transfer has no workspace row to list');
   // An event tag an older build left on it never travelled: listed, it is on the event by the row alone, on every phone.
   await tx.run(sql`UPDATE transactions SET event_id = NULL WHERE id = ${listedId} AND event_id IS NOT NULL`);
+  // Its pair goes at the end of this write: a transfer with a redacted row takes none (fx-costs.ts). That also takes
+  // it out of the workspace as a purchase, so the copy the partner's phone took of it is voided there.
+  if (pair) await markForeignDirtyTx(tx, ws, listedId);
   return { transactionId: listedId, transferId: listed.transferId, fee: feeId };
 }
 
