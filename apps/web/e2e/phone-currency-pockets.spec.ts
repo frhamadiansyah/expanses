@@ -26,7 +26,7 @@ test('by thumb: open the account, a pocket, and move between pockets one key at 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test('by thumb: Move is one box — no From/To headings, From · and To · under the names, grouped figures, the receipt’s Rate (layout B)', async ({ page }) => {
+test('by thumb: Move is one box — From/To above the currencies, each balance above its figure, a light 0 before typing, the receipt’s Rate with no ⓘ (layout E)', async ({ page }) => {
   // Invented: £1.500 at 21.000, Rp 5.000.000; £1.000 out, Rp 20.700.000 in.
   await mockRates(page, { GBP: 21_000 });
   await openWithPockets(page, {
@@ -39,10 +39,33 @@ test('by thumb: Move is one box — no From/To headings, From · and To · under
   await walletCard(page, 'Valas Plus').tap();
   await page.getByRole('link', { name: 'Move', exact: true }).tap();
   await expect(page.getByRole('heading', { name: /^(From|To)$/ })).toHaveCount(0);
-  await expect(page.getByText('From · £1.500,00 available', { exact: true })).toBeVisible();
-  await expect(page.getByText('To · Rp 5.000.000 available', { exact: true })).toBeVisible();
+  const fromButton = page.getByRole('button', { name: 'From, British Pound' });
+  const toButton = page.getByRole('button', { name: 'To, Indonesian Rupiah' });
+  await expect(fromButton).toHaveText('FromBritish Pound');
+  await expect(toButton).toHaveText('ToIndonesian Rupiah');
+  // Each balance on its own above the figure, no word; no "available" caption anywhere.
+  const fromBalance = page.getByText('£1.500,00', { exact: true });
+  const toBalance = page.getByText('Rp 5.000.000', { exact: true });
+  await expect(fromBalance).toBeVisible();
+  await expect(toBalance).toBeVisible();
+  await expect(page.getByText(/available/)).toHaveCount(0);
   const leaves = page.getByLabel('Leaves GBP');
   const arrives = page.getByLabel('Arrives IDR');
+  // Before typing: a light zero in each currency's own cents.
+  await expect(leaves).toHaveAttribute('placeholder', '0,00');
+  await expect(arrives).toHaveAttribute('placeholder', '0');
+  await expect(page.getByRole('button', { name: 'About Rate' })).toHaveCount(0);
+  // The balance sits above its figure, "From" above the currency.
+  const top = async (l: typeof leaves) => (await l.boundingBox())!;
+  expect((await top(fromBalance)).y + (await top(fromBalance)).height).toBeLessThanOrEqual((await top(leaves)).y + 1);
+  expect((await top(toBalance)).y + (await top(toBalance)).height).toBeLessThanOrEqual((await top(arrives)).y + 1);
+  // The ⇅ on the hairline clears all four lines next to it.
+  const swapBox = (await page.getByRole('button', { name: 'Swap' }).boundingBox())!;
+  for (const line of [fromButton.getByText('British Pound'), leaves, toButton.getByText('To', { exact: true }), toBalance]) {
+    const b = await top(line);
+    const apart = b.y + b.height <= swapBox.y + 0.5 || b.y >= swapBox.y + swapBox.height - 0.5;
+    expect(apart).toBe(true);
+  }
   await leaves.pressSequentially('1000');
   await expect(leaves).toHaveValue('1.000');
   await arrives.pressSequentially('20700000');

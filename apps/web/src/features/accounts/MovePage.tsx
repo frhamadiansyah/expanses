@@ -12,7 +12,7 @@ import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { formToPost, settledAmount } from '../transactions/tx-form';
 import { ratesForSave } from '../transactions/tx-save';
-import { currencyName, figureFace, figureFromTyped, moveDescription, moveDraft, moveView, pocketsOf, swapPockets, withPockets } from './pockets';
+import { currencyName, figureFace, figurePlaceholder, figureFromTyped, moveDescription, moveDraft, moveView, pocketsOf, swapPockets, withPockets } from './pockets';
 import { MovePocketRow } from './MovePocketRow';
 import { useHeldRates } from './queries';
 
@@ -99,7 +99,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     <div className={SCREEN}>
       <LargeTitle title="Move between pockets" back={parent.name} onBack={back} />
       <ErrorBox error={error} />
-      {/* Layout B (owner, 17 Nov 2026): one box, the two pockets its rows, the ⇅ on the hairline between them. */}
+      {/* Layout E (owner, 17 Nov 2026): one box, the two pockets its rows, the ⇅ on the hairline between them. */}
       <InsetGroup className="!mb-[22px]">
         <MovePocketRow
           word="From"
@@ -109,6 +109,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
           figure={{
             'aria-label': `Leaves ${view.leaves.currency}`,
             value: figureFace(view.leaves.value, view.leaves.currency),
+            placeholder: figurePlaceholder(view.leaves.currency),
             onChange: (e) => set({ amount: figureFromTyped(e.target.value, view.leaves.currency) }),
             onBlur: () => settle('amount', view.leaves.value, view.leaves.currency),
           }}
@@ -136,6 +137,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
               ? {
                   'aria-label': `Arrives ${view.arrives.currency}`,
                   value: figureFace(view.arrives.value, view.arrives.currency),
+                  placeholder: figurePlaceholder(view.arrives.currency),
                   onChange: (e) => set({ toAmount: figureFromTyped(e.target.value, view.arrives!.currency) }),
                   onBlur: () => settle('toAmount', view.arrives!.value, view.arrives!.currency),
                 }
@@ -144,11 +146,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
         />
       </InsetGroup>
       <InsetGroup>
-        <ReadOnlyRow
-          label="Rate"
-          value={view.rateText}
-          info="The bank’s rate, worked out from the two figures typed."
-        />
+        <ReadOnlyRow label="Rate" value={view.rateText} />
         <TextRow label="Date" type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} />
         {needsRate && (
           <TextRow label={`Rate: ${ws.baseCurrency} per 1 ${needsRate}`} value={draft.manualRate} onChange={(e) => set({ manualRate: e.target.value })} inputMode="decimal" />
