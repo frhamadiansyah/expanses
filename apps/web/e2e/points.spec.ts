@@ -61,7 +61,8 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   // As the balance of the programme the card earns into.
   // Points are a page of their own, from Wallet's corner, not a list under the cards.
   await expect(page.getByTestId('points-programmes')).toHaveCount(0);
-  await page.getByRole('link', { name: 'Points', exact: true }).click();
+  // The page's own Points link; the sidebar has one too (Mac sidebar A).
+  await page.getByRole('main').getByRole('link', { name: 'Points', exact: true }).click();
   await expect(page).toHaveURL(/\/cards\/points$/);
   await expect(page.getByRole('region', { name: 'Points' }).getByRole('link', { name: /6\.200 points/ })).toBeVisible();
   // The programmes are a pile of faces, as Wallet's cards are; ＋ to add one is in the title's corner.

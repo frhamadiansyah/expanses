@@ -62,9 +62,9 @@ export function useScheduledAsks(date?: string) {
   return useQuery({ queryKey: ['loan-asks', ws.workspaceId, fromDate], queryFn: () => scheduledAsks(database, ws, fromDate) });
 }
 
-export function useInstallments(cardAccountId?: string) {
+export function useInstallments(cardAccountId?: string, enabled = true) {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['installments', ws.workspaceId, cardAccountId ?? 'all'], queryFn: () => listInstallments(database, ws, cardAccountId) });
+  return useQuery({ queryKey: ['installments', ws.workspaceId, cardAccountId ?? 'all'], queryFn: () => listInstallments(database, ws, cardAccountId), enabled });
 }
 
 /** The card's statement day, the 1st when none was set: the day each instalment is billed on, as statements read it. */

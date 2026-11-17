@@ -48,12 +48,16 @@ const HEADER = 'px-2 pt-3 pb-1 text-[11px] font-semibold text-[var(--ph-ink-3)]'
 const GREY = 'ml-auto text-[12px] text-[var(--ph-ink-3)] tabular-nums';
 const PILL = 'ml-auto rounded-full bg-[var(--ph-alarm)] px-[6px] text-[10.5px] leading-4 font-semibold text-white tabular-nums';
 
-/** The money accounts and cards of the open workspace, with Wallet's figure for each, in Wallet's order. */
-function useSidebarAccounts(): SidebarAccount[] {
+/**
+ * The money accounts and cards of the open workspace, with Wallet's figure for each, in Wallet's order. The figures
+ * (the ledger's balances, the cards' instalments) are read only while the list is open: folded, the sidebar asks the
+ * ledger nothing, and a screen that needs no ledger reads none.
+ */
+function useSidebarAccounts(withFigures: boolean): SidebarAccount[] {
   const { ws } = useApp();
   const accounts = useAccounts();
-  const balances = useBalances();
-  const plans = useInstallments();
+  const balances = useBalances(undefined, withFigures);
+  const plans = useInstallments(undefined, withFigures);
   const everything = accounts.data ?? [];
   const all = balances.data ?? {};
   const book = spendingBook(everything);
@@ -63,7 +67,11 @@ function useSidebarAccounts(): SidebarAccount[] {
   const rates = useHeldRates(book.filter((a) => a.kind === 'asset' && a.archivedAt === null && a.currency).map((a) => a.currency!));
   const held = rates.data?.rates ?? {};
   const later = laterByCard(plans.data ?? [], isoDate());
-  if (!accounts.isSuccess || !balances.isSuccess) return [];
+  if (!accounts.isSuccess) return [];
+  if (!withFigures || !balances.isSuccess) {
+    // Folded (or still reading): the names alone, for the Tools menu's Statement check.
+    return sidebarAccounts({ order: walletKeys(everything, [], readJointOrder()), money, credit, moneyFigure: (account) => ({ minor: null, currency: account.currency ?? ws.baseCurrency }), dueNow: () => 0, baseCurrency: ws.baseCurrency }).map((row) => ({ ...row, minor: null }));
+  }
   return sidebarAccounts({
     order: walletKeys(everything, [], readJointOrder()),
     money,
@@ -190,7 +198,7 @@ export function Sidebar() {
    * the same name in the sidebar would be a second match. The sidebar's own journey opens it (e2e/sidebar.spec.ts).
    */
   const [folded, setFolded] = useState(() => readAccountsFolded(globalThis.localStorage, import.meta.env.VITE_E2E === '1'));
-  const accounts = useSidebarAccounts();
+  const accounts = useSidebarAccounts(!folded);
   const destinations = [...SIDEBAR_GROUPS.flatMap((group) => group.items.map((item) => item.to)), ...accounts.map((account) => (account.to === '/cards/$cardId' ? `/cards/${account.id}` : `/accounts/${account.id}`))];
   const on = activeTo(pathname, destinations);
   const fold = () => {
@@ -229,7 +237,7 @@ export function Sidebar() {
           ))}
           {accounts.length > 0 && (
             <div>
-              <button type="button" onClick={fold} aria-expanded={!folded} className={cx(HEADER, 'flex w-full items-center justify-between')}>
+              <button type="button" onClick={fold} aria-expanded={!folded} aria-label={folded ? 'Show accounts' : 'Hide accounts'} className={cx(HEADER, 'flex w-full items-center justify-between')}>
                 Accounts
                 <ChevronDown size={12} aria-hidden className={cx('transition-transform', folded && '-rotate-90')} />
               </button>

@@ -92,11 +92,12 @@ export function useInOpenBook(): (a: AccountRow) => boolean {
   return useCallback((a: AccountRow) => !ids || ids.has(a.id), [ids]);
 }
 
-export function useBalances(asOf?: string) {
+export function useBalances(asOf?: string, enabled = true) {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['balances', ws.workspaceId, asOf ?? 'all'],
     queryFn: () => nativeBalances(database, ws, asOf),
+    enabled,
   });
 }
 

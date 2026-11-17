@@ -24,23 +24,22 @@ test('groups by job, accounts with balances, the fold remembered', async ({ page
   }
 
   // The end-to-end build starts Accounts folded (other journeys find accounts by name); opened, it stays open.
-  const accounts = nav.getByRole('button', { name: 'Accounts' });
-  await expect(accounts).toHaveAttribute('aria-expanded', 'false');
-  await accounts.click();
+  await expect(nav.getByRole('button', { name: 'Show accounts' })).toHaveAttribute('aria-expanded', 'false');
+  await nav.getByRole('button', { name: 'Show accounts' }).click();
   const bank = nav.getByRole('link', { name: /^Bank Satu/ });
   await expect(bank).toContainText('142,5 jt');
   await expect(nav.getByRole('link', { name: /^Kartu Biru/ })).toContainText('−8,4 jt');
   await bank.click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(bank).toHaveAttribute('aria-current', 'page');
-
-  await accounts.click();
-  await expect(accounts).toHaveAttribute('aria-expanded', 'false');
-  await expect(nav.getByRole('link', { name: /^Bank Satu/ })).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('aside').getByRole('button', { name: 'Accounts' })).toHaveAttribute('aria-expanded', 'false', { timeout: 30_000 });
-  await page.locator('aside').getByRole('button', { name: 'Accounts' }).click();
-  await expect(page.locator('aside').getByRole('link', { name: /^Bank Satu/ })).toBeVisible();
+  await expect(page.locator('aside').getByRole('link', { name: /^Bank Satu/ })).toBeVisible({ timeout: 30_000 });
+
+  await page.locator('aside').getByRole('button', { name: 'Hide accounts' }).click();
+  await expect(page.locator('aside').getByRole('button', { name: 'Show accounts' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('aside').getByRole('link', { name: /^Bank Satu/ })).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('aside').getByRole('button', { name: 'Show accounts' })).toBeVisible({ timeout: 30_000 });
 
   // The status line says what is known: a personal workspace, never backed up.
   await expect(page.getByTestId('sidebar-status')).toHaveText('On this device · not backed up');
