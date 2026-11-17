@@ -1,4 +1,5 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 
 /**
  * A card on the wallet, by name. The Cards page also lists the points programmes, and a programme's row carries the
@@ -124,4 +125,36 @@ export async function pickChargedOn(page: Page, isoDate: string) {
   const month = page.getByLabel('Charged on month');
   await day.selectOption(isoDate ? String(Number(isoDate.slice(8, 10))) : '0');
   if (isoDate) await month.selectOption(String(Number(isoDate.slice(5, 7))));
+}
+
+/**
+ * The card's round Pay (owner, 17 Nov 2026): the Add screen in its Transfer layout, locked to paying the card — titled
+ * "Pay credit card", no tabs, To fixed on the card, the bill filled in, From left to be chosen. Returns the form.
+ */
+export async function openCardPay(page: Page): Promise<Locator> {
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Pay credit card', exact: true })).toBeVisible();
+  const form = addForm(page);
+  await expect(form.getByTestId('pay-card-to')).toBeVisible();
+  return form;
+}
+
+/** Pays the card from `from` on its Pay screen: the bill as filled in, or `amount` typed over it. */
+export async function payCard(page: Page, o: { from: string; amount?: string }): Promise<void> {
+  const form = await openCardPay(page);
+  await chooseCardPayFrom(form, o.from);
+  if (o.amount) {
+    // The amount opens filled with the bill: cleared first, so what is typed is the whole figure.
+    await form.getByRole('button', { name: 'Clear amount' }).click();
+    await openAmount(form);
+    await fillAmount(page, form, o.amount);
+  }
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+}
+
+/** The Pay screen's From, through the same sheet a transfer's From opens. */
+export async function chooseCardPayFrom(form: Locator, from: string): Promise<void> {
+  await form.getByRole('button', { name: 'From' }).click();
+  await choosePayment(form.page(), from, 'From');
 }

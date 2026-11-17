@@ -21,6 +21,10 @@ describe('which ways into the Add screen open in event mode', () => {
     expect(opensInEventMode({ partner: 'p1' })).toBe(false);
     expect(opensInEventMode({ to: 'a2' })).toBe(false);
   });
+
+  it('a credit card’s Pay does not: paying the card is a transfer, never an event’s spending', () => {
+    expect(opensInEventMode({ pay: 'card-1' })).toBe(false);
+  });
 });
 
 describe('the Add form’s seed', () => {

@@ -72,7 +72,8 @@ import { DateRow, NoteRow } from './CardRows';
 import { CardCashbackMark, CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { useOpenings, useOpeningDay } from '../accounts/queries';
-import { Chevron, FieldRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
+import { Chevron, FieldRow, FixedRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
+import { CARD_PAY_OMITS, cardPayFrom } from '../cards/card-pay';
 import { MoreDetails } from './MoreDetails';
 import { TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from './TradeRows';
 import { NoteSuggestions } from './NoteSuggestions';
@@ -187,6 +188,12 @@ export function TransactionCard(props: {
   /** Opened for one kind only (Spend, Receive, Transfer on an account, Trade from Net worth): no Add tabs; a trade draws its own Buy / Sell. */
   fixedMode?: boolean;
   /**
+   * A credit card's Pay (owner, 17 Nov 2026): a transfer whose To is the card in `seed.toId`, fixed — drawn as a row
+   * with no way in. From offers the Transfer list in the card's currency; Add more details has no Exclude from report.
+   * It saves as every new transfer saves, which posts what the old Pay sheet's Record payment posted (`card-pay.test.ts`).
+   */
+  payCard?: boolean;
+  /**
    * Save lives in the sheet's header (✕ … ✓) rather than a bar at the card's foot: the form takes this id so the
    * header's ✓ can submit it, and says whether it would save so the ✓ is dimmed until then.
    */
@@ -239,6 +246,7 @@ function CardBody({
   mode,
   seed,
   fixedMode,
+  payCard = false,
   headerSave,
   onDone,
   full,
@@ -258,6 +266,7 @@ function CardBody({
   mode?: FormMode;
   seed?: CardSeed;
   fixedMode?: boolean;
+  payCard?: boolean;
   headerSave?: { formId: string; onReady: (ready: boolean) => void };
   onDone: () => void;
   full?: boolean;
@@ -485,7 +494,9 @@ function CardBody({
   const namedBy = draft.mode === 'transfer' ? canTransferWith : draft.mode === 'income' ? canReceiveInto : canPayWith;
   // A transfer's From also has to pair with the To already chosen: a broker's cash moves only with a current account.
   const pairsWithTo = (a: AccountRow) => draft.mode !== 'transfer' || !toAccount || a.id === draft.moneyId || canTransferBetween(a, toAccount);
-  const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId) && pairsWithTo(a));
+  const transferable = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId) && pairsWithTo(a));
+  // A card's Pay: the same list, in the card's own currency, as the old Pay sheet offered it.
+  const money = payCard ? cardPayFrom(transferable, toAccount) : transferable;
   // A card is a way to pay, never somewhere money arrives or moves to.
   // Never a placeholder to choose; the one the row names stays as its current value (final review, minor 2).
   // Joint net worth §7.1: the partner's shared item Paid with names now, if any; its placeholder is then no row of its own.
@@ -1239,6 +1250,18 @@ function CardBody({
               */
               asking === 'to' ? (
                 askRow(<ArrowDownLeft size={15} />, () => setSheet('to'))
+              ) : payCard ? (
+                // The card being paid: the screen's whole point, read and never changed.
+                <FixedRow
+                  testId="pay-card-to"
+                  icon={
+                    <RowGlyph>
+                      <CreditCard size={15} />
+                    </RowGlyph>
+                  }
+                  value={toAccount?.name ?? ''}
+                  caption="To"
+                />
               ) : (
               <FormRow
                 lead="value"
@@ -1427,7 +1450,7 @@ function CardBody({
                 />
               ) : undefined
             }
-            draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD, ...(photosOnAmount ? (['photos'] as const) : [])]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
+            draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} omit={[...(finish ? DRAFT_OMITS : []), ...ON_CARD, ...(photosOnAmount ? (['photos'] as const) : []), ...(payCard ? CARD_PAY_OMITS : [])]} opensSharedEvent={!finish} onPhotos={(files) => void readReceiptFrom(files)} />
         </section>
       )}
       {/*

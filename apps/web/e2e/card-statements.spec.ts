@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openAccountHistory, openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
-import { cardPage, saveCardTerms, showCardBack } from './card-section';
+import { cardPage, chooseCardPayFrom, openCardPay, payCard, saveCardTerms, showCardBack } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -154,32 +154,35 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile).toContainText('2.000.000');
   await expect(tile.getByTestId('due-date')).toContainText(/^Due \d+ \w+ · /);
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue('2000000');
-  await sheet.getByRole('button', { name: 'Record payment' }).click();
-  await expect(sheet).toHaveCount(0);
+  // Pay opens the Add screen locked to paying the card, the bill filled in; From is chosen, then Save.
+  const form = await openCardPay(page);
+  await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^2\.?000\.?000$/);
+  await chooseCardPayFrom(form, 'BCA Tahapan');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
 
+  await showCardBack(page);
   await expect(tile).toContainText('Paid in full');
   await expect(tile.getByTestId('due-date')).toHaveCount(0);
 });
 
-test('Pay opens a sheet with the amount filled in; a smaller amount records a part payment', async ({ page }) => {
+test('Pay opens the Add screen locked to the card with the amount filled in; a smaller amount records a part payment', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await openCardPage(page);
 
   await showCardBack(page);
   const tile = page.getByTestId('tile-left-to-pay');
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue('2000000');
-  await expect(sheet.getByText('IDR', { exact: true }).first()).toBeVisible();
-  await expect(sheet.getByLabel('Paid with')).toBeVisible();
-  await expect(sheet.getByLabel('Paid on')).toBeVisible();
-  await sheet.getByLabel('Amount', { exact: true }).fill('500000');
-  await sheet.getByRole('button', { name: 'Record payment' }).click();
-  await expect(sheet).toHaveCount(0);
+  const form = await openCardPay(page);
+  await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^2\.?000\.?000$/);
+  await expect(form.getByText('IDR', { exact: true }).first()).toBeVisible();
+  await expect(form.getByRole('button', { name: 'From' })).toBeVisible();
+  await expect(form.getByLabel('Date')).toBeVisible();
+  await page.goBack();
+  await expect(form).toHaveCount(0);
+
+  await payCard(page, { from: 'BCA Tahapan', amount: '500000' });
+  await showCardBack(page);
   await expect(tile.getByTestId('tile-unpaid-balance')).toContainText('1.500.000');
 });
 
@@ -191,11 +194,7 @@ test('a payment made with Pay covers the statement’s purchases oldest first, a
 
   // A part payment from the card page: it covers the older purchase whole and some of the newer one.
   await showCardBack(page);
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
-  const paySheet = page.getByRole('dialog', { name: /^Pay / });
-  await paySheet.getByLabel('Amount', { exact: true }).fill('500000');
-  await paySheet.getByRole('button', { name: 'Record payment' }).click();
-  await expect(paySheet).toHaveCount(0);
+  await payCard(page, { from: 'BCA Tahapan', amount: '500000' });
 
   await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();

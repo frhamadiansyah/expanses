@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
 import { openAccount, openAccountHistory, openCard, walletCard } from './accounts';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, chooseCardPayFrom, openCardPay, saveCardTerms, showCardBack } from './card-section';
 import { addForm, choosePayment, saveButton, chooseGoal } from './add-transaction';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
@@ -76,15 +76,16 @@ test('paying the card bill from Jenius asks, and the Emergency fund lends the 1.
   await openCardPage(page);
 
   const tile = page.getByTestId('tile-left-to-pay');
-  // The round Pay opens the payment sheet.
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await expect(sheet.getByLabel('Amount', { exact: true })).toHaveValue('6800000');
-  await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'Record payment' })).toBeDisabled();
-  await borrowFromEmergencyFund(sheet);
-  await sheet.getByRole('button', { name: 'Record payment' }).click();
-  await expect(sheet).toHaveCount(0);
+  // The round Pay opens the Add screen locked to paying the card; From is Jenius.
+  const form = await openCardPay(page);
+  await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^6\.?800\.?000$/);
+  await chooseCardPayFrom(form, 'Jenius');
+  await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  await expect(saveButton(form)).toBeDisabled();
+  await borrowFromEmergencyFund(page.locator('body'));
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  await showCardBack(page);
   await expect(tile).toContainText('Paid in full');
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);

@@ -1,4 +1,4 @@
-import { showCardBack } from './card-section';
+import { payCard, showCardBack } from './card-section';
 import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
 import { openAccount, openCard } from './accounts';
@@ -252,11 +252,8 @@ test('a card paid past its bill holds the surplus: its back reads Credit, and th
   await showCardBack(page);
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 100.000');
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: /^Pay / });
-  await sheet.getByLabel('Amount', { exact: true }).fill('350000');
-  await sheet.getByRole('button', { name: 'Record payment' }).click();
-  await expect(sheet).toHaveCount(0);
+  await payCard(page, { from: 'BCA Tahapan', amount: '350000' });
+  await showCardBack(page);
 
   // The card owes nothing, so its back names the surplus in the figure's own place: Credit Rp 250.000, no second line.
   await expect(tile.getByTestId('tile-figure-label')).toHaveText('Credit');

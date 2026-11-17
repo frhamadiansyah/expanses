@@ -20,6 +20,8 @@ import { useChangeable } from './queries';
 import { SharedExpenseCard } from './SharedExpenseCard';
 import { type CardFollowUp, TransactionCard } from './TransactionCard';
 import { useDuplicable } from './duplicable';
+import { newScreenTitle } from './new-search';
+import { cardPaySeed } from '../cards/card-pay';
 
 /**
  * `/transactions/new` — the card as a screen.
@@ -37,7 +39,7 @@ export function NewTransactionRoute() {
   // An account's page opens the form already knowing the mode and the account; the tab bar's ＋ says neither. An
   // event's Add spending names the event, and a plan item's "Buy it now" the item and the tab the plan was read in.
   const search = newRoute.useSearch();
-  const { mode, account, to, item, expense, ws: tab, amount, note, date, partner } = search;
+  const { mode, account, to, item, expense, ws: tab, amount, note, date, partner, pay, fixed } = search;
   /*
    * Event mode (screen 3): a new purchase opens with the event already set, the amount in its "Add in" currency. Read
    * once the mode is settled, as the card reads its seed once. ✕ on the chip leaves this one transaction out.
@@ -70,6 +72,11 @@ export function NewTransactionRoute() {
     : eventOpening({ event, item }, events.data ?? [], (plan.data?.lines ?? []).flatMap((line) => line.items));
   const buying = opening?.item ?? null;
   const trading = !opening && mode === 'trade';
+  /*
+   * A credit card's Pay (owner, 17 Nov 2026): a transfer locked to paying that card — no tabs, To fixed, From to be
+   * chosen. Never an event's, a trade's or a plan item's: those addresses carry no `pay`.
+   */
+  const paying = !opening && !trading && pay ? pay : null;
 
   /*
    * "Buy it now": the payment is also the item, so Save ties the two together with the id it posted. The payment it
@@ -162,16 +169,18 @@ export function NewTransactionRoute() {
       ) : (
         <TransactionCard
           full
-          title={buying ? `Pay ${buying.name}` : trading ? 'Trade' : 'New transaction'}
+          title={buying ? `Pay ${buying.name}` : trading ? 'Trade' : newScreenTitle({ pay: paying ?? undefined, fixed: fixed && !opening ? fixed : undefined, mode })}
           label={trading ? 'Trade' : 'Add a transaction'}
-          // Spending into an event is spending: Expense, whatever the address asked.
-          mode={opening ? 'expense' : mode}
-          // Net worth's Trade corner: its own Buy / Sell tabs and the trade rows, not the Add form's three tabs.
-          fixedMode={trading}
+          // Spending into an event is spending: Expense, whatever the address asked. A card's Pay is a transfer.
+          mode={opening ? 'expense' : paying ? 'transfer' : mode}
+          // Net worth's Trade corner: its own Buy / Sell tabs and the trade rows, not the Add form's three tabs. A card's
+          // Pay and Spend are one kind each, with no tabs at all.
+          fixedMode={trading || !!paying || (!!fixed && !opening)}
+          payCard={!!paying}
           // The tab bar's + leaves Trade for the plain Add form, so the card is built afresh rather than keeping the trade draft.
           // Leaving a shared event's card by its chip's ✕ builds the plain card afresh too.
-          key={trading ? 'trade' : leftOut ? 'add-left-out' : 'add'}
-          seed={{
+          key={trading ? 'trade' : paying ? `pay-${paying}` : leftOut ? 'add-left-out' : 'add'}
+          seed={paying ? cardPaySeed(paying, amount) : {
             moneyId: account,
             toId: to,
             ...(partner ? { partnerItemId: partner } : {}),
@@ -182,7 +191,7 @@ export function NewTransactionRoute() {
           {...(inMode && !opening ? { eventChip: { eventId: inMode.event.id, name: inMode.event.name } } : {})}
           followUp={followUp}
           // Only the plain blank form: an account's page, an event or a trade brings its own.
-          defaultPaidWith={!account && !to && !partner && !opening && !trading && !buying && (mode ?? 'expense') === 'expense'}
+          defaultPaidWith={!account && !to && !partner && !opening && !trading && !buying && !paying && (mode ?? 'expense') === 'expense'}
           onBack={back}
           onDone={back}
         />

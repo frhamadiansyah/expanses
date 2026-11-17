@@ -1,17 +1,15 @@
-import { formatMinor, installmentSplit, minorToMajorString, parseMajor, purchasesForPlastic, transferLines } from '@expanses/core';
+import { formatMinor, installmentSplit, purchasesForPlastic } from '@expanses/core';
 import type { SpendLine } from '@expanses/core';
-import { type AccountRow, cardStatement, type CardRow, postTransaction, spendByPlastic } from '@expanses/db';
+import { type AccountRow, cardStatement, type CardRow, spendByPlastic } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Banknote, Gift, ReceiptText } from 'lucide-react';
-import { useSearch } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { Sheet } from '../../app/Sheet';
-import { keptForSpending } from '../../lib/account-types';
-import { moneyHolders, useCategoryColours, useInvalidateAll } from '../../lib/queries';
-import { cx, ErrorBox } from '../../ui';
+import { useCategoryColours } from '../../lib/queries';
+import { cx } from '../../ui';
 import { createPortal } from 'react-dom';
-import { ActionButtons, PageDots, InsetGroup, InsetRow, type InsetRowProps, SelectRow, TextRow, useSwipeStep, useWalletSlot } from '../../ui/native';
+import { ActionButtons, PageDots, InsetGroup, InsetRow, type InsetRowProps, useSwipeStep, useWalletSlot } from '../../ui/native';
 import { backRadius } from '../accounts/balance-back';
 import { BackSlot } from './CardBack';
 import { useSpendBonuses } from './spend-bonuses';
@@ -22,10 +20,8 @@ import { CardFace } from './CardFace';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 import { cardBackFigure, limitUsage } from './limit-usage';
 import { useCardLines, useInstallments } from '../loans/queries';
-import { spendingDoor } from '../goals/set-aside-question';
-import { useSetAside } from '../goals/SetAsideQuestion';
 import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
-import { useOpenFromSearch } from '../../lib/open-once';
+import { cardPayLink } from './card-pay';
 
 /**
  * Wallet's "Latest Transactions" under an open pass: the card's most recent purchases, each opening its receipt, and
@@ -111,78 +107,6 @@ function LatestTransactions({
   );
 }
 
-/** Pays the card in full or in part from a bank account, in a sheet: one transfer, the same as recording it by hand. */
-function PaySheet({ card, accounts, amountMinor, today, onDone }: { card: AccountRow; accounts: readonly AccountRow[]; amountMinor: number; today: string; onDone: () => void }) {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const currency = card.currency ?? ws.baseCurrency;
-  // Only money that can pay a bill and is kept for spending: not holdings such as gold or shares, not savings put aside.
-  const payers = moneyHolders(accounts).filter((a) => keptForSpending(a) && a.currency === currency);
-  const [fromId, setFromId] = useState(payers[0]?.id ?? '');
-  const [amount, setAmount] = useState(minorToMajorString(amountMinor, currency));
-  const [paidOn, setPaidOn] = useState(today);
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
-  // The figure `pay()` posts, read by the same parser at render so the question measures what will leave.
-  const minorTyped = (() => {
-    try {
-      return parseMajor(amount, currency);
-    } catch {
-      return 0;
-    }
-  })();
-  const setAside = useSetAside(spendingDoor(fromId, minorTyped));
-
-  async function pay() {
-    // The hidden submit answers Enter: the question is a condition on it too.
-    if (!setAside.ready) return;
-    setError(null);
-    setBusy(true);
-    try {
-      const minor = parseMajor(amount, currency);
-      if (!(minor > 0)) throw new Error('Enter the amount paid');
-      if (!fromId) throw new Error(`Add a ${currency} bank account to pay the card from`);
-      await postTransaction(database, ws, { occurredOn: paidOn, description: `${card.name} payment`, lines: transferLines({ fromAccountId: fromId, toAccountId: card.id, amountMinor: minor, currency }), setAside: setAside.choice, fileTransfer: true });
-      await invalidate();
-      onDone();
-    } catch (e) {
-      setError(e);
-    }finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Sheet grouped title={`Pay ${card.name}`} onClose={onDone}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void pay();
-        }}
-      >
-        <InsetGroup>
-          <TextRow label="Amount" prefix={currency} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
-          <SelectRow label="Paid with" value={fromId} onChange={(event) => setFromId(event.target.value)}>
-            {payers.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </SelectRow>
-          <TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} />
-        </InsetGroup>
-        {setAside.node}
-        <ErrorBox error={error} />
-        {/* Hidden, so Enter in any field still records the payment; the Record row is the one the reader sees and taps. */}
-        <input type="submit" hidden disabled={busy || !setAside.ready} />
-        <InsetGroup>
-          <InsetRow title="Record payment" onClick={() => void pay()} disabled={busy || !setAside.ready} action />
-        </InsetGroup>
-      </form>
-    </Sheet>
-  );
-}
-
 /**
  * A card's page: its summary, which is the whole page now that its sections are pages of their own.
  *
@@ -227,10 +151,10 @@ export function CardHero({
   const { database, ws } = useApp();
   const card = cp.card;
   const currency = card.currency ?? ws.baseCurrency;
-  const [paying, setPaying] = useState(false);
-  // The Debt-free plan's Pay lands here with `?pay=1`: the pay sheet opens once, and closing it goes back.
+  const navigate = useNavigate();
+  // The Debt-free plan's Pay lands here with `?pay=1`: once the bill is read, it goes on to the Pay screen in this
+  // page's place, so Back and Save there return to where Pay was tapped.
   const { pay } = useSearch({ strict: false }) as { pay?: true };
-  const fromLink = useOpenFromSearch(pay === true, () => setPaying(true), !debit);
   const cards = [...plastic].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
   const [shownIndex, setShownIndex] = useState(0);
   const [showHeld, setShowHeld] = useState(false);
@@ -322,6 +246,19 @@ export function CardHero({
   const leftToPayMinor = last.data?.leftToPayMinor ?? 0;
   const owing = leftToPayMinor > 0;
   const due = dueOn ? dueIn(today, dueOn) : null;
+
+  /*
+   * Pay (owner, 17 Nov 2026): the Add screen locked to paying this card, filled with what the bank asks for — the last
+   * statement's left to pay, or what is owed when nothing is billed — the figure the old Pay sheet filled in.
+   */
+  const payLink = cardPayLink(card.id, leftToPayMinor || owedMinor, currency);
+  const billRead = lastCycle === null || last.isSuccess || last.isError;
+  const forwarded = useRef(false);
+  useEffect(() => {
+    if (pay !== true || debit || !billRead || forwarded.current) return;
+    forwarded.current = true;
+    void navigate({ ...payLink, replace: true });
+  }, [pay, debit, billRead]);
 
   /** What sits under the bill's figure: when it is due, that it is paid, or that nothing was billed. */
   const billCaption = (): ReactNode => {
@@ -421,8 +358,9 @@ export function CardHero({
   const actions = (
     <ActionButtons
       actions={[
-        ...(debit ? [] : [{ key: 'pay', label: 'Pay', glyph: <Banknote size={20} aria-hidden />, run: () => setPaying(true) }]),
-        { key: 'spend', label: 'Spend', glyph: <ArrowUpRight size={20} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'expense' as const, account: card.id } },
+        ...(debit ? [] : [{ key: 'pay', label: 'Pay', glyph: <Banknote size={20} aria-hidden />, run: () => void navigate(payLink) }]),
+        // Spend is the Add screen's Expense on this card, with no tabs: it is for one kind only.
+        { key: 'spend', label: 'Spend', glyph: <ArrowUpRight size={20} aria-hidden />, to: '/transactions/new' as const, search: { mode: 'expense' as const, account: card.id, fixed: true as const } },
         // The statement's points, with the programme's page one row in; a card with no rewards sets them up first.
         cp.programme
           ? { key: 'points', label: unitLabel, glyph: <Gift size={20} aria-hidden />, ...toPoints }
@@ -525,18 +463,6 @@ export function CardHero({
           </div>
           <div className="mt-[6px]">{below}</div>
         </>
-      )}
-      {paying && (
-        <PaySheet
-          card={card}
-          accounts={accounts}
-          amountMinor={leftToPayMinor || owedMinor}
-          today={today}
-          onDone={() => {
-            setPaying(false);
-            fromLink.done();
-          }}
-        />
       )}
     </>
   );

@@ -141,6 +141,22 @@ export function FormRow({
 }
 
 /**
+ * A row that only says what it holds: no way in, no chevron. A card's Pay draws its To this way — the card is the
+ * whole point of the screen, so it is read, never changed. Not a button, so nothing offers to open it.
+ */
+export function FixedRow({ icon, value, caption, testId }: { icon?: ReactNode; value: ReactNode; caption: string; testId?: string }) {
+  return (
+    <div data-testid={testId} className="flex w-full items-center gap-[10px] pl-[10px] text-left">
+      <RowLead>{icon}</RowLead>
+      <span className={bodyClass(false)}>
+        <span className="min-w-0 flex-1 truncate text-[17px] leading-[22px] text-[var(--ph-ink)] md:text-[15px] md:leading-5">{value}</span>
+        <span className="max-w-[55%] shrink-0 truncate text-right text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{caption}</span>
+      </span>
+    </div>
+  );
+}
+
+/**
  * The same row with a switch instead of a chevron — Exclude is the one that toggles rather than opens.
  *
  * `role="switch"` with `aria-checked` is what makes it a switch to a screen reader and to a test; the pill is

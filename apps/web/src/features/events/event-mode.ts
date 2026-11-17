@@ -23,8 +23,8 @@ export const sharedWithLine = (names: readonly string[]) => `Shared with ${names
  * bar's ＋, an account's Spend — but not one that names its own event or plan item, a shared expense being edited, a
  * partner's item, a trade, money received or a transfer.
  */
-export function opensInEventMode(search: Pick<NewTransactionSearch, 'mode' | 'event' | 'item' | 'expense' | 'partner' | 'to'>): boolean {
-  if (search.event || search.item || search.expense || search.partner || search.to) return false;
+export function opensInEventMode(search: Pick<NewTransactionSearch, 'mode' | 'event' | 'item' | 'expense' | 'partner' | 'to' | 'pay'>): boolean {
+  if (search.event || search.item || search.expense || search.partner || search.to || search.pay) return false;
   return search.mode === undefined || search.mode === 'expense';
 }
 

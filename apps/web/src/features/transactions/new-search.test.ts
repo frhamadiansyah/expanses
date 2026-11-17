@@ -21,8 +21,8 @@ describe('the Add screen opened by a card’s Pay or Spend', () => {
 
   it('titles the screen by its job, never by the card’s name', () => {
     expect(newScreenTitle({ pay: 'card-1' })).toBe('Pay credit card');
-    expect(newScreenTitle({ mode: 'expense', account: 'card-1', fixed: true })).toBe('New expense');
-    expect(newScreenTitle({ mode: 'expense', account: 'card-1' })).toBe('New transaction');
+    expect(newScreenTitle({ mode: 'expense', fixed: true })).toBe('New expense');
+    expect(newScreenTitle({ mode: 'expense' })).toBe('New transaction');
     expect(newScreenTitle({})).toBe('New transaction');
   });
 });

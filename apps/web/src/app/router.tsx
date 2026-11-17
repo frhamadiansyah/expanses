@@ -130,7 +130,7 @@ import { Layout } from './Layout';
 /** The card page's old tabs, still read from a link made before they became pages of their own. */
 export interface CardSearch {
   tab?: 'statement' | 'points' | 'rules' | 'card';
-  /** Opens the card's pay sheet on arrival (the Debt-free plan's Pay); closing it goes back. */
+  /** Goes on to the card's Pay screen on arrival (the Debt-free plan's Pay), in the card page's place. */
   pay?: true;
 }
 
