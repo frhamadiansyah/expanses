@@ -52,11 +52,12 @@ export function MonthBudgetBox({ title, sheet, view, currency, month, today, mon
   return (
     <section className={BOX} aria-label={title} data-testid="left-to-spend">
       <BoxHead title={title} note={daysNote ?? undefined} />
-      <div className="flex items-center gap-[12px] px-[14px] pb-[10px]">
+      {/* Too narrow for both side by side, the figures go under the gauge rather than be cut. */}
+      <div className="flex flex-wrap items-center gap-[12px] px-[14px] pb-[10px]">
         <div className="w-[184px] shrink-0">
           <BudgetGauge progress={budgetProgress(sheet.lines)} currency={currency} month={month} today={today} monthStart={monthStart} plain />
         </div>
-        <div className="min-w-0 flex-1 text-[12.5px]">
+        <div className="min-w-[180px] flex-1 text-[12.5px]">
           {[
             ['Spent', view.spentMinor, 'spent-of-budget'],
             ['Budgeted', view.budgetedMinor, 'budgeted-total'],
