@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { clearCategoryNeed, inBook, listCategoryNeeds, migrate, phonesBehindThirdMark, runSharedBookRepairs, saveCategoryNeed } from '../../src/index';
 import { SyncEngine } from '../../src/sync/engine';
-import { categoryOf, type Device, Household, projectBook, skipsOf } from './household';
+import { categoryOf, type Device, Household, type PhoneErrors, type PhoneErrorsSetting, projectBook, skipsOf } from './household';
 
 /*
  * Debts & savings, the third category mark (0119), in a shared workspace on two phones: Fandri's on this build, Dewi's
@@ -30,10 +30,10 @@ async function update(d: Device) {
   d.engine = new SyncEngine(d.database, d.transport, d.keys, undefined, { appVersion: BUILD, shareRecords: d.records });
 }
 
-async function household(options: { dewi?: string; markBeforeJoin?: boolean } = {}) {
+async function household(options: { dewi?: string; markBeforeJoin?: boolean; dewiErrors?: PhoneErrorsSetting } = {}) {
   const home = new Household();
   const fandri = await home.device('Fandri', undefined, 'IDR', BUILD, { phoneErrors: true });
-  const dewi = await home.device('Dewi', undefined, 'IDR', options.dewi ?? OLDER, { phoneErrors: true });
+  const dewi = await home.device('Dewi', undefined, 'IDR', options.dewi ?? OLDER, { phoneErrors: options.dewiErrors ?? true });
   if ((options.dewi ?? OLDER) === OLDER) await asOlderTable(dewi);
   const bookId = await home.share(fandri);
   const ws = (d: Device) => inBook(d.ws, bookId);
@@ -57,20 +57,50 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 const anyThirdMark = (ops: { entity: string; fields?: Record<string, unknown> }[]) => ops.some((op) => op.entity === 'category_need' && op.fields?.need === 'debts_savings');
 
 describe('the hazard the wait is for', () => {
-  it('a phone whose table refuses the mark stops its pull at that entry, the cursor before it', async () => {
+  /*
+   * Before the sync refusal fix (2026-11-17) a phone's worker passed SQLite's message alone, apply did not read it as a
+   * CHECK refusal, and the phone's pull stopped at the entry for good: what a phone on 0.5.3 still does. From the fix a
+   * phone skips it like every other receiver — and a skipped mark is never taken in, even once the table can hold it.
+   * Either way the mark must not reach such a table, which is what the wait is for.
+   */
+  it('a phone whose table refuses the mark skips it as a recorded refusal: the pull goes on, the mark is never there', async () => {
     // She says this build but still has the older table: the one way the mark could reach such a table.
     const h = await household({ dewi: BUILD });
     await asOlderTable(h.dewi);
     await saveCategoryNeed(h.fandri.database, h.ws(h.fandri), h.cover, 'debts_savings');
     await h.fandri.engine.syncOnce(h.bookId);
-    const cursor = () => h.dewi.database.db.values(sql`SELECT applied_seq FROM sync_cursor WHERE book_id = ${h.bookId}`);
+    const cursor = async () => (await h.dewi.database.db.values<[number]>(sql`SELECT applied_seq FROM sync_cursor WHERE book_id = ${h.bookId}`))[0]![0];
     const before = await cursor();
-    const failed = await h.dewi.engine.syncOnce(h.bookId).then(() => null, (error: unknown) => error as Error & { cause?: Error });
-    expect(failed?.message).toMatch(/INSERT INTO category_needs/);
-    // As on a phone: SQLite's words, with no code apply could read as a refusal to skip.
-    expect(failed?.cause?.message).toMatch(/CHECK constraint failed/);
-    expect((failed?.cause as { code?: string } | undefined)?.code).toBeUndefined();
-    expect(await cursor()).toEqual(before);
+    const result = await h.dewi.engine.syncOnce(h.bookId);
+    // As on a phone: SQLite's words with no code, read from the message as the CHECK refusal it is.
+    expect(result.skipped.map((skip) => [skip.entity, skip.error.split(':')[0]])).toEqual([['category_need', 'SQLITE_CONSTRAINT_CHECK']]);
+    expect(result.skipped[0]!.error).toMatch(/CHECK constraint failed/);
+    expect(await skipsOf(h.dewi.database)).toHaveLength(1);
+    expect(await cursor()).toBeGreaterThan(before);
+    expect((await h.marks(h.dewi))[h.cover]).toBeUndefined();
+  });
+
+  it('a phone stuck at the mark on a build before the fix takes it in once it updates: the same entry, tried again, nothing skipped', async () => {
+    let shape: PhoneErrors | 'before-fix' = 'before-fix';
+    const h = await household({ dewi: BUILD, dewiErrors: () => shape });
+    await asOlderTable(h.dewi);
+    await saveCategoryNeed(h.fandri.database, h.ws(h.fandri), h.cover, 'debts_savings');
+    await h.fandri.engine.syncOnce(h.bookId);
+    const cursor = async () => (await h.dewi.database.db.values<[number]>(sql`SELECT applied_seq FROM sync_cursor WHERE book_id = ${h.bookId}`))[0]![0];
+    const before = await cursor();
+    // Stuck: each sync stops at the same entry.
+    await expect(h.dewi.engine.syncOnce(h.bookId)).rejects.toThrow(/INSERT INTO category_needs/);
+    await expect(h.dewi.engine.syncOnce(h.bookId)).rejects.toThrow(/INSERT INTO category_needs/);
+    expect(await cursor()).toBe(before);
+
+    // She updates to a build with the fix: its worker carries the code, and 0119 lets her table hold the mark.
+    shape = 'carried';
+    await update(h.dewi);
+    const result = await h.dewi.engine.syncOnce(h.bookId);
+    expect(result.skipped).toEqual([]);
+    expect(await skipsOf(h.dewi.database)).toEqual([]);
+    expect(await cursor()).toBeGreaterThan(before);
+    expect((await h.marks(h.dewi))[h.cover]).toBe('debts_savings');
   });
 });
 
