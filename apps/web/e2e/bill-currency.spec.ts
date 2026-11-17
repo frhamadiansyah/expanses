@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
+import { paySeveral, peekBill, peekButton } from './bills-desk';
 import { mockRates } from './pockets';
 import { todayIn } from './today';
 
@@ -48,12 +49,13 @@ test('an SGD bill paid from a rupiah account: written in SGD, charged in rupiah'
   // Pay from Recurring: the sheet shows the SGD figure and asks what the account was charged, estimated at the rate.
   await page.goto('/bills');
   // Paid, the row folds away with the month's other settled bills: keep the bill's own page to come back to.
-  await row(page, 'Life cover').click();
+  await row(page, 'Life cover').dblclick();
+  await expect(page).toHaveURL(/\/bills\/[^/?]+$/);
   const billPage = page.url();
   await page.goto('/bills');
-  await row(page, 'Life cover').hover();
-  await page.getByRole('button', { name: 'Actions for Life cover' }).click();
-  await page.getByRole('menuitem', { name: /^Pay/ }).click();
+  // A wide screen's row opens the bill's side peek, where Pay is.
+  await peekBill(page, 'Life cover');
+  await peekButton(page, 'Pay').click();
   const sheet = page.getByRole('dialog', { name: 'Pay Life cover' });
   await expect(sheet.getByText('Amount', { exact: true })).toBeVisible();
   await expect(sheet.getByText('SGD', { exact: true }).first()).toBeVisible();
@@ -81,11 +83,7 @@ test('an SGD bill paid from a rupiah account: written in SGD, charged in rupiah'
 test('Pay several asks what the account was charged for an SGD bill, and records it', async ({ page }) => {
   await lifeCover(page);
   await page.goto('/bills');
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await page.getByRole('checkbox', { name: 'Select Life cover' }).click();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 1 selected/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  const sheet = await paySeveral(page, ['Life cover']);
   const charged = sheet.getByLabel('Charged in IDR for Life cover');
   await expect(charged).toHaveValue(/^1[.,]?500[.,]?000/);
   await charged.fill('');
@@ -103,11 +101,7 @@ test('Pay several with another account: the SGD bill is charged in that account\
   await lifeCover(page);
   await openAccount(page, { subtype: 'bank', name: 'Jenius', balance: '20000000' });
   await page.goto('/bills');
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await page.getByRole('checkbox', { name: 'Select Life cover' }).click();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 1 selected/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  const sheet = await paySeveral(page, ['Life cover']);
   await sheet.getByTestId('several-with').getByRole('button').click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /Jenius/ }).click();
   await expect(sheet.getByTestId('several-with')).toContainText('Jenius');
@@ -123,7 +117,7 @@ test('Pay several with another account: the SGD bill is charged in that account\
 
 test('an SGD bill keeps its currency through an edit, and a bill with none follows its payer', async ({ page }) => {
   await lifeCover(page);
-  await row(page, 'Life cover').click();
+  await row(page, 'Life cover').dblclick();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
   await expect(page.getByRole('button', { name: /^Currency\s*SGD/ })).toBeVisible();
   await expect(page.getByLabel('Amount', { exact: true })).toHaveValue(/^120([.,]00)?$/);

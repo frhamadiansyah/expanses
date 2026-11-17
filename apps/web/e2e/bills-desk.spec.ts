@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickBillCategory, pickBillPaidFrom } from './bill-form';
+import { pickBillCategory, pickBillPaidFrom, showRepeating } from './bill-form';
+import { addFarYearlyBill, addMonthlyBill } from './recurring-slider';
 import { deskRow, paySeveral, peekBill, peekButton, toPayRow } from './bills-desk';
 
 /*
@@ -8,9 +9,10 @@ import { deskRow, paySeveral, peekBill, peekButton, toPayRow } from './bills-des
  * its ticks and its side peek. Invented figures.
  */
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, info) => {
   page.on('dialog', (dialog) => void dialog.accept());
-  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  // The yearly walk opens its own account.
+  if (!info.title.startsWith('Yearly bills')) await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 });
 
 async function addBill(page: Page, options: { name: string; amount: string; out?: number }) {
@@ -98,10 +100,14 @@ test('a row opens its bill in the side peek: arrows step, Esc closes, Pay and Sk
   await expect(peek.getByTestId('peek-amount')).toHaveText(/^Rp\s395\.000$/);
   await expect(peek).toContainText('Every month');
   await expect(deskRow(page, 'Internet')).toHaveAttribute('aria-current', 'true');
-  // The page makes room for the peek: the table is not under it.
-  const peekBox = (await peek.boundingBox())!;
-  const tableBox = (await page.getByTestId('all-bills').boundingBox())!;
-  expect(tableBox.x + tableBox.width).toBeLessThanOrEqual(peekBox.x);
+  // The page makes room for the peek (a moment after it opens, past a double-click): the table is not under it.
+  await expect
+    .poll(async () => {
+      const peekBox = (await peek.boundingBox())!;
+      const tableBox = (await page.getByTestId('all-bills').boundingBox())!;
+      return tableBox.x + tableBox.width <= peekBox.x;
+    })
+    .toBe(true);
 
   await page.keyboard.press('ArrowDown');
   await expect(peek.getByTestId('peek-title')).toContainText('Phone');
@@ -147,4 +153,44 @@ test('the title bar’s month: next month’s bills are listed to come, with not
   await page.getByRole('button', { name: 'Previous month', exact: true }).click();
   await expect(month).toHaveText(was!);
   await expect(page.getByRole('checkbox', { name: 'Select Phone' })).toBeVisible();
+});
+
+test('Pause in the peek moves a bill to Paused and out of the box; Resume brings it back', async ({ page }) => {
+  await addBill(page, { name: 'Gym', amount: '350000' });
+  await addBill(page, { name: 'Phone', amount: '150000' });
+  await expect(page.getByTestId('bills-total')).toHaveText(/^Rp\s500\.000$/);
+
+  await peekBill(page, 'Gym');
+  await peekButton(page, 'Pause').click();
+  const sheet = page.getByRole('dialog', { name: 'Pause' });
+  await sheet.getByRole('radio', { name: '2 months' }).click();
+  await sheet.getByRole('button', { name: 'Pause Gym' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  const paused = page.getByTestId('bills-paused');
+  await expect(paused.getByTestId('bill-row').filter({ hasText: 'Gym' }).getByTestId('bill-status')).toHaveText(/^Paused until \w{3} \d{4}$/);
+  await expect(page.getByTestId('bills-total')).toHaveText(/^Rp\s150\.000$/);
+  await expect(page.getByTestId('bills-month-total')).toHaveText(/ · 0 of 1$/);
+  await expect(page.getByRole('checkbox', { name: 'Select Gym' })).toHaveCount(0);
+
+  await peekButton(page, 'Resume').click();
+  await expect(page.getByTestId('bills-paused')).toHaveCount(0);
+  await expect(page.getByTestId('bills-total')).toHaveText(/^Rp\s500\.000$/);
+});
+
+test('Yearly bills in the title bar lists the repeating bills all year; one far off is not in the month’s table', async ({ page }) => {
+  await addFarYearlyBill(page, 'Domain');
+  await addMonthlyBill(page, 'Water');
+  await expect(deskRow(page, 'Water')).toBeVisible();
+  await expect(deskRow(page, 'Domain')).toHaveCount(0);
+  await expect(page.getByTestId('bills-set-aside')).toContainText('Nothing set aside yet');
+
+  await showRepeating(page);
+  const domain = page.getByTestId('yearly-bill-row').filter({ hasText: 'Domain' });
+  await expect(domain).toContainText('3.000.000');
+  await domain.click();
+  await expect(page.getByRole('heading', { name: 'Domain' })).toBeVisible();
+  await page.goBack();
+  await page.goBack();
+  await expect(deskRow(page, 'Water')).toBeVisible();
 });

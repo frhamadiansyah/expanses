@@ -5,7 +5,6 @@ import { cardPage, pickChargedOn, walletCard, saveCardTerms } from './card-secti
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const pad = (n: number) => String(n).padStart(2, '0');
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const words = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 
 test('a card’s annual fee date is saved in Settings, listed in Recurring inside 30 days, and its fee year is recorded on the Fee waiver page', async ({ page }) => {
   // Ten days ahead, entered as the date it was charged two years ago: the next charge is the one ahead.
@@ -39,7 +38,9 @@ test('a card’s annual fee date is saved in Settings, listed in Recurring insid
   const fee = page.getByTestId('annual-fee-row');
   await expect(fee).toContainText('Annual fee');
   await expect(fee).toContainText('Fee Card');
-  await expect(fee).toContainText(words(next));
+  // On a wide screen (Mac Bills) a row of the table: its day under Due, and how far off under Status, as a bill's.
+  await expect(fee).toContainText(`${next.getDate()} ${MONTHS[next.getMonth()]}`);
+  await expect(fee).toContainText('In 10 days');
   await fee.click();
   await expect(page).toHaveURL(/\/settings\/fee-waiver$/);
   await expect(page.getByRole('dialog')).toHaveCount(0);

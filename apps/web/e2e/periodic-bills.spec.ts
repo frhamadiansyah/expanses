@@ -35,14 +35,14 @@ async function addEveryThreeMonths(page: Page, name: string, at: { month: number
   await expect(page).toHaveURL(/\/bills$/);
 }
 
-test('an every-3-months bill 20 days ahead shows under Due soon; its page has History only once paid', async ({ page }) => {
+test('an every-3-months bill 20 days ahead is listed to come; its page has History only once paid', async ({ page }) => {
   const at = await daysAhead(page, 20);
   await addEveryThreeMonths(page, 'Water', at);
 
-  const soon = page.locator('section').filter({ has: page.getByText('Due soon', { exact: true }) });
-  await expect(soon.getByTestId('bill-row').filter({ hasText: 'Water' })).toBeVisible();
+  // A wide screen's table lists it under Later (the phone, with Due soon).
+  await expect(page.getByTestId('bills-later').getByTestId('bill-row').filter({ hasText: 'Water' })).toBeVisible();
 
-  await row(page, 'Water').click();
+  await row(page, 'Water').dblclick();
   await expect(page.getByRole('heading', { name: 'Water' })).toBeVisible();
   await expect(page.getByText('Every 3 months ·')).toBeVisible();
   // One date: Due by, no Out on. Nothing paid yet, so no History group at all.

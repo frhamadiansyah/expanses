@@ -26,7 +26,7 @@ test('pausing a bill for two months takes it out of Still to pay, shows the mont
   const paused = page.getByTestId('bills-paused');
   await expect(paused.getByTestId('bill-row').filter({ hasText: 'Gym' })).toContainText(/until \w{3} \d{4}/);
 
-  await paused.getByTestId('bill-row').filter({ hasText: 'Gym' }).click();
+  await paused.getByTestId('bill-row').filter({ hasText: 'Gym' }).dblclick();
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Resume' }).click();
   await expect(page.getByTestId('bill-status')).not.toContainText('Paused');
   await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pause' })).toBeVisible();

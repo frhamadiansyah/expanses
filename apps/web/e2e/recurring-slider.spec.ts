@@ -2,6 +2,12 @@ import { expect, test } from '@playwright/test';
 import { showMonthly, showRepeating } from './bill-form';
 import { addFarYearlyBill, addMonthlyBill } from './recurring-slider';
 
+/*
+ * Recurring's Monthly/Repeating slider is the phone's page: a wide screen's Bills (Mac Bills) has Yearly bills in its
+ * title bar instead (bills-desk.spec). Walked here in a phone's window, with a mouse and keys.
+ */
+test.use({ viewport: { width: 390, height: 844 } });
+
 test('Recurring slides from Monthly to Repeating: its hero, and one list of the repeating bills', async ({ page }) => {
   await addFarYearlyBill(page, 'Domain');
   await addMonthlyBill(page, 'Water');

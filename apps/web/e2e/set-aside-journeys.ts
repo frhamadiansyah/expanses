@@ -296,11 +296,15 @@ export const JOURNEYS: Journey[] = [
       await jeniusWithTwoGoals(page);
       await addBill(page, 'Rent', '3000000');
       await addBill(page, 'School', '4000000');
-      await page.getByRole('button', { name: 'Select bills to pay' }).click();
+      // A phone selects first and pays from the bar's menu; a wide screen (Mac Bills) ticks straight in its table.
+      const phone = (page.viewportSize()?.width ?? 0) < 768;
+      if (phone) await page.getByRole('button', { name: 'Select bills to pay' }).click();
       await page.getByRole('checkbox', { name: 'Select Rent' }).click();
       await page.getByRole('checkbox', { name: 'Select School' }).click();
-      await page.getByRole('button', { name: 'Actions' }).click();
-      await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
+      if (phone) {
+        await page.getByRole('button', { name: 'Actions' }).click();
+        await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
+      } else await page.getByTestId('select-bar').getByRole('button', { name: 'Pay 2 bills' }).click();
       const sheet = page.getByRole('dialog', { name: 'Pay several' });
       await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();
       await sheet.getByRole('button', { name: 'Take from Emergency fund' }).click();

@@ -6,6 +6,7 @@ import { addForm, choosePayment, saveButton, chooseGoal } from './add-transactio
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
+import { paySeveral } from './bills-desk';
 import { openShortTrade, openTradeDetails, pickTradeCash, recordShortTrade, shortTrade } from './trades';
 
 /*
@@ -138,8 +139,9 @@ async function expectRecordedOnce(page: Page, text: RegExp, from?: string) {
 test('paying a bill from Jenius asks, and Record waits for the answer', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await addBill(page, 'Rent', '6800000');
+  // A wide screen's row opens the bill's side peek, where Pay is (a double-click would open its page).
   await page.getByTestId('bill-row').filter({ hasText: 'Rent' }).click();
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay' }).click();
+  await page.getByTestId('bill-peek').getByRole('button', { name: 'Pay', exact: true }).click();
 
   const sheet = page.getByRole('dialog', { name: 'Pay Rent' });
   await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
@@ -161,13 +163,7 @@ test('paying several bills asks once for what they take together, spread over th
   // Each fits the Rp 5.000.000 free on its own; together they are Rp 2.000.000 over.
   await addBill(page, 'Rent', '3000000');
   await addBill(page, 'School', '4000000');
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await page.getByRole('checkbox', { name: 'Select Rent' }).click();
-  await page.getByRole('checkbox', { name: 'Select School' }).click();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
-
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  const sheet = await paySeveral(page, ['Rent', 'School']);
   await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();
   const record = sheet.getByRole('button', { name: 'Record 2 bills' });
   await expect(record).toBeDisabled();
@@ -182,13 +178,7 @@ test('paying several bills with "Yes" counts the whole paid total against the go
   await jeniusWithTwoGoals(page);
   await addBill(page, 'Rent', '3000000');
   await addBill(page, 'School', '4000000');
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await page.getByRole('checkbox', { name: 'Select Rent' }).click();
-  await page.getByRole('checkbox', { name: 'Select School' }).click();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
-
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  const sheet = await paySeveral(page, ['Rent', 'School']);
   await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();
   await sheet.getByRole('button', { name: 'Take from Umrah 2027' }).click();
   await sheet.getByRole('button', { name: 'Yes — this is what I saved for' }).click();

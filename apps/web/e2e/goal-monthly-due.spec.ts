@@ -105,6 +105,7 @@ test('Off, the Monthly sheet is the plan figure only and Recurring shows no goal
   await expect(card.getByTestId('goal-monthly-row')).toHaveCount(0);
 
   await page.goto('/bills');
-  await expect(page.getByRole('heading', { name: 'Recurring' })).toBeVisible();
+  // A wide screen's Bills (Mac Bills); the phone's page is Recurring.
+  await expect(page.getByRole('heading', { name: 'Bills', level: 1 })).toBeVisible();
   await expect(page.getByTestId('goals-this-month')).toHaveCount(0);
 });

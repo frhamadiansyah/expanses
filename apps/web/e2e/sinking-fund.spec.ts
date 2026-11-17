@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { expectWalletFigure, openAccount } from './accounts';
 import { pickBillCategory, pickBillPaidFrom, showRepeating } from './bill-form';
+import { deskWindow, phoneBills } from './bills-desk';
 import { localIsoDate, todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -37,10 +38,17 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page).toHaveURL(/\/bills$/);
 
-  // Recurring's Repeating page sets the month's amount aside in its hero and lists the bill.
+  // A wide screen's Bills lists the fund under Set aside for yearly bills; Yearly bills lists the bill.
+  await expect(page.getByTestId('bills-set-aside')).toContainText('Car insurance');
+  await expect(page.getByTestId('bills-set-aside')).toContainText('a month');
+  // The phone's Recurring sets the month's amount aside in its Repeating hero (looked at in a phone's window).
+  await phoneBills(page);
   await showRepeating(page);
   await expect(page.getByTestId('repeating-summary')).toContainText('Needed · per month');
   await expect(page.getByTestId('repeating-summary')).toContainText('Set aside');
+  await deskWindow(page);
+  await page.goto('/bills');
+  await showRepeating(page);
   await expect(page.getByTestId('yearly-bill-row').filter({ hasText: 'Car insurance' })).toBeVisible();
 
   // Its page.
@@ -73,6 +81,8 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Savings', '17.000.000');
   await page.goto('/bills');
+  await expect(page.getByTestId('bills-set-aside')).toContainText('Nothing set aside yet');
+  await phoneBills(page);
   await showRepeating(page);
   await expect(page.getByTestId('repeating-summary')).toContainText('Not set aside');
 });
@@ -101,6 +111,8 @@ test('the Repeating hero adds up what each bill needs a month, with and without 
   await bill('Car insurance', 75, true);
   await bill('Domain', 150, false);
 
+  // The Repeating hero is the phone's Recurring: looked at in a phone's window.
+  await phoneBills(page);
   await showRepeating(page);
   const hero = page.getByTestId('repeating-summary');
   await expect(hero).toContainText('Needed · per month');

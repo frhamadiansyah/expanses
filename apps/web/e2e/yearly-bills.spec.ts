@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { pickBillCategory, pickBillPaidFrom, showMonthly, showRepeating } from './bill-form';
+import { peekBill, peekButton } from './bills-desk';
 import { localIsoDate, todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -31,25 +32,24 @@ async function addYearlyBill(page: Page, name: string, at: { month: number; day:
   await expect(page).toHaveURL(/\/bills$/);
 }
 
-test('a yearly bill 20 days ahead shows under Due soon, and paying it takes it off the list', async ({ page }) => {
+test('a yearly bill 20 days ahead is listed to come, and paying it takes it off the list', async ({ page }) => {
   const at = await daysAhead(page, 20);
   await addYearlyBill(page, 'Car tax', at);
 
-  const soon = page.locator('section').filter({ has: page.getByText('Due soon', { exact: true }) });
-  await expect(soon.getByTestId('bill-row').filter({ hasText: 'Car tax' })).toBeVisible();
+  // A wide screen's table lists it under Later (the phone, with Due soon); the month's box counts it.
+  await expect(page.getByTestId('bills-later').getByTestId('bill-row').filter({ hasText: 'Car tax' })).toBeVisible();
   await expect(page.getByTestId('bills-total')).toContainText('3.000.000');
 
-  await row(page, 'Car tax').hover();
-  await page.getByRole('button', { name: 'Actions for Car tax' }).click();
-  await page.getByRole('menuitem', { name: /^Pay/ }).click();
+  await peekBill(page, 'Car tax');
+  await peekButton(page, /^Pay/).click();
   const sheet = page.getByRole('dialog', { name: 'Pay Car tax' });
   // The year is named, since the other eleven months are not bills.
   await expect(sheet.getByLabel('For')).toContainText(String(at.iso.slice(0, 4)));
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
 
-  // Paid, it leaves Monthly; the Repeating page still has it, next date a year on.
-  await expect(row(page, 'Car tax')).toHaveCount(0);
+  // Paid, it leaves the bills to pay; the Repeating page still has it, next date a year on.
+  await expect(page.locator('[data-testid="bill-row"]:not([data-testid="bills-paid"] *)').filter({ hasText: 'Car tax' })).toHaveCount(0);
   await showRepeating(page);
   await expect(page.getByTestId('yearly-bill-row').filter({ hasText: 'Car tax' })).toContainText(`Due ${Number(at.iso.slice(8))} `);
 
@@ -98,7 +98,7 @@ test('a bill switches between monthly and yearly in Edit', async ({ page }) => {
 
   // To yearly, in a month 180 days away: the month is required, then the bill leaves the list.
   const far = await daysAhead(page, 180);
-  await row(page, 'Gym').click();
+  await row(page, 'Gym').dblclick();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
   await page.getByLabel('Repeats').selectOption('yearly');
   // A yearly bill has the one date: Due by, with no Bill date beside it.

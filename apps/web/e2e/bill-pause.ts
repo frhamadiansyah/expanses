@@ -18,9 +18,14 @@ export async function addBill(page: Page, name: string, amount: string, category
 
 export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-/** Pauses a bill from its own page for a number of months. */
+/**
+ * Pauses a bill from its own page for a number of months. On a wide screen (Mac Bills) a row's single click opens its
+ * side peek, a double-click its page; a phone's tap opens the page.
+ */
 export async function pauseFor(page: Page, name: string, months: 1 | 2 | 3 | 6) {
-  await page.getByTestId('bill-row').filter({ hasText: name }).click();
+  const row = page.getByTestId('bill-row').filter({ hasText: name });
+  if ((page.viewportSize()?.width ?? 0) >= 768) await row.dblclick();
+  else await row.click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pause' }).click();
   const sheet = page.getByRole('dialog', { name: 'Pause' });
   await sheet.getByRole('radio', { name: months === 1 ? '1 month' : `${months} months` }).click();

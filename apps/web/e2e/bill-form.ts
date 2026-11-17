@@ -13,14 +13,29 @@ export async function pickBillPaidFrom(page: Page, name: string) {
   await page.getByRole('dialog', { name: 'Paid from', exact: true }).getByRole('button', { name: new RegExp(`^${escaped}(,|$)`) }).click();
 }
 
-/** Slides Recurring's hero to its Repeating page (the second dot), where the repeating bills and the set-aside figure are. */
+/** A window wide enough for the Mac pages (Mac Bills), where the phone's Recurring slider is not drawn. */
+const wide = (page: Page) => (page.viewportSize()?.width ?? 0) >= 768;
+
+/**
+ * The repeating bills: on a phone Recurring's hero slides to its Repeating page (the second dot), where the repeating
+ * bills and the set-aside figure are; on a wide screen (Mac Bills) the title bar's Yearly bills opens their list.
+ */
 export async function showRepeating(page: Page) {
+  if (wide(page)) {
+    await page.getByRole('button', { name: 'Yearly bills', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Repeating bills' })).toBeVisible();
+    return;
+  }
   await page.getByRole('group', { name: 'Page' }).getByRole('button', { name: 'Repeating' }).click();
   await expect(page.getByTestId('repeating-summary')).toBeVisible();
 }
 
-/** Slides Recurring's hero back to its Monthly page (the first dot). */
+/** Back to the month's bills: the phone's hero slides to Monthly (the first dot); a wide screen's Bills is one page. */
 export async function showMonthly(page: Page) {
+  if (wide(page)) {
+    await expect(page.getByTestId('bills-page')).toBeVisible();
+    return;
+  }
   await page.getByRole('group', { name: 'Page' }).getByRole('button', { name: 'Monthly' }).click();
   await expect(page.getByTestId('bills-summary').or(page.getByText('No monthly bills yet'))).toBeVisible();
 }

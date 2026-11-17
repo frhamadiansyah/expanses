@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
+import { paySeveral, peekBill, peekButton } from './bills-desk';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -34,18 +35,20 @@ const action = (page: Page, name: string | RegExp) => page.getByRole('group', { 
 /** A line of the bill page's details: its label and what it says. */
 const detail = (page: Page, label: string) => page.locator('div').filter({ hasText: new RegExp(`^${label}`) }).last();
 
-/** The Paid group: the month's paid and skipped bills, listed as ordinary rows. */
+/** The Paid group: the month's paid and skipped bills, listed as ordinary rows (the table's Paid this month). */
 const paidGroup = (page: Page) => page.getByTestId('bills-paid');
 
 /** The undo toast. Not any status: the install hint and the backup banner are statuses too. */
 const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
 
-/** The desktop way to a row's actions: the ⋯ button, shown on hover and focus. */
+/** The desktop way to a row's actions (Mac Bills): the row opens the bill's side peek, where Pay and Skip are. */
 async function rowAction(page: Page, name: string, action: RegExp) {
-  await row(page, name).hover();
-  await page.getByRole('button', { name: `Actions for ${name}` }).click();
-  await page.getByRole('menuitem', { name: action }).click();
+  await peekBill(page, name);
+  await peekButton(page, action).click();
 }
+
+/** A row's bill on its own page: a double-click on a wide screen (a single click opens the side peek). */
+const openBill = (page: Page, name: string) => row(page, name).dblclick();
 
 /**
  * Cashflow's bills card is the phone's: a wide screen's Cashflow (Mac Cashflow D) has Bills in its sidebar instead. The
@@ -69,7 +72,7 @@ test('the Cashflow card counts the month’s bills', async ({ page }) => {
 test('a bill keeps its pay-by day through an edit', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Biznet Home', amount: '450000', out: 28, payBy: 5 });
-  await row(page, 'Biznet Home').click();
+  await openBill(page, 'Biznet Home');
   await action(page, 'Edit').click();
   await expect(page.getByRole('heading', { name: 'Edit bill' })).toBeVisible();
   await expect(page.getByLabel('Bill date')).toHaveValue('28');
@@ -84,7 +87,7 @@ test('a bill keeps its pay-by day through an edit', async ({ page }) => {
 test('a bill’s page pays its month and stays, with the payment and an undo', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Biznet Home', amount: '450000', out: 1, payBy: 28 });
-  await row(page, 'Biznet Home').click();
+  await openBill(page, 'Biznet Home');
 
   await expect(page.getByRole('heading', { name: 'Biznet Home' })).toBeVisible();
   await expect(detail(page, 'Out on')).toContainText('The 1st');
@@ -110,7 +113,7 @@ test('a bill’s page pays its month and stays, with the payment and an undo', a
 test('from a bill’s page: skip its month, edit it, and stop it', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Gym', amount: '350000' });
-  await row(page, 'Gym').click();
+  await openBill(page, 'Gym');
   await expect(page.getByText('Paid from')).toBeVisible();
 
   await action(page, 'Skip').click();
@@ -129,17 +132,17 @@ test('from a bill’s page: skip its month, edit it, and stop it', async ({ page
   await expect(row(page, 'Gym')).toHaveCount(0);
 });
 
-test('a skipped row’s ⋯ menu still opens the bill’s page', async ({ page }) => {
+test('a skipped row still opens the bill: its peek, and its page on a double-click', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Netflix', amount: '120000' });
   await rowAction(page, 'Netflix', /^Skip/);
-  await expect(paidGroup(page).getByRole('heading', { name: 'Paid' })).toBeVisible();
+  await expect(paidGroup(page).getByRole('cell', { name: 'Paid this month' })).toBeVisible();
   const sheet = paidGroup(page);
   const skipped = sheet.getByTestId('bill-row').filter({ hasText: 'Netflix' });
   await expect(skipped).toContainText('Skipped');
-  await skipped.hover();
-  await sheet.getByRole('button', { name: 'Actions for Netflix' }).click();
-  await sheet.getByRole('menuitem', { name: /^See bill$/ }).click();
+  await skipped.click();
+  await expect(page.getByTestId('bill-peek')).toContainText('Skipped');
+  await skipped.dblclick();
   await expect(page.getByRole('heading', { name: 'Netflix' })).toBeVisible();
 });
 
@@ -151,9 +154,9 @@ test('a bill that is out is paid from its row, and the month is settled', async 
   await page.getByTestId('recurring-card').click();
   await expect(page).toHaveURL(/\/bills\?from=cashflow$/);
   await page.setViewportSize({ width: 1280, height: 720 });
-  await expect(page.getByTestId('bills-summary')).toContainText('Still to pay in');
-  await expect(page.getByTestId('bills-summary')).toContainText('150.000');
-  await expect(page.getByTestId('bills-legend')).toContainText('150.000');
+  await expect(page.getByTestId('bills-summary')).toContainText('left to pay');
+  await expect(page.getByTestId('bills-total')).toContainText('150.000');
+  await expect(page.getByTestId('bills-month-total')).toContainText(/of Rp\s150\.000 · 0 of 1/);
 
   await rowAction(page, 'Phone', /^Pay/);
   const sheet = page.getByRole('dialog', { name: 'Pay Phone' });
@@ -169,8 +172,8 @@ test('a bill that is out is paid from its row, and the month is settled', async 
   await expect(page.getByTestId('bills-summary')).toContainText('All paid for');
   const sheet2 = paidGroup(page);
   await expect(sheet2.getByTestId('bill-row').filter({ hasText: 'Phone' })).toContainText(/Paid \d+ \w{3}/);
-  // A tap on a paid bill opens its page.
-  await sheet2.getByTestId('bill-row').filter({ hasText: 'Phone' }).click();
+  // A double-click on a paid bill opens its page.
+  await sheet2.getByTestId('bill-row').filter({ hasText: 'Phone' }).dblclick();
   await expect(page.getByRole('heading', { name: 'Phone' })).toBeVisible();
 
   await phoneCashflow(page);
@@ -225,15 +228,8 @@ test('several bills are ticked and recorded together, on the day they were paid'
   await addBill(page, { name: 'Phone', amount: '150000' });
   await addBill(page, { name: 'Electricity' });
 
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await expect(page.getByRole('heading', { name: '0 selected' })).toBeVisible();
-  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
-  await page.getByRole('checkbox', { name: 'Select Electricity' }).click();
-  await expect(page.getByRole('heading', { name: '2 selected' })).toBeVisible();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
-
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  // On a wide screen every bill to pay has its tick; the bar under the table pays them.
+  const sheet = await paySeveral(page, ['Phone', 'Electricity']);
   await sheet.getByRole('button', { name: 'Record 2 bills' }).click();
   await expect(sheet).toContainText('Enter the amount of each ticked bill that varies');
   await sheet.getByLabel('What Electricity came to').fill('432000');
@@ -244,7 +240,7 @@ test('several bills are ticked and recorded together, on the day they were paid'
 
   await expect(sheet).toHaveCount(0);
   await expect(toast(page)).toContainText('Paid 2 bills');
-  await expect(page.getByRole('heading', { name: 'Recurring' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bills', level: 1 })).toBeVisible();
   await phoneCashflow(page);
   await expect(page.getByTestId('recurring-card')).toContainText('2 of 2 bills paid');
 });
@@ -254,12 +250,7 @@ test('Pay several: Paid with makes one account pay every ticked bill, and the de
   await openAccount(page, { subtype: 'bank', name: 'Jenius', balance: '20000000' });
   await addBill(page, { name: 'Phone', amount: '150000' });
   await addBill(page, { name: 'Electricity' });
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
-  await page.getByRole('checkbox', { name: 'Select Electricity' }).click();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  const sheet = await paySeveral(page, ['Phone', 'Electricity']);
   // Untouched, the row says every bill keeps its own account.
   await expect(sheet.getByTestId('several-with')).toContainText("Each bill's own account");
   await sheet.getByTestId('several-with').getByRole('button').click();
@@ -284,11 +275,7 @@ test('unticking a bill in Pay several leaves it unpaid', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
   await addBill(page, { name: 'Internet', amount: '395000' });
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 1 selected/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  const sheet = await paySeveral(page, ['Phone']);
   // Only the selected bill is listed; the rest of the month's unpaid bills are not offered.
   await expect(sheet.getByRole('checkbox', { name: 'Pay Internet' })).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Record 1 bill' }).click();
@@ -298,15 +285,15 @@ test('unticking a bill in Pay several leaves it unpaid', async ({ page }) => {
   await expect(paidGroup(page)).toContainText('Phone');
 });
 
-test('a bill not out yet is listed with those due soon, and can be paid early', async ({ page }) => {
+test('a bill not out yet is listed to come later, and can be paid early', async ({ page }) => {
   const now = new Date();
   const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   test.skip(now.getDate() >= last, 'Nothing is still to come on the last day of a month');
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Housing rent', amount: '5000000', out: 31 });
-  await expect(page.getByText('Later', { exact: true })).toHaveCount(0);
-  // A plain day under the amount: not late, not soon.
-  await expect(row(page, 'Housing rent').getByTestId('bill-status')).toHaveText(/^\d+ \w{3}$/);
+  // The table's Later this month (the phone lists it with Due soon): not late, not soon, counted to its day.
+  await expect(page.getByTestId('bills-later')).toContainText('Housing rent');
+  await expect(row(page, 'Housing rent').getByTestId('bill-status')).toHaveText(/^In \d+ days?$/);
   await rowAction(page, 'Housing rent', /^Pay/);
   await expect(page.getByRole('dialog', { name: 'Pay Housing rent' })).toBeVisible();
 });
@@ -325,10 +312,10 @@ test('last month’s overdue bill paid from its page says so, can be undone, and
   await page.clock.setSystemTime(now);
 
   await page.goto('/bills');
-  await expect(page.getByText('Overdue', { exact: true })).toBeVisible();
+  // Late, it is with Due soon at the top of the table.
+  await expect(page.getByTestId('bills-due-soon')).toContainText('Biznet Home');
   await expect(row(page, 'Biznet Home').getByTestId('bill-status')).toHaveText(/^\d+ days? late$/);
-  await expect(page.getByTestId('bills-legend')).toContainText('Overdue');
-  await row(page, 'Biznet Home').click();
+  await openBill(page, 'Biznet Home');
   await expect(page.getByTestId('bill-hero')).toContainText(`${lastMonth} bill`);
   // The standing is in the line under the amount, not a pill: the late words, then the due date.
   await expect(page.getByTestId('bill-hero').getByTestId('bill-status')).toContainText(/^Overdue \d+ days? · due \d+ \w{3} 20\d\d$/);
@@ -367,12 +354,7 @@ test('Pay several names the bill it recorded, not the one first picked', async (
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
   await addBill(page, { name: 'Internet', amount: '395000' });
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
-  await page.getByRole('checkbox', { name: 'Select Internet' }).click();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  const sheet = await paySeveral(page, ['Phone', 'Internet']);
   await sheet.getByRole('checkbox', { name: 'Pay Phone' }).click();
   await sheet.getByRole('button', { name: 'Record 1 bill' }).click();
 
@@ -395,7 +377,7 @@ test('a bill paid from a dollar account keeps its amount through an edit', async
   await pickBillPaidFrom(page, 'Wise USD');
   await page.getByLabel('Bill date').selectOption('1');
   await page.getByRole('button', { name: 'Save' }).click();
-  await row(page, 'Cloud storage').click();
+  await openBill(page, 'Cloud storage');
 
   await action(page, 'Edit').click();
   await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('15,00');
@@ -427,13 +409,7 @@ test('Pay several lists only the selected bills: 3 bills, 2 selected, 2 shown', 
   await addBill(page, { name: 'Internet', amount: '395000' });
   await addBill(page, { name: 'Gym', amount: '250000' });
 
-  await page.getByRole('button', { name: 'Select bills to pay' }).click();
-  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
-  await page.getByRole('checkbox', { name: 'Select Gym' }).click();
-  await page.getByRole('button', { name: 'Actions' }).click();
-  await page.getByRole('menuitem', { name: /^Pay 2 selected/ }).click();
-
-  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  const sheet = await paySeveral(page, ['Phone', 'Gym']);
   await expect(sheet.getByRole('checkbox')).toHaveCount(2);
   await expect(sheet.getByRole('checkbox', { name: 'Pay Phone' })).toBeChecked();
   await expect(sheet.getByRole('checkbox', { name: 'Pay Gym' })).toBeChecked();
