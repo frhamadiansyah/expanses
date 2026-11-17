@@ -1,122 +1,156 @@
 <!doctype html><html><head><meta charset="utf-8"><title>Card cashback</title><style>
-  :root { --ink:#000; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --tap:#ff3b30; --new:#1a7f37; --exp:#d70015; }
-  * { box-sizing:border-box; }
-  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:#000; }
   h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; }
   h2 { font-size:18px; margin:30px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1100px; line-height:1.45; font-size:14px; }
-  .tag { display:inline-block; font-size:11px; font-weight:600; color:#fff; background:var(--tint); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
-  .row { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
-  .col { width:300px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:54px; }
-  .step { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--tap); color:#fff; font-size:13px; font-weight:700; text-align:center; line-height:22px; margin-right:6px; }
-  .phone { background:var(--ground); border-radius:28px; padding:14px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; min-height:540px; }
-  .top { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; }
-  .round { width:30px; height:30px; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; color:var(--tint); font-size:14px; margin-left:6px; }
-  .nav { display:flex; justify-content:space-between; align-items:center; margin:0 4px 12px; font-size:15px; } .nav .t { color:var(--tint); min-width:60px; } .nav .t:last-child { text-align:right; font-weight:600; } .nav b { font-size:15px; white-space:nowrap; }
-  .hero { text-align:center; margin-bottom:14px; } .ic { width:52px; height:52px; border-radius:50%; background:#e8eefc; margin:0 auto 6px; display:flex; align-items:center; justify-content:center; font-size:24px; }
-  .hero .amt { font-size:28px; font-weight:600; } .hero .nm { font-size:17px; font-weight:600; margin-top:2px; } .hero .s2 { font-size:13.5px; color:var(--ink3); }
-  .panel { background:var(--surface); border-radius:12px; margin-bottom:12px; overflow:hidden; }
-  .hdr { font-size:12.5px; color:var(--ink3); text-transform:uppercase; letter-spacing:.3px; margin:0 16px 6px; }
-  .foot { font-size:12.5px; color:var(--ink3); margin:-6px 16px 12px; line-height:1.35; }
-  .r { display:flex; gap:10px; align-items:center; padding:10px 14px; white-space:nowrap; min-height:44px; } .r + .r { border-top:.5px solid var(--hair); }
-  .g { flex:1 0 auto; } .g:has(.s) { flex:1 1 0; min-width:0; } .a { font-size:15px; } .s { font-size:12.5px; color:var(--ink3); overflow:hidden; text-overflow:ellipsis; }
-  .vd { color:var(--ink3); } .r .vd { overflow:hidden; text-overflow:ellipsis; min-width:0; } .chev { color:#c7c7cc; }
-  .kv { display:flex; justify-content:space-between; padding:8px 14px; font-size:14px; } .kv + .kv { border-top:.5px solid #eee; } .kv span:first-child { color:var(--ink3); }
-  .chips { display:flex; gap:6px; padding:10px 12px; } .chips span { flex:1; text-align:center; padding:7px 0; border-radius:9px; background:#eeeef0; font-size:14px; } .chips .on { background:var(--tint); color:#fff; font-weight:600; }
-  .seg { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:8px 12px; } .seg span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
-  .big { font-size:22px; font-weight:700; }
-  .tap { outline:3px solid var(--tap); outline-offset:-3px; border-radius:10px; }
-  .new { outline:3px solid var(--new); outline-offset:-3px; border-radius:10px; position:relative; overflow:visible !important; }
-  .new::before { content:'NEW'; position:absolute; top:-9px; right:8px; font-size:9.5px; font-weight:800; color:#fff; background:var(--new); border-radius:4px; padding:1px 5px; z-index:2; }
-  .day { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:.5px solid var(--hair); } .day b { font-size:22px; } .day .d { flex:1; font-size:12px; color:var(--ink3); line-height:1.25; } .day .d strong { color:var(--ink); font-weight:600; }
-  .tx { display:flex; align-items:center; gap:10px; padding:9px 14px; white-space:nowrap; } .tx + .tx { border-top:.5px solid var(--hair); } .tx .ic2 { width:30px; height:30px; border-radius:50%; background:#e8eefc; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
-  .tx .g { flex:1 1 0; min-width:0; overflow:hidden; } .wrap .r { white-space:normal; } .red { color:var(--exp); font-weight:600; } .pill { font-size:10.5px; color:var(--tint); background:#e5f0ff; border-radius:4px; padding:0 4px; margin-left:4px; font-weight:600; }
-  .grey { color:var(--ink3); text-decoration:none; }
+  .row { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:330px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:36px; }
+  .lab { display:inline-block; font-size:10px; font-weight:800; letter-spacing:.4px; color:#fff; border-radius:4px; padding:1px 6px; margin-right:6px; vertical-align:2px; }
+  .lab.t { background:#8e8e93; } .lab.n { background:#1a7f37; }
+  .shot { width:330px; border-radius:26px; display:block; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  /* drawn screens, at the phone's own 390pt, zoomed to 330 */
+  .ph { width:390px; zoom:.846; background:#f2f2f7; border-radius:31px; box-shadow:0 1px 3px rgba(0,0,0,.15); padding:14px 0 18px; position:relative; height:687px; overflow:hidden; font-size:17px; }
+  .hd { display:flex; align-items:center; justify-content:space-between; padding:0 12px 14px; } .hd b { font-size:22px; }
+  .circ { width:44px; height:44px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; }
+  .pn { background:#fff; border-radius:16px; margin:0 12px 12px; overflow:hidden; }
+  .seg { display:flex; background:#e4e4e9; border-radius:10px; padding:2px; margin:12px 12px 4px; font-size:15px; } .seg span { flex:1; text-align:center; padding:7px 0; border-radius:8px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+  .fr { display:flex; align-items:center; gap:14px; padding:0 14px; min-height:49px; } .fr + .fr, .fr + .hint + .fr { border-top:.5px solid #d8d8dc; }
+  .fi { width:28px; height:28px; border-radius:50%; background:#f0f0f3; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .fi svg, .circ svg, .bi svg { width:16px; height:16px; fill:none; stroke:#3c3c43; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .fg { flex:1; min-width:0; } .gr { color:#8e8e93; font-size:15px; } .chev { color:#c4c4c8; font-size:18px; }
+  .green { color:#1a9e46; } .red { color:#d70015; }
+  .hint { color:#1a9e46; font-size:13.5px; padding:0 14px 10px 56px; margin-top:-6px; }
+  .more { text-align:center; color:#3c3c43; margin:22px 0; font-size:16px; }
+  .new { outline:3px solid #1a7f37; outline-offset:-3px; border-radius:12px; position:relative; }
+  .pn.new { overflow:visible; }
+  .new::before { content:'NEW'; position:absolute; top:-9px; right:10px; font-size:11px; font-weight:800; color:#fff; background:#1a7f37; border-radius:4px; padding:1px 6px; z-index:2; }
+  .bi { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .bi.g { background:#e2f4e7; } .bi.g svg { stroke:#1a9e46; width:20px; height:20px; } .bi.o { background:#fde9df; } .bi.o svg { stroke:#e8590c; width:20px; height:20px; }
+  .sm .bi { width:32px; height:32px; } .sm .bi svg { width:16px; height:16px; }
+  .tree { border-left:1.5px solid #d8d8dc; margin-left:34px; }
+  .sheet { position:absolute; left:0; right:0; top:175px; bottom:0; background:#f2f2f7; border-radius:22px 22px 0 0; padding-top:10px; box-shadow:0 -1px 0 #ddd; }
+  .grab { width:40px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 14px; }
+  .dim { position:absolute; inset:0; background:rgba(0,0,0,.28); }
+  .kv { display:flex; justify-content:space-between; padding:14px 16px; } .kv + .kv { border-top:.5px solid #e2e2e6; } .kv span:first-child { color:#8e8e93; }
+  .day { display:flex; align-items:center; gap:14px; padding:12px 16px; border-bottom:.5px solid #d8d8dc; } .day b { font-size:30px; font-weight:500; } .day .d { flex:1; font-size:14px; color:#8e8e93; line-height:1.2; } .day .d strong { color:#3c3c43; font-weight:600; }
+  .tx { display:flex; align-items:center; gap:12px; padding:10px 16px; } .tx + .tx { border-top:.5px solid #e2e2e6; } .tx .s { font-size:14px; color:#8e8e93; }
+  .ring { width:200px; height:200px; border-radius:50%; margin:18px auto 6px; background:conic-gradient(#1a9e46 0 100%); display:flex; align-items:center; justify-content:center; }
+  .ring div { width:150px; height:150px; border-radius:50%; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .dock { position:absolute; left:12px; right:12px; bottom:14px; height:72px; border-radius:36px; background:rgba(255,255,255,.95); box-shadow:0 2px 10px rgba(0,0,0,.08); display:flex; align-items:center; justify-content:space-around; }
+  .dock i { width:44px; height:44px; border-radius:50%; background:#111; color:#fff; font-style:normal; font-size:24px; display:flex; align-items:center; justify-content:center; } .dock svg { width:24px; height:24px; fill:none; stroke:#3c3c43; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .sw { width:50px; height:30px; border-radius:15px; background:#e4e4e9; position:relative; display:inline-block; } .sw::after { content:""; position:absolute; left:2px; top:2px; width:26px; height:26px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .rules { width:700px; background:#fff; border-radius:12px; } .rules .r { display:flex; gap:10px; padding:11px 14px; } .rules .r + .r { border-top:.5px solid #ddd; } .rules .g { flex:1; } .rules .s { font-size:13px; color:#8e8e93; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="pct" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m15 9-6 6"/><path d="M9 9h.01"/><path d="M15 15h.01"/></symbol>
+  <symbol id="home" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></symbol>
+  <symbol id="lines" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h12"/></symbol>
+  <symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="basket" viewBox="0 0 24 24"><path d="m15 11-1 9M19 11l-4-7M2 11h20M3.5 11l1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4M4.5 15.5h15M5 11l4-7M9 11l1 9"/></symbol>
+  <symbol id="swap" viewBox="0 0 24 24"><path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/></symbol>
+  <symbol id="trend" viewBox="0 0 24 24"><path d="M22 7 13.5 15.5 8.5 10.5 2 17M16 7h6v6"/></symbol>
+  <symbol id="user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol>
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+</defs></svg>
 
-
-  .grn { color:var(--new); font-weight:600; } .amtbox { text-align:center; padding:14px 0 6px; } .amtbox .big2 { font-size:34px; font-weight:600; }
-  .modes { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; font-size:13px; margin:0 0 12px; } .modes span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .modes .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.1); }
-  .tot { display:flex; justify-content:space-between; padding:8px 14px; font-size:14px; } .tot + .tot { border-top:.5px solid #eee; } .tot.b { font-weight:700; font-size:15px; }
-  .cmp { display:flex; gap:20px; flex-wrap:wrap; } .cmp .col { width:300px; } .tx .a { white-space:normal; }
-</style>
-</head><body>
 <h1>Cashback on a credit card: Cashback &amp; Rewards, not income</h1>
-<p class="sub">Invented example: a promo gives Rp 75.000 cashback on BCA Visa on 20 Nov. November purchases add up to Rp 8.450.000. Red = taps. Green NEW = what is added. The rule: <b>cashback into a credit card lowers the month's total spending; it never adds to income.</b> Cashback into a bank, cash or e-wallet stays income, as today.</p>
+<p class="sub">Invented example: Rp 75.000 promo cashback onto BCA Visa; a Rp 320.000 supermarket purchase on the same card. <span class="lab t">TODAY</span> = screenshots of the real app as it is now. <span class="lab n">AFTER</span> = the same screens with the change; green box = what changes. The rule: <b>cashback into a credit card lowers total spending; it never adds to income.</b> Into a bank, cash or e-wallet it stays income, as today.</p>
 
-<h2>Adding it</h2>
-<p class="lead">Typed the same way as a refund (Expense, minus first, Into the card). Once the money goes into a credit card, the category list has Cashback &amp; Rewards at the top. The receipt then says Cashback, not Refund.</p>
+<h2>1 · Adding it: typed exactly as today, one new category</h2>
+<p class="lead">Expense, −75.000, Into BCA Visa — no change. Only the category is new: Cashback &amp; Rewards, at the top of the list when the money goes into a credit card.</p>
 <div class="row">
-  <div class="col"><p class="cap"><span class="step">1</span>Minus amount, Into the card</p><p class="note">As today: Expense, type −75.000, the Paid with row turns into Into.</p>
-    <div class="phone">
-      <div class="nav"><span class="t">Cancel</span><b>New</b><span class="t">Save</span></div>
-      <div class="modes"><span class="on">Expense</span><span>Income</span><span>Transfer</span></div>
-      <div class="amtbox"><div class="big2 grn">−Rp 75.000</div></div>
-      <div class="panel">
-        <div class="r"><div class="g"><div class="a">Into</div></div><span class="vd">BCA Visa</span><span class="chev">›</span></div>
-        <div class="r tap"><div class="g"><div class="a">Category</div></div><span class="vd">Choose</span><span class="chev">›</span></div>
-        <div class="r"><div class="g"><div class="a">Date</div></div><span class="vd">20 Nov 2026</span><span class="chev">›</span></div>
-        <div class="r"><div class="g"><div class="a">Note</div></div><span class="vd">Promo cashback</span></div>
+  <div class="col"><p class="cap"><span class="lab t">TODAY</span>New transaction</p><p class="note">The minus makes it a refund; the green line says so.</p><img class="shot" src="cashback/today-form.png"></div>
+  <div class="col"><p class="cap"><span class="lab n">AFTER</span>New transaction</p><p class="note">After picking Cashback &amp; Rewards the green line says what it does.</p>
+    <div class="ph">
+      <div class="hd"><span class="circ"><svg><use href="#back"/></svg></span><b>New transaction</b><span class="circ"><svg><use href="#check"/></svg></span></div>
+      <div class="pn">
+        <div class="seg"><span class="on">Expense</span><span>Income</span><span>Transfer</span></div>
+        <div class="fr"><span class="fi"><svg><use href="#home"/></svg></span><span class="fg">Personal</span><span class="gr">Workspace</span><span class="chev">›</span></div>
+        <div class="fr"><span class="fi"><svg><use href="#card"/></svg></span><span class="fg">BCA Visa</span><span class="gr">Into</span><span class="chev">›</span></div>
+        <div class="fr" style="min-height:58px"><span class="fi">🇮🇩</span><span class="fg"><span class="gr">IDR</span> <span class="green" style="font-size:21px">−75.000</span></span><span class="gr">✕</span></div>
+        <div class="new" style="border-radius:0;padding-top:10px">
+          <div class="hint" style="margin-top:0">Cashback: lowers total spending, not income</div>
+          <div class="fr" style="border-top:.5px solid #d8d8dc"><span class="bi g sm" style="width:28px;height:28px"><svg style="width:15px;height:15px"><use href="#pct"/></svg></span><span class="fg">Cashback &amp; Rewards</span><span class="chev">›</span></div>
+        </div>
+        <div class="fr"><span class="fi"><svg><use href="#lines"/></svg></span><span class="fg">Promo cashback</span><span class="gr">✕</span></div>
+        <div class="fr"><span class="fi"><svg><use href="#cal"/></svg></span><span class="fg" style="text-align:center"><span style="background:#f0f0f3;border-radius:10px;padding:6px 40px">Tue, 17 Nov 2026</span></span></div>
+      </div>
+      <div class="more">Add more details</div>
+      <div class="dock"><svg><use href="#swap"/></svg><svg><use href="#trend"/></svg><i>＋</i><svg><use href="#card"/></svg><svg><use href="#user"/></svg></div>
+    </div></div>
+</div>
+<div class="row" style="margin-top:22px">
+  <div class="col"><p class="cap"><span class="lab t">TODAY</span>Select category</p><p class="note">Spending categories only (Household, Food and beverage…).</p><img class="shot" src="cashback/today-category.png"></div>
+  <div class="col"><p class="cap"><span class="lab n">AFTER</span>Select category</p><p class="note">Cashback &amp; Rewards at the top — only when the money goes into a credit card.</p>
+    <div class="ph">
+      <div class="hd"><span class="circ"><svg><use href="#back"/></svg></span><b>New transaction</b><span class="circ"><svg><use href="#check"/></svg></span></div>
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div style="display:flex;align-items:center;padding:0 16px 12px"><b style="flex:1;font-size:20px">Select category</b><span class="gr" style="font-size:24px;display:flex;gap:22px;align-items:center">＋<svg style="width:20px;height:20px;fill:none;stroke:#8e8e93;stroke-width:2"><use href="#search"/></svg>✕</span></div>
+        <div class="seg" style="margin:0 12px 14px"><span class="on">Expense</span><span>Income</span></div>
+        <div class="pn new" style="margin-top:20px"><div class="fr" style="min-height:62px"><span class="bi g"><svg><use href="#pct"/></svg></span><span class="fg">Cashback &amp; Rewards<br><span class="gr" style="font-size:13px">Lowers total spending · not income</span></span></div></div>
+        <div class="pn">
+          <div class="fr" style="min-height:62px"><span class="bi g"><svg><use href="#home"/></svg></span><span class="fg">Household</span></div>
+          <div class="tree sm"><div class="fr" style="min-height:58px"><span class="bi g"><svg><use href="#basket"/></svg></span><span class="fg">Groceries</span></div><div class="fr" style="min-height:58px"><span class="bi g"><svg><use href="#basket"/></svg></span><span class="fg">Supplies</span></div></div>
+        </div>
+        <div class="pn"><div class="fr" style="min-height:62px"><span class="bi o"><svg><use href="#basket"/></svg></span><span class="fg">Food and beverage</span></div></div>
       </div>
     </div></div>
-  <div class="col"><p class="cap"><span class="step">2</span>Pick Cashback &amp; Rewards</p><p class="note">Only offered when the money goes into a credit card. Other categories stay below (a real refund of a purchase still picks the purchase's category).</p>
-    <div class="phone">
-      <div class="nav"><span class="t">‹ Back</span><b>Category</b><span class="t"></span></div>
-      <div class="panel new"><div class="r tap"><div class="ic2" style="width:30px;height:30px;border-radius:50%;background:#e3f5e8;display:flex;align-items:center;justify-content:center">％</div><div class="g"><div class="a">Cashback &amp; Rewards</div><div class="s">Lowers total spending · not income</div></div></div></div>
-      <div class="hdr">Refund of a purchase</div>
-      <div class="panel">
-        <div class="r"><div class="g"><div class="a">🍜 Food &amp; Drinks</div></div><span class="chev">›</span></div>
-        <div class="r"><div class="g"><div class="a">🛍 Shopping</div></div><span class="chev">›</span></div>
-        <div class="r"><div class="g"><div class="a">🚗 Transport</div></div><span class="chev">›</span></div>
-        <div class="r"><div class="g"><div class="a">⋯ More</div></div><span class="chev">›</span></div>
+</div>
+<div class="row" style="margin-top:22px">
+  <div class="col"><p class="cap"><span class="lab t">TODAY</span>The receipt</p><p class="note">Says Refund · Money back.</p><img class="shot" src="cashback/today-receipt.png"></div>
+  <div class="col"><p class="cap"><span class="lab n">AFTER</span>The receipt</p><p class="note">Says Cashback · Lowers spending. No "Refund" word.</p>
+    <div class="ph">
+      <div class="hd"><span class="circ"><svg><use href="#back"/></svg></span><span style="display:flex;gap:10px"><span class="circ">✎</span><span class="circ">⧉</span></span></div>
+      <div style="text-align:center;margin:0 0 14px">
+        <div class="new" style="display:inline-block;padding:10px 26px 8px"><div class="bi g" style="width:56px;height:56px;margin:0 auto 6px"><svg style="width:30px;height:30px"><use href="#pct"/></svg></div>
+        <div style="font-size:15px;color:#8e8e93;margin-top:2px">Cashback &amp; Rewards</div></div>
+        <div style="font-size:32px;font-weight:700;margin-top:6px">-Rp 75.000</div><div class="gr">My share</div>
+        <div style="font-size:21px;font-weight:600;margin-top:8px">Promo cashback</div>
+        <div class="gr" style="margin-top:6px">Tuesday, 17 November 2026</div>
       </div>
-    </div></div>
-  <div class="col"><p class="cap">After: the receipt</p><p class="note">Says Cashback, green. No "Refund" word anywhere.</p>
-    <div class="phone">
-      <div class="top"><span style="color:var(--tint)">‹ Back</span><span><span class="round">✎</span><span class="round">⧉</span></span></div>
-      <div class="hero"><div class="ic" style="background:#e3f5e8">％</div><div class="amt grn">+Rp 75.000</div><div class="nm">Cashback &amp; Rewards</div><div class="s2">Promo cashback</div><div class="s2">Friday, 20 November 2026</div></div>
-      <div class="panel"><div class="kv"><span>Into</span><span>BCA Visa</span></div><div class="kv"><span>Counts as</span><span>Lowers spending</span></div></div>
+      <div class="pn">
+        <div class="kv"><span>Paid into</span><span>BCA Visa</span></div>
+        <div class="kv new" style="border-radius:0"><span>Cashback</span><span>Lowers spending</span></div>
+        <div class="kv"><span>Total</span><span>+Rp 75.000</span></div>
+      </div>
+      <div class="pn"><div class="kv" style="font-size:19px"><span style="color:#000">Bill</span><span class="gr">None ›</span></div><div class="kv" style="font-size:19px"><span style="color:#000">Settled</span><span class="sw"></span></div></div>
+      <div class="pn" style="margin-bottom:100px"><div class="kv" style="justify-content:center;color:#d70015;font-size:19px">Delete</div></div>
+      <div class="dock"><svg><use href="#swap"/></svg><svg><use href="#trend"/></svg><i>＋</i><svg><use href="#card"/></svg><svg><use href="#user"/></svg></div>
     </div></div>
 </div>
 
-<h2>Where it shows</h2>
+<h2>2 · Where it shows</h2>
+<p class="lead">Cashflow's total spent is purchases minus cashback (the same figure as today). What changes: the row reads Cashback &amp; Rewards, and Groceries keeps its full Rp 320.000 instead of being cut to Rp 245.000.</p>
 <div class="row">
-  <div class="col"><p class="cap">Cashflow list</p><p class="note">A green + row on its day, like any money in.</p>
-    <div class="phone" style="min-height:300px">
-      <div class="panel">
-        <div class="day"><b>20</b><div class="d"><strong>Friday</strong><br>November 2026</div><span>Rp 245.000</span></div>
-        <div class="tx new"><div class="ic2" style="background:#e3f5e8">％</div><div class="g"><div class="a">Cashback &amp; Rewards</div><div class="s">Promo cashback · BCA Visa</div></div><span class="grn">+Rp 75.000</span></div>
-        <div class="tx"><div class="ic2">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">Supermarket · BCA Visa</div></div><span class="red">Rp 320.000</span></div>
+  <div class="col"><p class="cap"><span class="lab t">TODAY</span>Cashflow</p><p class="note">The cashback is a Groceries row; Groceries is Rp 245.000 for the month.</p><img class="shot" src="cashback/today-cashflow.png"></div>
+  <div class="col"><p class="cap"><span class="lab n">AFTER</span>Cashflow</p><p class="note">Ring: Household (Groceries) Rp 320.000; the middle says the total after cashback. Income tab: unchanged.</p>
+    <div class="ph" style="height:690px">
+      <div class="hd" style="padding-left:16px"><b style="font-size:34px">Cashflow</b><span style="display:flex;gap:10px"><span class="circ"><svg style="width:20px;height:20px"><use href="#search"/></svg></span><span class="circ"><b>P</b></span></span></div>
+      <div class="pn" style="padding:14px 0 16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0 24px"><span class="gr">‹</span><span style="background:#f0f0f3;border-radius:20px;padding:8px 18px;font-weight:600">November 2026 ⌄</span><span class="gr">›</span></div>
+        <div class="seg" style="margin:16px 20px 0"><span class="on">Expense</span><span>Income</span></div>
+        <div class="new" style="margin:10px 60px 0;padding:4px 0 6px"><div class="ring"><div><span style="font-size:11px;color:#8e8e93">Total spent</span><b style="font-size:18px">Rp 245.000</b><span style="font-size:11px;color:#1a9e46">after Rp 75.000 cashback</span></div></div>
+        <div style="text-align:center;font-size:12px"><b>100%</b> <span class="gr" style="font-size:12px">Household</span></div></div>
       </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 10px"><b style="font-size:24px">Transactions</b><span class="gr">▦ ⋯</span></div>
+      <div class="pn">
+        <div class="day"><b>17</b><div class="d"><strong>Tuesday</strong><br>November 2026</div><b style="font-size:17px;font-weight:600;color:#3c3c43">Rp 245.000</b></div>
+        <div class="tx new"><span class="bi g"><svg><use href="#pct"/></svg></span><div class="fg">Cashback &amp; Rewards<div class="s">Promo cashback · BCA Visa</div></div><span class="green" style="font-weight:600">+Rp 75.000</span></div>
+        <div class="tx"><span class="bi g"><svg><use href="#basket"/></svg></span><div class="fg">Groceries<div class="s">Supermarket · BCA Visa</div></div><span class="red" style="font-weight:600">Rp 320.000</span></div>
+      </div>
+      <div class="dock"><svg><use href="#swap"/></svg><svg><use href="#trend"/></svg><i>＋</i><svg><use href="#card"/></svg><svg><use href="#user"/></svg></div>
     </div></div>
-  <div class="col"><p class="cap">Cashflow totals · November</p><p class="note">Spending is purchases minus cashback. Income does not move.</p>
-    <div class="phone" style="min-height:300px">
-      <div class="panel">
-        <div class="tot"><span>Income</span><span class="grn">Rp 15.000.000</span></div>
-        <div class="tot b"><span>Spending</span><span class="red">Rp 8.375.000</span></div>
-      </div>
-      <div class="hdr">Spending by category</div>
-      <div class="panel">
-        <div class="tot"><span>🍜 Food &amp; Drinks</span><span>Rp 3.100.000</span></div>
-        <div class="tot"><span>🛍 Shopping</span><span>Rp 2.850.000</span></div>
-        <div class="tot"><span>🏠 Home</span><span>Rp 2.500.000</span></div>
-        <div class="tot new"><span>％ Cashback &amp; Rewards</span><span class="grn">−Rp 75.000</span></div>
-      </div>
-      <div class="foot">Food, Shopping and Home keep their full amounts; budgets do not change.</div>
-    </div></div>
-  <div class="col"><p class="cap">Card statement</p><p class="note">A credit on the bill; what is due goes down.</p>
-    <div class="phone" style="min-height:300px">
-      <div class="hdr">BCA Visa · 19 Nov – 18 Dec</div>
-      <div class="panel">
-        <div class="tx"><div class="ic2">🛒</div><div class="g"><div class="a">Groceries</div><div class="s">20 Nov</div></div><span>Rp 320.000</span></div>
-        <div class="tx new"><div class="ic2" style="background:#e3f5e8">％</div><div class="g"><div class="a">Cashback &amp; Rewards</div><div class="s">20 Nov</div></div><span class="grn">−Rp 75.000</span></div>
-      </div>
-      <div class="panel"><div class="tot b"><span>Total so far</span><span>Rp 245.000</span></div></div>
-    </div></div>
+  <div class="col"><p class="cap"><span class="lab t">TODAY = AFTER</span>Card statement</p><p class="note">No change: the cashback is a −Rp 75.000 credit and the bill drops to Rp 245.000.</p><img class="shot" src="cashback/today-statement.png"></div>
 </div>
 
-<h2>The same cashback, two places it can land</h2>
-<div class="row"><div class="col" style="width:620px"><div class="wrap"><div class="panel">
-    <div class="r"><div class="g"><div class="a">Into a credit card</div><div class="s">Cashback &amp; Rewards · lowers total spending · not income</div></div><span class="grn">NEW</span></div>
-    <div class="r"><div class="g"><div class="a">Into a bank, cash or e-wallet (e.g. GoPay)</div><div class="s">Income › Cashback &amp; Rewards · adds to income · as today</div></div><span class="vd">Same</span></div>
-    <div class="r"><div class="g"><div class="a">Refund of a purchase on the card</div><div class="s">Picks the purchase's category · lowers that category · as today</div></div><span class="vd">Same</span></div>
-</div></div></div></div>
+<h2>The rule in one place</h2>
+<div class="rules">
+  <div class="r"><div class="g">Into a credit card<div class="s">Cashback &amp; Rewards · lowers total spending · not income · categories and budgets keep their full amounts</div></div><b class="green">NEW</b></div>
+  <div class="r"><div class="g">Into a bank, cash or e-wallet (e.g. GoPay)<div class="s">Income › Cashback &amp; Rewards · adds to income</div></div><span class="gr">as today</span></div>
+  <div class="r"><div class="g">A real refund of a purchase on the card<div class="s">Picks the purchase's category · lowers that category</div></div><span class="gr">as today</span></div>
+</div>
 </body></html>
