@@ -357,6 +357,8 @@ export function DesktopCashflow({
     }
     const action = peekKey(event.key, { open: selected !== undefined, typing, covered });
     if (!action) return;
+    // Return on a button or a link (the peek's Delete, say) is that control's own press, never the edit screen.
+    if (action === 'edit' && target?.closest('button, a')) return;
     event.preventDefault();
     if (action === 'close') dispatch({ type: 'close' });
     else if (action === 'up' || action === 'down') dispatch({ type: 'step', by: action === 'up' ? -1 : 1, ids });
@@ -520,7 +522,19 @@ export function DesktopCashflow({
                 <span />
               </div>
               {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} desk={desk} />}
-              {rows.length === 0 && <div className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">{emptyText}</div>}
+              {rows.length === 0 && (
+                <div className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
+                  {emptyText}
+                  {narrowed && (
+                    <>
+                      {' '}
+                      <button type="button" onClick={onClearAll} className="text-[var(--mac-accent)] hover:underline">
+                        Clear search and filters
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               {rows.map((row, index) =>
                 row.kind === 'draft' ? (
                   <EditableRow key={`d:${row.id}`} row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} desk={desk} />
@@ -644,7 +658,11 @@ function DeskRow({
       <span className={cx('truncate px-2 py-[5px]', selected ? 'text-white' : 'text-[var(--ph-ink-2)]')}>{helpers.paidWith(row)}</span>
       <span className={cx('truncate px-2 py-[5px]', grey)}>{counts}</span>
       <span className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', income && !selected && 'text-[var(--ph-up)]')}>
-        {extra.length > 0 && <span className={cx('truncate text-[11px]', grey)}>{extra.join(' · ')}</span>}
+        {extra.length > 0 && (
+          <span data-testid="amount-extra" className={cx('truncate text-[11px]', grey)}>
+            {extra.join(' · ')}
+          </span>
+        )}
         <span className="whitespace-nowrap">
           {sign}
           {formatMinor(Math.abs(row.amountMinor), row.currency)}

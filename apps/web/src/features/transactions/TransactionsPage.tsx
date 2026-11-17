@@ -1516,7 +1516,7 @@ export function TransactionsPage() {
         kind={deskKind}
         paidAccountId={paidAccountId}
         rows={shown}
-        emptyText={listable.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
+        emptyText={listable.length === 0 ? 'No transactions in this period. Type the first one above.' : 'Nothing matches the search and filters.'}
         limitNote={month === 'all' && recorded.length >= ALL_TIME_LIMIT ? `The newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only` : undefined}
         pendingCount={pending.length}
         accounts={accounts}

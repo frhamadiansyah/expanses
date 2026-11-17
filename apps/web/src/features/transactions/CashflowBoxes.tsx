@@ -94,6 +94,8 @@ export function RingBox({
                 <span className="flex min-w-0 items-center gap-[6px]">
                   {item.categoryId ? icon(item.categoryId) : <i aria-hidden className="mx-[4px] block h-[10px] w-[10px] shrink-0 rounded-full" style={{ background: item.colour }} />}
                   <span className="min-w-0 truncate text-[var(--ph-ink)]">{item.name}</span>
+                  {/* The figure behind the share, said rather than drawn: the box has room for the share alone. */}
+                  <span className="sr-only">, {formatMinor(item.minor, currency)}</span>
                 </span>
                 <span className="shrink-0 text-[var(--ph-ink-3)] tabular-nums">{item.percent}%</span>
               </>
@@ -103,6 +105,7 @@ export function RingBox({
               <button
                 key={item.key}
                 type="button"
+                data-testid="report-row"
                 aria-pressed={picked === item.categoryId}
                 title={picked === item.categoryId ? 'Show every category' : `Only ${item.name}`}
                 onClick={() => onPick(item.categoryId!)}
@@ -111,7 +114,7 @@ export function RingBox({
                 {inside}
               </button>
             ) : (
-              <div key={item.key} className={row}>
+              <div key={item.key} data-testid="report-row" className={row}>
                 {inside}
               </div>
             );
