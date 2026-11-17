@@ -440,10 +440,25 @@ export class CaptureSession {
     return out;
   }
 
+  /** While above zero, row slots go to the front of the transaction's order (`withCaptureFirst`). */
+  private first = 0;
+  /** Where the next front slot goes: after the front slots already reserved, in the order they were. */
+  private firstAt = 0;
+
   reserveRowSlot(): { kind: 'rows'; ops: { bookId: string; op: Op }[] } {
     const slot = { kind: 'rows' as const, ops: [] as { bookId: string; op: Op }[] };
-    this.slots.push(slot);
+    if (this.first > 0) this.slots.splice(this.firstAt++, 0, slot);
+    else this.slots.push(slot);
     return slot;
+  }
+
+  async capturingFirst<T>(fn: () => Promise<T>): Promise<T> {
+    this.first += 1;
+    try {
+      return await fn();
+    } finally {
+      this.first -= 1;
+    }
   }
 
   async touchLineage(lineageId: string, transactionId: string): Promise<void> {
@@ -825,6 +840,18 @@ export async function withCaptureSuspended<T>(tx: Db, fn: () => Promise<T>): Pro
   } finally {
     if (was) session?.resume();
   }
+}
+
+/**
+ * Runs `fn` with what it captures placed ahead of everything else this db transaction sends, in the order such calls
+ * came. Only for a row nothing written earlier in the transaction can depend on — a category made for the first time —
+ * that a row sent earlier may use: the withdrawal rate makes Exchange gain or Exchange loss at the end of a db
+ * transaction, often after the shared purchase it goes on was touched, and a partner's phone that met the purchase
+ * first would file its line Uncategorised (trip change-back fix, 17 Nov 2026).
+ */
+export function withCaptureFirst<T>(tx: Db, fn: () => Promise<T>): Promise<T> {
+  const session = sessionOf(tx);
+  return session ? session.capturingFirst(fn) : fn();
 }
 
 /**
