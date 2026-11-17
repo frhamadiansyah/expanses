@@ -6,6 +6,7 @@ import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react
 import { ArrowUpDown, Award, Check, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { cx, Empty, Money } from '../../ui';
 import { CardStack, CornerButton, type CornerAction, heroFigure, InsetGroup, InsetRow, LargeTitle, Panel } from '../../ui/native';
 import { BalanceSpark } from '../accounts/BalanceSpark';
@@ -18,6 +19,7 @@ import { useBillsInMonth } from '../debt-plan/queries';
 import { useSetAsideViews } from '../goals/queries';
 import { useOwnedTogether, useOwnerRings, useSharedNetWorth } from '../networth/queries';
 import { BillsToPaySheet } from './BillsToPaySheet';
+import { DesktopWallet } from './DesktopWallet';
 import { useWalletCards } from './useWalletCards';
 import { filteredCards, toggleFilter, walletBox, type WalletFilter, walletFilterSets } from './wallet-balance';
 import { jointKey } from './wallet-joint';
@@ -131,6 +133,16 @@ const FILTER_LABELS: Record<WalletFilter, string> = { spending: 'Spending money'
  * deposit, savings kept aside, a pocket — opens its page on its own, as it always has.
  */
 export function WalletPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  const { cardId, accountId, itemId } = useParams({ strict: false }) as { cardId?: string; accountId?: string; itemId?: string };
+  // A wide screen reads Wallet itself as Mac Wallet (`DesktopWallet`); a card opened from it is the phone's raised card over its page.
+  if (!phone && !sideways && cardId === undefined && accountId === undefined && itemId === undefined) return <DesktopWallet />;
+  return <StackWallet />;
+}
+
+/** Wallet as the phone draws it — the stack, the grid, the carousel — and every wide screen's raised card over its page. */
+function StackWallet() {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const router = useRouter();

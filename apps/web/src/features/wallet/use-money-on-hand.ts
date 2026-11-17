@@ -15,7 +15,8 @@ import { walletBox } from './wallet-balance';
  */
 export function useMoneyOnHand() {
   const { ws } = useApp();
-  const { accounts, balances, everything, all, book, credit, joint, rates, held, today, laterOnCards, plansRead } = useWalletCards();
+  const wallet = useWalletCards();
+  const { accounts, balances, everything, all, book, credit, joint, rates, held, today, laterOnCards, plansRead } = wallet;
   const setAsides = useSetAsideViews();
   const month = periodMonthOf(today, useMonthStart());
   const monthBills = useBillsInMonth(month, { workspaceMonth: true });
@@ -44,5 +45,6 @@ export function useMoneyOnHand() {
     laterOnCards,
   });
   const ready = accounts.isSuccess && balances.isSuccess && rates.isSuccess && plansRead && setAsides.isSuccess && !billRates.isPending && !monthBills.isPending;
-  return { box, ready, everything, all, book, held, today, currency: ws.baseCurrency };
+  // With the cards themselves, for Mac Wallet, which draws them under the same box (`DesktopWallet`).
+  return { box, ready, everything, all, book, held, today, currency: ws.baseCurrency, wallet, month };
 }
