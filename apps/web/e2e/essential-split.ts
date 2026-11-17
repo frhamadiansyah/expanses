@@ -120,6 +120,17 @@ export async function checkBudgetBox(page: Page, shot?: string) {
   // income so far less both.
   await setBudget(page, 'Groceries', '8000000');
   await setBudget(page, 'Food and beverage', '6000000');
+  if ((await page.getByTestId('budget-page').getAttribute('data-desk')) === 'true') {
+    // A wide screen's box is the month's split as shares of what was bought (the phone's ⋯ Essential and lifestyle).
+    const split = page.getByTestId('split-box');
+    await expect(split.getByTestId('essential-spent')).toContainText('64%');
+    await expect(split.getByTestId('essential-spent')).toContainText(money('9.000.000'));
+    await expect(split.getByTestId('lifestyle-spent')).toContainText('36%');
+    await expect(split.getByTestId('lifestyle-spent')).toContainText(money('5.000.000'));
+    await expect(split.getByTestId('debts-savings-spent')).toContainText('0%');
+    if (shot) await page.screenshot({ path: shot });
+    return;
+  }
   const box = page.locator('section', { has: page.getByTestId('needs-essential') });
   await expect(box).toContainText('Essential · Lifestyle · Debts & savings');
   await expect(box.getByTestId('needs-essential-figure')).toHaveText(/Rp\s?9\.000\.000 of Rp\s?8\.000\.000/);

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { budgetTab, capField, openCapOf, openDrawer, openEditBudgets } from './budget';
+import { budgetCells, budgetTab, capField, openCapOf, openDrawer, openEditBudgets } from './budget';
 
 test('a weekly line is shown and counted as 52/12 of a week', async ({ page }) => {
   await page.goto('/budget');
@@ -14,7 +14,8 @@ test('a weekly line is shown and counted as 52/12 of a week', async ({ page }) =
 
   // Folded under its parent, and read a month at a time.
   await openDrawer(page, 'Household');
-  await expect(page.getByTestId('line-Groceries')).toContainText('left of 2.166.667');
+  await expect(budgetCells(page, 'Groceries').budget).toHaveText('weekly · 2.166.667');
+  await expect(budgetCells(page, 'Groceries').left).toHaveText('2.166.667');
   await budgetTab(page, 'Plan');
   await expect(page.getByTestId('caps-total')).toContainText('2.166.667');
 

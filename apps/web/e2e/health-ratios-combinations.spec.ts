@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
-import { addCap, budgetTab, capField, openCapOf, openDrawer, openEditBudgets } from './budget';
+import { addCap, budgetCells, budgetTab, capField, openCapOf, openDrawer, openEditBudgets } from './budget';
 import { editGoal, openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { countsAs, expectNeed, markNeed, openCategory } from './categories';
@@ -173,9 +173,10 @@ test('row 8 — five units, and the total is the sum of the converted lines', as
   await cap(page, 'Personal care', 'yearly', '2400000');
   // 1.520.833 + 2.166.667 + 900.000 + 5.128.667 + 200.000 — never the typed figures, never ×4 or ×30.
   await openDrawer(page, 'Household');
-  await expect(page.getByTestId('line-Groceries')).toContainText('left of 1.520.833');
-  await expect(page.getByTestId('line-Education')).toContainText('left of 5.128.667');
-  await expect(page.getByTestId('line-Personal care')).toContainText('left of 200.000');
+  // Each as its month, the unit it was typed in beside it.
+  await expect(budgetCells(page, 'Groceries').budget).toHaveText('daily · 1.520.833');
+  await expect(budgetCells(page, 'All Education').budget).toHaveText('quarterly · 5.128.667');
+  await expect(budgetCells(page, 'All Personal care').budget).toHaveText('yearly · 200.000');
   await budgetTab(page, 'Plan');
   await expect(page.getByTestId('caps-total')).toContainText('9.916.167');
 
@@ -218,12 +219,12 @@ test('row 10 — the month split into essential and lifestyle on the Budget page
   await setUp(page);
   await markFoodLifestyle(page);
   await page.goto('/budget');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Essential and lifestyle' }).click();
-  await expect(page.getByTestId('spent-total')).toContainText('3.000.000');
+  // The split is a box of the page; what was spent in all is the Plan view's Month so far.
   await expect(page.getByTestId('essential-spent')).toContainText('2.000.000');
   await expect(page.getByTestId('lifestyle-spent')).toContainText('1.000.000');
   await expect(page.getByTestId('debts-savings-spent')).toContainText('0');
+  await budgetTab(page, 'Plan');
+  await expect(page.getByTestId('month-spent')).toContainText('3.000.000');
 });
 
 test('row 1b — built-in marks: Restaurants is lifestyle, Life insurance counts with the essentials', async ({ page }) => {
@@ -238,12 +239,11 @@ test('row 1b — built-in marks: Restaurants is lifestyle, Life insurance counts
   await expect(emergencyCard(page)).toContainText('2,3 months');
 
   await page.goto('/budget');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Essential and lifestyle' }).click();
-  await expect(page.getByTestId('spent-total')).toContainText('6.000.000');
   await expect(page.getByTestId('essential-spent')).toContainText('3.000.000');
   await expect(page.getByTestId('lifestyle-spent')).toContainText('1.000.000');
   await expect(page.getByTestId('debts-savings-spent')).toContainText('2.000.000');
+  await budgetTab(page, 'Plan');
+  await expect(page.getByTestId('month-spent')).toContainText('6.000.000');
 });
 test('row 11 — the sections hold: a holiday never lists under compulsory', async ({ page }) => {
   await addFromTemplate(page, 'Holiday', '15000000');

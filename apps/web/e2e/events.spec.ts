@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 // The wallet, the spending and the event are shared with the plan specs, which drive the same three screens.
 import { addEvent, addWallet, fillItem, planFor, recordIntoEvent, spend, showPlanCard, showPlan } from './event-plan';
-import { addCap, budgetTab, monthSoFar } from './budget';
+import { addCap, budgetCells, budgetTab, monthSoFar } from './budget';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -39,7 +39,7 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
   await page.goto('/budget');
   // The same sheet budget.spec.ts drives: the parent option is its plain name.
   await addCap(page, { option: 'Food and beverage', amount: '1000000' });
-  await expect(page.getByTestId('line-Food and beverage')).toContainText('4.200.000');
+  await expect(budgetCells(page, 'All Food and beverage').spent).toHaveText('4.200.000');
   await monthSoFar(page);
   await expect(page.getByTestId('month-spent')).toContainText('4.200.000');
   const leftOverBefore = await page.getByTestId('left-over-actual').textContent();
@@ -52,7 +52,7 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
 
   await page.goto('/budget');
   // Out of the caps, named on its own line, and what is left has not moved.
-  await expect(page.getByTestId('line-Food and beverage')).toContainText('left of 1.000.000');
+  await expect(budgetCells(page, 'All Food and beverage').left).toHaveText('1.000.000');
   await budgetTab(page, 'Plan');
   await expect(page.getByTestId('event-line')).toContainText('4.200.000');
   await monthSoFar(page);

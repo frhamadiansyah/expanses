@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { openEditBudgets } from './budget';
+import { budgetRow, openEditBudgets } from './budget';
 import { recordIntoEvent } from './event-plan';
 
 // Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00
@@ -178,7 +178,8 @@ test('a set stays out of the monthly categories, and its spending out of the mon
 
   // And the budget plans the month, not the event.
   await page.goto('/budget');
-  await expect(page.getByTestId('uncapped-Diapering')).toHaveCount(0);
+  await expect(page.getByTestId('budget-page')).toBeVisible();
+  await expect(budgetRow(page, 'Diapering')).toHaveCount(0);
   const screen = await openEditBudgets(page);
   await expect(screen.getByLabel('Diapering', { exact: true })).toHaveCount(0);
 

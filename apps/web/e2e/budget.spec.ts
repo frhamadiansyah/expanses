@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
-import { budgetTab, capField, openCapOf, openEditBudgets, setBudget } from './budget';
+import { budgetCells, budgetRow, budgetTab, capField, monthSoFar, openCapOf, openEditBudgets, setBudget } from './budget';
 import { openGoalForm } from './goals';
 
 test.beforeEach(({ page }) => {
@@ -22,19 +22,19 @@ test('a cap on a parent counts what its children spent, and an over cap is liste
   await page.goto('/budget');
   await setBudget(page, 'Food and beverage', '300000');
 
-  // 500.000 spent under Restaurants against a 300.000 cap on the parent.
-  const over = page.getByRole('heading', { name: 'Over the cap' });
-  await expect(over).toBeVisible();
-  const line = page.getByTestId('line-Food and beverage');
-  await expect(line).toContainText('500.000');
-  await expect(line).toContainText('over by');
-  await expect(line).toContainText('200.000');
-  // The card says the month is over, and by how much.
-  await expect(page.getByTestId('left-to-spend')).toContainText('Over by Rp 200.000');
+  // 500.000 spent under Restaurants against a 300.000 cap on the parent: its group row and its own budget both say so.
+  const group = budgetCells(page, 'Food and beverage');
+  await expect(group.budget).toHaveText('300.000');
+  await expect(group.spent).toHaveText('500.000');
+  await expect(group.left).toHaveText('−200.000');
+  await expect(budgetCells(page, 'All Food and beverage').left).toHaveText('−200.000');
+  // Needs a look names it, and the gauge says the month is over, and by how much.
+  await expect(page.getByTestId('needs-a-look')).toContainText('Food and beverage over');
+  await expect(page.getByTestId('needs-a-look')).toContainText(/−Rp\s200\.000/);
+  await expect(page.getByTestId('left-to-spend').getByRole('img')).toHaveAccessibleName(/^Rp\s200\.000 over budget by$/);
 
-  // The row opens its cap: what was spent against it, read back.
-  await line.click();
-  const sheet = page.getByRole('dialog', { name: 'Food and beverage' });
+  // Its name opens the side peek, and Edit budget its cap: what was spent against it, read back.
+  const sheet = await openCapOf(page, 'Food and beverage');
   await expect(sheet.getByLabel('Cap', { exact: true })).toHaveValue('300.000');
   await expect(sheet.getByTestId('cap-spent')).toContainText('500.000');
 });
@@ -46,22 +46,25 @@ test('every spending category can be budgeted on Edit budgets, capped or not', a
   await expect(field).toHaveValue('');
   await field.fill('400000');
   await page.getByRole('button', { name: 'Save budgets' }).click();
-  await expect(page.getByTestId('line-Personal care')).toContainText('left of 400.000');
+  await expect(budgetCells(page, 'Personal care').budget).toHaveText('400.000');
+  await expect(budgetCells(page, 'Personal care').left).toHaveText('400.000');
 });
 
 test('an override changes one month and leaves the next alone', async ({ page }) => {
   await page.goto('/budget');
   await setBudget(page, 'Food and beverage', '1000000');
-  await expect(page.getByTestId('line-Food and beverage')).toContainText('1.000.000');
+  await expect(budgetCells(page, 'All Food and beverage').budget).toHaveText('1.000.000');
 
   await setBudget(page, 'Food and beverage', '9000000', true);
-  await expect(page.getByTestId('line-Food and beverage')).toContainText('9.000.000');
+  // The month's own figure, said as such.
+  await expect(budgetCells(page, 'All Food and beverage').budget).toHaveText('this month · 9.000.000');
   let sheet = await openCapOf(page, 'Food and beverage');
   await expect(sheet.getByLabel('Just this month')).toBeChecked();
   await page.keyboard.press('Escape');
 
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Next month' }).click();
-  await expect(page.getByTestId('line-Food and beverage')).toContainText('left of 1.000.000');
+  await expect(budgetCells(page, 'All Food and beverage').budget).toHaveText('1.000.000');
   sheet = await openCapOf(page, 'Food and beverage');
   await expect(sheet.getByLabel('Just this month')).not.toBeChecked();
   await expect(sheet.getByLabel('Cap', { exact: true })).toHaveValue('1.000.000');
@@ -70,12 +73,13 @@ test('an override changes one month and leaves the next alone', async ({ page })
 test('Remove budget takes the cap off, and the category is uncapped again', async ({ page }) => {
   await page.goto('/budget');
   await setBudget(page, 'Transportation', '900000');
-  await expect(page.getByTestId('line-Transportation')).toBeVisible();
+  await expect(budgetRow(page, 'Transportation')).toBeVisible();
 
-  await page.getByTestId('line-Transportation').click();
-  await page.getByRole('dialog', { name: 'Transportation' }).getByRole('button', { name: 'Remove budget' }).click();
+  const sheet = await openCapOf(page, 'Transportation');
+  await sheet.getByRole('button', { name: 'Remove budget' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByTestId('line-Transportation')).toHaveCount(0);
+  // Nothing was spent on it, so with its budget gone it leaves the table.
+  await expect(budgetRow(page, 'Transportation')).toHaveCount(0);
   // Nothing was spent on it, so it waits on Edit budgets, empty, rather than under No budget yet.
   const screen = await openEditBudgets(page);
   await expect((await capField(screen, 'Transportation')).field).toHaveValue('');
@@ -112,10 +116,9 @@ test('the plan divides a typed take-home, and a bonus month is that month alone'
   await expect(page.getByTestId('income-line')).not.toContainText('Just this month');
 });
 
-test('what the month has left so far is behind ⋯', async ({ page }) => {
+test('what the month has left so far is a box of the Plan view', async ({ page }) => {
   await page.goto('/budget');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Month so far' }).click();
+  await monthSoFar(page);
   await expect(page.getByTestId('left-over-actual')).toContainText('0');
 });
 

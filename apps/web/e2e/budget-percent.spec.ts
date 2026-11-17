@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { budgetTab, capField, openCapOf, openEditBudgets } from './budget';
+import { budgetCells, budgetTab, capField, openCapOf, openEditBudgets } from './budget';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -26,10 +26,11 @@ test('a budget set as 30% of take-home follows the take-home when it changes', a
   await expect(screen.getByTestId('edit-budgeted')).toContainText('3.000.000');
   await expect(screen.getByTestId('edit-share')).toContainText('30% of take-home');
   await page.getByRole('button', { name: 'Save budgets' }).click();
-  await expect(page.getByTestId('line-Food and beverage')).toContainText('left of 3.000.000');
+  // Its own budget, under its group: the % as typed, and what it comes to.
+  await expect(budgetCells(page, 'All Food and beverage').budget).toHaveText('30% · 3.000.000');
 
   await setTakeHome(page, '12000000');
-  await expect(page.getByTestId('line-Food and beverage')).toContainText('left of 3.600.000');
+  await expect(budgetCells(page, 'All Food and beverage').budget).toHaveText('30% · 3.600.000');
 });
 
 test('the sheet turns a figure into its % and back, and keeps the budget a % after saving', async ({ page }) => {

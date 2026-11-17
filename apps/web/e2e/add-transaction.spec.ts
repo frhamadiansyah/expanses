@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
 import { addPlastic, expectWalletFigure, openAccount, openAccountHistory, removePlastic } from './accounts';
-import { addCap } from './budget';
+import { addCap, budgetCells } from './budget';
 import { addForm, addTransaction, addTransfer, attachPhoto, closeDetails, fillAmount, openAmount, saveButton, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
@@ -1481,9 +1481,9 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   // …and out of the budget, which is a second reader of the same rows. 1.000.000 capped, 50.000 spent.
   await page.goto('/budget');
   await addCap(page, { option: 'Household', amount: '1000000' });
-  const line = page.getByTestId('line-Household');
-  await expect(line).toContainText('50.000');
-  await expect(line).not.toContainText('135.000');
+  const line = budgetCells(page, 'All Household');
+  await expect(line.spent).toHaveText('50.000');
+  await expect(line.left).toHaveText('950.000');
 
   // …while the balance, the statement and the points all still hold both. This is the half the switch must not
   // touch, and the half a "leave it out of everything" reading of the switch would break.

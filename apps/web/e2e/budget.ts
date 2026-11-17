@@ -1,13 +1,41 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
+/** Whether the Budget page on show is the wide screen's (Mac Budget): a table typed into in place, a side peek. */
+export async function deskBudget(page: Page): Promise<boolean> {
+  await expect(page.getByTestId('budget-page')).toBeVisible();
+  return (await page.getByTestId('budget-page').getAttribute('data-desk')) === 'true';
+}
+
+/** A category's row in the wide screen's Categories table: a root or a sub-category by name, a parent's own as "All <name>". */
+export const budgetRow = (page: Page, name: string): Locator => page.getByTestId(`budget-row-${name}`);
+
+/** A row's Budget, Spent and Left cells on the wide screen. */
+export function budgetCells(page: Page, name: string) {
+  const row = budgetRow(page, name);
+  return { row, budget: row.getByTestId('budget-cell'), spent: row.getByTestId('spent-cell'), left: row.getByTestId('left-cell') };
+}
+
+/** Types a figure into a category's Budget cell on the wide screen and saves it with Return. */
+export async function typeBudget(page: Page, name: string, figure: string) {
+  await page.getByRole('button', { name: `Budget for ${name}`, exact: true }).click();
+  const field = page.getByRole('textbox', { name: `Budget for ${name}`, exact: true });
+  await field.fill(figure);
+  await field.press('Enter');
+  await expect(field).toHaveCount(0);
+}
+
 /** The Budget page's two tabs. */
 export async function budgetTab(page: Page, tab: 'Spending' | 'Plan') {
   await page.getByRole('radiogroup', { name: 'Budget view' }).getByRole('radio', { name: tab }).click();
 }
 
-/** ⋯ Month so far: what came in and went out, and what is left. */
+/** ⋯ Month so far: what came in and went out, and what is left. On a wide screen it is a box of the Plan view. */
 export async function monthSoFar(page: Page) {
   await page.keyboard.press('Escape');
+  if (await deskBudget(page)) {
+    await budgetTab(page, 'Plan');
+    return;
+  }
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Month so far' }).click();
 }
@@ -33,8 +61,13 @@ export async function capField(screen: Locator, option: string): Promise<{ field
   return { field: screen.getByLabel(label, { exact: true }), label };
 }
 
-/** Opens a parent's drawer on the Spending tab, if it is not open already. */
+/** Opens a parent's drawer on the Spending tab, if it is not open already; on a wide screen, unfolds its group. */
 export async function openDrawer(page: Page, parent: string) {
+  if (await deskBudget(page)) {
+    const fold = page.getByRole('button', { name: `Unfold ${parent}`, exact: true });
+    if (await fold.isVisible()) await fold.click();
+    return;
+  }
   const drawer = page.getByTestId(`drawer-${parent}`);
   if ((await drawer.getAttribute('aria-expanded')) !== 'true') await drawer.click();
 }
@@ -98,12 +131,23 @@ export async function setBudget(page: Page, category: string, amount: string, th
 
 /**
  * The cap sheet of a category, opened from its own row on the Spending tab: its capped row (a folded drawer opened
- * first), or its row under No budget yet.
+ * first), or its row under No budget yet. On a wide screen: its name in the Categories table opens its side peek, and
+ * the peek's Edit budget the same sheet.
  */
 export async function openCapOf(page: Page, option: string): Promise<Locator> {
   const name = plain(option);
   await page.keyboard.press('Escape');
   await budgetTab(page, 'Spending');
+  if (await deskBudget(page)) {
+    for (const fold of await page.getByRole('button', { name: /^Unfold / }).all()) await fold.click();
+    await budgetRow(page, name).getByRole('button', { name, exact: true }).click();
+    const peek = page.getByTestId('category-peek');
+    await expect(peek.getByTestId('peek-title')).toHaveText(name);
+    await peek.getByRole('button', { name: 'Edit budget', exact: true }).click();
+    const sheet = page.getByRole('dialog', { name });
+    await expect(sheet).toBeVisible();
+    return sheet;
+  }
   const capped = page.getByTestId(`line-${name}`).first();
   const uncapped = page.getByTestId(`uncapped-${name}`);
   // isVisible does not wait: the rows (or a folded drawer holding them) must be on the page before it is asked.

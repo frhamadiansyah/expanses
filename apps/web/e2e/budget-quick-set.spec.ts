@@ -1,32 +1,31 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
-import { capField, openEditBudgets } from './budget';
+import { budgetCells, budgetRow, capField, openCapOf, openEditBudgets, typeBudget } from './budget';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-test('a category that spent is a Set away from its cap, and the sheet opens ready to type', async ({ page }) => {
+test('a category that spent is a Set… away from its budget, typed in its own cell, and its sheet opens ready to type', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Sample', balance: '20000000' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Corner shop', paidWith: 'Bank Sample', category: 'Personal care', amount: '85000' });
 
   await page.goto('/budget');
-  await page.getByTestId('uncapped-Personal care').click();
-  const sheet = page.getByRole('dialog', { name: 'Personal care' });
-  const cap = sheet.getByLabel('Cap', { exact: true });
-  await expect(cap).toBeFocused();
-  // Spent so far is offered; taking it fills the Cap row, monthly.
-  await sheet.getByRole('button', { name: 'Spent so far, 85.000' }).click();
-  await expect(cap).toHaveValue('85.000');
-  await sheet.getByRole('button', { name: 'Save budget' }).click();
-  await expect(page.getByTestId('line-Personal care')).toContainText('left of 85.000');
-  await expect(page.getByTestId('uncapped-Personal care')).toHaveCount(0);
+  // Under No budget yet, with what it spent and a Set… where its budget goes.
+  const row = budgetCells(page, 'Personal care');
+  await expect(row.budget).toHaveText('Set…');
+  await expect(row.spent).toHaveText('85.000');
+  await expect(page.getByTestId('needs-a-look')).toContainText('1 category without a budget');
+  await typeBudget(page, 'Personal care', '85000');
+  await expect(row.budget).toHaveText('85.000');
+  await expect(row.left).toHaveText('0');
+  await expect(page.getByTestId('needs-a-look')).not.toContainText('without a budget');
 
-  // Opened again, the figure is selected: typing replaces it.
-  await page.getByTestId('line-Personal care').click();
-  const again = page.getByRole('dialog', { name: 'Personal care' }).getByLabel('Cap', { exact: true });
+  // Its sheet, from the side peek, opens on the figure selected: typing replaces it.
+  const sheet = await openCapOf(page, 'Personal care');
+  const again = sheet.getByLabel('Cap', { exact: true });
   await expect(again).toBeFocused();
   await page.keyboard.type('120000');
   await expect(again).toHaveValue('120.000');
@@ -45,8 +44,9 @@ test('Edit budgets sets several caps at once, counts a yearly one as its month, 
 
   await page.getByRole('button', { name: 'Save budgets' }).click();
   await expect(page.getByTestId('budget-page')).toBeVisible();
-  await expect(page.getByTestId('line-Personal care')).toContainText('left of 300.000');
-  await expect(page.getByTestId('line-Transportation')).toContainText('left of 100.000');
+  await expect(budgetCells(page, 'Personal care').left).toHaveText('300.000');
+  // A yearly budget reads as its month, its unit beside it.
+  await expect(budgetCells(page, 'All Transportation').budget).toHaveText('yearly · 100.000');
 });
 
 test('a cap of nothing keeps Edit budgets open, names its row, and saves none of the others', async ({ page }) => {
@@ -63,7 +63,7 @@ test('a cap of nothing keeps Edit budgets open, names its row, and saves none of
   await expect(transport.field).toBeInViewport();
 
   await page.goto('/budget');
-  await expect(page.getByTestId('line-Personal care')).toHaveCount(0);
+  await expect(budgetRow(page, 'Personal care')).toHaveCount(0);
 });
 
 test('back from Edit budgets with changes asks first; without them it simply goes back', async ({ page }) => {
