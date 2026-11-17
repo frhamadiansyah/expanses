@@ -110,3 +110,16 @@ test('Spend opens “New expense” on the card: no tabs, Paid with the card', a
   await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('BCA Visa');
   await expect(form.getByRole('button', { name: /^Category/ })).toBeVisible();
 });
+
+test('the Debt-free plan’s Pay on a card opens the same Pay screen, with the bill, and Back returns to the plan', async ({ page }) => {
+  await setUp(page);
+  await page.goto('/net-worth/plan/pay-first');
+  await page.getByRole('link', { name: 'Pay BCA Visa' }).click();
+  await expect(page.getByRole('heading', { name: 'Pay credit card', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/transactions\/new\?/);
+  const form = addForm(page);
+  await expect(form.getByTestId('pay-card-to')).toContainText('BCA Visa');
+  await expect(form).toContainText('3.000.000');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/plan\/pay-first$/);
+});
