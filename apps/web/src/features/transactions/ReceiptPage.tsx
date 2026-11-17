@@ -385,8 +385,14 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
               <div key={line.label} className="flex justify-between gap-4 py-2 text-sm">
                 <span className="text-slate-500">{line.label}</span>
                 <span className={cx('tabular text-right', line.tone === 'points' && 'font-medium text-emerald-700')}>
-                  {line.value}
-                  {line.detail && <span className="block text-[13px] text-slate-500">{line.detail}</span>}
+                  {line.detail ? (
+                    <>
+                      <span className="block">{line.value}</span>
+                      <span className="block text-[13px] text-slate-500">{line.detail}</span>
+                    </>
+                  ) : (
+                    line.value
+                  )}
                 </span>
               </div>
             ))}

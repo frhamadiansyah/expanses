@@ -18,7 +18,7 @@ test('by thumb: open the account, a pocket, and move between pockets one key at 
   await page.getByRole('link', { name: 'Move', exact: true }).tap();
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
-  await expect(page.getByTestId('spread')).toContainText('35.160');
+  await expect(page.getByText(/Exchange (loss|gain)/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Move', exact: true }).tap();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');

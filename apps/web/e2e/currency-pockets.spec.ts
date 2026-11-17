@@ -92,7 +92,7 @@ test('a pocket can be added, in a currency with no decimals, at a typed rate', a
   await expect(page.getByTestId('pocket-JPY')).toContainText('3.249.000');
 });
 
-test('moving between pockets moves what the screen shows and says what the bank’s rate cost', async ({ page }) => {
+test('moving between pockets moves what the screen shows, with nothing under the figures', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   await walletCard(page, 'Bank One Valas Plus').click();
@@ -104,18 +104,16 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByText('1 USD = 1,2760 SGD')).toBeVisible();
-  // Withdrawal rate §5: the dollars cost 16.250 each when they came in; the dollars changed are 8.125.000 of that, and
-  // the 638 SGD that arrived are worth 8.089.840 at the day's 12.680 — a loss, recorded as spending.
-  await expect(page.getByTestId('exchange-cost')).toContainText('8.125.000');
-  await expect(page.getByTestId('spread')).toContainText('Exchange loss');
-  await expect(page.getByTestId('spread')).toContainText('35.160');
+  // An exchange's gain or loss counts nowhere (owner, 17 Nov 2026): no Cost and no Exchange loss under the figures.
+  await expect(page.getByText(/Exchange (loss|gain)|recorded as/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'About Cost' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Move', exact: true }).click();
 
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
 });
 
-test('a spread shown at last-known rates says so, and the move shows the spread it recorded at the day’s rates (I1)', async ({ page }, testInfo) => {
+test('a move at last-known rates goes straight back to the account: no spread is shown or recorded', async ({ page }, testInfo) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   // The first move of the day: the device holds only yesterday's rates, and the day's differ from them.
@@ -130,16 +128,11 @@ test('a spread shown at last-known rates says so, and the move shows the spread 
   await pickPocket(page, 'To', 'SGD');
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
-  // 500 × 16.250 − 638 × 12.680: the held rates, and marked as such.
-  await expect(page.getByTestId('spread')).toContainText('35.160');
-  await expect(page.getByTestId('spread')).toContainText('last known');
+  await expect(page.getByText(/Exchange (loss|gain)|last known/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Move', exact: true }).click();
 
-  // What the ledger records (withdrawal rate §5): the dollars still cost 8.125.000 — the day's 16.400 changes nothing
-  // about what they cost — and 638 SGD at the day's 12.800 are 8.166.400: a gain of 41.400.
-  await expect(page.getByTestId('recorded-spread')).toContainText('Exchange gain');
-  await expect(page.getByTestId('recorded-spread')).toContainText('41.400');
-  await page.getByRole('button', { name: 'Done' }).click();
+  // The ledger still writes its gain at the day's rates, but it counts nowhere, so nothing stops to say so.
+  await expect(page.getByRole('button', { name: 'Done' })).toHaveCount(0);
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
 });
@@ -346,7 +339,7 @@ test('USD → IDR between pockets reads each side at its own exponent, keystroke
   await pickPocket(page, 'To', 'IDR');
   await page.getByLabel('Leaves USD').pressSequentially('100.50');
   await page.getByLabel('Arrives IDR').pressSequentially('1.630.000');
-  await expect(page.getByTestId('spread')).toContainText('3.125');
+  await expect(page.getByLabel('Arrives IDR')).toHaveValue('1.630.000');
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toContainText('2.299,50');
   await expect(page.getByTestId('pocket-IDR')).toContainText('7.030.000');
@@ -386,6 +379,33 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
   await walletCard(page, 'Bank One Valas Plus').click();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
+});
+
+test('a transfer into the base currency shows nothing under the form, and its receipt one Rate row (owner, 17 Nov 2026)', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await choosePayment(page, 'Bank One Valas Plus · USD', 'From');
+  await form.getByLabel('Amount', { exact: true }).pressSequentially('100');
+  await chooseTo(form, 'Bank One Valas Plus · IDR (IDR)');
+  await form.getByLabel('Received amount (IDR)').pressSequentially('1630000');
+  // No Rate, no Cost, no Exchange loss or gain while typing.
+  await expect(form.getByText(/per USD|Exchange (loss|gain)|recorded as/)).toHaveCount(0);
+  await expect(form.getByText(/^Cost /)).toHaveCount(0);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+  // Off Cashflow, as any transfer with no fee.
+  await expect(page.getByText(/USD → IDR/)).toHaveCount(0);
+
+  await page.goto('/wallet');
+  await walletCard(page, 'Bank One Valas Plus').click();
+  await page.getByTestId('account-recent-row').first().click();
+  await expect(page.getByText('Rp 16.300 per USD', { exact: true })).toBeVisible();
+  await expect(page.getByText(/at the withdrawal rate|withdrawal$|Exchange (loss|gain)|recorded as/)).toHaveCount(0);
 });
 
 test('the parent archives only after its pockets, and renaming it renames them', async ({ page }) => {
@@ -497,7 +517,7 @@ test('Add asset with a blank foreign rate takes the day’s rate', async ({ page
   await expect(page.getByTestId('net-worth')).toContainText('162.500.000');
 });
 
-test('the Move page: type what leaves, the arrives figure and the recorded line follow, the swap and the picker change the pockets', async ({ page }) => {
+test('the Move page: type what leaves and what arrives, nothing under them, the swap and the picker change the pockets', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   await walletCard(page, 'Bank One Valas Plus').click();
@@ -510,12 +530,9 @@ test('the Move page: type what leaves, the arrives figure and the recorded line 
   await expect(page.getByRole('button', { name: 'To, Indonesian Rupiah' })).toContainText('available');
   await page.getByLabel('Leaves USD').pressSequentially('100');
   await page.getByLabel('Arrives IDR').pressSequentially('1625000');
-  await expect(page.getByTestId('exchange-cost')).toContainText('1.625.000');
-  await expect(page.getByTestId('spread')).toBeVisible();
-  // The explanation is behind the info button, not a sentence under the rows.
-  await expect(page.getByText(/oldest first/)).toHaveCount(0);
-  await page.getByRole('button', { name: 'About Cost' }).click();
-  await expect(page.getByText(/oldest first/)).toBeVisible();
+  // No Cost and no gain or loss under the figures (owner, 17 Nov 2026).
+  await expect(page.getByRole('button', { name: 'About Cost' })).toHaveCount(0);
+  await expect(page.getByText(/Exchange (loss|gain)/)).toHaveCount(0);
 
   // Swap trades the pockets and keeps the figure typed on the From side.
   await page.getByRole('button', { name: 'Swap' }).click();
