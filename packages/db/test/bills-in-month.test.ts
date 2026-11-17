@@ -61,6 +61,18 @@ describe('billsInMonth', () => {
     expect((await billsInMonth(h.database, h.ws, '2027-03', '2026-11-11')).some((r) => r.bill.id === h.insurance)).toBe(true);
   });
 
+  it('a month before the bill started, paid by a linked purchase, only when asked (Bills each month)', async () => {
+    const h = await household();
+    await recordBillPayments(h.database, h.ws, { paidOn: '2026-08-22', payments: [{ templateId: h.electricity, billMonth: '2026-08', amountMinor: 760_000 }] });
+    expect(await billsInMonth(h.database, h.ws, '2026-08', '2026-11-11')).toEqual([]);
+    const rows = await billsInMonth(h.database, h.ws, '2026-08', '2026-11-11', { paidBeforeStart: true });
+    expect(rows.map((r) => [r.bill.name, r.state, r.paidMinor])).toEqual([['Electricity', 'paid', 760_000]]);
+    // A month before the start with nothing paid stays out: it was never owed.
+    expect(await billsInMonth(h.database, h.ws, '2026-07', '2026-11-11', { paidBeforeStart: true })).toEqual([]);
+    // From the start on, nothing changes.
+    expect(await billsInMonth(h.database, h.ws, '2026-11', '2026-11-11', { paidBeforeStart: true })).toEqual(await billsInMonth(h.database, h.ws, '2026-11', '2026-11-11'));
+  });
+
   it('only the open book’s bills', async () => {
     const h = await household();
     const personal = await personalBook(h.database, h.ws);

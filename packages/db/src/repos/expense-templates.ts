@@ -755,15 +755,18 @@ export async function billsInMonth(
    * the bill month whose day falls inside it (`billMonthIn`). Off, `month` is every bill's bill month, as the debt
    * plan's calendar reads it.
    */
-  opts: { workspaceMonth?: boolean } = {},
+  opts: { workspaceMonth?: boolean; paidBeforeStart?: boolean } = {},
 ): Promise<BillMonthRow[]> {
   const startDay = opts.workspaceMonth ? await monthStartFor(database, ws) : 1;
   const billMonthOf = (template: ExpenseTemplateRow) => billMonthIn(month, template.dayOfMonth, startDay);
-  const templates = (await listExpenseTemplates(database, ws)).filter((template) => {
-    const own = billMonthOf(template);
-    return template.active && own >= template.startsMonth && isOwedMonth(own, template.repeatMonth, template.repeatEvery, template.startsMonth);
-  });
-  const facts = await billFacts(database, ws, templates);
+  const started = (template: ExpenseTemplateRow) => billMonthOf(template) >= template.startsMonth;
+  const candidates = (await listExpenseTemplates(database, ws)).filter(
+    (template) => template.active && (started(template) || opts.paidBeforeStart) && isOwedMonth(billMonthOf(template), template.repeatMonth, template.repeatEvery, template.startsMonth),
+  );
+  const facts = await billFacts(database, ws, candidates);
+  // `paidBeforeStart`: a month before the bill was tracked is listed too once a payment is linked to it (Link an
+  // earlier month), as the bill's own history lists it — paid, never owed.
+  const templates = candidates.filter((template) => started(template) || (facts.payments.get(template.id) ?? []).some((payment) => payment.billMonth === billMonthOf(template)));
   return templates
     .map((template) => ({
       ...monthOfBill(template, facts, billMonthOf(template), today),
