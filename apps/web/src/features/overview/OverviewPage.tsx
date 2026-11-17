@@ -58,11 +58,16 @@ function Chart({ months, current, currency }: { months: ChartMonth[]; current: s
   const top = 10;
   const bottom = 206;
   const slot = (W - left) / months.length;
-  const values = months.flatMap((m) => [m.minor ?? 0, m.balanceMinor ?? 0]);
-  const max = Math.max(1, ...values);
+  // The bars on the left scale; the balance line on its own (it runs in hundreds where a month's spending runs in
+  // tens), labelled where it starts and ends.
+  const max = Math.max(1, ...months.map((m) => m.minor ?? 0));
   const y = (minor: number) => bottom - (Math.max(0, minor) / max) * (bottom - top);
   const ticks = [0, 0.5, 1].map((f) => f * max);
-  const line = months.flatMap((m, i) => (m.balanceMinor === null ? [] : [`${left + slot * i + slot / 2},${y(m.balanceMinor)}`]));
+  const ahead = months.flatMap((m, i) => (m.balanceMinor === null ? [] : [{ i, minor: m.balanceMinor }]));
+  const low = Math.min(...ahead.map((p) => p.minor));
+  const high = Math.max(...ahead.map((p) => p.minor));
+  const yLine = (minor: number) => (high === low ? top + (bottom - top) * 0.3 : top + 12 + ((high - minor) / (high - low)) * (bottom - top) * 0.55);
+  const line = ahead.map((p) => `${left + slot * p.i + slot / 2},${yLine(p.minor)}`);
   const todayAt = months.findIndex((m) => m.month === current);
   return (
     <svg viewBox={`0 0 ${W} ${H + 16}`} className="block h-auto w-full" role="img" aria-label="Spending by month, with what is expected ahead">
@@ -106,7 +111,16 @@ function Chart({ months, current, currency }: { months: ChartMonth[]; current: s
           </text>
         </g>
       )}
-      {line.length > 1 && <polyline points={line.join(' ')} fill="none" stroke="var(--ph-ink-2)" strokeWidth="1.5" strokeDasharray="2 3" />}
+      {line.length > 1 && (
+        <g>
+          <polyline points={line.join(' ')} fill="none" stroke="var(--ph-ink-2)" strokeWidth="1.5" strokeDasharray="2 3" />
+          {[ahead[0]!, ahead[ahead.length - 1]!].map((p, k) => (
+            <text key={k} x={left + slot * p.i + slot / 2} y={yLine(p.minor) - 6} textAnchor={k === 0 ? 'start' : 'end'} fontSize="10" fill="var(--ph-ink-2)">
+              {compactMoney(p.minor, currency)}
+            </text>
+          ))}
+        </g>
+      )}
     </svg>
   );
 }
