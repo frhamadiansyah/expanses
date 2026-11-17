@@ -14,24 +14,24 @@ class AppViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(CapturePlugin())
         bridge?.registerPluginInstance(WidgetSummaryPlugin())
         bridge?.registerPluginInstance(FormAccessoryBarPlugin())
-        #if !targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst)
+        markMacApp()
+        #else
         // No Mac reads an NFC card: the plugin is not in the Mac build at all (an iOS-only file in the project).
         bridge?.registerPluginInstance(EmoneyReaderPlugin())
         #endif
     }
 
+    #if targetEnvironment(macCatalyst)
     /**
      * The Mac app (Mac Catalyst) tells the page it is on a Mac before any of the page's own code runs, so the web layer
      * can leave out what only a phone has — the widget, NFC, the capture shortcuts, the screen lock — without a round
-     * trip to a plugin (`isMacApp()`, apps/web/src/lib/pwa.ts). Capacitor itself says "ios" either way. The iPhone app
-     * adds nothing.
+     * trip to a plugin (`isMacApp()`, apps/web/src/lib/mac.ts). Capacitor itself says "ios" either way. Added here, once
+     * the web view exists and before its first page loads; the controller is the one Capacitor gave the web view.
      */
-    override open func webViewConfiguration(for instanceConfiguration: InstanceConfiguration) -> WKWebViewConfiguration {
-        let configuration = super.webViewConfiguration(for: instanceConfiguration)
-        #if targetEnvironment(macCatalyst)
+    private func markMacApp() {
         let marker = WKUserScript(source: "window.__cicisMac = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)
-        configuration.userContentController.addUserScript(marker)
-        #endif
-        return configuration
+        webView?.configuration.userContentController.addUserScript(marker)
     }
+    #endif
 }

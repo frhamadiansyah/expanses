@@ -60,6 +60,15 @@ public class ICloudBackupPlugin: CAPPlugin, CAPBridgedPlugin {
 
     // MARK: status
 
+    /** What a copy says it came from. On a Mac, UIKit calls the device an "iPad", which a copy should not say. */
+    private static var model: String {
+        #if targetEnvironment(macCatalyst)
+        return "Mac"
+        #else
+        return UIDevice.current.model
+        #endif
+    }
+
     /** Whether there is somewhere to write, and the two facts about this device the page names copies by. */
     @objc func status(_ call: CAPPluginCall) {
         queue.async {
@@ -68,7 +77,7 @@ public class ICloudBackupPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.resolve([
                     "available": available,
                     "deviceId": UIDevice.current.identifierForVendor?.uuidString ?? "unknown",
-                    "model": UIDevice.current.model,
+                    "model": Self.model,
                 ])
             }
         }
