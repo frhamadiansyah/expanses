@@ -163,11 +163,17 @@ function Ring({
   const restMinor = rest.reduce((sum, item) => sum + item.totalMinor, 0);
   if (restMinor > 0) slices.push({ key: 'other', label: `${rest.length} smaller categories`, totalMinor: restMinor, colour: OTHER_COLOUR });
   for (const slice of extra) if (slice.totalMinor > 0) slices.push({ ...slice, colour: OTHER_COLOUR });
+  /*
+   * What each share is of: the slices drawn, so a category's share and its slice always agree. It is the month's total
+   * except when a category holds money back of its own (Cashback & Rewards into a card): that lowers the middle's
+   * total but draws no slice, so Household reads 100% of the ring rather than 131% of a total it is larger than.
+   */
+  const sharedOf = slices.reduce((sum, slice) => sum + slice.totalMinor, 0);
 
   const donut = (
     <Donut
       slices={slices}
-      totalMinor={totalMinor}
+      totalMinor={sharedOf}
       middle={formatMinor(totalMinor, currency)}
       label={middleLabel}
       under={transactions > 0 ? `${transactions} transaction${transactions === 1 ? '' : 's'}` : undefined}
@@ -226,7 +232,7 @@ function Ring({
               key={node.id}
               node={node}
               colour={colourById.get(node.id) ?? (colourOf ? colourOf(node, index) : colourFor(node.id))}
-              totalMinor={totalMinor}
+              totalMinor={sharedOf}
               month={month}
               currency={currency}
               capMinor={caps?.[node.id]}

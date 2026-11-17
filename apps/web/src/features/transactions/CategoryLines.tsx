@@ -29,7 +29,8 @@ export function ShareLine({
   return (
     <span className="flex w-full items-center gap-2.5">
       <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colour }} aria-hidden />
-      <span className="tabular w-9 shrink-0 text-center text-[13px] font-semibold">{share(amountMinor, wholeMinor)}%</span>
+      {/* Money back with a category of its own (Cashback & Rewards) is no share of the spending: its column stays empty. */}
+      <span className="tabular w-9 shrink-0 text-center text-[13px] font-semibold">{amountMinor < 0 ? '' : `${share(amountMinor, wholeMinor)}%`}</span>
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
       {figure ?? <Money minor={amountMinor} currency={currency} className="shrink-0 text-sm font-semibold" />}
       {chevron && <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />}
