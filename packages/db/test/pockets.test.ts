@@ -429,10 +429,10 @@ describe('a move between pockets', () => {
     expect([balances[pockets[0]!.id], balances[pockets[1]!.id]]).toEqual([190_000, 178_800]);
   });
 
-  it('reaches income by exactly its exchange gain, and neither spending nor put-away (today’s rule, pinned)', async () => {
+  it('reaches neither income, spending nor put-away: its exchange gain counts nowhere (owner, 17 Nov 2026)', async () => {
     await moveUsdToSgd();
     const flows = await periodFlows(database, ws, { from: '2026-09-01', to: '2026-09-30' });
-    // withdrawal rate §4, R8: the Rp 119.840 gain is income (was put-away lowered by the Rp 35.160 day-rate spread).
-    expect([flows.incomeMinor, flows.spendingMinor, flows.putAwayMinor]).toEqual([119_840, 0, 0]);
+    // withdrawal rate §4, R8 still writes a Rp 119.840 gain pair; it was income until the owner ruled it counts nowhere.
+    expect([flows.incomeMinor, flows.spendingMinor, flows.putAwayMinor]).toEqual([0, 0, 0]);
   });
 });

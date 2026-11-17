@@ -8,6 +8,7 @@ import { monthStartFor } from './month-start';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { partCountedWhere } from './book-splits';
 import { eventOnlyExists, notEventOnly } from './event-only';
+import { notExchangeResult } from './exchange-result';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
 import { isInvestmentPlan, type PlanWithDay, plansWithStatementDays, purchaseWholes, type SpreadLine, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
 
@@ -66,6 +67,8 @@ async function categoryRows(
       eq(entries.workspaceId, ws.workspaceId),
       eq(transactions.status, 'posted'),
       eq(accounts.kind, kind),
+      // An exchange's gain or loss is neither spending nor income (owner, 17 Nov 2026): no ring, bar, budget or split.
+      notExchangeResult(accounts.systemKey),
       ...inPeriod,
       ...(opts.excludeEvents ? [isNull(transactions.eventId)] : []),
       // Narrowed to one book when the context names one; the whole workspace otherwise. Set categories are filed in
@@ -405,6 +408,7 @@ export async function eventSpendingBetween(
     eq(entries.workspaceId, ws.workspaceId),
     eq(transactions.status, 'posted'),
     eq(accounts.kind, 'expense'),
+    notExchangeResult(accounts.systemKey),
     gte(transactions.occurredOn, from),
     lte(transactions.occurredOn, to),
     isNotNull(transactions.eventId),
