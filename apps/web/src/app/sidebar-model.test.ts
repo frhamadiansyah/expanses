@@ -4,6 +4,7 @@ import {
   activeTo,
   billsDueCount,
   compactMoney,
+  edgeToEdge,
   footerStatus,
   kindOf,
   MOVED,
@@ -194,5 +195,16 @@ describe('the status line at the foot', () => {
       text: 'Sync failed · backed up 09:00',
       tone: 'alarm',
     });
+  });
+});
+
+describe('which pages run edge to edge', () => {
+  it('Overview always; Cashflow on a wide screen only, never in the phone shell', () => {
+    expect(edgeToEdge('/overview', false)).toBe(true);
+    expect(edgeToEdge('/overview', true)).toBe(true);
+    expect(edgeToEdge('/transactions', false)).toBe(true);
+    expect(edgeToEdge('/transactions', true)).toBe(false);
+    expect(edgeToEdge('/transactions/new', false)).toBe(false);
+    expect(edgeToEdge('/budget', false)).toBe(false);
   });
 });

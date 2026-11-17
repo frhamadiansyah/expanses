@@ -253,3 +253,13 @@ export function footerStatus(input: {
   const tone: FooterTone = input.shared && input.failing && !input.running ? 'alarm' : stale ? 'warn' : 'ok';
   return { text: `${sync} · ${backup}`, tone };
 }
+
+/**
+ * The pages that draw their own title bar and grey page edge to edge rather than sitting in the column: Overview (Mac
+ * Overview A) always, and Cashflow (Mac Cashflow D) on a wide screen — on a phone, held either way, Cashflow is the
+ * phone's own page in the column as before.
+ */
+const EDGE_TO_EDGE_WIDE = ['/transactions'];
+export function edgeToEdge(pathname: string, phoneShell: boolean): boolean {
+  return pathname === '/overview' || (!phoneShell && EDGE_TO_EDGE_WIDE.includes(pathname));
+}

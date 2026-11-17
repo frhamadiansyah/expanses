@@ -80,6 +80,7 @@ import { WaitingBox } from './WaitingBox';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { SidewaysTable } from './SidewaysTable';
+import { DesktopCashflow, type DeskRowHelpers } from './DesktopCashflow';
 import { afterDismiss, afterSideways, afterVisit, readTip, tipShown, writeTip } from './sideways-tip';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
@@ -219,6 +220,8 @@ export function TransactionsPage() {
    * stays mounted underneath, hidden, so its chart, its open category and its scroll are all there on turning back.
    */
   const sideways = useSideways();
+  // A wide screen — the Mac app, a desktop browser — draws Cashflow as its own page (Mac Cashflow D, `DesktopCashflow`).
+  const desk = !phone && !sideways;
   const uprightScroll = useRef(0);
   const sidewaysNow = useRef(sideways);
   useEffect(() => {
@@ -480,7 +483,8 @@ export function TransactionsPage() {
     return instalmentRows({ lines, repayments: scopeIds || need ? [] : read.repayments }, accounts, ws.baseCurrency);
   })();
   const rows = [
-    ...markSpread(buildRows(recorded, view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId), spreadOver),
+    // The desk's table is the editor too: a half-typed row waits there, among the rest, as in the old table.
+    ...markSpread(buildRows(recorded, desk || view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId), spreadOver),
     ...instalmentList,
   ];
   /*
@@ -1402,6 +1406,147 @@ export function TransactionsPage() {
     />
   );
 
+  /** Add: a sheet over the page, the full card in it — or, in a shared event's event mode, the event's own card. */
+  function startAdding() {
+    close();
+    // Event mode in a shared event: the event's own card, as the Add screen opens it.
+    if (eventMode?.shared) void navigate({ to: '/transactions/new' });
+    else setAdding(true);
+  }
+  const addSheet = adding && (
+    <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
+      <TransactionCard
+        defaultPaidWith
+        {...(eventMode && !eventMode.shared && eventModeApplies(eventMode, shared)
+          ? {
+              seed: { eventId: eventMode.event.id, ...(addInCurrency(eventMode, ws.baseCurrency) ? { currency: addInCurrency(eventMode, ws.baseCurrency)! } : {}) },
+              eventChip: { eventId: eventMode.event.id, name: eventMode.event.name },
+            }
+          : {})}
+        onDone={() => setAdding(false)}
+      />
+    </Sheet>
+  );
+  const askingSheet = asking && (
+    <SetAsideSheet
+      door={asking.door}
+      excludeTransactionId={asking.exclude}
+      onSave={async (choice) => {
+        await asking.save(choice);
+        await invalidate();
+        asking.settle(true);
+      }}
+      // Called after a save too; a promise that already settled true ignores the later false.
+      onClose={() => {
+        asking.settle(false);
+        setAsking(null);
+      }}
+    />
+  );
+
+  if (desk) {
+    /*
+     * The same refusals the list's click and swipe carry (`recordedRow`): a trade, an opening balance, a deleted row, a
+     * row of another workspace — or of a share that ended — opens nothing that writes.
+     */
+    const reachable = (tx: TransactionView) => !tradeByTransaction.has(tx.id) && isEditable(tx) && !readOnly;
+    const editable = (row: ListRow) => !!row.tx && !row.deleted && reachable(row.tx) && !elsewhereOf(row.tx.id) && filingKnown;
+    const helpers: DeskRowHelpers = {
+      paidWith: (row) => {
+        const tx = row.tx;
+        if (tx && payerShown(tx)) return payerLine(payerShown(tx)!);
+        if (tx && onPlaceholder(tx)) return null;
+        return <PaidWith row={row} />;
+      },
+      editable,
+      deletable: (row) => editable(row) || (!!row.tx && !row.deleted && !tradeByTransaction.has(row.tx.id) && isCorrection(row.tx) && !readOnly && filingKnown),
+      workspaceOf: (row) => (row.tx ? badgeOf(row.tx.id)?.name : undefined) ?? openBook?.name ?? workspaceName,
+      eventOf: (row) => (row.tx?.eventId ? (eventName(row.tx.eventId) ?? 'An event') : null),
+      pointsOf: (row) => {
+        const points = row.tx ? purchasePoints.data?.[row.tx.id] : undefined;
+        return points ? (amountExtraParts({ originalCurrency: null, originalAmountMinor: null }, points).at(-1)?.text ?? null) : null;
+      },
+      noticeOf: (row) => {
+        const tx = row.tx;
+        if (!tx) return null;
+        if (tradeByTransaction.has(tx.id)) return 'A trade is changed on its holding’s page.';
+        if (readOnly) return 'This share has ended: nothing here is changed.';
+        const elsewhere = reachable(tx) ? elsewhereOf(tx.id) : null;
+        return elsewhere ? <SwitchToEdit book={elsewhere} /> : null;
+      },
+      openInstalment: (row) => {
+        const plan = row.instalment;
+        if (plan && !plan.received) void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: plan.cardAccountId, planId: plan.planId } });
+      },
+      kindLabel: (row) => {
+        if (row.instalment) return row.instalment.countMode === 'at_purchase' ? (row.instalment.investment ? 'Saving' : 'Repayment') : null;
+        if (row.sharedTransfer) return row.transferName ?? 'Transfer';
+        switch (row.type) {
+          case 'debt':
+            return 'Lend & borrow';
+          case 'transfer':
+            return row.transferName ?? 'Transfer';
+          case 'opening':
+            return row.tx && tradeByTransaction.has(row.tx.id) ? 'Past purchase' : 'Opening balance';
+          case 'correction':
+            return 'Balance correction';
+          default:
+            return null;
+        }
+      },
+    };
+    const deskKind: 'expense' | 'income' = inCategory ? (scope.kind as 'expense' | 'income') : filters.type === 'income' ? 'income' : 'expense';
+    const chips = [
+      ...(scope
+        ? [{ key: 'scope', label: <>Only <b className="font-semibold">{scope.subtype === 'category' ? categoryPath(accounts, scope.id) : scope.name}</b></>, clearLabel: 'Show every account', onClear: () => setSearch({ account: undefined }) }]
+        : []),
+      ...(need ? [{ key: 'need', label: need === 'essential' ? 'Essential' : 'Lifestyle', clearLabel: `Clear ${need}`, onClear: () => setSearch({ need: undefined }) }] : []),
+    ];
+    return (
+      <DesktopCashflow
+        month={month}
+        thisMonth={thisMonth}
+        onMonth={(next) => setSearch({ month: next === thisMonth ? undefined : next })}
+        filters={filters}
+        setFilter={setFilter}
+        narrowed={Boolean(narrowed)}
+        onClearAll={clearAll}
+        sort={sort}
+        onSort={setSort}
+        kind={deskKind}
+        paidAccountId={paidAccountId ?? (scope && isMoneyAccount(scope) ? scope.id : undefined)}
+        rows={shown}
+        emptyText={listable.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
+        limitNote={month === 'all' && recorded.length >= ALL_TIME_LIMIT ? `The newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only` : undefined}
+        pendingCount={pending.length}
+        accounts={accounts}
+        rowOptions={rowOptions}
+        handlers={tableHandlers}
+        today={today}
+        baseCurrency={ws.baseCurrency}
+        categoryOptions={categoryOptions}
+        paidOptions={paidOptions}
+        readOnly={readOnly}
+        scan={{ busy: scan.busy, scan: () => void scan.scan() }}
+        onAdd={startAdding}
+        onEdit={(row) => row.tx && void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId: row.tx.id } })}
+        onSplit={(row) => row.tx && void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId: row.tx.id }, search: { split: true } })}
+        chips={chips}
+        needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
+        helpers={helpers}
+        notices={
+          <>
+            <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />
+            <ErrorBox error={error ?? scan.error ?? list.error ?? drafts.error} />
+          </>
+        }
+      >
+        {addSheet}
+        {askingSheet}
+      </DesktopCashflow>
+    );
+  }
+
   return (
     <>
     {/* Relative, so the ⋯ menu hangs from the header it opens from. Hidden, not unmounted, while the phone is sideways. */}
@@ -1438,14 +1583,7 @@ export function TransactionsPage() {
         <div className="mb-3 flex flex-wrap items-center justify-end gap-2.5">
           {viewSwitcher}
           {!adding && !readOnly && (
-            <Button
-              onClick={() => {
-                close();
-                // Event mode in a shared event: the event's own card, as the Add screen opens it.
-                if (eventMode?.shared) void navigate({ to: '/transactions/new' });
-                else setAdding(true);
-              }}
-            >
+            <Button onClick={startAdding}>
               Add transaction
             </Button>
           )}
@@ -1457,20 +1595,7 @@ export function TransactionsPage() {
         </div>
       )}
       {choosingWorkspace && <WorkspaceMenu onClose={() => setChoosingWorkspace(false)} />}
-      {adding && (
-        <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
-          <TransactionCard
-            defaultPaidWith
-            {...(eventMode && !eventMode.shared && eventModeApplies(eventMode, shared)
-              ? {
-                  seed: { eventId: eventMode.event.id, ...(addInCurrency(eventMode, ws.baseCurrency) ? { currency: addInCurrency(eventMode, ws.baseCurrency)! } : {}) },
-                  eventChip: { eventId: eventMode.event.id, name: eventMode.event.name },
-                }
-              : {})}
-            onDone={() => setAdding(false)}
-          />
-        </Sheet>
-      )}
+      {addSheet}
 
       <div className="space-y-1">
         {/* The row of chips is a wide screen's; a phone filters from the Sort and filter button. */}
@@ -1835,22 +1960,7 @@ export function TransactionsPage() {
         />
       )}
 
-      {asking && (
-        <SetAsideSheet
-          door={asking.door}
-          excludeTransactionId={asking.exclude}
-          onSave={async (choice) => {
-            await asking.save(choice);
-            await invalidate();
-            asking.settle(true);
-          }}
-          // Called after a save too; a promise that already settled true ignores the later false.
-          onClose={() => {
-            asking.settle(false);
-            setAsking(null);
-          }}
-        />
-      )}
+      {askingSheet}
     </div>
     {sideways && (
       <SidewaysTable
