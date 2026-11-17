@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, openFace } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 
@@ -12,7 +12,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await addCard(page, 'BCA Visa');
 
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'CIMB Octo' }).click();
+  await openFace(page.getByRole('link', { name: 'CIMB Octo' }));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -41,7 +41,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
 
   // What a point fetches is the programme's, set on its page.
   await page.goto('/wallet');
-  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^CIMB Octo(,|$)/ }).click();
+  await openFace(page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^CIMB Octo(,|$)/ }));
   await cardPage(page, 'Points');
   await page.getByTestId('statement-points-programme').click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();

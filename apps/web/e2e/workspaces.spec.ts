@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard, walletCard } from './accounts';
+import { openAccount, openCard, walletCard, openFace } from './accounts';
 import { addItem, chooseCategory, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction, addTransfer, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
@@ -10,7 +10,7 @@ import { openWorkspacePage, workspaceLine } from './workspace-page';
  * page, then See all over the last few rows it lists.
  */
 async function openHistory(page: Page, name: string) {
-  await walletCard(page, name).click();
+  await openFace(walletCard(page, name));
   await page.getByRole('link', { name: 'See all' }).click();
 }
 
@@ -295,7 +295,7 @@ async function addCard(page: Page) {
   await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').fill('31');
@@ -324,7 +324,7 @@ test('a card’s statement holds every workspace, and each row says which', asyn
   await buyOnCard(page, 'Client lunch', '320000');
 
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
   await cardPage(page, 'Statement');
   const lines = page.getByTestId('statement-line');
   await expect(lines).toHaveCount(2);

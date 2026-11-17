@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, openFace } from './accounts';
 import { addForm } from './add-transaction';
 import { walletCard } from './card-section';
 
@@ -13,7 +13,7 @@ export async function cardForSpending(page: Page) {
 
   await page.goto('/wallet');
   await expect(walletCard(page, /^Rare Card/)).toBeVisible();
-  await walletCard(page, /^Rare Card/).click();
+  await openFace(walletCard(page, /^Rare Card/));
   await expect(page).toHaveURL(/\/cards\/([^/]+)$/);
   const cardUrl = page.url();
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).first().click();

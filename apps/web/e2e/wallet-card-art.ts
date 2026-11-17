@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openAccount, walletCard } from './accounts';
+import { openAccount, walletCard, openFace } from './accounts';
 
 /**
  * The drawn faces on Wallet, walked once and run at both widths (`wallet-card-art.spec.ts`, `phone-wallet-card-art.spec.ts`).
@@ -40,7 +40,7 @@ export async function drawnFaces(page: Page) {
   await expect(ovo.getByTestId('card-contactless')).toHaveCount(0);
 
   // Raised, the Mandiri card shows its chip and contactless mark, and nothing top-right: its bank's mark alone.
-  await walletCard(page, 'Mandiri Payroll').click();
+  await openFace(walletCard(page, 'Mandiri Payroll'));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   const payroll = faceOf(page, 'Mandiri Payroll');
   await expect(payroll.getByTestId('card-chip')).toBeVisible();
@@ -63,7 +63,7 @@ export async function drawnFaces(page: Page) {
   await expect(faceOf(page, 'Mandiri Payroll')).toHaveAttribute('data-face', 'mandiri-gold');
 
   // An account at a bank with no tiers is offered none.
-  await walletCard(page, 'Bank One Everyday').click();
+  await openFace(walletCard(page, 'Bank One Everyday'));
   await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Account number', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Card tier')).toHaveCount(0);

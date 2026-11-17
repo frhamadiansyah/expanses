@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, openFace } from './accounts';
 import { cardPage, pickChargedOn, walletCard, saveCardTerms } from './card-section';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -58,7 +58,7 @@ test('a card’s annual fee date is saved in Settings, listed in Recurring insid
   await expect(page.getByTestId('annual-fee-row')).toHaveCount(0);
   await page.waitForTimeout(800);
   await page.goto('/wallet');
-  await walletCard(page, 'Fee Card').click();
+  await openFace(walletCard(page, 'Fee Card'));
   await cardPage(page, 'Settings');
   await expect(page.getByTestId('fee-waiver-row')).toContainText(`${next.getFullYear()} waived`);
 

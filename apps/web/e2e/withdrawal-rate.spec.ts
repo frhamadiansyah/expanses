@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { walletCard } from './accounts';
+import { walletCard, openFace } from './accounts';
 import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 import { mockRates, openWithPockets, pickPocket } from './pockets';
 
@@ -15,7 +15,7 @@ const CASH = { name: 'Cash', kind: 'Cash banknotes and coins', pockets: [{ curre
 
 async function move(page: Page, account: string, from: string, to: string, leaves: string, arrives: string) {
   await page.goto('/wallet');
-  await walletCard(page, account).click();
+  await openFace(walletCard(page, account));
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await pickPocket(page, 'From', from);
   await pickPocket(page, 'To', to);
@@ -44,7 +44,7 @@ async function saveAs(page: Page, form: ReturnType<typeof addForm>, note: string
 
 async function openLiraPocket(page: Page, account: string) {
   await page.goto('/wallet');
-  await walletCard(page, account).click();
+  await openFace(walletCard(page, account));
   await page.getByTestId('pocket-TRY').click();
 }
 

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount, walletCard } from './accounts';
+import { openAccount, walletCard, openFace } from './accounts';
 import { addTransaction } from './add-transaction';
 import { pasteInto } from './paste';
 
@@ -26,7 +26,7 @@ test('a bank account named by the end of its number shows it on its transactions
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('4321');
 
   await page.goto('/wallet');
-  await walletCard(page, 'BCA Tahapan').click();
+  await openFace(walletCard(page, 'BCA Tahapan'));
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   const number = page.getByLabel('Account number', { exact: true });
   await expect(number).toHaveValue('4321');

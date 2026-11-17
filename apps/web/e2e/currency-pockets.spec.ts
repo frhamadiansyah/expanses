@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { personRow } from './people';
-import { expectWalletFigure, openAccount, openSettings, walletCard, showBalance } from './accounts';
+import { expectWalletFigure, openAccount, openSettings, walletCard, showBalance, openFace, wideScreen } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets, pickPocket } from './pockets';
@@ -33,7 +33,7 @@ test('an account with pockets is one row that adds them up, and opens to each po
   await expect(card).toHaveAccessibleName(/58\.982\.000/);
   await expect(page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /Bank One Valas Plus · USD/ })).toHaveCount(0);
 
-  await card.click();
+  await openFace(card);
   await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
   await expect(page.getByTestId('pocket-USD')).toContainText('39.000.000');
   await expect(page.getByTestId('pocket-SGD')).toContainText('14.582.000');
@@ -78,7 +78,7 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
 test('a pocket can be added, in a currency with no decimals, at a typed rate', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   // Currencies it already has are not offered.
   await currencyRow(page).click();
@@ -95,7 +95,7 @@ test('a pocket can be added, in a currency with no decimals, at a typed rate', a
 test('moving between pockets moves what the screen shows, with nothing under the figures', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await page.getByRole('link', { name: 'Move', exact: true }).click();
 
   // The pocket picker lists one pocket per currency; the helper chooses by the currency's name.
@@ -122,7 +122,7 @@ test('a move at last-known rates goes straight back to the account: no spread is
   await mockRates(page, { USD: 16_400, SGD: 12_800 });
 
   await page.goto('/wallet');
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await pickPocket(page, 'From', 'USD');
   await pickPocket(page, 'To', 'SGD');
@@ -192,7 +192,7 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
 
   // Every dollar moved to rupiah today, at the last-known rate: today the account holds no USD at all.
   await page.goto('/wallet');
-  await walletCard(page, 'Old Valas').click();
+  await openFace(walletCard(page, 'Old Valas'));
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await pickPocket(page, 'From', 'USD');
   await pickPocket(page, 'To', 'IDR');
@@ -211,7 +211,7 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
 test('an account without pockets opened at the pockets routes says it has none (M3, M7)', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Two Pockets', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '100' }] });
-  await walletCard(page, 'Two Pockets').click();
+  await openFace(walletCard(page, 'Two Pockets'));
   await showBalance(page);
   await expect(page.getByText('2 currencies')).toBeVisible();
   // A pocket is an account with no pockets of its own: its id on the accounts route is its own page — the figure
@@ -234,7 +234,7 @@ test('a pocket’s ≈ line marks a rate held for an earlier day as last known (
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await ageRates(page, testInfo.outputPath('aged.sqlite3'));
   await page.goto('/wallet');
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await page.getByTestId('pocket-USD').click();
   // The account page marks it too; this is the pocket's own page.
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
@@ -251,8 +251,9 @@ test('the Money tile adds every account and pocket at today’s rates', async ({
   // The legend is two rows and nothing under them: what the money is spread across is not part of the figure.
   await expect(page.getByText(/across 1 account/)).toHaveCount(0);
   // Three times, and each is a different sentence: the tile's own figure, the share it is made of, and the account's
-  // own caption. No section carries it a fourth time.
-  await expect(page.getByText(/58\.982\.000/)).toHaveCount(3);
+  // own caption. No section carries it a fourth time. Mac Wallet adds two of its own: what came in over the line's 30
+  // days (all of it opened today) and the Foreign currency group's total, which is this one account.
+  await expect(page.getByText(/58\.982\.000/)).toHaveCount(wideScreen(page) ? 5 : 3);
 });
 
 test('net worth’s Assets list shows the account once, at the ≈ total, and opens to its pockets', async ({ page }) => {
@@ -298,7 +299,7 @@ test('one currency twice cannot be chosen: the two pockets swap, each keeping it
   await expect(page.getByLabel('Opening IDR')).toHaveCount(1);
   await expect(page.getByLabel('Opening IDR')).toHaveValue('5400000');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await walletCard(page, 'Twice').click();
+  await openFace(walletCard(page, 'Twice'));
   await expect(page.getByTestId('pocket-IDR')).toContainText('5.400.000');
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
@@ -334,7 +335,7 @@ test('the parent is offered nowhere money is chosen; its pockets are, and a pock
 test('USD → IDR between pockets reads each side at its own exponent, keystroke by keystroke', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await pickPocket(page, 'To', 'IDR');
   await page.getByLabel('Leaves USD').pressSequentially('100.50');
@@ -348,7 +349,7 @@ test('USD → IDR between pockets reads each side at its own exponent, keystroke
 test('changing a pocket clears both figures, and choosing the same pocket swaps', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
@@ -376,7 +377,7 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   await page.goto('/wallet');
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
 });
@@ -402,7 +403,7 @@ test('a transfer into the base currency shows nothing under the form, and its re
   await expect(page.getByText(/USD → IDR/)).toHaveCount(0);
 
   await page.goto('/wallet');
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await page.getByTestId('account-recent-row').first().click();
   await expect(page.getByText('Rp 16.300 per USD', { exact: true })).toBeVisible();
   await expect(page.getByText(/at the withdrawal rate|withdrawal$|Exchange (loss|gain)|recorded as/)).toHaveCount(0);
@@ -412,7 +413,7 @@ test('the parent archives only after its pockets, and renaming it renames them',
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   // Both are in the account's Settings, behind the ⚙ in its corner: its Name, and Archive at the foot.
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await openSettings(page);
   await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await expect(page.getByText(/Valas Plus still has pockets: USD, SGD, IDR/)).toBeVisible();
@@ -421,7 +422,7 @@ test('the parent archives only after its pockets, and renaming it renames them',
   await name.blur();
   await expect(name).toHaveValue('Multi Plus');
   await page.goto('/wallet');
-  await walletCard(page, 'Bank One Multi Plus').click();
+  await openFace(walletCard(page, 'Bank One Multi Plus'));
   await page.getByTestId('pocket-USD').click();
   await expect(page.getByRole('heading', { name: 'Bank One Multi Plus · USD' })).toBeVisible();
 });
@@ -433,8 +434,9 @@ test('an empty foreign pocket needs no rate: the Money tile still adds up', asyn
   await page.goto('/wallet');
   await pickView(page, 'Grid');
   await expect(page.getByText(/across 1 account/)).toHaveCount(0);
-  // Three times, as in the pockets test above: the tile's figure, the share it is made of, the account's own row.
-  await expect(page.getByText(/5\.400\.000/)).toHaveCount(3);
+  // Three times, as in the pockets test above: the tile's figure, the share it is made of, the account's own row (and
+  // on Mac Wallet the line's 30 days and the group's total).
+  await expect(page.getByText(/5\.400\.000/)).toHaveCount(wideScreen(page) ? 5 : 3);
   await expect(page.getByText(/No USD rate yet/)).toHaveCount(0);
 });
 
@@ -456,7 +458,7 @@ test('the tile names the rate it lacks instead of adding up the rest', async ({ 
 test('a USD pocket added to an account reads its opening balance in dollars, not rupiah (P2-I2)', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Two Pocket', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '1150' }] });
-  await walletCard(page, 'Two Pocket').click();
+  await openFace(walletCard(page, 'Two Pocket'));
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   await setCurrency(currencyRow(page), 'USD');
   await page.getByLabel('Opening USD').pressSequentially('2400');
@@ -482,7 +484,7 @@ test('Add a pocket says so when the account already holds every currency (P2-M5)
   for (let i = 2; i < all; i += 1) await page.getByRole('button', { name: 'Add another currency' }).click();
   await expect(currencyRow(page, `Pocket ${all}`)).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
-  await walletCard(page, 'Every Currency').click();
+  await openFace(walletCard(page, 'Every Currency'));
   await page.getByRole('button', { name: /^Add (a )?currency$/ }).first().click();
   await expect(page.getByText('This account already holds every currency.')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Add a currency' }).getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
@@ -520,7 +522,7 @@ test('Add asset with a blank foreign rate takes the day’s rate', async ({ page
 test('the Move page: type what leaves and what arrives, nothing under them, the swap and the picker change the pockets', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await walletCard(page, 'Bank One Valas Plus').click();
+  await openFace(walletCard(page, 'Bank One Valas Plus'));
   await page.getByRole('link', { name: 'Move', exact: true }).click();
 
   // From USD to IDR through the pickers: each row names its side and its pocket.

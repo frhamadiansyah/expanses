@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, openFace } from './accounts';
 import { cardPage, walletCard, saveCardTerms, setUpRewardsByHand } from './card-section';
 import { programmeFaces } from './programme-faces';
 
@@ -16,7 +16,7 @@ test.beforeEach(({ page }) => {
 async function cardEarningInto(page: Page, card: string, programme: string) {
   await openCard(page, { name: card });
   await page.goto('/wallet');
-  await walletCard(page, card).click();
+  await openFace(walletCard(page, card));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -84,7 +84,7 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await cardEarningInto(page, 'Mandiri Platinum', 'Platinum points');
 
   await page.goto('/wallet');
-  await walletCard(page, 'Mandiri Platinum').click();
+  await openFace(walletCard(page, 'Mandiri Platinum'));
   await cardPage(page, 'Settings');
   await page.getByLabel('Earns into', { exact: true }).selectOption({ label: "Livin' Poin" });
   await expect(page.getByLabel('Earns into', { exact: true }).locator('option:checked')).toHaveText("Livin' Poin");

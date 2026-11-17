@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addPlastic, openAccount, openAccountHistory, openCard } from './accounts';
+import { addPlastic, openAccount, openAccountHistory, openCard, openFace } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
 import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, payCard, payStatementPurchases, saveCardTerms, showCardBack } from './card-section';
 
@@ -17,7 +17,7 @@ async function setUp(page: Page) {
   await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').fill('31');
@@ -36,7 +36,7 @@ async function buy(page: Page, description: string, amount: string, on: string) 
 
 async function openCardPage(page: Page) {
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
 }
 
 /** The card's statement, a page of its own opened from its round Statement button. */

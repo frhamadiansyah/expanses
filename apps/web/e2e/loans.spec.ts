@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { expectWalletFigure, openAccount } from './accounts';
+import { expectWalletFigure, openAccount, openFace } from './accounts';
 import { backToCardFromPlans, startPlan } from './card-section';
 import { openDrawers } from './drawers';
 
@@ -204,7 +204,7 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '12000000');
 
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'BCA KrisFlyer' }).click();
+  await openFace(page.getByRole('link', { name: 'BCA KrisFlyer' }));
   // With no plan the card page shows no Instalments box: the first is added from Settings, Instalments, ＋.
   await expect(page.getByTestId('card-instalments')).toHaveCount(0);
   await startPlan(page);

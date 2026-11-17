@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { addPlastic, openCard } from './accounts';
+import { addPlastic, openCard, openFace } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, pickChargedOn, saveCardTerms, showCardBack } from './card-section';
 
@@ -25,7 +25,7 @@ export async function buy(page: Page, card: string, amount: string) {
 
 export async function openWalletCard(page: Page, name: string) {
   await page.goto('/wallet');
-  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
+  await openFace(page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }));
   await expect(page).toHaveURL(/\/cards\/[^/]+$/);
 }
 

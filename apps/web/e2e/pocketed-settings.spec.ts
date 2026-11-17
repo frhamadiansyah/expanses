@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount, openSettings, walletCard } from './accounts';
+import { openAccount, openSettings, walletCard, openFace } from './accounts';
 import { mockRates, openWithPockets } from './pockets';
 
 test.beforeEach(({ page }) => {
@@ -18,7 +18,7 @@ const VALAS = {
 
 test('a single-currency bank account asks Bank › name, Group and Description', async ({ page }) => {
   await openAccount(page, { subtype: 'savings', name: 'Plain Saver', balance: '1000000', shown: 'Plain Saver' });
-  await walletCard(page, 'Plain Saver').click();
+  await openFace(walletCard(page, 'Plain Saver'));
   await openSettings(page);
   await expect(page.getByLabel('Bank', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Plain Saver');
@@ -29,7 +29,7 @@ test('a single-currency bank account asks Bank › name, Group and Description',
 test('an account with pockets is asked as a plain one is, and its pockets point back to it', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await walletCard(page, VALAS.shown).click();
+  await openFace(walletCard(page, VALAS.shown));
   await openSettings(page);
 
   // The account: Bank › name with an ⓘ for the pockets, then Group and Description. No sentence under the rows.
@@ -64,7 +64,7 @@ test('an account with pockets is asked as a plain one is, and its pockets point 
   await expect(page.getByLabel('Name', { exact: true })).toHaveCount(0);
   await page.goto('/wallet');
   await expect(walletCard(page, 'Bank Two Valas Max')).toBeVisible();
-  await walletCard(page, 'Bank Two Valas Max').click();
+  await openFace(walletCard(page, 'Bank Two Valas Max'));
   await page.getByTestId('pocket-USD').click();
   await expect(page.getByRole('main').getByText('Bank Two Valas Max · USD').first()).toBeVisible();
 });

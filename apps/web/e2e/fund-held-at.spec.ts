@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openFace } from './accounts';
 import { FUND, fundByMoney } from './fund-trade';
 
 test.beforeEach(({ page }) => {
@@ -20,6 +21,6 @@ test('a fund is held at an institution by name, never an account: a bank account
 
   // The bank account lists nothing held at the bank: the fund is not linked to it.
   await page.goto('/wallet');
-  await page.getByRole('link', { name: /^BCA/ }).first().click();
+  await openFace(page.getByRole('link', { name: /^BCA/ }).first());
   await expect(page.getByTestId('institution-holding')).toHaveCount(0);
 });

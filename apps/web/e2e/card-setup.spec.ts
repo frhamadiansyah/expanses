@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openCard, walletCard } from './accounts';
+import { openCard, walletCard, openFace } from './accounts';
 import { cardPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 
 test('a new card: Settings holds its terms, then its rewards are set up by hand on a page of their own, with a suggested base rule', async ({ page }) => {
@@ -12,7 +12,7 @@ test('a new card: Settings holds its terms, then its rewards are set up by hand 
   await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
   const cardRow = page.getByRole('region', { name: 'Cards' });
   await expect(cardRow).toContainText('Add billing date to see points');
-  await walletCard(page, 'Step Card').click();
+  await openFace(walletCard(page, 'Step Card'));
   await cardPage(page, 'Settings');
 
   // Only the card's own facts: no step caption, no rewards form, no rules.
@@ -38,7 +38,7 @@ test('a new card: Settings holds its terms, then its rewards are set up by hand 
 test('the corner check on a new card needs both dates, keeps what was typed, and stays on the page once they are saved', async ({ page }) => {
   await openCard(page, { name: 'Check Card' });
   await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
-  await walletCard(page, 'Check Card').click();
+  await openFace(walletCard(page, 'Check Card'));
   await cardPage(page, 'Settings');
   const heading = page.getByRole('heading', { name: 'Settings', exact: true }).first();
   const check = page.getByRole('button', { name: 'Save', exact: true });
@@ -65,7 +65,7 @@ test('the corner check on a new card needs both dates, keeps what was typed, and
 test('a settled card saves its edited terms with the corner check and goes back to the card', async ({ page }) => {
   await openCard(page, { name: 'Settled Card' });
   await page.getByRole('navigation').getByRole('link', { name: 'Wallet', exact: true }).click();
-  await walletCard(page, 'Settled Card').click();
+  await openFace(walletCard(page, 'Settled Card'));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -75,7 +75,7 @@ test('a settled card saves its edited terms with the corner check and goes back 
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page.getByText('1 per Rp')).toBeVisible();
   await page.goto('/wallet');
-  await walletCard(page, 'Settled Card').click();
+  await openFace(walletCard(page, 'Settled Card'));
 
   await cardPage(page, 'Settings');
   await page.getByLabel('Credit limit').fill('7000000');

@@ -1,6 +1,6 @@
 import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, openFace } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, cardPointsPage, walletCard, saveCardTerms, setUpRewardsByHand } from './card-section';
 
@@ -13,7 +13,7 @@ async function cardWithAPurchase(page: Page, on?: string, minimum?: string) {
   await openCard(page, { name: 'CIMB Octo' });
 
   await page.goto('/wallet');
-  await walletCard(page, 'CIMB Octo').click();
+  await openFace(walletCard(page, 'CIMB Octo'));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -32,7 +32,7 @@ async function cardWithAPurchase(page: Page, on?: string, minimum?: string) {
   await addTransaction(page, { description: 'Superindo', paidWith: 'CIMB Octo', category: 'Groceries', amount: '250000', date: on });
 
   await page.goto('/wallet');
-  await walletCard(page, 'CIMB Octo').click();
+  await openFace(walletCard(page, 'CIMB Octo'));
   await cardPage(page, 'Settings');
 }
 
@@ -203,7 +203,7 @@ test('the card page already lists a statement from before the app was opened, an
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Old shop', paidWith: 'CIMB Octo', category: 'Groceries', amount: '500000', date: monthsAgo(4) });
   await page.goto('/wallet');
-  await walletCard(page, 'CIMB Octo').click();
+  await openFace(walletCard(page, 'CIMB Octo'));
   await cardPage(page, 'Points');
   await openProgrammeFromPoints(page);
   await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
@@ -248,7 +248,7 @@ test('the amber earned-nothing line opens only the purchases that earned nothing
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Kopi kecil', paidWith: 'CIMB Octo', category: 'Groceries', amount: '20000' });
   await page.goto('/wallet');
-  await walletCard(page, 'CIMB Octo').click();
+  await openFace(walletCard(page, 'CIMB Octo'));
   await cardPage(page, 'Points');
 
   const nothing = page.getByTestId('earned-nothing');

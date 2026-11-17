@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openAccount, walletCard, showBalance } from './accounts';
+import { openAccount, walletCard, showBalance, openFace, wideScreen } from './accounts';
 import { addForm } from './add-transaction';
 import { addBill } from './bill-pause';
 import { openAssets } from './drawers';
@@ -11,8 +11,12 @@ import { openAssets } from './drawers';
  * worth's Assets and in a transfer's To. The Balance box is the grid's, always shown there, with no eye.
  */
 
-/** Picks a Wallet view from the View corner; the pile shows no Balance box, so a journey that reads it picks the grid first. */
+/**
+ * Picks a Wallet view from the View corner; the pile shows no Balance box, so a journey that reads it picks the grid first.
+ * A wide screen has no View corner: Mac Wallet always shows its Balance box over the cards, so there is nothing to pick.
+ */
 export async function pickView(page: Page, name: 'Stack' | 'Grid' | 'Carousel') {
+  if (wideScreen(page)) return;
   // One tap steps Stack → Grid → Carousel → Stack; the button's name says which is in force.
   const view = page.getByRole('button', { name: /^View: / });
   for (let taps = 0; taps < 3; taps++) {
@@ -37,12 +41,13 @@ export async function forSpendingOff(page: Page) {
   // Both are cards to begin with, and the Balance counts both (the box is the grid's; the pile shows none).
   await page.goto('/wallet');
   await expect(walletCard(page, 'Everyday')).toBeVisible();
-  await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
+  // The phone's pile has no Balance box; Mac Wallet always has it.
+  if (!wideScreen(page)) await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
   await pickView(page, 'Grid');
   await expect(page.getByTestId('wallet-balance')).toContainText('8.000.000');
 
   // Opened from its card, the account's ⚙ is in Wallet's bar; the switch is in its Settings.
-  await walletCard(page, 'Rainy day').click();
+  await openFace(walletCard(page, 'Rainy day'));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('5.000.000');
@@ -121,7 +126,7 @@ export async function walletViews(page: Page) {
   await expect(faces.nth(1).getByTestId('card-face')).toBeVisible();
 
   // A face opens the same page the stack opens, under the raised card; ✕ comes back to the grid.
-  await walletCard(page, 'Everyday').click();
+  await openFace(walletCard(page, 'Everyday'));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('3.000.000');
@@ -166,7 +171,7 @@ export async function walletViews(page: Page) {
   await expect(wall.getByTestId('wallet-facts')).toContainText('Pocket cash');
   await expect(recent).toContainText('No transactions yet');
   // The centred card opens its page.
-  await walletCard(page, 'Pocket cash').click();
+  await openFace(walletCard(page, 'Pocket cash'));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await showBalance(page);
   await expect(page.getByTestId('balance-card')).toContainText('250.000');
@@ -329,7 +334,8 @@ export async function balanceRows(page: Page) {
   const spending = box.getByRole('button', { name: /^Spending money/ });
   const cards = box.getByRole('button', { name: /^Outstanding on cards/ });
   const bills = box.getByRole('button', { name: /^Bills still to pay/ });
-  const faces = page.getByTestId('wallet-grid').getByTestId('wallet-card');
+  // The phone's grid, or Mac Wallet's faces: the cards the box's rows filter.
+  const faces = page.getByRole('region', { name: 'Cards' }).getByTestId('wallet-card');
   const header = page.getByTestId('wallet-filter');
 
   // 5.300.000 to spend, 500.000 on the card and 500.000 of bills still to come out: 4.300.000.

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addPlastic, editPlastic, openCard, removePlastic } from './accounts';
+import { addPlastic, editPlastic, openCard, removePlastic, openFace } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage } from './card-section';
 
@@ -14,7 +14,7 @@ async function addCardAccount(page: Page) {
 /** The card's Settings, where the cards on its account are listed and added. */
 async function openTheCard(page: Page) {
   await page.goto('/wallet');
-  await page.getByRole('link', { name: /^Mandiri Bonvoy(,|$)/ }).click();
+  await openFace(page.getByRole('link', { name: /^Mandiri Bonvoy(,|$)/ }));
   await expect(page.getByRole('heading', { name: 'Mandiri Bonvoy' })).toBeVisible();
   await cardPage(page, 'Settings');
 }

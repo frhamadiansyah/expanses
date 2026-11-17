@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { walletCard } from './accounts';
+import { walletCard, openFace } from './accounts';
 import { mockRates, openWithPockets, pickPocket } from './pockets';
 import { addGoal, goalCard, setAside } from './set-aside';
 
@@ -25,7 +25,7 @@ test('moving between pockets asks only when it takes promised money, and the pro
   await setAside(page, 'Umrah 2027', 'Valas Plus · USD (USD)', '2000.00');
 
   await page.goto('/wallet');
-  await walletCard(page, 'Valas Plus').click();
+  await openFace(walletCard(page, 'Valas Plus'));
   await page.getByRole('link', { name: 'Move', exact: true }).click();
   await pickPocket(page, 'From', 'USD');
   await pickPocket(page, 'To', 'SGD');

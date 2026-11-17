@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
-import { openAccount, openAccountHistory, openCard, walletCard } from './accounts';
+import { openAccount, openAccountHistory, openCard, walletCard, openFace } from './accounts';
 import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, saveCardTerms, showCardBack } from './card-section';
 import { addForm, choosePayment, saveButton, chooseGoal } from './add-transaction';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
@@ -44,7 +44,7 @@ async function borrowFromEmergencyFund(scope: ReturnType<Page['locator']>) {
 async function addCard(page: Page) {
   await openCard(page, { name: 'BCA Visa' });
   await page.goto('/wallet');
-  await walletCard(page, 'BCA Visa').click();
+  await openFace(walletCard(page, 'BCA Visa'));
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').pressSequentially('31');
@@ -68,7 +68,7 @@ async function buyOnCard(page: Page, note: string, amount: string, on: string) {
 
 async function openCardPage(page: Page) {
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
 }
 
 test('paying the card bill from Jenius asks, and the Emergency fund lends the 1.800.000', async ({ page }) => {

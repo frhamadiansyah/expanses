@@ -90,10 +90,33 @@ export async function expectWalletFigure(page: Page, name: string, figure: strin
   await expect(walletCard(page, name)).toHaveAccessibleName(new RegExp(figure.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 }
 
+/** Whether a journey runs on a wide screen, where Wallet is Mac Wallet: a click opens a card's side peek, a double-click its page. */
+export const wideScreen = (page: Page) => (page.viewportSize()?.width ?? 0) >= 768;
+
+/**
+ * Opens a Wallet card's own page, as a person does: a tap on a phone; on a wide screen a double-click, since a click
+ * there opens the card's side peek. Either way the page is the card raised over it.
+ */
+export async function openFace(face: Locator) {
+  const page = face.page();
+  if (!wideScreen(page)) return face.click();
+  await face.dblclick();
+  // The face grows from where it was into the raised card: a journey that measures the card waits for it to land.
+  const raised = page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]');
+  await expect
+    .poll(async () => {
+      const before = await raised.boundingBox();
+      await page.waitForTimeout(60);
+      const after = await raised.boundingBox();
+      return before !== null && after !== null && Math.abs(before.width - after.width) < 0.5 && Math.abs(before.y - after.y) < 0.5;
+    })
+    .toBe(true);
+}
+
 /** An account's own page, opened from its card on Wallet — under the raised card, as a person opens it. */
 export async function openWalletAccount(page: Page, name: string) {
   await page.goto('/wallet');
-  await walletCard(page, name).click();
+  await openFace(walletCard(page, name));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
 }
 
@@ -103,7 +126,7 @@ export async function openWalletAccount(page: Page, name: string) {
  */
 export async function openAccountHistory(page: Page, name: string) {
   await page.goto('/wallet');
-  await walletCard(page, name).click();
+  await openFace(walletCard(page, name));
   await expect(page).toHaveURL(/\/(accounts|cards)\/[^/]+$/);
   // A credit card's See all is its statement; its whole history is the same list an account's See all opens.
   const card = /\/cards\/([^/?#]+)$/.exec(page.url());

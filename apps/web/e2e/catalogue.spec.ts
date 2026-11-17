@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, openFace } from './accounts';
 import { addTransaction, choosePayment } from './add-transaction';
 import { currencyRow, setCurrency } from './currency-field';
 import { cardPage, cardSettingsPage, saveCardTerms, chooseCatalogueCard, showCardBack } from './card-section';
@@ -15,7 +15,7 @@ async function addCard(page: Page, name: string) {
 
 async function openCardPage(page: Page, name: string) {
   await page.goto('/wallet');
-  await page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
+  await openFace(page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }));
   await expect(page.getByRole('heading', { name })).toBeVisible();
 }
 

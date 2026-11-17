@@ -1,12 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, openFace } from './accounts';
 import { cardPage, saveCardTerms, setUpRewardsByHand, showCardBack } from './card-section';
 
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
   await page.goto('/wallet');
-  await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
+  await openFace(page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -18,32 +18,33 @@ async function addEarningCard(page: Page, name: string) {
 }
 
 /**
- * A desktop draws the same Wallet stack as a phone, at Wallet's own card width on a Mac rather than across the
- * column, with the front card's facts beside it — and opens a card the same way, keeping every action of its page.
+ * A wide screen draws each card as its own face (Mac Wallet), the credit cards side by side under Credit cards in
+ * Wallet's order; a double-click opens the card the phone's way, raised at Wallet's own desktop card width with every
+ * action of its page under it.
  */
-test('a desktop stacks cards of one fixed width and raises the one tapped, with its page beside and below', async ({ page }) => {
+test('a wide screen draws the cards as faces side by side, and a double-click raises the one chosen at a fixed width, with its page below', async ({ page }) => {
   for (const name of ['Alpha Card', 'Beta Card']) await addEarningCard(page, name);
 
   await page.goto('/wallet');
   const wall = page.getByRole('region', { name: 'Cards' });
   const cards = wall.getByTestId('wallet-card');
   await expect(cards).toHaveCount(2);
-  const [back, front] = [(await cards.nth(0).boundingBox())!, (await cards.nth(1).boundingBox())!];
-  expect(Math.round(back.width)).toBe(380);
-  expect(Math.round(front.width)).toBe(380);
-  // Overlapping, back to front: the front card lies over the lower part of the one behind it.
-  expect(front.y).toBeLessThan(back.y + back.height);
-  expect(front.y).toBeGreaterThan(back.y);
-  // A covered card's band carries its name alone; what it owes is on its page.
-  await expect(cards.nth(0).getByTestId('card-band')).toContainText('Alpha Card');
-  await expect(cards.nth(0).getByTestId('card-band')).not.toContainText(/Rp\s*0/);
+  await expect(page.getByTestId('wallet-group-credit').getByTestId('wallet-card')).toHaveCount(2);
+  const [first, second] = [(await cards.nth(0).boundingBox())!, (await cards.nth(1).boundingBox())!];
+  // One row, in Wallet's order, two whole faces of one width.
+  expect(Math.abs(first.y - second.y)).toBeLessThan(2);
+  expect(second.x).toBeGreaterThan(first.x + first.width);
+  expect(Math.round(first.width)).toBe(Math.round(second.width));
+  await expect(cards.nth(0).getByTestId('card-face')).toContainText('Alpha Card');
+  await expect(cards.nth(0).getByTestId('face-figure')).toBeVisible();
 
-  // Tapping the covered card opens THAT card, raised at the same width, with its page's actions.
-  await wall.getByRole('link', { name: /^Alpha Card, / }).click();
+  // A double-click opens THAT card, raised at Wallet's desktop card width, with its page's actions.
+  await openFace(wall.getByRole('link', { name: /^Alpha Card, / }));
   await expect(page).toHaveURL(/\/cards\/[^/]+$/);
   await expect(page.getByRole('heading', { name: 'Alpha Card', exact: true })).toBeFocused();
   const raised = wall.locator('[data-place="raised"]');
-  expect(Math.round((await raised.boundingBox())!.width)).toBe(380);
+  // It grows from the face it was into Wallet's desktop card width.
+  await expect.poll(async () => Math.round((await raised.boundingBox())!.width)).toBe(380);
   // Turned over, the card's back is the card's own box: Outstanding and the points on it.
   await showCardBack(page);
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('Outstanding');
@@ -58,10 +59,9 @@ test('a desktop stacks cards of one fixed width and raises the one tapped, with 
   await page.getByRole('button', { name: 'Alpha Card', exact: true }).click();
   await expect(page.getByTestId('wallet-slot')).toBeVisible();
 
-  // Back behaves like ✕: the stack again, in its order.
+  // Back behaves like ✕: Mac Wallet again, in its order.
   await page.goBack();
   await expect(page).toHaveURL(/\/wallet$/);
   await expect(wall.getByRole('link')).toHaveCount(2);
-  await expect(cards.nth(1)).toHaveAttribute('data-front', '');
   await expect(cards.nth(1).getByRole('link')).toHaveAccessibleName(/^Beta Card, /);
 });

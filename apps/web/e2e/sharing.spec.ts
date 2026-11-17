@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { type Browser, expect, type Locator, type Page, test, type TestInfo } from '@playwright/test';
 import { currencyRow, setCurrency } from './currency-field';
 import BetterSqlite3 from 'better-sqlite3';
-import { openAccount, openAccountHistory, openCard, walletCard } from './accounts';
+import { openAccount, openAccountHistory, openCard, walletCard, openFace, wideScreen } from './accounts';
 import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
@@ -528,7 +528,7 @@ async function setSwitch(page: Page, label: string, on: boolean) {
  */
 async function shareAccount(page: Page, name: string, partner: string) {
   await page.goto('/wallet');
-  await walletCard(page, name).click();
+  await openFace(walletCard(page, name));
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await setSwitch(page, `Shared with ${partner}`, true);
   await expect(page.getByRole('checkbox', { name: `Shared with ${partner}`, exact: true })).toBeChecked();
@@ -635,7 +635,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
   await openCard(page, { name: 'Fandri Card' });
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'Fandri Card' }).click();
+  await openFace(page.getByRole('link', { name: 'Fandri Card' }));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
@@ -752,7 +752,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
   await page.goto('/wallet');
-  await page.getByRole('link', { name: 'Fandri Card' }).click();
+  await openFace(page.getByRole('link', { name: 'Fandri Card' }));
   await cardPage(page, 'Statement');
   await eventually(page, () => expect(page.getByTestId('statement-line').filter({ hasText: 'Dewi dinner' })).toContainText('200.000', { timeout: 1_000 }));
   await shot(page, info, '17-card-statement');
@@ -816,7 +816,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
 
   // Fandri stops sharing his bank account; it leaves Dewi's phone.
   await page.goto('/wallet');
-  await walletCard(page, 'Fandri Bank').click();
+  await openFace(walletCard(page, 'Fandri Bank'));
   // Household sharing sits in the account's Settings.
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await setSwitch(page, 'Shared with Dewi', false);
@@ -908,7 +908,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
 
   // Fandri's account Settings: Owned together sits under Shared with Dewi, off.
   await page.goto('/wallet');
-  await walletCard(page, 'Fandri Bank').click();
+  await openFace(walletCard(page, 'Fandri Bank'));
   await expect(page.getByTestId('joint-row')).toHaveCount(0);
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Shared with Dewi', exact: true })).toBeChecked();
@@ -950,7 +950,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   const rowsOn = (p: Page) => p.getByTestId('joint-row');
   await eventually(page, async () => {
     await page.goto('/wallet');
-    await walletCard(page, 'Fandri Bank').click();
+    await openFace(walletCard(page, 'Fandri Bank'));
     await expect(rowsOn(page)).toHaveCount(2, { timeout: 2_000 });
   });
   await expect(rowsOn(page).filter({ hasText: 'Dewi groceries' })).toContainText('by Dewi');
@@ -980,7 +980,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await page.getByRole('button', { name: 'Click again to delete' }).click();
   await expect(page).toHaveURL(/\/transactions$/);
   await page.goto('/wallet');
-  await walletCard(page, 'Fandri Bank').click();
+  await openFace(walletCard(page, 'Fandri Bank'));
   await expect(page.getByTestId('joint-row-deleted')).toContainText('deleted by me');
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
@@ -993,7 +993,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await expect(rowsOn(dewi)).toHaveCount(2);
   await eventually(page, async () => {
     await page.goto('/wallet');
-    await walletCard(page, 'Fandri Bank').click();
+    await openFace(walletCard(page, 'Fandri Bank'));
     await expect(page.getByTestId('joint-row-deleted')).toHaveCount(0, { timeout: 1_000 });
     await expect(rowsOn(page)).toHaveCount(2, { timeout: 1_000 });
   });
@@ -1021,7 +1021,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await accountReads(page, 'Fandri Bank', '9.470.000');
   await eventually(page, async () => {
     await page.goto('/wallet');
-    await walletCard(page, 'Fandri Bank').click();
+    await openFace(walletCard(page, 'Fandri Bank'));
     await expect(rowsOn(page).filter({ hasText: 'Cash withdrawal' })).toHaveCount(1, { timeout: 1_000 });
   });
   await expect(rowsOn(page).filter({ hasText: 'Cash withdrawal' })).toContainText('by Dewi');
@@ -1035,7 +1035,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
 
   // Switched off, the partner is back to the balance and the total: no rows.
   await page.goto('/wallet');
-  await walletCard(page, 'Fandri Bank').click();
+  await openFace(walletCard(page, 'Fandri Bank'));
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Owned together' }).scrollIntoViewIfNeeded();
   await page.getByRole('checkbox', { name: 'Owned together' }).click({ force: true });
@@ -1092,12 +1092,12 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
 
   // Rina turns Joint account on for the savings and Joint card on for the card.
   await page.goto('/wallet');
-  await walletCard(page, 'Joint savings').click();
+  await openFace(walletCard(page, 'Joint savings'));
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await setSwitch(page, 'Owned together', true);
   await expect(page.getByRole('checkbox', { name: 'Owned together' })).toBeChecked();
   await page.goto('/wallet');
-  await walletCard(page, 'Rina Card').click();
+  await openFace(walletCard(page, 'Rina Card'));
   await cardPage(page, 'Settings');
   await setSwitch(page, 'Owned together', true);
   await expect(page.getByRole('checkbox', { name: 'Owned together' })).toBeChecked();
@@ -1134,7 +1134,7 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
 
   // A tap opens the joint account's page: its balance from Rina's phone, Add and Transfer, Settings greyed, its rows.
   await andi.getByTestId('wallet-cards-row').click();
-  await walletCard(andi, 'Joint savings').click();
+  await openFace(walletCard(andi, 'Joint savings'));
   await expect(andi).toHaveURL(/\/wallet\/joint\/[^/]+$/);
   await expect(andi.getByTestId('joint-item-hero')).toContainText('8.000.000');
   await expect(andi.getByTestId('joint-item-from')).toContainText('from Rina’s phone');
@@ -1147,7 +1147,7 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
 
   // The joint card's page: Pay and Settings greyed; Add opens the Add screen paying with her card, and the purchase is its row.
   await andi.goto('/wallet');
-  await walletCard(andi, 'Rina Card').click();
+  await openFace(walletCard(andi, 'Rina Card'));
   await expect(andi.getByTestId('joint-item-hero')).toContainText('Owed');
   await expect(andi.getByTestId('joint-pay')).toBeDisabled();
   await expect(andi.locator('main')).toContainText('Purchases recorded in Home show on both phones. The statement, Pay and points stay on Rina’s phone.');
@@ -1163,7 +1163,7 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
   await andi.goto('/wallet');
-  await walletCard(andi, 'Rina Card').click();
+  await openFace(walletCard(andi, 'Rina Card'));
   await expect(andi.getByTestId('joint-row').filter({ hasText: 'Fuel' })).toContainText('by me');
   await expect(andi.locator('main')).toContainText('Joint card · 1 row');
   await shot(andi, info, 'wj4-joint-card');
@@ -1181,8 +1181,15 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   await andi.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(andi).toHaveURL(/\/wallet$/);
   await andi.reload();
-  await expect(faces.nth(0)).toHaveAttribute('aria-label', /^Rina Card/);
-  await expect(faces.nth(1)).toHaveAttribute('aria-label', /^Andi Payroll/);
+  if (wideScreen(andi)) {
+    // Mac Wallet keeps each card in its group — hers under Credit cards — in this order; Wallet's order itself is kept.
+    await expect(andi.getByTestId('wallet-group-credit').getByTestId('card-face')).toHaveAttribute('aria-label', /^Rina Card/);
+    await andi.goto('/wallet/reorder');
+    await expect(reorderRows.nth(0)).toContainText('Rina Card');
+  } else {
+    await expect(faces.nth(0)).toHaveAttribute('aria-label', /^Rina Card/);
+    await expect(faces.nth(1)).toHaveAttribute('aria-label', /^Andi Payroll/);
+  }
 });
 
 /*

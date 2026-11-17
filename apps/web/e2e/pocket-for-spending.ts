@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { expectWalletFigure, openSettings, walletCard } from './accounts';
+import { expectWalletFigure, openSettings, walletCard, openFace } from './accounts';
 import { addForm } from './add-transaction';
 import { openAssets } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
@@ -41,7 +41,7 @@ async function walletBalance(page: Page) {
 /** A pocket's Settings, reached as a person does: its account's card, the pocket's row, then ⋯ → Settings. */
 async function openPocketSettings(page: Page, currency: string) {
   await page.goto('/wallet');
-  await walletCard(page, CASH.name).click();
+  await openFace(walletCard(page, CASH.name));
   await page.getByTestId(`pocket-${currency}`).click();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await openSettings(page);
@@ -51,7 +51,7 @@ async function openPocketSettings(page: Page, currency: string) {
 /** The account's own Settings, from its card on Wallet. */
 async function openAccountSettings(page: Page) {
   await page.goto('/wallet');
-  await walletCard(page, CASH.name).click();
+  await openFace(walletCard(page, CASH.name));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
   return page.getByLabel('For spending');

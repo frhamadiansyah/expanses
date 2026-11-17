@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
-import { openAccount, walletCard } from './accounts';
+import { openAccount, walletCard, openFace } from './accounts';
 import { addForm } from './add-transaction';
 import { eventually } from './shared-events';
 import { openSharePage, openWorkspacePage, renameWorkspace, shareWorkspace } from './workspace-page';
@@ -124,7 +124,7 @@ test('three steps, one list: a shared account marked owned together from its ico
 
   // The account's own Settings: the same two switches.
   await rina.goto('/wallet');
-  await walletCard(rina, 'BCA 0917').click();
+  await openFace(walletCard(rina, 'BCA 0917'));
   await rina.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(rina.getByRole('checkbox', { name: 'Shared with Andi' })).toBeChecked();
   await expect(rina.getByRole('checkbox', { name: 'Owned together' })).toBeChecked();

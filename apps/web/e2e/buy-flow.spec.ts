@@ -1,6 +1,6 @@
 import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
-import { expectWalletFigure, openAccount, openSettings, openAccountHistory } from './accounts';
+import { expectWalletFigure, openAccount, openSettings, openAccountHistory, openFace } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, openTradeMore, saveButton } from './add-transaction';
 import { cardPage, cardPointsPage, saveCardTerms, chooseCatalogueCard } from './card-section';
@@ -299,7 +299,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
 
   // A card with real terms, so there is a points scheme for the purchase to be measured against.
   await page.goto('/wallet');
-  await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
+  await openFace(page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -317,7 +317,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
   });
 
   await page.goto('/wallet');
-  await page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }).click();
+  await openFace(page.getByRole('link', { name: /^BCA KF Signature(,|$)/ }));
   await cardPage(page, 'Points');
   await cardPointsPage(page, 'Purchases');
   // Units are recorded, so this is not spending — and it is still a card purchase, so it still earns.
