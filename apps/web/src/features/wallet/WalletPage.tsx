@@ -44,8 +44,8 @@ const SPARK_DAYS = 30;
  * One share of the Balance box: a dot in the line's own colour, what it is called, and its figure on the right. The
  * legend and the picture are one thing, so the dot's colour is the line's colour and never a colour of its own.
  *
- * Each share is a button. Spending money and Outstanding on cards filter the grid under the box to the cards they are made
- * of (`pressed`), on their own tint with a ✓, the other rows greyed meanwhile (`dimmed`); Bills still to pay opens its
+ * Each share is a button. Spending money and Outstanding on cards filter the grid under the box to the cards they are
+ * made of (`pressed`), on their own tint with a ✓, the other rows greyed meanwhile (`dimmed`); Bills still to pay opens its
  * sheet, so it carries a chevron instead.
  */
 function SpendRow({
@@ -157,8 +157,8 @@ export function WalletPage() {
   /*
    * The Balance box: money kept for spending, less what goals have claimed of it, less what is outstanding on the
    * credit cards — what each owes, billed or not, less only its instalments not billed yet (owner, 17 Nov 2026) — less
-   * the bills still to pay this month (`walletBox`). Loans and money owed to people are not here any more: they are read against a year's schedule
-   * on Net worth's Liabilities, not as this month's claim on the money in a pocket. A rate short and there is no
+   * the bills still to pay this month (`walletBox`). Loans and money owed to people are not here any more: they are
+   * read against a year's schedule on Net worth's Liabilities, not as this month's claim on the money in a pocket. A rate short and there is no
    * figure; the missing currency is named instead.
    */
   // This month's bills, as the Recurring page reads them — the workspace's month ("Month starts on"), each bill by the
