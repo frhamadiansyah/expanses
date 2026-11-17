@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentActionKeys, parentTotal, pocketCount, pocketsOf, readPockets, swapPockets, withPockets } from './pockets';
+import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, figureFace, figureFromTyped, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentActionKeys, parentTotal, pocketCount, pocketsOf, readPockets, swapPockets, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -217,9 +217,73 @@ describe('moving between pockets', () => {
     expect(withPockets(typed, { moneyId: sgd.id }).manualRate).toBe('');
   });
 
-  it('writes the bank’s rate to four places', () => {
-    expect(bankRateText(1.276, 'USD', 'SGD')).toBe('1 USD = 1,2760 SGD');
+  it('writes the bank’s rate between two foreign currencies to four places at most, trailing noughts dropped', () => {
+    expect(bankRateText(1.276, 'USD', 'SGD')).toBe('1 USD = 1,276 SGD');
+    expect(bankRateText(1.27604, 'USD', 'SGD')).toBe('1 USD = 1,276 SGD');
+    expect(bankRateText(1.27635, 'USD', 'SGD')).toBe('1 USD = 1,2764 SGD');
+    expect(bankRateText(9, 'JPY', 'KRW')).toBe('1 JPY = 9 KRW');
+    // Under one, four significant figures, so a small rate is never written as nought.
+    expect(bankRateText(0.0000393, 'VND', 'USD')).toBe('1 VND = 0,0000393 USD');
+    expect(bankRateText(0.78367, 'SGD', 'USD')).toBe('1 SGD = 0,7837 USD');
     expect(bankRateText(null, 'USD', 'SGD')).toBe('—');
+  });
+
+  it('writes the Rate row as the receipt does when one side is the base: the foreign currency priced in the base', () => {
+    const toIdr = moveDraft('book', usd, idr, '2026-09-21');
+    expect(moveView({ ...toIdr, amount: '100.00', toAmount: '1630000' }, accounts, 'IDR', rates).rateText).toBe('Rp 16.300 per USD');
+    const fromIdr = moveDraft('book', idr, usd, '2026-09-21');
+    expect(moveView({ ...fromIdr, amount: '1630000', toAmount: '100' }, accounts, 'IDR', rates).rateText).toBe('Rp 16.300 per USD');
+    expect(moveView({ ...start, amount: '500', toAmount: '638' }, accounts, 'IDR', rates).rateText).toBe('1 USD = 1,276 SGD');
+    expect(moveView({ ...start, amount: '500', toAmount: '' }, accounts, 'IDR', rates).rateText).toBe('—');
+  });
+});
+
+describe('a Move figure, grouped as it is typed', () => {
+  /** Each key added to what the field shows, as a thumb types it: the draft's text and the field's after every key. */
+  const keyed = (keys: string, currency: string) => {
+    let draft = '';
+    for (const key of keys) draft = figureFromTyped(figureFace(draft, currency) + key, currency);
+    return { draft, face: figureFace(draft, currency) };
+  };
+
+  it('shows the draft’s plain figure grouped in the app’s money format', () => {
+    expect(figureFace('1000.00', 'USD')).toBe('1.000,00');
+    expect(figureFace('20700000', 'IDR')).toBe('20.700.000');
+    expect(figureFace('100.', 'USD')).toBe('100,');
+    expect(figureFace('.5', 'USD')).toBe('0,5');
+    expect(figureFace('', 'USD')).toBe('');
+  });
+
+  it('keeps the draft in the plain form the save reads, key by key', () => {
+    expect(keyed('1000', 'USD')).toEqual({ draft: '1000', face: '1.000' });
+    expect(keyed('20700000', 'IDR')).toEqual({ draft: '20700000', face: '20.700.000' });
+    // A dot typed after the figure is the decimal mark (a decimal pad shows a dot or a comma by the phone's language).
+    expect(keyed('100.50', 'USD')).toEqual({ draft: '100.50', face: '100,50' });
+    expect(keyed('100,50', 'USD')).toEqual({ draft: '100.50', face: '100,50' });
+    expect(keyed('1.630.000', 'IDR')).toEqual({ draft: '1630000', face: '1.630.000' });
+    expect(keyed('1,234', 'USD')).toEqual({ draft: '1.23', face: '1,23' });
+  });
+
+  it('reads a dot between groups as a thousands mark, and a pasted plain figure as it is', () => {
+    // ⌫ on 1.000 leaves 1.00: a hundred, not one.
+    expect(figureFromTyped('1.00', 'USD')).toBe('100');
+    expect(figureFromTyped('1.000,5', 'USD')).toBe('1000.5');
+    expect(figureFromTyped('1000.00', 'USD')).toBe('1000.00');
+    expect(figureFromTyped('20.700.000,00', 'IDR')).toBe('20700000');
+    expect(figureFromTyped('007', 'IDR')).toBe('7');
+    expect(figureFromTyped('', 'IDR')).toBe('');
+  });
+
+  it('posts what the field shows at every keystroke', () => {
+    const toIdr = moveDraft('book', usd, idr, '2026-09-21');
+    let amount = '';
+    let toAmount = '';
+    for (const key of '1000,50') amount = figureFromTyped(figureFace(amount, 'USD') + key, 'USD');
+    for (const key of '16300000') toAmount = figureFromTyped(figureFace(toAmount, 'IDR') + key, 'IDR');
+    const post = formToPost({ ...toIdr, amount, toAmount }, accounts);
+    if (post.kind !== 'post') throw new Error('expected a plain posting');
+    expect(post.input.lines.find((line) => line.accountId === usd.id)).toMatchObject({ amountMinor: -100_050 });
+    expect(post.input.lines.find((line) => line.accountId === idr.id)).toMatchObject({ amountMinor: 16_300_000 });
   });
 });
 
