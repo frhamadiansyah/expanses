@@ -49,6 +49,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
      */
     private func sizeMacWindow(_ windowScene: UIWindowScene) {
         windowScene.sizeRestrictions?.minimumSize = CGSize(width: 900, height: 600)
+        // No title or toolbar strip: the page runs to the top of the window and the window's buttons sit over the
+        // sidebar's top, as in a Mac source-list app. The sidebar leaves them room (`.mac-app`, tokens.css).
+        if let titlebar = windowScene.titlebar {
+            titlebar.titleVisibility = .hidden
+            titlebar.toolbar = nil
+        }
         let sizedKey = "macWindowSized"
         guard !UserDefaults.standard.bool(forKey: sizedKey) else { return }
         UserDefaults.standard.set(true, forKey: sizedKey)

@@ -43,6 +43,28 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return bridgeViewController.supportedInterfaceOrientations
     }
 
+    #if targetEnvironment(macCatalyst)
+    /**
+     * The Mac app's menu bar: cicis › Settings… (⌘,), as every Mac app has it, opening the app's Settings page (the
+     * Account page, `/account`). The page is told through a window event the web layer listens for
+     * (`cicis:open-settings`, apps/web/src/app/Layout.tsx), so the router moves as if the sidebar's Settings were clicked.
+     */
+    override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        guard builder.system == .main else { return }
+        let settings = UIKeyCommand(title: "Settings…", action: #selector(openSettings(_:)), input: ",", modifierFlags: .command)
+        builder.remove(menu: .preferences)
+        builder.insertSibling(UIMenu(title: "", identifier: .preferences, options: .displayInline, children: [settings]), afterMenu: .about)
+    }
+
+    @objc func openSettings(_ sender: Any?) {
+        let bridges = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) ?? ($0 as? UIWindowScene)?.windows.first }
+            .compactMap { $0.rootViewController as? CAPBridgeViewController }
+        bridges.first?.bridge?.eval(js: "window.dispatchEvent(new CustomEvent('cicis:open-settings'))")
+    }
+    #endif
+
     func application(_ application: UIApplication,
                      configurationForConnecting connectingSceneSession: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
