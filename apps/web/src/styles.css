@@ -172,3 +172,22 @@ input[list]::-webkit-list-button {
     animation: none;
   }
 }
+
+/*
+ * The wide Cashflow's side peek (Mac Cashflow D): it slides in from the right over the page, as Notion's does. With
+ * reduced motion it is simply there.
+ */
+@keyframes peek-in {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+}
+.ph-peek {
+  animation: peek-in 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-peek {
+    animation: none;
+  }
+}

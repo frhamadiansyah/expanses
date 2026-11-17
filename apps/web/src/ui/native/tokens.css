@@ -146,6 +146,14 @@
   --ov-expected-line: #9fd3ad;
 
   /*
+   * The wide screen's Cashflow table (Mac Cashflow D): a Mac table's selected row (the system accent, white text on it),
+   * its every-other-row stripe and its column header's ground.
+   */
+  --mac-accent: #0a7cff;
+  --mac-zebra: #f7f7f9;
+  --mac-head: #fafafa;
+
+  /*
    * Whose an item is, in a household's Net worth (joint-net-worth §8.2; owner rings, 12 Nov): the ring round a row's
    * icon circle. Each member picks one (`RING_COLOURS`, in this order); one who never picks has the colour of their
    * place in the group. Hues no kind, status or tint uses — no red, rose or green, which mean debt, warning and up —
@@ -229,6 +237,11 @@
     --ov-ground: #000000;
     --ov-expected-fill: #12261a;
     --ov-expected-line: #2f7d4a;
+
+    /* The Cashflow table's accent, stripe and header, as a dark Mac table draws them. */
+    --mac-accent: #0a84ff;
+    --mac-zebra: rgb(255 255 255 / 0.035);
+    --mac-head: #232325;
 
     /* The owner rings as iOS lifts the same hues for a dark ground. */
     --owner-blue: #0a84ff;
