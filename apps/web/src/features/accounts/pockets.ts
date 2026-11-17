@@ -127,6 +127,12 @@ export function figureFace(value: string, _currency: string): string {
   return cents === undefined ? grouped : `${grouped || '0'},${cents}`;
 }
 
+/** What an empty Move field shows in light grey: nothing typed yet, as the field would write it — "0,00", or "0" for a currency with no cents. */
+export function figurePlaceholder(currency: string): string {
+  const { exponent } = currencyInfo(currency);
+  return exponent > 0 ? `0,${'0'.repeat(exponent)}` : '0';
+}
+
 /**
  * What a Move field's typing means, back in the draft's plain form, so the save reads it exactly as before. A comma is
  * the decimal mark and a dot a thousands mark, as the field writes them — except a dot just typed at the end, or one

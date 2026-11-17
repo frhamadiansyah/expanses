@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycleBack, cycleDueIn, dueDateAfter, dueIn } from './statement-dates';
+import { cycleBack, cycleDueIn, dueDateAfter, dueIn, statementSearch } from './statement-dates';
 
 describe('statement dates', () => {
   it('steps back through statements from the one today is in', () => {
@@ -34,5 +34,14 @@ describe('cycleDueIn', () => {
     expect(cycleDueIn('2026-11', 20, 5)).toEqual({ start: '2026-09-21', end: '2026-10-20' });
     expect(cycleDueIn('2026-11', 5, 25)).toEqual({ start: '2026-10-06', end: '2026-11-05' });
     expect(cycleDueIn('2027-01', 20, 10)).toEqual({ start: '2026-11-21', end: '2026-12-20' });
+  });
+});
+
+describe('statementSearch', () => {
+  it('keeps which statement is on screen in the address, so the way back from paying lands on it again', () => {
+    expect(statementSearch({ back: 2 })).toEqual({ back: 2 });
+    expect(statementSearch({ back: '1' })).toEqual({ back: 1 });
+    // The current statement is the address with nothing in it.
+    for (const back of [0, -1, 1.5, 'x', undefined]) expect(statementSearch({ back })).toEqual({});
   });
 });

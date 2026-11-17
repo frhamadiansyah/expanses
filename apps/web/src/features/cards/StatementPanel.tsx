@@ -1,5 +1,5 @@
 import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
-import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, payCardPurchases, setPlanPaidSoFar, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
+import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, setPlanPaidSoFar, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Banknote, CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
@@ -7,21 +7,19 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
 import { useApp } from '../../app/context';
-import { canPayWith } from '../../lib/account-types';
-import { moneyHolders, useInvalidateAll } from '../../lib/queries';
+import { useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { ToastCard } from '../../ui/UndoToast';
-import { InsetGroup, InsetRow, Panel, SelectRow, TextRow } from '../../ui/native';
-import { ActionRow, ColumnGroup, EARLIER, GlyphButton, Line, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
+import { InsetGroup, InsetRow, Panel } from '../../ui/native';
+import { ActionRow, EARLIER, GlyphButton, Line, StepperRow, SUBTITLE, TITLE } from './rows';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { StatementBand } from './StatementBand';
 import { cycleBack } from './statement-dates';
 import { groupStatementLines } from './statement-groups';
-import { isCharge, type LineCover, paidCountText, showsPaid, statementCover } from './statement-cover';
+import { isCharge, type LineCover, paidCountText, payableLine, showsPaid, statementCover } from './statement-cover';
+import { statementPayLink } from './card-pay';
 import { CardSheet } from './CardSheet';
-import { spendingDoor } from '../goals/set-aside-question';
-import { useSetAside } from '../goals/SetAsideQuestion';
 import { SELECT_CIRCLE, SelectBarFrame } from '../transactions/SelectBar';
 import { formatPoints } from './useCardPoints';
 import { takeCheckedNote } from '../statement-check/batch';
@@ -120,14 +118,8 @@ export function StatementPanel({
   const setBack = onBack;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const setQuery = onQuery;
-  // A bill is settled from money the owner can move — not from a deposit that is locked, nor from a holding.
-  const payers = moneyHolders(accounts).filter((a) => canPayWith(a) && a.kind === 'asset' && a.currency === card.currency);
-  const [fromId, setFromId] = useState('');
-  const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  // The Pay sheet the select bar's Pay opens.
-  const [paying, setPaying] = useState(false);
   // The paid-off purchase whose ✓ was tapped: the sheet that offers to take it back.
   const [unmarking, setUnmarking] = useState<StatementLine | null>(null);
   // The purchases under Card not recorded, while the sheet that sets their card is up.
@@ -164,8 +156,6 @@ export function StatementPanel({
   // What the card's payments cover, oldest first: worked out by the ledger with the statement, never stored.
   const cover = useMemo<ReadonlyMap<string, LineCover>>(() => (statement.data ? statementCover(statement.data) : new Map()), [statement.data]);
   const coveredWhole = (line: StatementLine) => cover.get(line.key)?.whole === true;
-  // A purchase a payment partly covered is paid for what is left of it, never the whole again.
-  const leftOf = (line: StatementLine) => cover.get(line.key)?.leftMinor ?? line.owedMinor;
   // The payment that completed a purchase's cover; money back says so, and credit from before names none.
   const coveredNote = (line: StatementLine) => {
     const by = cover.get(line.key)?.by ?? null;
@@ -181,7 +171,7 @@ export function StatementPanel({
   const done = (line: StatementLine) => (isCharge(line) && showsPaid(line, cover)) || (planRow(line) && line.paidOff);
   // A plan's instalments and the purchase it replaced are paid through the plan, not ticked off here; a purchase a
   // payment already covers is paid, so it cannot be ticked to be paid twice.
-  const payable = (line: StatementLine) => line.owedMinor > 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo && !coveredWhole(line);
+  const payable = (line: StatementLine) => payableLine(line, cover);
   /*
    * What can be marked settled before the app: a purchase there is still something to pay for, or money back (a
    * refund) whose credit was used up before the app — left standing, it would sit on the card as a credit for ever.
@@ -208,9 +198,6 @@ export function StatementPanel({
   // One statement, split by card when the account carries more than one, the way the bank prints it.
   const groups = groupStatementLines(lines, plastic);
   const grouped = groups.length > 0 && groups[0]!.title !== null;
-  const chosenMinor = chosen.reduce((sum, line) => sum + leftOf(line), 0);
-  const payFrom = fromId || payers[0]?.id || '';
-  const setAside = useSetAside(spendingDoor(payFrom, chosenMinor));
 
   // Ticking a plan's instalment ticks it and every one before it, as its Paid list does.
   const markPaidOff = (line: StatementLine) =>
@@ -815,63 +802,16 @@ export function StatementPanel({
           <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
             {chosen.length} selected
           </span>
-          {/* Pay as the card's own Pay glyph, a circle matching Clear: the name stays for screen readers. */}
-          <button type="button" aria-label="Pay" disabled={busy} onClick={() => setPaying(true)} className={`${SELECT_CIRCLE} text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]`}>
+          {/*
+            Pay as the card's own Pay glyph, a circle matching Clear: the name stays for screen readers. It opens the
+            same "Pay credit card" screen as the card's Pay, the ticked purchases listed under it (owner, 17 Nov 2026).
+          */}
+          <button type="button" aria-label="Pay" disabled={busy} onClick={() => void navigate(statementPayLink(card.id, cycle, today, chosen.map((line) => line.transactionId)))} className={`${SELECT_CIRCLE} text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]`}>
             <Banknote size={20} aria-hidden />
           </button>
         </SelectBarFrame>
       )}
 
-      {paying && chosen.length > 0 && (
-        <Sheet grouped title={`Pay ${chosen.length} purchase${chosen.length === 1 ? '' : 's'}`} onClose={() => setPaying(false)}>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              // Enter submits too: the question is a condition on it.
-              if (!setAside.ready) return;
-              void run(async () => {
-                await payCardPurchases(database, ws, {
-                  cardAccountId: card.id,
-                  fromAccountId: payFrom,
-                  occurredOn: paidOn,
-                  purchaseTransactionIds: chosen.map((line) => line.transactionId),
-                  // A purchase a payment partly covered pays only what is left of it.
-                  amountsMinor: Object.fromEntries(chosen.filter((line) => leftOf(line) !== line.owedMinor).map((line) => [line.transactionId, leftOf(line)])),
-                  // The ledger checks those amounts against its own cover as of the day this statement was read.
-                  today,
-                  setAside: setAside.choice,
-                });
-                setSelected(new Set());
-                setPaying(false);
-              });
-            }}
-          >
-            <InsetGroup wide>
-              {chosen.map((line) => (
-                <InsetRow key={line.transactionId} plain title={line.description} value={money(leftOf(line))} />
-              ))}
-            </InsetGroup>
-            <ColumnGroup
-              footer={payers.length === 0 ? `Add a ${currency} bank account to pay the card from.` : undefined}
-              columns={[
-                [
-                  <SelectRow label="Paid from" value={payFrom} onChange={(event) => setFromId(event.target.value)}>
-                    {payers.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </SelectRow>,
-                ],
-                [<TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required />],
-              ]}
-              submit={<SubmitRow label={`Pay ${money(chosenMinor)}`} disabled={busy || payers.length === 0 || !setAside.ready} />}
-            />
-            {setAside.node}
-            <ErrorBox error={error} />
-          </form>
-        </Sheet>
-      )}
       <ErrorBox error={error ?? statement.error} />
       {noteShown && note && <ToastCard text={note} />}
     </div>

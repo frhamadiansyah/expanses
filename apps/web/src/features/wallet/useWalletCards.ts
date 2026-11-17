@@ -10,6 +10,8 @@ import { useHeldRates } from '../accounts/queries';
 import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useWalletLast4 } from '../cards/card-queries';
 import { faceFor } from '../cards/debit-art/faces';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from '../cards/useCardPoints';
+import { dueNowMinor, laterByCard } from '../cards/limit-usage';
+import { useInstallments } from '../loans/queries';
 import { owedMinor } from '../networth/debt-rows';
 import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
 import { jointChip, readJointOrder, walletJoint, walletKeys } from './wallet-joint';
@@ -37,6 +39,12 @@ export function useWalletCards() {
   const identities = useCardIdentities().data ?? {};
   const plastic = useCards().data ?? [];
   const today = isoDate();
+  /*
+   * Each card's instalments not billed yet (owner, 17 Nov 2026): a card's figure, and Outstanding on cards in the
+   * Balance box, are what is due now — what it owes less those. Net worth and Debts keep the whole debt.
+   */
+  const plans = useInstallments();
+  const laterOnCards = laterByCard(plans.data ?? [], today);
   /*
    * The partner's joint account and joint card (owner, 12 Nov): the other members' shared items whose holder turned
    * Joint on and which can pay, in either way the household files. Read from the summaries their phones sent.
@@ -121,9 +129,9 @@ export function useWalletCards() {
       look: cp.catalog.entry?.look,
       // A PayLater line is a credit account with no catalogue look: its own name finds its drawn face.
       face: cp.catalog.entry?.look ? undefined : faceFor([cp.card.name], ['paylater']),
-      // What the card owes, unmasked: the figure a credit card is opened to read.
-      figure: formatMinor(owedMinor(all, cp.card.id), cp.card.currency ?? ws.baseCurrency),
-      figureLabel: 'Owed',
+      // What is due now on the card, unmasked: the figure a credit card is opened to read, as its back says it.
+      figure: formatMinor(dueNowMinor(owedMinor(all, cp.card.id), laterOnCards[cp.card.id] ?? 0), cp.card.currency ?? ws.baseCurrency),
+      figureLabel: 'Outstanding',
       // Captioned under a face in the grid, what is owed is in the owed red, as it is everywhere else.
       figureTone: 'alarm',
       subtitle: [...named, cycle, earned, worth].filter(Boolean).join(' · '),
@@ -168,7 +176,7 @@ export function useWalletCards() {
    */
   const byKey = new Map([...moneyCards, ...creditCards, ...jointCards].map((card) => [card.key, card]));
   const cards = walletKeys(everything, joint, readJointOrder()).flatMap((key) => byKey.get(key) ?? []);
-  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess && !shared.isPending;
+  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess && !plans.isPending && !shared.isPending;
 
-  return { accounts, balances, everything, all, parents, book, money, credit, joint, rates, held, today, cards, ready };
+  return { accounts, balances, everything, all, parents, book, money, credit, joint, rates, held, today, cards, ready, laterOnCards, plansRead: !plans.isPending };
 }

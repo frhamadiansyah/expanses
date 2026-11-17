@@ -10,7 +10,7 @@ test('the Balance box is always over the grid and nowhere else, with no eye', as
   await balanceOnGridOnly(page);
 });
 
-test('Spending money and Owed on cards filter the grid, and Bills still to pay comes off the Balance and opens its sheet', async ({ page }) => {
+test('Spending money and Outstanding on cards filter the grid, and Bills still to pay comes off the Balance and opens its sheet', async ({ page }) => {
   await balanceRows(page);
 });
 

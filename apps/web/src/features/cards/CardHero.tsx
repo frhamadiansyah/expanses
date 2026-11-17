@@ -18,7 +18,7 @@ import { challengeCoversFee } from './fee-line';
 import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
-import { cardBackFigure, limitUsage } from './limit-usage';
+import { availableLine, cardBackFigure, dueNowMinor, laterInstalmentsMinor, limitUsage } from './limit-usage';
 import { useCardLines, useInstallments } from '../loans/queries';
 import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 import { cardPayLink } from './card-pay';
@@ -207,7 +207,10 @@ export function CardHero({
   const faceSwipe = useSwipeStep({ enabled: lastIndex >= 1, onStep: stepShown, target: () => faceBox.current });
   const limit = cp.limitMinor;
   const plans = useInstallments(card.id);
-  const holding = (plans.data ?? []).map((plan) => ({ plan, split: installmentSplit(plan, today) })).filter(({ split }) => split.unbilledMinor > 0);
+  // Each plan's instalments not billed yet — a plan with no purchase never more than its owed line (`laterInstalmentsMinor`).
+  const holding = (plans.data ?? [])
+    .map((plan) => ({ plan, split: { ...installmentSplit(plan, today), unbilledMinor: laterInstalmentsMinor(plan, today) } }))
+    .filter(({ split }) => split.unbilledMinor > 0);
   // A credit is what the bank holds past the bill: it adds to what can be spent, so the limit is read from the signed balance.
   const usage = limitUsage(owedMinor - creditMinor, limit, holding.reduce((sum, { split }) => sum + split.unbilledMinor, 0));
 
@@ -341,15 +344,12 @@ export function CardHero({
             className={cx('text-[12.5px] leading-[16px]', compact && 'mt-[6px]', usage.availableMinor < 0 ? 'font-medium text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]')}
             data-testid="card-available"
           >
-            {usage.availableMinor < 0 ? (
-              `Over the limit by ${formatMinor(-usage.availableMinor, currency)}`
-            ) : compact ? (
-              <>
-                {formatMinor(usage.availableMinor, currency)} available of {formatMinor(limit, currency)}
-              </>
-            ) : (
-              `Available ${formatMinor(usage.availableMinor, currency)} of ${formatMinor(limit, currency)}`
-            )}
+            {/* On the back: "Rp 17.500.000 available · Rp 10.000.000 in instalments" while plans hold part of the limit. */}
+            {compact
+              ? availableLine(usage, limit, currency)
+              : usage.availableMinor < 0
+                ? `Over the limit by ${formatMinor(-usage.availableMinor, currency)}`
+                : `Available ${formatMinor(usage.availableMinor, currency)} of ${formatMinor(limit, currency)}`}
           </div>
         )}
     </>
@@ -371,11 +371,12 @@ export function CardHero({
   );
 
   /*
-   * The card's back: what is outstanding (or the credit the bank holds), the limit as it is used, and under a thin rule the nearest spend bonus with its
-   * ring, or this statement's points. Opened from Wallet it is the raised card's own back (a tap on the card turns it
+   * The card's back: what is outstanding (or the credit the bank holds), the limit as it is used, and under a thin rule
+   * the nearest spend bonus with its ring, or this statement's points. Outstanding is what is due now — what is owed
+   * less the instalments not billed yet, which the line under the bar names instead (owner, 17 Nov 2026). Opened from Wallet it is the raised card's own back (a tap on the card turns it
    * over); on the page's own it is a white box under the card.
    */
-  const backFigure = cardBackFigure(owedMinor, creditMinor);
+  const backFigure = cardBackFigure(dueNowMinor(owedMinor, usage.heldMinor), creditMinor);
   const backFace = (className: string, style?: CSSProperties) => (
     <div data-testid={debit ? undefined : 'tile-left-to-pay'} className={cx('flex flex-col overflow-hidden bg-[var(--ph-surface)] text-[var(--ph-ink)]', className)} style={style}>
       {!debit && (

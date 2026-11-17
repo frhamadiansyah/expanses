@@ -1,7 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import { listStatementChecks } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi } from '@tanstack/react-router';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ClipboardCheck, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -22,11 +22,17 @@ const route = getRouteApi('/cards/$cardId/statement');
  */
 export function CardStatementPage() {
   const { cardId } = route.useParams();
+  const navigate = useNavigate();
   const { page, gate } = useCardPage(cardId);
   const { database, ws } = useApp();
   // The statement on screen and the search live here, because the title bar's two icons use them: the check goes to the
   // statement shown, and the search field takes the bar.
-  const [back, setBack] = useState(0);
+  // Which statement is on screen is in the address, so Back from the Pay it opens lands on the same one.
+  const back = route.useSearch().back ?? 0;
+  const setBack = (next: number | ((was: number) => number)) => {
+    const value = typeof next === 'function' ? next(back) : next;
+    void navigate({ to: '/cards/$cardId/statement', params: { cardId }, search: value > 0 ? { back: value } : {}, replace: true });
+  };
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   // The statements checked from screenshots, so a closed statement that was checked says so on the check icon.

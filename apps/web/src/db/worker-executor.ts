@@ -2,10 +2,12 @@ import { LATEST_VERSION, type SqlExecutor } from '@expanses/db';
 import { type FatalKind, fatalKind, fatalReason, messageOf } from './fatal';
 import type { CheckedSnapshot } from './live-health';
 import type { RecoveryReason } from './open';
+import { rebuildError, type SqliteErrorFields } from './sqlite-error';
 
-interface Reply {
+interface Reply extends SqliteErrorFields {
   id: number;
   result?: unknown;
+  /** SQLite's message, as it was; `code`, `resultCode` and `name` ride beside it (`sqlite-error.ts`). */
   error?: string;
   /** Set by the worker when the failure is one the session cannot carry on past. See `fatal.ts`. */
   fatal?: FatalKind;
@@ -270,7 +272,9 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
     if (!waiter) return;
     pending.delete(event.data.id);
     if (event.data.error !== undefined) {
-      const error = new Error(event.data.error);
+      // With SQLite's code back on it, so sync apply can tell a CHECK every phone refuses alike from a UNIQUE that
+      // depends on this phone's rows (`sqlite-error.ts`). The message is the worker's, untouched, for `fatalKind`.
+      const error = rebuildError(event.data.error, event.data);
       waiter.reject(error);
       /*
        * The worker's tag is the authority — it is standing next to SQLite when the error is raised — but

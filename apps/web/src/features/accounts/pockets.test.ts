@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, figureFace, figureFromTyped, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentActionKeys, parentTotal, pocketCount, pocketsOf, readPockets, swapPockets, withPockets } from './pockets';
+import { SPENDABLE_KINDS, bankRateText, choosePocketCurrency, figureFace, figurePlaceholder, figureFromTyped, freeOn, freeToSpend, spendingBook, spendingPocketsOf, spendsFrom, moneySummary, moveDraft, moveView, nextPocketCurrency, parentActionKeys, parentTotal, pocketCount, pocketsOf, readPockets, swapPockets, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -252,6 +252,13 @@ describe('a Move figure, grouped as it is typed', () => {
     expect(figureFace('100.', 'USD')).toBe('100,');
     expect(figureFace('.5', 'USD')).toBe('0,5');
     expect(figureFace('', 'USD')).toBe('');
+  });
+
+  it('shows a light zero before anything is typed, with the currency’s own cents', () => {
+    expect(figurePlaceholder('GBP')).toBe('0,00');
+    expect(figurePlaceholder('IDR')).toBe('0');
+    expect(figurePlaceholder('JPY')).toBe('0');
+    expect(figurePlaceholder('KWD')).toBe('0,000');
   });
 
   it('keeps the draft in the plain form the save reads, key by key', () => {

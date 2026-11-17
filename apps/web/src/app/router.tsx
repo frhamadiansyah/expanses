@@ -96,6 +96,7 @@ import { YearlyBillsPage } from '../features/bills/YearlyBillsPage';
 import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { OneLinePage } from '../features/transactions/OneLinePage';
 import { newTransactionSearch } from '../features/transactions/new-search';
+import { statementSearch } from '../features/cards/statement-dates';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
 import { PasteListPage } from '../features/transactions/PasteListPage';
 import { ReceiptSplitPage } from '../features/transactions/ReceiptSplitPage';
@@ -379,7 +380,7 @@ const routeTree = rootRoute.addChildren([
   // A card's pages, each pushed from its summary with ‹ back to it: the statement, this statement's points with the
   // purchases and the statement's own figure under them, and the settings with the card product, the earning rules
   // and the spend bonuses under them. Static last segments, so none is read as the wallet's `$cardId`.
-  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/statement', component: CardStatementPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/statement', component: CardStatementPage, validateSearch: statementSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points', component: CardPointsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId/points/purchases',
     component: CardPurchasesPage,

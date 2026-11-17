@@ -1,17 +1,19 @@
 import { type BillStateKind, sumToBase } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { freeToSpend, moneySummary, pocketsOf, SPENDABLE_KINDS } from '../accounts/pockets';
+import { dueNowMinor } from '../cards/limit-usage';
 import { owedMinor } from '../networth/debt-rows';
 
 type Rates = Readonly<Record<string, number>>;
 
 /**
  * Wallet's Balance box, worked out from the rows it is read from: money kept for spending, less what goals and
- * sinking funds have set aside of it, less what the credit cards owe, less the bills still to pay this month.
+ * sinking funds have set aside of it, less what is outstanding on the credit cards — what each owes less its
+ * instalments not billed yet (owner, 17 Nov 2026) — less the bills still to pay this month.
  *
  * Paying a bill or a card never moves the figure: a bill paid from a bank leaves Spending money and Bills still to
- * pay by the same amount; paid with a card it moves from Bills still to pay into Owed on cards; a card paid from a
- * bank leaves Spending money and Owed on cards alike. Only spending and income move it.
+ * pay by the same amount; paid with a card it moves from Bills still to pay into Outstanding on cards; a card paid from
+ * a bank leaves Spending money and Outstanding on cards alike. Only spending and income move it.
  */
 
 /** One bill's month, as the Recurring page reads it (`billsInMonth`): the fields Wallet needs of it. */
@@ -103,11 +105,13 @@ export interface WalletBoxInput {
   month: string;
   /** The partner's joint money and joint cards Wallet holds (`walletJoint`), from their summaries. */
   joint?: readonly JointBoxInput[];
+  /** By card: its instalments not billed yet (`laterByCard`), left out of Outstanding on cards. */
+  laterOnCards?: Readonly<Record<string, number>>;
 }
 
 /**
- * A partner's joint item as the box counts it: money adds what it holds to Spending money, a card what it owes to Owed
- * on cards. The figure is the latest its owner's phone sent, however old: it is the latest balance known.
+ * A partner's joint item as the box counts it: money adds what it holds to Spending money, a card what it owes to
+ * Outstanding on cards. The figure is the latest its owner's phone sent, however old: it is the latest balance known.
  */
 export interface JointBoxInput {
   key: string;
@@ -122,11 +126,11 @@ export interface JointBoxInput {
 export interface WalletBox {
   /** Spending money: what is kept for spending, less what is set aside of it. Null when a rate is missing. */
   spendingMinor: number | null;
-  /** Owed on cards: every credit card's whole balance. */
+  /** Outstanding on cards: what every credit card owes less its instalments not billed yet. */
   cardsMinor: number | null;
   /** Bills still to pay this month, less what their funds already set aside. */
   billsMinor: number | null;
-  /** Balance: Spending money less Owed on cards less Bills still to pay. */
+  /** Balance: Spending money less Outstanding on cards less Bills still to pay. */
   balanceMinor: number | null;
   /** The bills the third row is made of, for its sheet. */
   bills: BillToPay[];
@@ -139,7 +143,7 @@ export interface WalletBox {
 }
 
 /** The whole box, from the rows it is read from (see the file's head). */
-export function walletBox({ book, balances, credit, baseCurrency, rates, setAsides, bills, month, joint = [] }: WalletBoxInput): WalletBox {
+export function walletBox({ book, balances, credit, baseCurrency, rates, setAsides, bills, month, joint = [], laterOnCards = {} }: WalletBoxInput): WalletBox {
   const own = moneySummary(book, balances, baseCurrency, rates, SPENDABLE_KINDS);
   // The partner's joint money is spending money too: converted as own money is, a missing rate named the same way.
   const jointMoney = joint.filter((item) => item.side === 'money').map((item) => ({ minor: item.minor, currency: item.currency }));
@@ -158,7 +162,8 @@ export function walletBox({ book, balances, credit, baseCurrency, rates, setAsid
     .concat(joint.flatMap((item) => (item.side === 'money' && (item.setAsideMinor ?? 0) > 0 ? [{ minor: item.setAsideMinor!, currency: item.currency }] : [])));
   const promised = sumToBase({ amounts: promiseAmounts, baseCurrency, ratesToBase: rates });
   const askedAmounts = credit.flatMap((card) => {
-    const owes = owedMinor(balances, card.id);
+    // A partner's joint card is counted at what its owner's phone sent: its plans are not read here.
+    const owes = dueNowMinor(owedMinor(balances, card.id), laterOnCards[card.id] ?? 0);
     return owes > 0 ? [{ minor: owes, currency: card.currency ?? baseCurrency }] : [];
   }).concat(joint.flatMap((item) => (item.side === 'credit' && item.minor > 0 ? [{ minor: item.minor, currency: item.currency }] : [])));
   const asked = sumToBase({ amounts: askedAmounts, baseCurrency, ratesToBase: rates });
@@ -197,7 +202,7 @@ export function toggleFilter(current: WalletFilter | null, tapped: WalletFilter)
 
 /**
  * The cards the grid shows under a filter, in the grid's own order: every money card for Spending money (the same
- * accounts its figure counts), every credit card for Owed on cards — a card that owes nothing too. No filter: all.
+ * accounts its figure counts), every credit card for Outstanding on cards — a card that owes nothing too. No filter: all.
  */
 export function filteredCards<T extends { key: string }>(cards: readonly T[], filter: WalletFilter | null, money: readonly Pick<AccountRow, 'id'>[], credit: readonly Pick<AccountRow, 'id'>[]): T[] {
   if (filter === null) return [...cards];
@@ -207,7 +212,7 @@ export function filteredCards<T extends { key: string }>(cards: readonly T[], fi
 
 /**
  * The two sets the filter rows keep, own and the partner's together: the money cards (`walletMoney` and the joint money)
- * for Spending money, the credit cards (`walletCredit` and the joint cards) for Owed on cards — as `filteredCards` takes them.
+ * for Spending money, the credit cards (`walletCredit` and the joint cards) for Outstanding on cards — as `filteredCards` takes them.
  */
 export function walletFilterSets(
   money: readonly Pick<AccountRow, 'id'>[],

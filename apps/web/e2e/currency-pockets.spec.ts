@@ -448,7 +448,7 @@ test('the tile names the rate it lacks instead of adding up the rest', async ({ 
   await expect(page.getByText(/No USD rate yet, so what is left to spend cannot be worked out/)).toBeVisible();
   // No figure and no working either: a spendable total that leaves the dollars out would be a lie with a number on it.
   await expect(page.getByText('Spending money')).toHaveCount(0);
-  await expect(page.getByText('Owed on cards')).toHaveCount(0);
+  await expect(page.getByText('Outstanding on cards')).toHaveCount(0);
   // The account's own card names it too, in place of a total.
   await expect(walletCard(page, 'Unpriced Valas')).toHaveAccessibleName(/No USD rate yet/);
 });
@@ -523,11 +523,11 @@ test('the Move page: type what leaves and what arrives, nothing under them, the 
   await walletCard(page, 'Bank One Valas Plus').click();
   await page.getByRole('link', { name: 'Move', exact: true }).click();
 
-  // From USD to IDR through the pickers: each row names its pocket and what it holds.
+  // From USD to IDR through the pickers: each row names its side and its pocket.
   await pickPocket(page, 'From', 'USD');
   await pickPocket(page, 'To', 'IDR');
-  await expect(page.getByRole('button', { name: 'From, US Dollar' })).toContainText('available');
-  await expect(page.getByRole('button', { name: 'To, Indonesian Rupiah' })).toContainText('available');
+  await expect(page.getByRole('button', { name: 'From, US Dollar' })).toContainText('From');
+  await expect(page.getByRole('button', { name: 'To, Indonesian Rupiah' })).toContainText('To');
   await page.getByLabel('Leaves USD').pressSequentially('100');
   await page.getByLabel('Arrives IDR').pressSequentially('1625000');
   // No Cost and no gain or loss under the figures (owner, 17 Nov 2026).

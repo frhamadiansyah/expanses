@@ -1185,8 +1185,30 @@ class SkipOp extends Error {
 const SKIPPABLE_POSTING = new Set(['TOO_FEW_LINES', 'ZERO_AMOUNT', 'UNBALANCED', 'NOT_INTEGER']);
 const SKIPPABLE_LEDGER = new Set(['INVALID_DATE', 'INVALID_ORIGINAL', 'INVALID_MCC', 'INVALID_BILL_MONTH']);
 
+/**
+ * The SQLite constraint an error's own words name, for an error that arrived without its `code`: what a phone's worker
+ * built before the sync refusal fix passes across (apps/web/src/db/worker.ts), SQLite's message alone. sqlite-wasm's
+ * message starts with the extended code's name ("SQLITE_CONSTRAINT_CHECK: sqlite3 result code 275: CHECK constraint
+ * failed: ..."); SQLite's own sentence may also stand alone ("CHECK constraint failed: ..."). Only those two, and only
+ * at the start of the message: a wrapper's text (Drizzle's "Failed query: ... params: ...") can quote anything, a
+ * person's note included, so it is never read — the cause chain reaches SQLite's own error.
+ */
+const SQLITE_PREFIX = /^(SQLITE_[A-Z_]+): sqlite3 result code \d+: /;
+const SQLITE_SENTENCE: ReadonlyArray<[RegExp, string]> = [
+  [/^CHECK constraint failed\b/, 'SQLITE_CONSTRAINT_CHECK'],
+  [/^NOT NULL constraint failed\b/, 'SQLITE_CONSTRAINT_NOTNULL'],
+];
+function sqliteCodeOf(found: { code?: unknown; message?: unknown }): string | undefined {
+  // A code is SQLite's own answer and wins: a message is read only when no code came with it.
+  if (found.code !== undefined) return typeof found.code === 'string' ? found.code : undefined;
+  if (typeof found.message !== 'string') return undefined;
+  const prefixed = SQLITE_PREFIX.exec(found.message);
+  if (prefixed) return prefixed[1];
+  return SQLITE_SENTENCE.find(([sentence]) => sentence.test(found.message as string))?.[1];
+}
+
 /** The refusal in an error's cause chain that every receiver would make alike, or null (a bug: rethrow). */
-function deterministicRefusal(error: unknown): { name?: string; code?: string; message?: string } | null {
+export function deterministicRefusal(error: unknown): { name?: string; code?: string; message?: string } | null {
   for (let e: unknown = error, depth = 0; e && depth < 5; e = (e as { cause?: unknown }).cause, depth += 1) {
     const found = e as { name?: string; code?: string; message?: string };
     const { name, code } = found;
@@ -1194,8 +1216,15 @@ function deterministicRefusal(error: unknown): { name?: string; code?: string; m
     if (name === 'PostingError' && code && SKIPPABLE_POSTING.has(code)) return found;
     if (name === 'LedgerError' && code && SKIPPABLE_LEDGER.has(code)) return found;
     // CHECK and NOT NULL follow from the carried data alone; UNIQUE and FOREIGN KEY depend on rows only this device
-    // has, so they stop the loop instead (task 4 fix round 2).
-    if (code === 'SQLITE_CONSTRAINT_CHECK' || code === 'SQLITE_CONSTRAINT_NOTNULL') return found;
+    // has, so they stop the loop instead (task 4 fix round 2). Read from the message too when the code did not come
+    // across (`sqliteCodeOf`), and for those two only: a phone must skip what every other receiver skips. Its record
+    // reads the same on every device ("SQLITE_CONSTRAINT_CHECK: CHECK constraint failed: ..."), sqlite-wasm's prefix
+    // dropped, since the code it repeats is recorded in front of it.
+    const sqlite = sqliteCodeOf(found);
+    if (sqlite === 'SQLITE_CONSTRAINT_CHECK' || sqlite === 'SQLITE_CONSTRAINT_NOTNULL') {
+      const message = typeof found.message === 'string' ? found.message.replace(SQLITE_PREFIX, '') : found.message;
+      return { name, code: sqlite, message };
+    }
   }
   return null;
 }

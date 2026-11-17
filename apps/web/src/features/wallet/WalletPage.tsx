@@ -44,8 +44,8 @@ const SPARK_DAYS = 30;
  * One share of the Balance box: a dot in the line's own colour, what it is called, and its figure on the right. The
  * legend and the picture are one thing, so the dot's colour is the line's colour and never a colour of its own.
  *
- * Each share is a button. Spending money and Owed on cards filter the grid under the box to the cards they are made
- * of (`pressed`), on their own tint with a ✓, the other rows greyed meanwhile (`dimmed`); Bills still to pay opens its
+ * Each share is a button. Spending money and Outstanding on cards filter the grid under the box to the cards they are
+ * made of (`pressed`), on their own tint with a ✓, the other rows greyed meanwhile (`dimmed`); Bills still to pay opens its
  * sheet, so it carries a chevron instead.
  */
 function SpendRow({
@@ -105,7 +105,7 @@ function SpendRow({
 const Hair = () => <div aria-hidden className="border-t-[0.5px] border-[var(--ph-hair)]" />;
 
 /** What the grid's header names a filter by. */
-const FILTER_LABELS: Record<WalletFilter, string> = { spending: 'Spending money', cards: 'Owed on cards' };
+const FILTER_LABELS: Record<WalletFilter, string> = { spending: 'Spending money', cards: 'Outstanding on cards' };
 
 /**
  * `/wallet` — everything money is spent from or owed on, as one Wallet stack. It is what the Accounts page and the
@@ -138,7 +138,7 @@ export function WalletPage() {
   // A partner's joint card is opened by its item id, and known in the stack by its own key.
   const openId = cardId ?? accountId ?? (itemId !== undefined ? jointKey(itemId) : undefined);
   // Wallet's cards, drawn and in order (`useWalletCards`), and the money they were read from.
-  const { accounts, balances, everything, all, book, money, credit, joint, rates, held, today, cards: wallet, ready } = useWalletCards();
+  const { accounts, balances, everything, all, book, money, credit, joint, rates, held, today, cards: wallet, ready, laterOnCards, plansRead } = useWalletCards();
   const setAsides = useSetAsideViews();
   const shared = useSharedNetWorth().data;
   const together = useOwnedTogether();
@@ -155,10 +155,10 @@ export function WalletPage() {
   const boxed = view === 'grid';
 
   /*
-   * The Balance box: money kept for spending, less what goals have claimed of it, less what the credit cards owe —
-   * every card's whole balance, billed or not, because that money is already spent — less the bills still to pay this
-   * month (`walletBox`). Loans and money owed to people are not here any more: they are read against a year's schedule
-   * on Net worth's Liabilities, not as this month's claim on the money in a pocket. A rate short and there is no
+   * The Balance box: money kept for spending, less what goals have claimed of it, less what is outstanding on the
+   * credit cards — what each owes, billed or not, less only its instalments not billed yet (owner, 17 Nov 2026) — less
+   * the bills still to pay this month (`walletBox`). Loans and money owed to people are not here any more: they are
+   * read against a year's schedule on Net worth's Liabilities, not as this month's claim on the money in a pocket. A rate short and there is no
    * figure; the missing currency is named instead.
    */
   // This month's bills, as the Recurring page reads them — the workspace's month ("Month starts on"), each bill by the
@@ -189,9 +189,10 @@ export function WalletPage() {
     bills: billRows,
     month,
     joint,
+    laterOnCards,
   });
   // The box is drawn once everything it adds up is read; the grid waits for it, so the faces never jump down under it.
-  const boxRead = accounts.isSuccess && balances.isSuccess && rates.isSuccess && !billRates.isPending && !monthBills.isPending;
+  const boxRead = accounts.isSuccess && balances.isSuccess && rates.isSuccess && plansRead && !billRates.isPending && !monthBills.isPending;
   const boxReady = boxRead && box.accounts > 0;
   const figures = box.balanceMinor !== null && box.spendingMinor !== null;
 
@@ -359,7 +360,7 @@ export function WalletPage() {
               <Hair />
               <SpendRow
                 colour="var(--ph-alarm)"
-                label="Owed on cards"
+                label="Outstanding on cards"
                 value={-(box.cardsMinor ?? 0)}
                 currency={ws.baseCurrency}
                 pressed={filtering === 'cards'}

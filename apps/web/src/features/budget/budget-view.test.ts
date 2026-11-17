@@ -1,6 +1,6 @@
 import type { BudgetLine } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { daysLeft, historyOf, noBudgetRows, planSplit, spendingView, uncoveredMinor } from './budget-view';
+import { daysLeft, historyOf, noBudgetRows, planSplit, spendingView, splitSheetView, uncoveredMinor } from './budget-view';
 
 function line(id: string, ownMinor: number, capMinor: number | null, children: BudgetLine[] = []): BudgetLine {
   const totalMinor = children.reduce((total, child) => total + child.totalMinor, ownMinor);
@@ -123,5 +123,68 @@ describe('historyOf', () => {
     const history = historyOf(months, 'IDR');
     expect(history.get('groceries')).toEqual({ lastMinor: 600, averageMinor: 200 });
     expect(history.get('food')).toEqual({ lastMinor: 600, averageMinor: 200 });
+  });
+});
+
+describe('the Essential and lifestyle sheet', () => {
+  // Invented: groceries Rp 320.000 (essential) and a restaurant Rp 200.000 (lifestyle) on a card, then Rp 75.000 promo
+  // cashback onto it. The budget sheet counts the cashback in what was spent and with Debts & savings.
+  const withCashback = { spendingActualMinor: 445_000, essentialActualMinor: 320_000, lifestyleActualMinor: 200_000, debtsSavingsActualMinor: -75_000, cashbackActualMinor: -75_000 };
+
+  it('shows shares of what was bought, the cashback on its own line and Spent after it', () => {
+    const view = splitSheetView(withCashback);
+    expect(view.boughtMinor).toBe(520_000);
+    expect(view.rows.map((row) => [row.key, row.percent, row.amountMinor])).toEqual([
+      ['essential', '62%', 320_000],
+      ['lifestyle', '38%', 200_000],
+      ['debtsSavings', '0%', 0],
+    ]);
+    expect(view.cashbackMinor).toBe(-75_000);
+    expect(view.spentMinor).toBe(445_000);
+    expect(view.bar).toEqual({ essential: (320 / 520) * 100, lifestyle: (200 / 520) * 100, debtsSavings: 0 });
+  });
+
+  it('never makes Debts & savings negative from cashback, and the shares add up to 100', () => {
+    const view = splitSheetView({ ...withCashback, spendingActualMinor: 545_000, debtsSavingsActualMinor: 25_000, cashbackActualMinor: -75_000 });
+    // Rp 100.000 of insurance bought; Rp 620.000 in all.
+    expect(view.rows.find((row) => row.key === 'debtsSavings')!.amountMinor).toBe(100_000);
+    expect(view.rows.map((row) => row.percent)).toEqual(['52%', '32%', '16%']);
+    const sum = view.rows.reduce((total, row) => total + Number.parseInt(row.percent, 10), 0);
+    expect(sum).toBe(100);
+    for (const row of view.rows) expect(row.amountMinor).toBeGreaterThanOrEqual(0);
+  });
+
+  it('rounds to 100 even when each share alone would not', () => {
+    // A third each: 33 + 33 + 34.
+    const view = splitSheetView({ spendingActualMinor: 300, essentialActualMinor: 100, lifestyleActualMinor: 100, debtsSavingsActualMinor: 100, cashbackActualMinor: 0 });
+    expect(view.rows.reduce((total, row) => total + Number.parseInt(row.percent, 10), 0)).toBe(100);
+  });
+
+  it('with no cashback is the month as before: no cashback line, and Spent is what was bought', () => {
+    const view = splitSheetView({ spendingActualMinor: 3_000_000, essentialActualMinor: 2_000_000, lifestyleActualMinor: 1_000_000, debtsSavingsActualMinor: 0, cashbackActualMinor: 0 });
+    expect(view.cashbackMinor).toBeNull();
+    expect(view.boughtMinor).toBe(3_000_000);
+    expect(view.spentMinor).toBe(3_000_000);
+    expect(view.rows.map((row) => row.percent)).toEqual(['67%', '33%', '0%']);
+  });
+
+  it('has no shares and no bar when nothing was bought', () => {
+    const view = splitSheetView({ spendingActualMinor: 0, essentialActualMinor: 0, lifestyleActualMinor: 0, debtsSavingsActualMinor: 0, cashbackActualMinor: 0 });
+    expect(view.rows.map((row) => row.percent)).toEqual(['—', '—', '—']);
+    expect(view.bar).toBeNull();
+  });
+
+  it('keeps cashback the only thing that month as its own line, with no shares to give', () => {
+    const view = splitSheetView({ spendingActualMinor: -75_000, essentialActualMinor: 0, lifestyleActualMinor: 0, debtsSavingsActualMinor: -75_000, cashbackActualMinor: -75_000 });
+    expect(view.rows.map((row) => [row.percent, row.amountMinor])).toEqual([['—', 0], ['—', 0], ['—', 0]]);
+    expect(view.cashbackMinor).toBe(-75_000);
+    expect(view.spentMinor).toBe(-75_000);
+  });
+
+  it('gives a refund-heavy part its own sign, and the bar only the parts above nought', () => {
+    // Lifestyle refunded more than it bought this month: −Rp 50.000 against Rp 250.000 of essentials.
+    const view = splitSheetView({ spendingActualMinor: 200_000, essentialActualMinor: 250_000, lifestyleActualMinor: -50_000, debtsSavingsActualMinor: 0, cashbackActualMinor: 0 });
+    expect(view.rows.map((row) => row.percent)).toEqual(['125%', '-25%', '0%']);
+    expect(view.bar).toEqual({ essential: 100, lifestyle: 0, debtsSavings: 0 });
   });
 });

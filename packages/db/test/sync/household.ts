@@ -24,28 +24,60 @@ vi.setConfig({ testTimeout: 30_000 });
 
 let template: Uint8Array | undefined;
 
+/** The extended result codes sqlite-wasm prints in its messages, for the constraints apply has to tell apart. */
+const RESULT_CODES: Readonly<Record<string, number>> = {
+  SQLITE_CONSTRAINT_CHECK: 275,
+  SQLITE_CONSTRAINT_FOREIGNKEY: 787,
+  SQLITE_CONSTRAINT_NOTNULL: 1299,
+  SQLITE_CONSTRAINT_PRIMARYKEY: 1555,
+  SQLITE_CONSTRAINT_UNIQUE: 2067,
+};
+
+/** How a phone's SQLite errors reach apply: SQLite's message alone (a worker from before the sync refusal fix), or with its code carried. */
+export type PhoneErrors = 'message' | 'carried';
+
 /**
- * An executor whose errors reach the caller as a phone's do: the web worker passes only SQLite's message across, as a
- * plain `Error` (apps/web/src/db/worker-executor.ts), so no `code` survives — a CHECK refusal included.
+ * A phone's errors as a test sets them: `true` is `'message'`; a function is asked at each error, so a test can update
+ * the phone in the middle. `'before-fix'` stands in for the build before the sync refusal fix as a whole — its apply could
+ * not read the message, so the refusal reaches this apply as words it cannot read either, and the pull stops at it.
  */
-export function asPhoneExecutor(inner: SqlExecutor): SqlExecutor {
-  const plain = (error: unknown) => new Error(error instanceof Error ? error.message : String(error));
+export type PhoneErrorsSetting = boolean | PhoneErrors | (() => PhoneErrors | 'before-fix');
+
+/**
+ * An executor whose errors reach the caller as a phone's do. The phone's SQLite is sqlite-wasm, whose `SQLite3Error` has
+ * no `code`, only `resultCode` and a message that starts with the code's name ("SQLITE_CONSTRAINT_CHECK: sqlite3 result
+ * code 275: CHECK constraint failed: ..."). The web worker passes that across (apps/web/src/db/worker.ts): before the
+ * sync refusal fix the message alone, rebuilt as a plain `Error` (`'message'`), so no `code` survived — a CHECK refusal
+ * included; since then with the code, result code and name carried beside it (`'carried'`).
+ */
+export function asPhoneExecutor(inner: SqlExecutor, errors: PhoneErrors | (() => PhoneErrors | 'before-fix') = 'message'): SqlExecutor {
+  const phone = (error: unknown) => {
+    const code = (error as { code?: unknown } | null)?.code;
+    const text = error instanceof Error ? error.message : String(error);
+    if (typeof code !== 'string' || !code.startsWith('SQLITE_')) return new Error(text);
+    const resultCode = RESULT_CODES[code] ?? 1;
+    const wasm = `${code}: sqlite3 result code ${resultCode}: ${text}`;
+    const shape = typeof errors === 'function' ? errors() : errors;
+    if (shape === 'before-fix') return new Error(`(not read by the build before the sync refusal fix) ${wasm}`);
+    const rebuilt = new Error(wasm);
+    if (shape === 'carried') Object.assign(rebuilt, { code, resultCode, name: 'SQLite3Error' });
+    return rebuilt;
+  };
   return {
-    query: (text, params, method) => inner.query(text, params, method).catch((error: unknown) => Promise.reject(plain(error))),
-    execScript: (text) => inner.execScript(text).catch((error: unknown) => Promise.reject(plain(error))),
+    query: (text, params, method) => inner.query(text, params, method).catch((error: unknown) => Promise.reject(phone(error))),
+    execScript: (text) => inner.execScript(text).catch((error: unknown) => Promise.reject(phone(error))),
     exportBytes: () => inner.exportBytes(),
     importBytes: (bytes) => inner.importBytes(bytes),
   };
 }
 
-/** A migrated, empty database: migrations run once per test file and are copied from there (they are most of the cost). */
-async function freshDatabase(baseCurrency: string, phoneErrors = false): Promise<{ database: Database; ws: WorkspaceContext }> {
+async function freshDatabase(baseCurrency: string, phoneErrors: PhoneErrorsSetting = false): Promise<{ database: Database; ws: WorkspaceContext }> {
   if (!template) {
     const seed = createDatabase(createNodeExecutor());
     await migrate(seed);
     template = await seed.exportBytes();
   }
-  const database = createDatabase(phoneErrors ? asPhoneExecutor(createNodeExecutor()) : createNodeExecutor());
+  const database = createDatabase(phoneErrors ? asPhoneExecutor(createNodeExecutor(), phoneErrors === true ? 'message' : phoneErrors) : createNodeExecutor());
   await database.importBytes(template);
   const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency });
   // The capture run (capture-setup.ts) shares every first Personal book from birth, as a stand-in for Share. A
@@ -88,7 +120,7 @@ export class Household {
     memberId: string = `member-${name}`,
     baseCurrency = 'IDR',
     appVersion = '0.3.0',
-    engine: { now?: () => number; recordEveryMs?: number; phoneErrors?: boolean } = {},
+    engine: { now?: () => number; recordEveryMs?: number; phoneErrors?: PhoneErrorsSetting } = {},
   ): Promise<Device> {
     const { database, ws } = await freshDatabase(baseCurrency, engine.phoneErrors);
     const keys = await generateDevice();

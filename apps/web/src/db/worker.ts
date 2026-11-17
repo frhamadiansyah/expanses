@@ -3,6 +3,7 @@ import { engineStartError, guardPoolFolders, probeSlots, retryable, withRetries 
 import { fatalKind, messageOf } from './fatal';
 import { liveProblem } from './live-health';
 import { NEWER_DATABASE } from './newer-database';
+import { sqliteErrorFields } from './sqlite-error';
 
 type Method = 'run' | 'all' | 'values' | 'get';
 type Request =
@@ -34,11 +35,14 @@ type Sqlite3 = Awaited<ReturnType<typeof sqlite3InitModule>>;
 type Pool = Awaited<ReturnType<Sqlite3['installOpfsSAHPoolVfs']>>;
 
 const loadModule = retryable(() => sqlite3InitModule());
+/** sqlite-wasm's name for a result code ('SQLITE_CONSTRAINT_CHECK' for 275), once the module has loaded. */
+let rcName: ((rc: number) => string | undefined) | undefined;
 /** The installed pool, once an install has worked. Never installed twice: its handles are this worker's for life. */
 let installed: Pool | null = null;
 
 async function startOnce() {
   const sqlite3 = await loadModule();
+  rcName ??= (rc) => sqlite3.capi.sqlite3_js_rc_str(rc);
   if (!installed) {
     // Looked at first, so a slot the app's previous process still holds is a retry rather than a torn-down pool.
     await probeSlots(await navigator.storage.getDirectory());
@@ -196,6 +200,13 @@ self.onmessage = async (event: MessageEvent<Request>) => {
      * §3.4 says a corrupt page or a vanished file surfaces hours after the open.
      */
     const fatal = req.op === 'query' || req.op === 'script' ? fatalKind(message) : null;
-    reply(fatal ? { id: req.id, error: message, fatal } : { id: req.id, error: message });
+    /*
+     * SQLite's code goes with its words. sqlite-wasm's error has a `resultCode` and no `code`, and a reply is a
+     * structured clone that keeps only plain data, so it is named here (`sqlite-error.ts`): without it sync apply on a
+     * phone could not tell a CHECK every phone refuses alike from a UNIQUE that depends on this phone's rows, and its
+     * pull stopped at the CHECK for good.
+     */
+    const fields = sqliteErrorFields(error, rcName);
+    reply(fatal ? { id: req.id, error: message, ...fields, fatal } : { id: req.id, error: message, ...fields });
   }
 };

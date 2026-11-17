@@ -1,0 +1,236 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mac native layouts</title><style>
+:root{--ink:#1d1d1f;--ink2:#3c3c43;--ink3:#86868b;--hair:#e5e5ea;--side:#ececef;--accent:#0a7cff;--up:#248a3d;--down:#d70015;--win:#fff}
+*{box-sizing:border-box}
+body{margin:0;padding:28px;background:#d9d9de;font:13px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+h1{font-size:22px;margin:0 0 4px}.sub{color:#555;margin:0 0 22px;max-width:1150px;line-height:1.45;font-size:14px}
+h2{font-size:18px;margin:34px 0 4px}.lead{color:#555;margin:0 0 14px;max-width:1150px;line-height:1.45;font-size:14px}
+.win{width:1180px;height:720px;background:var(--win);border-radius:11px;box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 22px 60px rgba(0,0,0,.25);display:flex;overflow:hidden}
+/* sidebar */
+.side{width:214px;background:var(--side);border-right:.5px solid #d6d6db;padding:14px 10px;display:flex;flex-direction:column}
+.lights{display:flex;gap:8px;padding:2px 6px 18px}.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.ws{display:flex;align-items:center;gap:8px;padding:4px 8px 12px}.ws b{font-size:13px}.ws span{color:var(--ink3);font-size:11px}
+.av{width:22px;height:22px;border-radius:50%;background:#8e8e93;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sh{font-size:11px;font-weight:600;color:var(--ink3);padding:10px 8px 4px}
+.it{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;height:26px;color:var(--ink)}
+.it svg{width:15px;height:15px;stroke:var(--accent);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.it.on{background:rgba(0,0,0,.08)}
+.it .n{margin-left:auto;color:var(--ink3);font-size:12px;font-variant-numeric:tabular-nums}
+.foot{margin-top:auto;padding:8px;color:var(--ink3);font-size:11px;display:flex;align-items:center;gap:6px}.dot{width:7px;height:7px;border-radius:50%;background:var(--up)}
+/* main */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.tb{height:52px;display:flex;align-items:center;gap:10px;padding:0 14px 0 18px;border-bottom:.5px solid var(--hair)}
+.tb .t{font-size:15px;font-weight:600}.tb .ts{color:var(--ink3);font-size:12px;margin-left:2px}
+.sp{flex:1}
+.seg{display:flex;background:#e9e9ec;border-radius:7px;padding:2px;font-size:12px}.seg span{padding:3px 11px;border-radius:5px;color:var(--ink2)}.seg .on{background:#fff;box-shadow:0 .5px 1.5px rgba(0,0,0,.18);color:var(--ink);font-weight:500}
+.nav{display:flex;align-items:center;gap:2px;font-size:13px}.nav i{font-style:normal;color:var(--ink3);width:22px;text-align:center;font-size:15px}
+.search{width:190px;height:26px;border-radius:7px;background:#ededf0;color:var(--ink3);display:flex;align-items:center;padding:0 8px;gap:6px;font-size:12px}
+.tbb{width:28px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:17px}
+.tbb:hover{background:#ededf0}
+.body{flex:1;display:flex;min-height:0}
+/* A: list + detail */
+.list{width:380px;border-right:.5px solid var(--hair);overflow:hidden}
+.dh{display:flex;justify-content:space-between;padding:12px 16px 4px;font-size:11px;font-weight:600;color:var(--ink3)}
+.row{display:flex;align-items:center;gap:10px;padding:7px 12px;margin:0 6px;border-radius:7px}
+.row .ic{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.row .g{flex:1;min-width:0}.row .a{font-size:13px}.row .s{font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .m{font-variant-numeric:tabular-nums;font-size:13px}
+.row.sel{background:var(--accent);color:#fff}.row.sel .s{color:rgba(255,255,255,.8)}
+.detail{flex:1;padding:28px 34px;overflow:hidden}
+.big{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums}.cap{color:var(--ink3);margin-top:2px}
+.grp{margin-top:20px;border:.5px solid var(--hair);border-radius:9px}
+.kv{display:flex;padding:8px 12px;font-size:13px}.kv+.kv{border-top:.5px solid var(--hair)}.kv span:first-child{width:130px;color:var(--ink3)}
+.btns{display:flex;gap:8px;margin-top:18px}.btn{padding:4px 12px;border-radius:6px;background:#f2f2f4;border:.5px solid #d1d1d6;font-size:13px}.btn.red{color:var(--down)}
+/* B: table */
+.strip{display:flex;gap:36px;padding:16px 22px 12px;border-bottom:.5px solid var(--hair)}
+.strip div{display:flex;flex-direction:column}.strip span{font-size:11px;color:var(--ink3)}.strip b{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;font-weight:600;color:var(--ink3);text-align:left;padding:7px 10px;border-bottom:.5px solid var(--hair);background:#fafafa;position:sticky;top:0}
+td{padding:5px 10px;white-space:nowrap}
+tr:nth-child(even) td{background:#f7f7f9}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.sel td{background:var(--accent)!important;color:#fff}
+.pill{display:inline-flex;align-items:center;gap:6px}.pill i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.status{height:26px;border-top:.5px solid var(--hair);display:flex;align-items:center;padding:0 14px;color:var(--ink3);font-size:11px;gap:14px}
+.newrow td{color:var(--ink3);background:#fff!important;border-top:.5px dashed #d1d1d6}
+/* C: settings-style overview */
+.over{flex:1;background:#f5f5f7;padding:22px 28px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;gap:18px;align-content:start}
+.box{background:#fff;border-radius:10px;border:.5px solid #e2e2e7}
+.box h3{font-size:13px;font-weight:600;margin:0;padding:10px 14px 6px}
+.br{display:flex;align-items:center;padding:8px 14px;font-size:13px}.br+.br{border-top:.5px solid var(--hair)}
+.br .l{flex:1}.br .v{font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:3px;background:#e9e9ec;margin:2px 14px 12px;overflow:hidden}.bar i{display:block;height:100%;background:var(--up);border-radius:3px}
+.green{color:var(--up)}.red{color:var(--down)}.grey{color:var(--ink3)}
+.note{font-size:12.5px;color:#555;margin:10px 0 0;max-width:1180px;line-height:1.45}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="flow" viewBox="0 0 24 24"><path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/></symbol>
+<symbol id="wal" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></symbol>
+<symbol id="pie" viewBox="0 0 24 24"><path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></symbol>
+<symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+<symbol id="flag" viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 1-1h12l-2 4 2 4H5"/></symbol>
+<symbol id="trend" viewBox="0 0 24 24"><path d="M22 7 13.5 15.5 8.5 10.5 2 17M16 7h6v6"/></symbol>
+<symbol id="tag" viewBox="0 0 24 24"><path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/></symbol>
+<symbol id="home" viewBox="0 0 24 24"><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="bank" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M19 21V10M9 21V10M15 21V10M2 10l10-7 10 7z"/></symbol>
+<symbol id="card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></symbol>
+<symbol id="cash" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></symbol>
+</defs></svg>
+<h1>cicis on the Mac: three native layouts</h1>
+<p class="sub">Invented household. All three share the same Mac frame: a grey sidebar (pages, then accounts), the page's tools in the title bar, 13pt text, tables and lists instead of phone cards. They differ in what the main area does. The pages not shown (Budget, Goals, Net worth…) follow the same pattern.</p>
+
+<h2>A · List and detail (like Mail / Notes)</h2>
+<p class="lead">Transactions in a list; the selected one opens on the right. Familiar, calm, one thing at a time.</p>
+<div class="win">
+ <div class="side">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="ws"><span class="av">P</span><div><b>Personal</b><br><span>IDR</span></div></div>
+  <div class="it on"><svg><use href="#flow"/></svg>Cashflow</div>
+  <div class="it"><svg><use href="#pie"/></svg>Budget</div>
+  <div class="it"><svg><use href="#cal"/></svg>Bills<span class="n">3</span></div>
+  <div class="it"><svg><use href="#flag"/></svg>Goals</div>
+  <div class="it"><svg><use href="#trend"/></svg>Net worth</div>
+  <div class="sh">Accounts</div>
+  <div class="it"><svg><use href="#bank"/></svg>BCA Tahapan<span class="n">6,0 jt</span></div>
+  <div class="it"><svg><use href="#bank"/></svg>Jenius<span class="n">2,4 jt</span></div>
+  <div class="it"><svg><use href="#card"/></svg>BCA Visa<span class="n">−2,5 jt</span></div>
+  <div class="it"><svg><use href="#cash"/></svg>Cash<span class="n">0,8 jt</span></div>
+  <div class="foot"><i class="dot"></i>Synced with iPhone · backed up today</div>
+ </div>
+ <div class="main">
+  <div class="tb"><span class="t">Cashflow</span><span class="ts">November 2026</span><span class="sp"></span>
+   <div class="nav"><i>‹</i>Nov 2026<i>›</i></div><div class="search">⌕ Search</div><div class="tbb">＋</div></div>
+  <div class="body">
+   <div class="list">
+    <div class="dh"><span>TUESDAY 17</span><span>Rp 565.000</span></div>
+    <div class="row sel"><span class="ic" style="background:rgba(255,255,255,.25)">🛒</span><div class="g"><div class="a">Superindo</div><div class="s">Groceries · BCA Visa</div></div><span class="m">Rp 450.000</span></div>
+    <div class="row"><span class="ic" style="background:#fde9df">🍜</span><div class="g"><div class="a">Bakmi GM</div><div class="s">Restaurants · Cash</div></div><span class="m">Rp 115.000</span></div>
+    <div class="dh"><span>MONDAY 16</span><span>Rp 1.290.000</span></div>
+    <div class="row"><span class="ic" style="background:#e3f0ff">⚡</span><div class="g"><div class="a">PLN token</div><div class="s">Electricity · BCA Tahapan</div></div><span class="m">Rp 500.000</span></div>
+    <div class="row"><span class="ic" style="background:#e9f6ec">💊</span><div class="g"><div class="a">Kimia Farma</div><div class="s">Health · BCA Visa</div></div><span class="m">Rp 190.000</span></div>
+    <div class="row"><span class="ic" style="background:#f2e9fb">🎬</span><div class="g"><div class="a">CGV</div><div class="s">Entertainment · Jenius</div></div><span class="m">Rp 600.000</span></div>
+    <div class="dh"><span>SATURDAY 14</span><span class="green">+Rp 25.000.000</span></div>
+    <div class="row"><span class="ic" style="background:#e9f6ec">💼</span><div class="g"><div class="a">Salary</div><div class="s">Salary, wage, or pay · BCA Tahapan</div></div><span class="m green">+Rp 25.000.000</span></div>
+    <div class="dh"><span>FRIDAY 13</span><span>Rp 83.000</span></div>
+    <div class="row"><span class="ic" style="background:#fff4d6">🚕</span><div class="g"><div class="a">Gojek</div><div class="s">Transport · GoPay</div></div><span class="m">Rp 83.000</span></div>
+   </div>
+   <div class="detail">
+    <div class="big">Rp 450.000</div><div class="cap">Superindo · Tuesday, 17 November 2026</div>
+    <div class="grp">
+     <div class="kv"><span>Category</span><span>Groceries</span></div>
+     <div class="kv"><span>Paid with</span><span>BCA Visa ···· 1467</span></div>
+     <div class="kv"><span>Workspace</span><span>Personal</span></div>
+     <div class="kv"><span>Counts as</span><span>Essential</span></div>
+     <div class="kv"><span>Points</span><span class="green">+45</span></div>
+     <div class="kv"><span>Note</span><span class="grey">Weekly shop</span></div>
+    </div>
+    <div class="btns"><span class="btn">Edit</span><span class="btn">Duplicate</span><span class="btn red">Delete</span></div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<h2>B · Table (like Numbers / Finder list)</h2>
+<p class="lead">Totals in one plain line, then a real table: sort by any column, type a new row at the bottom (Tab between cells, ⌘V a list). Best for entering and checking many rows.</p>
+<div class="win">
+ <div class="side">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="ws"><span class="av">P</span><div><b>Personal</b><br><span>IDR</span></div></div>
+  <div class="it on"><svg><use href="#flow"/></svg>Cashflow</div>
+  <div class="it"><svg><use href="#pie"/></svg>Budget</div>
+  <div class="it"><svg><use href="#cal"/></svg>Bills<span class="n">3</span></div>
+  <div class="it"><svg><use href="#flag"/></svg>Goals</div>
+  <div class="it"><svg><use href="#trend"/></svg>Net worth</div>
+  <div class="sh">Accounts</div>
+  <div class="it"><svg><use href="#bank"/></svg>BCA Tahapan<span class="n">6,0 jt</span></div>
+  <div class="it"><svg><use href="#bank"/></svg>Jenius<span class="n">2,4 jt</span></div>
+  <div class="it"><svg><use href="#card"/></svg>BCA Visa<span class="n">−2,5 jt</span></div>
+  <div class="it"><svg><use href="#cash"/></svg>Cash<span class="n">0,8 jt</span></div>
+  <div class="foot"><i class="dot"></i>Synced with iPhone · backed up today</div>
+ </div>
+ <div class="main">
+  <div class="tb"><span class="t">Cashflow</span><span class="sp"></span>
+   <div class="seg"><span class="on">All</span><span>Spending</span><span>Income</span></div>
+   <div class="nav"><i>‹</i>Nov 2026<i>›</i></div><div class="search">⌕ Search</div><div class="tbb">＋</div></div>
+  <div class="strip">
+   <div><span>Income</span><b class="green">Rp 25.000.000</b></div>
+   <div><span>Spent</span><b>Rp 13.981.934</b></div>
+   <div><span>Left</span><b>Rp 11.018.066</b></div>
+   <div><span>Budget left</span><b>Rp 2.150.000</b></div>
+  </div>
+  <div style="flex:1;overflow:hidden">
+   <table>
+    <tr><th style="width:90px">Date</th><th>Description</th><th>Category</th><th>Account</th><th style="width:90px">Counts as</th><th class="num" style="width:150px">Amount</th></tr>
+    <tr class="sel"><td>17 Nov</td><td>Superindo</td><td><span class="pill"><i style="background:#34c759"></i>Groceries</span></td><td>BCA Visa</td><td>Essential</td><td class="num">Rp 450.000</td></tr>
+    <tr><td>17 Nov</td><td>Bakmi GM</td><td><span class="pill"><i style="background:#ff9500"></i>Restaurants</span></td><td>Cash</td><td>Lifestyle</td><td class="num">Rp 115.000</td></tr>
+    <tr><td>16 Nov</td><td>PLN token</td><td><span class="pill"><i style="background:#0a7cff"></i>Electricity</span></td><td>BCA Tahapan</td><td>Essential</td><td class="num">Rp 500.000</td></tr>
+    <tr><td>16 Nov</td><td>Kimia Farma</td><td><span class="pill"><i style="background:#34c759"></i>Health</span></td><td>BCA Visa</td><td>Essential</td><td class="num">Rp 190.000</td></tr>
+    <tr><td>16 Nov</td><td>CGV</td><td><span class="pill"><i style="background:#af52de"></i>Entertainment</span></td><td>Jenius</td><td>Lifestyle</td><td class="num">Rp 600.000</td></tr>
+    <tr><td>14 Nov</td><td>Salary</td><td><span class="pill"><i style="background:#248a3d"></i>Salary, wage, or pay</span></td><td>BCA Tahapan</td><td class="grey">—</td><td class="num green">+Rp 25.000.000</td></tr>
+    <tr><td>13 Nov</td><td>Gojek</td><td><span class="pill"><i style="background:#ffcc00"></i>Transport</span></td><td>GoPay</td><td>Essential</td><td class="num">Rp 83.000</td></tr>
+    <tr><td>12 Nov</td><td>Tokopedia</td><td><span class="pill"><i style="background:#ff9500"></i>Shopping</span></td><td>BCA Visa</td><td>Lifestyle</td><td class="num">Rp 349.000</td></tr>
+    <tr><td>11 Nov</td><td>Indihome</td><td><span class="pill"><i style="background:#0a7cff"></i>Internet</span></td><td>BCA Tahapan</td><td>Essential</td><td class="num">Rp 385.000</td></tr>
+    <tr><td>10 Nov</td><td>Laptop · 1 of 6</td><td><span class="pill"><i style="background:#8e8e93"></i>Electronics</span></td><td>BCA Visa</td><td>Lifestyle</td><td class="num">Rp 2.000.000</td></tr>
+    <tr><td>9 Nov</td><td>Hero Supermarket</td><td><span class="pill"><i style="background:#34c759"></i>Groceries</span></td><td>BCA Visa</td><td>Essential</td><td class="num">Rp 612.500</td></tr>
+    <tr><td>8 Nov</td><td>Zakat</td><td><span class="pill"><i style="background:#248a3d"></i>Giving</span></td><td>BCA Tahapan</td><td>Essential</td><td class="num">Rp 625.000</td></tr>
+    <tr class="newrow"><td>Date</td><td>New transaction…</td><td>Category</td><td>Account</td><td></td><td class="num">Amount</td></tr>
+   </table>
+  </div>
+  <div class="status">69 transactions<span>·</span>Selected: Superindo<span class="sp"></span>Synced 2 min ago</div>
+ </div>
+</div>
+
+<h2>C · Overview pages (like System Settings)</h2>
+<p class="lead">For the pages you read rather than type into (Overview, Budget, Net worth): plain grouped boxes on light grey, rows with labels left and figures right. No cards, no big colours.</p>
+<div class="win">
+ <div class="side">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="ws"><span class="av">P</span><div><b>Personal</b><br><span>IDR</span></div></div>
+  <div class="it on"><svg><use href="#home"/></svg>Overview</div>
+  <div class="it"><svg><use href="#flow"/></svg>Cashflow</div>
+  <div class="it"><svg><use href="#pie"/></svg>Budget</div>
+  <div class="it"><svg><use href="#cal"/></svg>Bills<span class="n">3</span></div>
+  <div class="it"><svg><use href="#flag"/></svg>Goals</div>
+  <div class="it"><svg><use href="#trend"/></svg>Net worth</div>
+  <div class="sh">Accounts</div>
+  <div class="it"><svg><use href="#bank"/></svg>BCA Tahapan<span class="n">6,0 jt</span></div>
+  <div class="it"><svg><use href="#bank"/></svg>Jenius<span class="n">2,4 jt</span></div>
+  <div class="it"><svg><use href="#card"/></svg>BCA Visa<span class="n">−2,5 jt</span></div>
+  <div class="foot"><i class="dot"></i>Synced with iPhone · backed up today</div>
+ </div>
+ <div class="main">
+  <div class="tb"><span class="t">Overview</span><span class="ts">November 2026</span><span class="sp"></span><div class="nav"><i>‹</i>Nov 2026<i>›</i></div><div class="tbb">＋</div></div>
+  <div class="over">
+   <div class="box"><h3>This month</h3>
+    <div class="br"><span class="l">Income</span><span class="v green">Rp 25.000.000</span></div>
+    <div class="br"><span class="l">Spent</span><span class="v">Rp 13.981.934</span></div>
+    <div class="br"><span class="l">Left</span><span class="v">Rp 11.018.066</span></div>
+   </div>
+   <div class="box"><h3>Budget</h3>
+    <div class="br"><span class="l">Left to spend</span><span class="v">Rp 2.150.000 of Rp 9.500.000</span></div>
+    <div class="bar"><i style="width:77%"></i></div>
+    <div class="br"><span class="l">Essential · Lifestyle</span><span class="v grey">62% · 38%</span></div>
+   </div>
+   <div class="box"><h3>Money</h3>
+    <div class="br"><span class="l">BCA Tahapan</span><span class="v">Rp 6.000.000</span></div>
+    <div class="br"><span class="l">Jenius</span><span class="v">Rp 2.400.000</span></div>
+    <div class="br"><span class="l">Cash · GoPay</span><span class="v">Rp 1.150.000</span></div>
+    <div class="br"><span class="l">Outstanding on cards</span><span class="v">−Rp 2.500.000</span></div>
+    <div class="br" style="font-weight:600"><span class="l">Balance</span><span class="v">Rp 7.050.000</span></div>
+   </div>
+   <div class="box"><h3>Next 14 days</h3>
+    <div class="br"><span class="l">BCA Visa bill · 5 Dec</span><span class="v">Rp 2.500.000</span></div>
+    <div class="br"><span class="l">Indihome · 11 Dec</span><span class="v">Rp 385.000</span></div>
+    <div class="br"><span class="l">Netflix · 12 Dec</span><span class="v">Rp 186.000</span></div>
+    <div class="br"><span class="l">Hajj goal · set aside</span><span class="v">Rp 1.500.000</span></div>
+   </div>
+   <div class="box" style="grid-column:1 / span 2"><h3>Net worth</h3>
+    <div class="br"><span class="l">Assets</span><span class="v">Rp 2.795.451.527</span></div>
+    <div class="br"><span class="l">Debts</span><span class="v">−Rp 920.354.151</span></div>
+    <div class="br" style="font-weight:600"><span class="l">Net worth</span><span class="v">Rp 1.875.097.376</span></div>
+   </div>
+  </div>
+ </div>
+</div>
+<p class="note">A, B and C can mix: e.g. Cashflow as A or B, and Overview / Budget / Net worth as C. Dark mode follows the Mac.</p>
+</body></html>
