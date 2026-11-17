@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openAccountHistory, openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
-import { cardPage, chooseCardPayFrom, openCardPay, payCard, saveCardTerms, showCardBack } from './card-section';
+import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, payCard, saveCardTerms, showCardBack } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -84,10 +84,23 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   await page.getByLabel('Pay Superindo').check();
   await page.getByLabel('Pay Ranch Market').check();
   await expect(bar).toContainText('2 selected');
-  await bar.getByRole('button', { name: 'Pay', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Pay 2 purchases' });
-  await expect(sheet).toContainText('Superindo');
-  await sheet.getByRole('button', { name: /^Pay Rp/ }).click();
+  // Pay opens the card's own "Pay credit card" screen, the two purchases listed under it and the amount their total.
+  const form = await openStatementPay(page);
+  await expect(page.getByText('Paying 2 purchases', { exact: true })).toBeVisible();
+  await expect(form).toContainText('Superindo');
+  await expect(form).toContainText('Ranch Market');
+  await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^530\.?000$/);
+  // The total is fixed, and payCardPurchases records no fee, so neither is offered.
+  await expect(form.getByLabel('Amount', { exact: true })).toBeDisabled();
+  await expect(form.getByRole('button', { name: 'Clear amount' })).toHaveCount(0);
+  await expect(form.getByLabel(/^Fee in /)).toHaveCount(0);
+  await expect(form.getByLabel('Note')).toHaveValue('Credit card payment');
+  await expect(form.getByRole('radio')).toHaveCount(0);
+  await expect(saveButton(form)).toBeDisabled();
+  await chooseCardPayFrom(form, 'BCA Tahapan');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  await expect(page).toHaveURL(/\/cards\/[^/]+\/statement$/);
   await expect(bar).toHaveCount(0);
 
   // Paid purchases stay ticked, and can no longer be unticked.
@@ -101,12 +114,12 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   // Deleting the payment frees them to be paid again. Cashflow lists no card payment (owner 2026-11-16): the bank's
   // history and the statement do.
   await openAccountHistory(page, 'BCA Tahapan');
-  await page.locator('li', { hasText: /BCA Visa payment/ }).first().click();
+  await page.locator('li', { hasText: /Credit card payment/ }).first().click();
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();
   // Wait for the delete to land: the open form hides the row's text before anything is saved.
   await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
-  await expect(page.locator('li', { hasText: /BCA Visa payment/ })).toHaveCount(0);
+  await expect(page.locator('li', { hasText: /Credit card payment/ })).toHaveCount(0);
   await openStatement(page);
   await expect(page.getByLabel('Pay Superindo')).toBeEnabled();
   await expect(page.getByLabel('Pay Superindo')).not.toBeChecked();
@@ -217,11 +230,15 @@ test('a payment made with Pay covers the statement’s purchases oldest first, a
 
   // Ticked and paid, the part-covered purchase pays only what is left: the statement ends at exactly nothing.
   await page.getByLabel('Pay Hotel Mulia').check();
-  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Pay 1 purchase' });
-  await expect(sheet).toContainText('1.800.000');
-  await sheet.getByRole('button', { name: /^Pay Rp\s1\.800\.000$/ }).click();
-  await expect(sheet).toHaveCount(0);
+  const form = await openStatementPay(page);
+  await expect(page.getByText('Paying 1 purchase', { exact: true })).toBeVisible();
+  await expect(form).toContainText('Hotel Mulia');
+  await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^1\.?800\.?000$/);
+  await chooseCardPayFrom(form, 'BCA Tahapan');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  // Back on the statement it was paid from, the earlier one, not today's.
+  await expect(page).toHaveURL(/\/statement\?back=1$/);
   // Paid for what was left, it is covered by the two payments together, not settled on its own.
   await expect(hotel.getByTestId('statement-covered')).toBeVisible();
   await expect(page.getByTestId('statement-group')).toContainText(/All paid/i);

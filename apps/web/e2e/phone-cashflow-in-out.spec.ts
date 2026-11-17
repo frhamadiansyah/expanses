@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openAccountHistory, openCard, openWalletAccount } from './accounts';
 import { addForm, addTransaction, addTransfer, choosePayment, chooseTo, historyMenu, saveButton, startSelecting } from './add-transaction';
 import { typeAmount, typeSecondFigure } from './set-aside';
-import { cardPage } from './card-section';
+import { cardPage, payStatementPurchases } from './card-section';
 import { TODAY } from './event-plan';
 
 /*
@@ -13,14 +13,13 @@ import { TODAY } from './event-plan';
 
 const row = (page: Page, text: string) => page.getByTestId('transaction-row').filter({ hasText: text });
 
-/** Pays a purchase off from the card's statement, as a person does: tick it, Pay, Pay Rp … from the bank. */
+/** Pays a purchase off from the card's statement, as a person does: tick it, Pay, From the bank, Save. */
 async function payFromStatement(page: Page, what: string) {
   await page.goto('/wallet');
   await page.getByRole('link', { name: 'Contoh Visa' }).first().click();
   await cardPage(page, 'Statement');
   await page.getByLabel(`Pay ${what}`).check();
-  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
-  await page.getByRole('dialog', { name: /^Pay / }).getByRole('button', { name: /^Pay Rp/ }).click();
+  await payStatementPurchases(page, 'Contoh Payroll');
   await expect(page.getByTestId('statement-select-bar')).toHaveCount(0);
 }
 
@@ -55,7 +54,7 @@ test('a card payment and a top-up are not in Cashflow, which has no Transfers sw
   await expect(row(page, 'Toko Contoh')).toBeVisible();
   // The fee is spending: the transfer it was typed on keeps its row.
   await expect(row(page, 'Top-up with fee')).toBeVisible();
-  await expect(row(page, 'Contoh Visa payment')).toHaveCount(0);
+  await expect(row(page, 'Credit card payment')).toHaveCount(0);
   await expect(row(page, 'Plain top-up')).toHaveCount(0);
 
   // No switch brings them back: the menu is Select, Sort, Paid with and Reset.
@@ -69,13 +68,13 @@ test('a card payment and a top-up are not in Cashflow, which has no Transfers sw
   await page.goto('/wallet');
   await page.getByRole('link', { name: 'Contoh Visa' }).first().click();
   await cardPage(page, 'Statement');
-  await expect(page.getByRole('main')).toContainText('Contoh Visa payment');
+  await expect(page.getByRole('main')).toContainText('Credit card payment');
   await openWalletAccount(page, 'Contoh Payroll');
-  await expect(page.getByTestId('account-recent')).toContainText('Contoh Visa payment');
+  await expect(page.getByTestId('account-recent')).toContainText('Credit card payment');
   await expect(page.getByTestId('account-recent')).toContainText('Plain top-up');
   // And the bank's whole history, behind See all.
   await openAccountHistory(page, 'Contoh Payroll');
-  await expect(row(page, 'Contoh Visa payment')).toBeVisible();
+  await expect(row(page, 'Credit card payment')).toBeVisible();
   await expect(row(page, 'Plain top-up')).toBeVisible();
   await expect(row(page, 'Top-up with fee')).toBeVisible();
 });

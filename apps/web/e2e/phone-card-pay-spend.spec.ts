@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openAccountHistory, openCard, walletCard } from './accounts';
-import { addForm, addTransaction, saveButton } from './add-transaction';
-import { cardPage, chooseCardPayFrom, openCardPay, saveCardTerms, showCardBack } from './card-section';
+import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
+import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, saveCardTerms, showCardBack } from './card-section';
 import { localIsoDate } from './today';
 
 /*
@@ -79,24 +79,53 @@ test('Pay opens “Pay credit card”: From to choose, To fixed on the card, the
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Tahapan', '17.000.000');
 
-  // Edited later, the payment opens on the ordinary Edit screen with the card still its To, and saves.
+  // Edited later, the payment opens as “Edit payment”, in the Pay layout: no tabs, the card its To and fixed.
   await openAccountHistory(page, 'BCA Tahapan');
   await page.getByText('Credit card payment').first().click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+$/);
   await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  await expect(page.getByRole('heading', { name: 'Edit transaction', exact: true })).toBeVisible();
-  const edit = addForm(page).or(page.getByRole('form', { name: 'Edit a transaction' }));
-  await expect(edit.getByRole('button', { name: /^To/ })).toContainText('BCA Visa');
+  await expect(page.getByRole('heading', { name: 'Edit payment', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /BCA Visa/ })).toHaveCount(0);
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
+  await expect(edit.getByRole('radio')).toHaveCount(0);
+  await expect(edit.getByTestId('pay-card-to')).toContainText('BCA Visa');
+  await expect(edit.getByTestId('pay-card-to').getByRole('button')).toHaveCount(0);
+  await expect(edit.getByRole('button', { name: /^To/ })).toHaveCount(0);
+  await expect(edit.getByRole('button', { name: 'From' })).toContainText('BCA Tahapan');
+  await edit.getByRole('button', { name: 'Add more details' }).click();
+  await expect(edit.getByRole('region', { name: 'More details' }).getByText('Exclude from report')).toHaveCount(0);
+  // A smaller payment, and a note of its own.
   await edit.getByLabel('Note').fill('Visa bill paid');
+  await edit.getByRole('button', { name: 'Clear amount' }).click();
+  await openAmount(edit);
+  await fillAmount(page, edit, '2000000');
   await saveButton(edit).click();
-  await expect(page.getByRole('heading', { name: 'Edit transaction', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Edit payment', exact: true })).toHaveCount(0);
   await openAccountHistory(page, 'BCA Tahapan');
   await expect(page.getByText('Visa bill paid').first()).toBeVisible();
   await page.goto('/wallet');
-  await expectWalletFigure(page, 'BCA Tahapan', '17.000.000');
+  await expectWalletFigure(page, 'BCA Tahapan', '18.000.000');
   await openCardPage(page);
   await showCardBack(page);
-  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Paid in full');
+  await expect(page.getByTestId('tile-left-to-pay')).toContainText('1.000.000');
+  await cardPage(page, 'Statement');
+  await page.getByRole('button', { name: 'Earlier statement' }).click();
+  await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel stay' })).toContainText(/2\.000\.000 covered, Rp\s1\.000\.000 left/);
+});
+
+test('a transfer between two own accounts still edits on “Edit transaction”, with its tabs and a To to change', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await openAccount(page, { subtype: 'bank', name: 'Mandiri', balance: '0' });
+  await page.goto('/transactions');
+  await addTransfer(page, { from: 'BCA Tahapan', to: 'Mandiri', amount: '500000', note: 'Moved over' });
+  await openAccountHistory(page, 'BCA Tahapan');
+  await page.getByText('Moved over').first().click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  await expect(page.getByRole('heading', { name: 'Edit transaction', exact: true })).toBeVisible();
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
+  await expect(edit.getByRole('radio')).toHaveCount(3);
+  await expect(edit.getByRole('button', { name: /^To/ })).toContainText('Mandiri');
+  await expect(edit.getByTestId('pay-card-to')).toHaveCount(0);
 });
 
 test('Spend opens “New expense” on the card: no tabs, Paid with the card', async ({ page }) => {
@@ -122,4 +151,45 @@ test('the Debt-free plan’s Pay on a card opens the same Pay screen, with the b
   await expect(form).toContainText('3.000.000');
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/plan\/pay-first$/);
+});
+
+test('the statement’s Pay for ticked purchases opens “Pay credit card” with them listed, and marks exactly those paid', async ({ page }) => {
+  await setUp(page);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Pasar Satu', paidWith: 'BCA Visa', category: 'Groceries', amount: '450000' });
+  await addTransaction(page, { description: 'Toko Dua', paidWith: 'BCA Visa', category: 'Groceries', amount: '80000' });
+  await openCardPage(page);
+  await cardPage(page, 'Statement');
+  await page.getByLabel('Pay Pasar Satu').check();
+  await page.getByLabel('Pay Toko Dua').check();
+
+  const form = await openStatementPay(page);
+  await expect(form.getByRole('radio')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /BCA Visa/ })).toHaveCount(0);
+  await expect(form.getByTestId('pay-card-to')).toContainText('BCA Visa');
+  await expect(form.getByRole('button', { name: 'From' })).not.toContainText('BCA Tahapan');
+  // The total of the two, fixed: no keypad, no ✕. No fee, which the statement's payment cannot record.
+  await expect(form.getByRole('button', { name: 'Amount', exact: true })).toHaveText('530.000');
+  await expect(form.getByRole('button', { name: 'Amount', exact: true })).toBeDisabled();
+  await expect(form.getByRole('button', { name: 'Clear amount' })).toHaveCount(0);
+  await expect(form.getByText('Fees & charges')).toHaveCount(0);
+  await expect(form.getByLabel('Note')).toHaveValue('Credit card payment');
+  const listed = page.getByTestId('paying-purchases');
+  await expect(listed).toContainText('Paying 2 purchases');
+  await expect(listed).toContainText('Pasar Satu');
+  await expect(listed).toContainText(/Rp\s450\.000/);
+  await expect(listed).toContainText('Toko Dua');
+  await expect(listed).toContainText(/Rp\s80\.000/);
+  await expect(saveButton(form)).toBeDisabled();
+
+  await chooseCardPayFrom(form, 'BCA Tahapan');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  // Back on the statement: the ticks cleared into "paid", the bar gone, Hotel stay from last month untouched.
+  await expect(page).toHaveURL(/\/cards\/[^/]+\/statement$/);
+  await expect(page.getByTestId('statement-select-bar')).toHaveCount(0);
+  await expect(page.getByLabel(/^Pasar Satu, paid on/)).toBeChecked();
+  await expect(page.getByLabel(/^Toko Dua, paid on/)).toBeChecked();
+  await page.goto('/wallet');
+  await expectWalletFigure(page, 'BCA Tahapan', '19.470.000');
 });

@@ -44,11 +44,13 @@ export function useStatementPay(address: StatementPayAddress | null) {
 /** Under the card's rows: "Paying 2 purchases", then each one's words and what is left of it to pay. */
 export function PayingPurchases({ purchases, currency }: { purchases: readonly StatementPayPurchase[]; currency: string }) {
   return (
-    <InsetGroup wide header={`Paying ${purchases.length} purchase${purchases.length === 1 ? '' : 's'}`}>
-      {purchases.map((p) => (
-        <InsetRow key={p.transactionId} plain title={p.description} value={formatMinor(p.leftMinor, currency)} />
-      ))}
-    </InsetGroup>
+    <div data-testid="paying-purchases">
+      <InsetGroup wide header={`Paying ${purchases.length} purchase${purchases.length === 1 ? '' : 's'}`}>
+        {purchases.map((p) => (
+          <InsetRow key={p.transactionId} plain title={p.description} value={formatMinor(p.leftMinor, currency)} />
+        ))}
+      </InsetGroup>
+    </div>
   );
 }
 

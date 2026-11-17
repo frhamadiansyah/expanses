@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
 import { openAccount, openAccountHistory, openCard, walletCard } from './accounts';
-import { cardPage, chooseCardPayFrom, openCardPay, saveCardTerms, showCardBack } from './card-section';
+import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, saveCardTerms, showCardBack } from './card-section';
 import { addForm, choosePayment, saveButton, chooseGoal } from './add-transaction';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
@@ -99,12 +99,14 @@ test('paying chosen purchases now from Jenius asks the same question', async ({ 
   await cardPage(page, 'Statement');
 
   await page.getByLabel('Pay Laptop').check();
-  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
+  // The same Pay credit card screen as the card's Pay: From chosen, then the question.
+  const form = await openStatementPay(page);
+  await chooseCardPayFrom(form, 'Jenius');
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
-  const pay = page.getByRole('button', { name: /^Pay Rp/ });
-  await expect(pay).toBeDisabled();
+  await expect(saveButton(form)).toBeDisabled();
   await borrowFromEmergencyFund(page.locator('body'));
-  await pay.click();
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
   await expect(page.getByLabel(/^Laptop, paid on/)).toBeChecked();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
