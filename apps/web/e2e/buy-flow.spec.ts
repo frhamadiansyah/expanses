@@ -117,7 +117,10 @@ test('turns an expense already recorded into the purchase it really was', async 
   await addTransaction(page, { description: 'UBS Gold Store', paidWith: 'BCA Tahapan', category: 'Shopping', amount: '3980000' });
   await expect(page.getByText('UBS Gold Store')).toBeVisible();
 
-  // The row opens where it is; turning it into a purchase is one of the things it offers there.
+  // The row opens where it is, on the bank's own list (a wide screen's Cashflow is the table, Mac Cashflow D); turning it
+  // into a purchase is one of the things it offers there.
+  await openAccountHistory(page, 'BCA Tahapan');
+  await page.getByRole('button', { name: 'List' }).click();
   await page.locator('li', { hasText: 'UBS Gold Store' }).last().click();
   await page.getByRole('button', { name: 'This was a purchase' }).click();
   await page.getByLabel('Units, shares or grams').fill('2');
@@ -126,9 +129,9 @@ test('turns an expense already recorded into the purchase it really was', async 
   // A purchase is not spending: it leaves Cashflow (owner 2026-11-16) for the bank's history. Waited for, so the
   // save lands before the page is left.
   await expect(page.getByRole('button', { name: 'Save as a purchase' })).toHaveCount(0);
-  await expect(page.getByText('No transactions in this period.')).toBeVisible();
-  await openAccountHistory(page, 'BCA Tahapan');
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
+  await page.goto('/transactions');
+  await expect(page.getByText('No transactions in this period.')).toBeVisible();
   // Held is read on the holding's own page: Income keeps the holdings table for a wide screen only.
   await openAsset(page, 'Antam gold bars');
   await expect(page.getByTestId('asset-grid')).toContainText('12 g');

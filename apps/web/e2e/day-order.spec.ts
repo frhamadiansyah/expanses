@@ -1,8 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openAccountHistory } from './accounts';
 import { addTransaction } from './add-transaction';
 
-/* Rows put in order by hand within their day, on a wide screen: Move up and Move down, and the ≡ handle. */
+/*
+ * Rows put in order by hand within their day, on a wide screen: Move up and Move down, and the ≡ handle. Cashflow on a
+ * wide screen is a table sorted by its headers (Mac Cashflow D); the day-by-day list that moves rows is an account's own
+ * history, so that is where they are moved.
+ */
 
 const NAMES = ['Alpha', 'Bravo', 'Charlie'];
 const row = (page: Page, what: string) => page.getByTestId('transaction-row').filter({ hasText: what });
@@ -18,6 +22,8 @@ test('a row moves up and down its day without dragging, or by its handle, and ke
   for (const [i, name] of NAMES.entries()) {
     await addTransaction(page, { description: name, paidWith: 'BCA Tahapan', category: 'Groceries', amount: String(10000 * (i + 1)) });
   }
+  await openAccountHistory(page, 'BCA Tahapan');
+  await page.getByRole('button', { name: 'List' }).click();
   await expect.poll(() => order(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
 
   // Move up twice: Alpha to the top. The buttons are the row's, never a click that opens its editor.

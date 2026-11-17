@@ -39,8 +39,11 @@ test('an SGD bill paid from a rupiah account: written in SGD, charged in rupiah'
   await expect(row(page, 'Life cover')).not.toContainText('Rp');
 
   // The Cashflow card counts it in the money the workspace reads in, at the stored rate: 120 × 12 500.
+  // The month's bills line is the phone's Cashflow (a wide screen's Cashflow D has Bills in the sidebar instead).
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/transactions');
   await expect(page.getByTestId('recurring-card')).toContainText('1.500.000');
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // Pay from Recurring: the sheet shows the SGD figure and asks what the account was charged, estimated at the rate.
   await page.goto('/bills');

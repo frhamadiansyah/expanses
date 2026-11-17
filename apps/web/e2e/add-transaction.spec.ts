@@ -766,7 +766,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await page.goto('/transactions');
   await expect(page.getByText('Ranch Market').first()).toBeVisible();
   await expect(page.getByTestId('period-total')).toHaveText('Rp 0');
-  await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
+  await expect(page.getByTestId('cashflow-ring')).toContainText('Nothing recorded for');
 
   // …and still on the card: the statement, the balance and the points all still hold both of them, which is the
   // whole asymmetry exclusion exists for. 85.000 at MCC 5411, typed here rather than guessed from the category.
@@ -855,7 +855,7 @@ test('a split by category posts one line per category, each with its own figure'
   // Household and Restaurants under Food and beverage, so the two figures cannot hide in one row.
   await page.goto('/transactions');
   await expect(page.getByTestId('period-total')).toHaveText('Rp 85.000');
-  await page.getByTestId('see-categories').click();
+  // The ring box lists its categories beside it, each saying its figure (Mac Cashflow D): nothing to unfold.
   await expect(page.getByTestId('report-row').filter({ hasText: 'Household' })).toContainText('Rp 40.000');
   await expect(page.getByTestId('report-row').filter({ hasText: 'Food and beverage' })).toContainText('Rp 45.000');
 });
@@ -1021,7 +1021,7 @@ test('a bill split equally between three people leaves each of them owing their 
   await page.goto('/transactions');
   await expect(page.getByTestId('period-total')).toHaveText('Rp 100.000');
   // The ring folds every category into its top-level parent: Restaurants is read as Food and beverage here.
-  await expect(page.getByTestId('spending-report')).toContainText('Food and beverage');
+  await expect(page.getByTestId('cashflow-ring')).toContainText('Food and beverage');
 });
 
 /**
@@ -1423,7 +1423,6 @@ test('a split by category refuses a foreign amount in words, and the way out wor
   await expect(form).toHaveCount(0);
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('1.600.000');
   // Both categories, each with its own figure: a split collapsed onto one of them reads wrong here.
-  await page.getByTestId('see-categories').click();
   await expect(page.getByTestId('report-row').filter({ hasText: 'Household' })).toContainText('Rp 600.000');
   await expect(page.getByTestId('report-row').filter({ hasText: 'Food and beverage' })).toContainText('Rp 1.000.000');
 });

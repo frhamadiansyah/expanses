@@ -56,7 +56,7 @@ test('a row typed in the top row is saved with Return, counted in the boxes, and
   await expect(peek.getByTestId('peek-title')).toHaveText('Superindo');
   await expect(peek).toContainText('450.000');
   await expect(peek).toContainText('Groceries');
-  await expect(superindo).toHaveAttribute('aria-selected', 'true');
+  await expect(superindo).toHaveAttribute('aria-current', 'true');
 
   // ⌃ ⌄ and the arrow keys step through the table's rows (newest first: Kopi Kenangan was typed last, same day).
   const titles = await page.getByTestId('transaction-row').allInnerTexts();

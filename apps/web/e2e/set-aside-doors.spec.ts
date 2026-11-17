@@ -432,13 +432,11 @@ test('spending on an event from Jenius asks', async ({ page }) => {
 
 // ── The desktop's quick rows and the review queue ─────────────────────────────────────────────────────────────────
 
-/** A recorded row of the table, by what its description cell holds (the opening balance is a row too). */
-const tableRow = (page: Page, description: string) =>
-  page.getByTestId('table-row').filter({ has: page.locator(`input[aria-label="Row description"][value="${description}"]`) });
+/** A recorded row of Cashflow's table (Mac Cashflow D: read only, under the typing row), by its note. */
+const tableRow = (page: Page, description: string) => page.getByTestId('transaction-row').filter({ hasText: description });
 
 async function typeRow(page: Page, description: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Table' }).click();
   const typing = page.getByTestId('typing-row');
   await typing.getByLabel('Row description').pressSequentially(description);
   await typing.getByLabel('Row amount (IDR)').pressSequentially(amount);
@@ -497,7 +495,6 @@ test('re-filing a borrowed row\'s category asks nothing and keeps the answer', a
   await sheet.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(sheet).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'List' }).click();
   await page.getByRole('button', { name: 'Category for Laptop' }).click();
   await page.getByRole('dialog', { name: 'Category for Laptop' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
   await expect(page.getByText('Moved to Restaurants')).toBeVisible();

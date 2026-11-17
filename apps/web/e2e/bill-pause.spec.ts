@@ -46,9 +46,12 @@ test('a paused bill is not counted by Cashflow or by the budget’s bills', asyn
   await page.goto('/bills');
   await pauseFor(page, 'Gym', 1);
 
+  // The month's bills line is the phone's Cashflow (a wide screen's Cashflow D has Bills in the sidebar instead).
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/transactions');
   await expect(page.getByTestId('recurring-card')).toContainText('0 of 1 bill paid');
   await expect(page.getByTestId('recurring-card')).toContainText('150.000');
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   await page.goto('/budget');
   cap = await openCapOf(page, '— Sports & fitness');

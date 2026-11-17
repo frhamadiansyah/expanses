@@ -22,6 +22,10 @@ async function loadCsv(page: Page) {
   await expect(page.getByRole('button', { name: /Send \d+ to review/ })).toBeVisible();
 }
 
+/** A draft row of Cashflow's table, by the note in its cell (Mac Cashflow D: a draft is finished in place there). */
+const draftRow = (page: Page, description: string) =>
+  page.getByTestId('not-recorded-row').filter({ has: page.locator(`input[aria-label="Row description"][value="${description}"]`) });
+
 test('captured rows wait in the queue, and reach the ledger only when confirmed', async ({ page }) => {
   await addAccount(page);
   await loadCsv(page);
@@ -29,27 +33,18 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
   await page.getByRole('button', { name: /Send \d+ to review/ }).click();
   await expect(page.getByText(/Nothing is recorded until confirmed there/)).toBeVisible();
 
-  // Not money yet: the list shows it, marked as not recorded, whichever month is open.
-  await page.goto('/transactions');
   /*
-   * The queue's row sits above the list with the count and what recording it all would spend — and the list under
-   * it holds only what was recorded. A draft is not a transaction; Not recorded is how the list is asked for it.
+   * Not money yet. On a wide screen (Mac Cashflow D) This month's To review counts the queue, and the table — the
+   * editor — holds each draft as a row still to finish, among the rest, as the old table did.
    */
-  const queue = page.getByTestId('not-recorded-card');
-  await expect(queue).toContainText('To review');
-  await expect(queue).toContainText('2 not recorded');
-  await expect(queue).toContainText('325.000');
-  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
-  await page.getByRole('button', { name: '2 not recorded' }).click();
+  await page.goto('/transactions');
+  await expect(page.getByTestId('month-review')).toHaveText('2');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
   // The import already guessed a category, so the row names it and can be recorded as it stands.
-  const superindo = page.getByTestId('not-recorded-row').filter({ hasText: 'SUPERINDO KEBAYORAN' });
+  const superindo = draftRow(page, 'SUPERINDO KEBAYORAN');
   // The parser guessed Miscellaneous, which is a category, so the row is complete enough to record.
-  await expect(superindo).toContainText('Miscellaneous');
-  await superindo.click();
-  const editor = page.getByTestId('not-recorded-row').filter({ has: page.getByRole('button', { name: 'Close without saving' }) });
-  await expect(editor.getByRole('button', { name: 'Record', exact: true })).toBeEnabled();
-  await editor.getByRole('button', { name: 'Close without saving' }).click();
+  await expect(superindo.getByLabel('Row category')).toHaveValue('Miscellaneous');
+  await expect(superindo.getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' })).toBeEnabled();
 
   await page.goto('/review');
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
@@ -61,12 +56,10 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
 
   await page.goto('/transactions');
   await expect(page.getByText('SUPERINDO KEBAYORAN')).toBeVisible();
-  // The row follows the queue down — one left, and its figure — and the one still waiting stayed waiting.
-  await expect(page.getByTestId('not-recorded-card')).toContainText('1 not recorded');
-  await expect(page.getByTestId('not-recorded-card')).toContainText('75.000');
-  await page.getByRole('button', { name: '1 not recorded' }).click();
+  // The count follows the queue down — one left — and the one still waiting stayed waiting.
+  await expect(page.getByTestId('month-review')).toHaveText('1');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
-  await expect(page.getByTestId('not-recorded-row')).toContainText('APOTEK K24');
+  await expect(draftRow(page, 'APOTEK K24')).toHaveCount(1);
 });
 
 test('a discarded capture is not offered again, and never reaches the ledger', async ({ page }) => {
@@ -98,21 +91,15 @@ test('a capture is finished and recorded from the transactions list itself', asy
   await expect(page.getByText(/Sent \d+ rows to Review/)).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: '2 not recorded' }).click();
-  await page.getByTestId('not-recorded-row').filter({ hasText: 'APOTEK K24' }).click();
-  await page.getByLabel('Row amount (IDR)').fill('80.000');
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  const apotek = draftRow(page, 'APOTEK K24');
+  await apotek.getByLabel('Row amount (IDR)').fill('80.000');
+  await apotek.getByRole('button', { name: 'Record APOTEK K24' }).click();
 
-  // Pressing the chip again shows the month as it is recorded — the finished purchase, and not the draft beside it.
-  await page.getByRole('button', { name: '1 not recorded' }).click();
-  await expect(page.locator('li', { hasText: 'APOTEK K24' })).toContainText('80.000');
-  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
-  // The queue still says what is waiting, and its own row is still the way to it.
-  await expect(page.getByTestId('not-recorded-card')).toContainText('1 not recorded');
-  // And asking for what is not recorded still finds the one that is waiting.
-  await page.getByRole('button', { name: '1 not recorded' }).click();
+  // Recorded, it is a row of the month like any other — and the draft beside it still waits, still counted.
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'APOTEK K24' })).toContainText('80.000');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
-  await expect(page.getByTestId('not-recorded-row')).toContainText('SUPERINDO KEBAYORAN');
+  await expect(draftRow(page, 'SUPERINDO KEBAYORAN')).toHaveCount(1);
+  await expect(page.getByTestId('month-review')).toHaveText('1');
 });
 
 test('the queue row is the way in to Review, and leaves with the last draft', async ({ page }) => {
@@ -122,11 +109,10 @@ test('the queue row is the way in to Review, and leaves with the last draft', as
   await expect(page.getByText(/Sent \d+ rows to Review/)).toBeVisible();
 
   await page.goto('/transactions');
-  const queue = page.getByTestId('not-recorded-card');
-  await expect(queue).toContainText('To review');
-  await expect(queue).toContainText('2 not recorded');
-  // The row opens the queue's own screen, where the whole queue can be worked off.
-  await queue.click();
+  const queue = page.getByTestId('month-review');
+  await expect(queue).toHaveText('2');
+  // The count opens the queue's own screen, where the whole queue can be worked off.
+  await queue.getByRole('link').click();
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
 
   await page.getByLabel('Category for SUPERINDO KEBAYORAN').selectOption({ label: 'Groceries' });
@@ -136,8 +122,9 @@ test('the queue row is the way in to Review, and leaves with the last draft', as
   await page.getByRole('button', { name: 'Record APOTEK K24' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
 
-  // Nothing waiting, so the row says nothing — and both purchases are in the list.
+  // Nothing waiting, so the count is nought and no link — and both purchases are in the list.
   await page.goto('/transactions');
   await expect(page.getByText('SUPERINDO KEBAYORAN')).toBeVisible();
-  await expect(page.getByTestId('not-recorded-card')).toHaveCount(0);
+  await expect(page.getByTestId('month-review')).toHaveText('0');
+  await expect(page.getByTestId('month-review').getByRole('link')).toHaveCount(0);
 });

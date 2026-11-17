@@ -47,12 +47,21 @@ async function rowAction(page: Page, name: string, action: RegExp) {
   await page.getByRole('menuitem', { name: action }).click();
 }
 
+/**
+ * Cashflow's bills card is the phone's: a wide screen's Cashflow (Mac Cashflow D) has Bills in its sidebar instead. The
+ * window is narrowed to a phone's for the look, and widened again by whoever needs the desk after it.
+ */
+async function phoneCashflow(page: Page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/transactions');
+}
+
 test('the Cashflow card counts the month’s bills', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
 
-  // The card counts it before anything is done about it.
-  await page.goto('/transactions');
+  // The card counts it before anything is done about it. It is the phone's Cashflow (Mac Cashflow D has none).
+  await phoneCashflow(page);
   await expect(page.getByTestId('recurring-card')).toContainText('0 of 1 bill paid');
   await expect(page.getByTestId('recurring-card')).toContainText('150.000');
 });
@@ -138,9 +147,10 @@ test('a bill that is out is paid from its row, and the month is settled', async 
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
 
-  await page.goto('/transactions');
+  await phoneCashflow(page);
   await page.getByTestId('recurring-card').click();
   await expect(page).toHaveURL(/\/bills\?from=cashflow$/);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.getByTestId('bills-summary')).toContainText('Still to pay in');
   await expect(page.getByTestId('bills-summary')).toContainText('150.000');
   await expect(page.getByTestId('bills-legend')).toContainText('150.000');
@@ -163,7 +173,7 @@ test('a bill that is out is paid from its row, and the month is settled', async 
   await sheet2.getByTestId('bill-row').filter({ hasText: 'Phone' }).click();
   await expect(page.getByRole('heading', { name: 'Phone' })).toBeVisible();
 
-  await page.goto('/transactions');
+  await phoneCashflow(page);
   await expect(page.getByTestId('recurring-card')).toContainText('1 of 1 bill paid');
   await expect(page.getByRole('listitem').filter({ hasText: 'Phone' }).first()).toBeVisible();
 });
@@ -235,7 +245,7 @@ test('several bills are ticked and recorded together, on the day they were paid'
   await expect(sheet).toHaveCount(0);
   await expect(toast(page)).toContainText('Paid 2 bills');
   await expect(page.getByRole('heading', { name: 'Recurring' })).toBeVisible();
-  await page.goto('/transactions');
+  await phoneCashflow(page);
   await expect(page.getByTestId('recurring-card')).toContainText('2 of 2 bills paid');
 });
 
@@ -347,13 +357,10 @@ test('last month’s overdue bill paid from its page says so, can be undone, and
   await expect(banner).toContainText(`${lastMonth} bill`);
 
   // Listed on the day it was paid, plain: no tag naming the bill's month on the row (the budget still counts it there).
+  // On a wide screen Cashflow is the table (Mac Cashflow D), so this row is the table's.
   await page.goto('/transactions');
-  await expect(page.getByRole('listitem').filter({ hasText: 'Biznet Home' }).first()).toBeVisible();
-  await expect(page.getByRole('listitem').filter({ hasText: 'Biznet Home' }).first()).not.toContainText(`${lastMonth.slice(0, 3)} bill`);
-  // Nor in the table on a wide screen.
-  await page.getByRole('button', { name: 'Table' }).click();
-  await expect(page.getByTestId('table-row').first()).toBeVisible();
-  await expect(page.getByTestId('table-row').filter({ hasText: `${lastMonth.slice(0, 3)} bill` })).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Biznet Home' }).first()).toBeVisible();
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Biznet Home' }).first()).not.toContainText(`${lastMonth.slice(0, 3)} bill`);
 });
 
 test('Pay several names the bill it recorded, not the one first picked', async ({ page }) => {

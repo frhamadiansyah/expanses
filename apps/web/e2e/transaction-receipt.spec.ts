@@ -29,6 +29,13 @@ async function openReceipt(page: Page, description: string, from?: string) {
   await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
 }
 
+
+/** Show deleted, from Cashflow's Filter menu (Mac Cashflow D). */
+async function showDeleted(page: Page) {
+  await page.getByRole('button', { name: /^Filter/ }).click();
+  await page.getByRole('dialog', { name: 'Filter' }).getByLabel('Show deleted').check();
+  await page.keyboard.press('Escape');
+}
 /**
  * The receipt, reached the way a desktop reaches it: the ⓘ at the end of the row.
  *
@@ -55,12 +62,12 @@ test('the ⓘ on a row opens the receipt, and the row itself still edits in plac
   await expect(total).toContainText('500.000');
   await expect(page.getByTestId('receipt-hero')).toContainText('500.000');
 
-  // Back lands where it came from, and the row's own click still opens the in-place editor: the ⓘ is a way in
-  // beside editing, never instead of it.
+  // Back lands where it came from, and the row's own click still opens its side peek (Mac Cashflow D): the ⓘ is a way
+  // in beside it, never instead of it.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page).toHaveURL(/\/transactions(\?|$)/);
-  await page.locator('li', { hasText: 'Superindo' }).click();
-  await expect(page.getByLabel('Row description')).toHaveValue('Superindo');
+  await page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).click();
+  await expect(page.getByTestId('cashflow-peek').getByTestId('peek-title')).toHaveText('Superindo');
 });
 
 /**
@@ -149,7 +156,7 @@ test('deleting from the receipt asks twice, and the deleted receipt says it is d
   await expect(page.getByText('Superindo')).toHaveCount(0);
 
   // Deleted, not destroyed: it reads as deleted, and offers no second way to delete it again.
-  await page.getByLabel('Show deleted').check();
+  await showDeleted(page);
   await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
   await expect(page.getByText('Deleted', { exact: true })).toBeVisible();
   await expect(page.getByTestId('hero-amount')).toHaveClass(/line-through/);
@@ -173,7 +180,7 @@ test('an edit from the receipt lands on the list, because the edit replaces the 
   await page.getByRole('button', { name: 'Save' }).click();
 
   await expect(page).toHaveURL(/\/transactions(\?|$)/);
-  await expect(page.locator('li', { hasText: 'Superindo' }).last()).toContainText('575.000');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).last()).toContainText('575.000');
 });
 
 /**
@@ -291,7 +298,9 @@ test('a desktop still edits a row in place, and the original is under Show delet
   await addCard(page);
   await spend(page, 'Superindo', '500000');
 
-  await page.goto('/transactions');
+  // In place is the list an account's own history keeps (a wide screen's Cashflow is the table, Mac Cashflow D).
+  await openAccountHistory(page, 'BCA Visa');
+  await page.getByRole('button', { name: 'List' }).click();
   // The row's own face, not the ⓘ: on a desktop a click opens `QuickRowEditor` between the rows.
   await page.locator('li', { hasText: 'Superindo' }).click();
   const description = page.getByLabel('Row description');

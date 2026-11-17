@@ -1,7 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openAccountHistory } from './accounts';
 import { addTransaction } from './add-transaction';
 
+/*
+ * Cashflow on a wide screen is a table whose rows open a side peek (Mac Cashflow D). The list that corrects a purchase
+ * where it sits — a click, its cells, Enter — is an account's own history, which keeps it.
+ */
 async function setUp(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
@@ -10,8 +14,10 @@ async function setUp(page: Page) {
   await expect(page.getByText('Superindo')).toBeVisible();
 }
 
-test('a purchase is corrected where it sits in the list, and the original is kept', async ({ page }) => {
+test('a purchase is corrected where it sits in its account’s list, and the original is kept', async ({ page }) => {
   await setUp(page);
+  await openAccountHistory(page, 'BCA Tahapan');
+  await page.getByRole('button', { name: 'List' }).click();
 
   await page.locator('li', { hasText: 'Superindo' }).click();
   await page.getByLabel('Row amount (IDR)').fill('750.000');
@@ -33,14 +39,15 @@ test('a purchase is corrected where it sits in the list, and the original is kep
   await expect(page.getByTestId('period-total')).toContainText('750.000');
 });
 
-test('deleting from the row asks twice, in place', async ({ page }) => {
+test('deleting from the row’s peek asks twice, in place', async ({ page }) => {
   await setUp(page);
 
-  await page.locator('li', { hasText: 'Superindo' }).click();
-  await page.getByRole('button', { name: 'Delete this transaction' }).click();
+  await page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).click();
+  const peek = page.getByTestId('cashflow-peek');
+  await peek.getByRole('button', { name: 'Delete this transaction' }).click();
   // Armed, not gone: one press never deletes.
-  await expect(page.getByLabel('Row description')).toHaveValue('Superindo');
-  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(peek.getByTestId('peek-title')).toHaveText('Superindo');
+  await peek.getByRole('button', { name: 'Click again to delete' }).click();
   await expect(page.getByText('Superindo')).toHaveCount(0);
 });
 
@@ -64,6 +71,8 @@ test('search finds a purchase by its amount, and a filter can be cleared', async
  */
 test('a desktop row lets its hover tint through', async ({ page }) => {
   await setUp(page);
+  await openAccountHistory(page, 'BCA Tahapan');
+  await page.getByRole('button', { name: 'List' }).click();
   const face = page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).locator('> div').first();
   await expect(face).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 });

@@ -66,8 +66,12 @@ test('a yearly bill far from its date is not on Recurring, but is under Repeatin
   // Nothing is owed: no row, no total, and the Cashflow card has no bill to count.
   await expect(row(page, 'Domain')).toHaveCount(0);
   await expect(page.getByTestId('bills-total')).toHaveCount(0);
+  // The card is the phone's Cashflow (a wide screen's, Mac Cashflow D, has none): looked for in a phone's window.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/transactions');
+  await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
   await expect(page.getByTestId('recurring-card')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   await page.goto('/bills');
   await showRepeating(page);
