@@ -22,7 +22,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { doorOfForm, spendingDoor } from '../goals/set-aside-question';
 import { ratesForSave } from '../transactions/tx-save';
 import { emptyForm, extraRows, formFromTransaction, formToPost, seeded } from '../transactions/tx-form';
-import { CARD_PAY_NOTE, CARD_PAY_OMITS, cardPayFrom, cardPayLink, cardPaySeed, isCardPayment, statementPayChoice, statementPayInput, statementPayLink, statementPaySeed } from './card-pay';
+import { CARD_PAY_NOTE, CARD_PAY_OMITS, cardPayFrom, offersTransferGoal, cardPayLink, cardPaySeed, isCardPayment, statementPayChoice, statementPayInput, statementPayLink, statementPaySeed } from './card-pay';
 import { statementCover } from './statement-cover';
 
 /*
@@ -188,6 +188,17 @@ describe('the Pay screen’s pieces', () => {
     const bca = account({ id: 'bca', currency: 'IDR' });
     const usd = account({ id: 'usd', currency: 'USD' });
     expect(cardPayFrom([bca, usd], card).map((a) => a.id)).toEqual(['bca']);
+  });
+
+  it('offers no Goal row on any card payment — Pay, Edit payment, the statement’s Pay — while other new transfers keep it', () => {
+    const transfer = { mode: 'transfer' as const };
+    expect(offersTransferGoal(transfer, { editing: false, payCard: false, goals: 2 })).toBe(true);
+    expect(offersTransferGoal(transfer, { editing: false, payCard: true, goals: 2 })).toBe(false);
+    expect(offersTransferGoal(transfer, { editing: true, payCard: true, goals: 2 })).toBe(false);
+    // As before: never on an edit, never with no goal, never on spending.
+    expect(offersTransferGoal(transfer, { editing: true, payCard: false, goals: 2 })).toBe(false);
+    expect(offersTransferGoal(transfer, { editing: false, payCard: false, goals: 0 })).toBe(false);
+    expect(offersTransferGoal({ mode: 'expense' }, { editing: false, payCard: false, goals: 2 })).toBe(false);
   });
 
   it('leaves Exclude from report out of Add more details: a card payment never counts in Cashflow anyway', () => {

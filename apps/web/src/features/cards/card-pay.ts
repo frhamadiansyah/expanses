@@ -18,6 +18,15 @@ export const CARD_PAY_NOTE = 'Credit card payment';
 /** Not offered under Add more details: a card payment never counts in Cashflow, so there is nothing to exclude. */
 export const CARD_PAY_OMITS: readonly ExtraRow[] = ['exclude'];
 
+/**
+ * Whether the form offers a transfer's Goal row: a new transfer, with goals to choose from — and never a card payment
+ * (the card's Pay, Edit payment, the statement's Pay; owner, 17 Nov 2026). Paying a card is never saving toward a goal;
+ * the set-aside question, which asks about money already promised to one, is a different thing and stays.
+ */
+export function offersTransferGoal(draft: Pick<FormDraft, 'mode'>, o: { editing: boolean; payCard: boolean; goals: number }): boolean {
+  return draft.mode === 'transfer' && !o.editing && !o.payCard && o.goals > 0;
+}
+
 /** The address of a card's Pay: the Add screen locked to this card, with the figure the card page fills in. */
 export function cardPayLink(cardId: string, amountMinor: number, currency: string) {
   return {

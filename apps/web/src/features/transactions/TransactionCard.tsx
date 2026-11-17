@@ -73,7 +73,7 @@ import { CardCashbackMark, CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { useOpenings, useOpeningDay } from '../accounts/queries';
 import { Chevron, FieldRow, FixedRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
-import { CARD_PAY_OMITS, cardPayFrom } from '../cards/card-pay';
+import { CARD_PAY_OMITS, cardPayFrom, offersTransferGoal } from '../cards/card-pay';
 import { MoreDetails } from './MoreDetails';
 import { TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from './TradeRows';
 import { NoteSuggestions } from './NoteSuggestions';
@@ -1403,7 +1403,7 @@ function CardBody({
 
       {paysPurchases?.list}
 
-      {draft.mode === 'transfer' && !initial && !paysPurchases && goals.length > 0 && (
+      {offersTransferGoal(draft, { editing: !!initial, payCard, goals: goals.length }) && (
         <FormRows>
           <FormRow
             icon={

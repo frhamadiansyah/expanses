@@ -79,6 +79,8 @@ test('paying the card bill from Jenius asks, and the Emergency fund lends the 1.
   // The round Pay opens the Add screen locked to paying the card; From is Jenius.
   const form = await openCardPay(page);
   await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^6\.?800\.?000$/);
+  // Goals exist, but a card payment is never saving toward one: no Goal row. The question below is another matter.
+  await expect(form.getByRole('button', { name: /^Goal/ })).toHaveCount(0);
   await chooseCardPayFrom(form, 'Jenius');
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   await expect(saveButton(form)).toBeDisabled();
@@ -101,6 +103,7 @@ test('paying chosen purchases now from Jenius asks the same question', async ({ 
   await page.getByLabel('Pay Laptop').check();
   // The same Pay credit card screen as the card's Pay: From chosen, then the question.
   const form = await openStatementPay(page);
+  await expect(form.getByRole('button', { name: /^Goal/ })).toHaveCount(0);
   await chooseCardPayFrom(form, 'Jenius');
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   await expect(saveButton(form)).toBeDisabled();

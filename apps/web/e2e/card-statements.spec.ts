@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openAccountHistory, openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
-import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, payCard, saveCardTerms, showCardBack } from './card-section';
+import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, payCard, payStatementPurchases, saveCardTerms, showCardBack } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -142,8 +142,7 @@ test('the totals band splits the previous bill from what is unbilled, and names 
 
   // Tick this cycle's purchase and pay it: the bank clears the older bill first, so that is where it lands.
   await page.getByLabel('Pay Superindo').check();
-  await page.getByTestId('statement-select-bar').getByRole('button', { name: 'Pay', exact: true }).click();
-  await page.getByRole('button', { name: /^Pay Rp/ }).click();
+  await payStatementPurchases(page, 'BCA Tahapan');
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toContainText(/paid ahead \d+ \w+/);
   await expect(page.getByTestId('statement-line').filter({ hasText: 'payment' })).toContainText('for 1 purchase');
   // Rp 450.000 of the Rp 2.000.000 previous bill is settled, and the upcoming bill drops by the same.

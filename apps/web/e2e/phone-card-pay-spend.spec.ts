@@ -1,4 +1,5 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
+import { jeniusWithTwoGoals } from './set-aside';
 import { expectWalletFigure, openAccount, openAccountHistory, openCard, walletCard } from './accounts';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, saveCardTerms, showCardBack } from './card-section';
@@ -192,4 +193,54 @@ test('the statement’s Pay for ticked purchases opens “Pay credit card” wit
   await expect(page.getByLabel(/^Toko Dua, paid on/)).toBeChecked();
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Tahapan', '19.470.000');
+});
+
+test('no card payment offers a Goal row, even with goals; each still asks when it takes money promised to one', async ({ page }) => {
+  // Jenius holds Rp 42.500.000 and promises Rp 37.500.000 of it: Rp 5.000.000 is free.
+  await jeniusWithTwoGoals(page);
+  await openCard(page, { name: 'BCA Visa' });
+  await page.goto('/wallet');
+  await walletCard(page, 'BCA Visa').click();
+  await cardPage(page, 'Settings');
+  await page.getByLabel('Billing date').fill('31');
+  await page.getByLabel('Due date').fill('15');
+  await saveCardTerms(page);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Laptop', paidWith: 'BCA Visa', category: 'Groceries', amount: '6800000', date: LAST_MONTH });
+  await addTransaction(page, { description: 'Monitor', paidWith: 'BCA Visa', category: 'Groceries', amount: '5500000' });
+  const asks = page.getByText(/more than is free/);
+  const goalRow = (form: Locator) => form.getByRole('button', { name: /^Goal/ });
+
+  // The statement's Pay for a ticked purchase: Rp 5.500.000 from Jenius is Rp 500.000 over.
+  await openCardPage(page);
+  await cardPage(page, 'Statement');
+  await page.getByLabel('Pay Monitor').check();
+  const chosen = await openStatementPay(page);
+  await expect(goalRow(chosen)).toHaveCount(0);
+  await chooseCardPayFrom(chosen, 'Jenius');
+  await expect(page.getByText(/500\.000 more than is free/)).toBeVisible();
+  await expect(saveButton(chosen)).toBeDisabled();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(chosen).toHaveCount(0);
+
+  // The card's Pay: the Rp 6.800.000 bill, Rp 1.800.000 over.
+  await openCardPage(page);
+  const pay = await openCardPay(page);
+  await expect(goalRow(pay)).toHaveCount(0);
+  await chooseCardPayFrom(pay, 'Jenius');
+  await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  await expect(saveButton(pay)).toBeDisabled();
+  await page.getByRole('button', { name: 'Take from Emergency fund' }).click();
+  await page.getByRole('button', { name: 'No — borrowing from it' }).click();
+  await saveButton(pay).click();
+  await expect(pay).toHaveCount(0);
+
+  // Edit payment: still no Goal row, and the question it was saved with is asked again.
+  await openAccountHistory(page, 'Jenius');
+  await page.getByText('Credit card payment').first().click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  await expect(page.getByRole('heading', { name: 'Edit payment', exact: true })).toBeVisible();
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
+  await expect(goalRow(edit)).toHaveCount(0);
+  await expect(asks).toBeVisible();
 });
