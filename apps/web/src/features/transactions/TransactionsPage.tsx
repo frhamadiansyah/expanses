@@ -81,6 +81,7 @@ import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { SidewaysTable } from './SidewaysTable';
 import { DesktopCashflow, type DeskRowHelpers } from './DesktopCashflow';
+import { type Selection, type SelectionAction, selectionReducer } from './cashflow-desk-model';
 import { afterDismiss, afterSideways, afterVisit, readTip, tipShown, writeTip } from './sideways-tip';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
@@ -336,6 +337,11 @@ export function TransactionsPage() {
    */
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+  /*
+   * The wide Cashflow picks rows the Mac way — ⌘-click, ⇧-click, ⌘A — into the same `selected`, so the list's bulk
+   * actions below act on them unchanged; this is where its ⇧-click reaches from.
+   */
+  const [anchor, setAnchor] = useState<string | null>(null);
   const [pickingEvent, setPickingEvent] = useState(false);
   const [tagging, setTagging] = useState<{ busy: boolean; error: unknown }>({ busy: false, error: null });
   /** What the last Add to event or Remove from event did, with the way back. */
@@ -580,6 +586,7 @@ export function TransactionsPage() {
   function stopSelecting() {
     setSelecting(false);
     setSelected(new Set());
+    setAnchor(null);
     setPickingEvent(false);
     setPickingCard(false);
     setTagging({ busy: false, error: null });
@@ -751,6 +758,31 @@ export function TransactionsPage() {
       return;
     }
     stopSelecting();
+  }
+
+  /**
+   * Deletes every picked row (the wide Cashflow's Delete, asked twice in its peek), one by one as a row's own Delete
+   * does. One that will not go stays picked, with the reason; the rest are gone.
+   */
+  async function deleteChosen() {
+    setTagging({ busy: true, error: null });
+    const kept: string[] = [];
+    let failure: unknown = null;
+    for (const row of chosen) {
+      try {
+        await deleteTransaction(database, ws, row.id);
+      } catch (e) {
+        kept.push(row.id);
+        failure = e;
+      }
+    }
+    await invalidate();
+    if (kept.length === 0) {
+      stopSelecting();
+      return;
+    }
+    setSelected(new Set(kept));
+    setTagging({ busy: false, error: failure });
   }
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership, accountsQuery.isSuccess && cardsQuery.isSuccess && membershipQuery.isSuccess);
@@ -1448,6 +1480,45 @@ export function TransactionsPage() {
     />
   );
 
+  /** The sheets and the toast the bulk actions open — the list's select bar and the wide Cashflow's peek alike. */
+  const bulkSheets = (
+    <>
+      {pickingBook && (
+        <ChoiceSheet
+          title="Move to workspace"
+          value={ws.bookId ?? ''}
+          groups={[{ choices: allBooks.map((book) => ({ value: book.id, label: book.name, glyph: <Home size={16} /> })) }]}
+          footer="Each category is matched in that workspace; the card or account, amount and date stay as they are."
+          onPick={(bookId) => (bookId === ws.bookId ? setPickingBook(false) : void moveChosen(bookId))}
+          onClose={() => setPickingBook(false)}
+        />
+      )}
+      {pickingCard && cardAccount && (
+        <CardSheet
+          title="Set card"
+          cards={cardsOf(cardAccount)}
+          value={sharedCard(chosenTxs)}
+          footer="Only the card changes; the amount, date and category stay as they are."
+          onPick={(cardId) => void setCardChosen(cardId)}
+          onClose={() => setPickingCard(false)}
+        />
+      )}
+      {pickingEvent && <EventSheet title="Add to event" withNone={false} sharedOnly={shared} value="" onPick={(eventId) => void tagChosen(eventId)} onClose={() => setPickingEvent(false)} />}
+      {tagToast && (
+        <UndoToast
+          icon="event"
+          text={tagToast.text}
+          onUndo={() => {
+            const back = tagToast.back;
+            setTagToast(null);
+            void back().catch(setError);
+          }}
+          onDone={() => setTagToast(null)}
+        />
+      )}
+    </>
+  );
+
   if (desk) {
     /*
      * The same refusals the list's click and swipe carry (`recordedRow`): a trade, an opening balance, a deleted row, a
@@ -1508,6 +1579,16 @@ export function TransactionsPage() {
       },
     };
     const deskKind: 'expense' | 'income' = filters.type === 'income' ? 'income' : 'expense';
+    // The rows picked on the table, in the order picked, as `selectionReducer` reads them.
+    const selection: Selection = { ids: [...selected], anchor };
+    const onSelection = (action: SelectionAction) => {
+      const next = selectionReducer(selection, action);
+      if (next === selection) return;
+      if (next.ids.length < 2) setTagging({ busy: false, error: null });
+      setSelected(new Set(next.ids));
+      setAnchor(next.anchor);
+    };
+    const pickedTotals = totals(shown.filter((row) => selected.has(row.id)));
     // An account's or category's own list is never this page (`desk`): only Essential or Lifestyle narrows it beyond the filters.
     const chips = need ? [{ key: 'need', label: need === 'essential' ? 'Essential' : 'Lifestyle', clearLabel: `Clear ${need}`, onClear: () => setSearch({ need: undefined }) }] : [];
     return (
@@ -1542,10 +1623,26 @@ export function TransactionsPage() {
         chips={chips}
         needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
         helpers={helpers}
+        selection={selection}
+        onSelection={onSelection}
+        bulk={{
+          count: chosen.length,
+          busy: tagging.busy,
+          error: tagging.error,
+          spent: pickedTotals.spentMinor ? formatMinor(pickedTotals.spentMinor, listCurrency) : null,
+          received: pickedTotals.incomeMinor ? formatMinor(pickedTotals.incomeMinor, listCurrency) : null,
+          onAdd: () => setPickingEvent(true),
+          ...(chosen.some((row) => row.tx?.eventId) ? { onRemove: () => void tagChosen(null) } : {}),
+          ...(allBooks.length > 1 ? { onMove: () => setPickingBook(true) } : {}),
+          ...(cardAccount ? { onSetCard: () => setPickingCard(true) } : {}),
+          onDelete: () => void deleteChosen(),
+        }}
         notices={
           <>
             <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />
             <ErrorBox error={error ?? scan.error ?? list.error ?? drafts.error} />
+            {/* A bulk action that left one row behind says why here: the peek of one row has no room for it. */}
+            {selected.size < 2 && <ErrorBox error={tagging.error} />}
           </>
         }
       >
@@ -1553,6 +1650,7 @@ export function TransactionsPage() {
         {askingSheet}
         {/* The category sheet and its Undo toast, once for the screen. */}
         {recategorise.overlay}
+        {bulkSheets}
       </DesktopCashflow>
     );
   }
@@ -1936,39 +2034,7 @@ export function TransactionsPage() {
           )}
         </>
       )}
-      {pickingBook && (
-        <ChoiceSheet
-          title="Move to workspace"
-          value={ws.bookId ?? ''}
-          groups={[{ choices: allBooks.map((book) => ({ value: book.id, label: book.name, glyph: <Home size={16} /> })) }]}
-          footer="Each category is matched in that workspace; the card or account, amount and date stay as they are."
-          onPick={(bookId) => (bookId === ws.bookId ? setPickingBook(false) : void moveChosen(bookId))}
-          onClose={() => setPickingBook(false)}
-        />
-      )}
-      {pickingCard && cardAccount && (
-        <CardSheet
-          title="Set card"
-          cards={cardsOf(cardAccount)}
-          value={sharedCard(chosenTxs)}
-          footer="Only the card changes; the amount, date and category stay as they are."
-          onPick={(cardId) => void setCardChosen(cardId)}
-          onClose={() => setPickingCard(false)}
-        />
-      )}
-      {pickingEvent && <EventSheet title="Add to event" withNone={false} sharedOnly={shared} value="" onPick={(eventId) => void tagChosen(eventId)} onClose={() => setPickingEvent(false)} />}
-      {tagToast && (
-        <UndoToast
-          icon="event"
-          text={tagToast.text}
-          onUndo={() => {
-            const back = tagToast.back;
-            setTagToast(null);
-            void back().catch(setError);
-          }}
-          onDone={() => setTagToast(null)}
-        />
-      )}
+      {bulkSheets}
 
       {askingSheet}
     </div>

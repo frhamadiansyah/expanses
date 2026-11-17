@@ -50,13 +50,13 @@ export interface TableHandlers {
 }
 
 /** The desk table's Record: small, so it and the discard ✕ fit the last column beside a 13 px row. */
-const DESK_BUTTON = 'px-2 py-[3px] text-[12px]';
+const DESK_BUTTON = 'shrink-0 px-2 py-[3px] text-[12px]';
 
 const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof QuickValues)[]).every((key) => a[key] === b[key]);
 const currencyOf = (values: QuickValues, accounts: readonly AccountRow[], base: string) => accounts.find((a) => a.id === values.accountId)?.currency ?? base;
 
 /** Deleting asks twice, in place. */
-function TwoTap({ busy, label, onConfirm }: { busy: boolean; label: string; onConfirm: () => void }) {
+function TwoTap({ busy, label, onConfirm, compact = false }: { busy: boolean; label: string; onConfirm: () => void; compact?: boolean }) {
   const [armed, setArmed] = useState(false);
   return (
     <button
@@ -66,9 +66,14 @@ function TwoTap({ busy, label, onConfirm }: { busy: boolean; label: string; onCo
       title={armed ? 'Click again' : label}
       onBlur={() => setArmed(false)}
       onClick={() => (armed ? onConfirm() : setArmed(true))}
-      className={cx('inline-flex h-8 items-center justify-center rounded-lg px-2 text-xs font-medium', armed ? 'bg-red-700 text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-red-700')}
+      className={cx(
+        'inline-flex items-center justify-center text-xs font-medium',
+        // The desk's ✕ is as small as its Record, so the two fit the last column even beside the peek.
+        compact ? 'h-[24px] min-w-[24px] shrink-0 rounded-[5px] px-1' : 'h-8 rounded-lg px-2',
+        armed ? 'bg-red-700 text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-red-700',
+      )}
     >
-      {armed ? 'Sure?' : <X size={16} aria-hidden />}
+      {armed ? 'Sure?' : <X size={compact ? 14 : 16} aria-hidden />}
     </button>
   );
 }
@@ -242,7 +247,7 @@ export function EditableRow({
               <Button className={desk ? DESK_BUTTON : 'px-2.5 py-1.5'} disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
                 Record
               </Button>
-              <TwoTap busy={busy} label="Discard" onConfirm={() => void handlers.dismissDraft(row.id)} />
+              <TwoTap busy={busy} label="Discard" compact={!!desk} onConfirm={() => void handlers.dismissDraft(row.id)} />
             </>
           ) : dirty ? (
             <>

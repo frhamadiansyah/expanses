@@ -35,9 +35,10 @@ export function SidePeek({
   titleTestId?: string;
   /** What a step moves to: "transaction" gives "Previous transaction" and "Next transaction". */
   noun: string;
-  first: boolean;
-  last: boolean;
-  onStep: (by: -1 | 1) => void;
+  first?: boolean;
+  last?: boolean;
+  /** ⌃ ⌄ are drawn only for a peek on one row; several rows at once have no row before or after. */
+  onStep?: (by: -1 | 1) => void;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -53,12 +54,16 @@ export function SidePeek({
           {title}
         </span>
         <span className="flex shrink-0 items-center gap-[2px]">
-          <button type="button" aria-label={`Previous ${noun}`} title="Previous (↑)" disabled={first} onClick={() => onStep(-1)} className={STEP}>
-            <ChevronUp size={15} aria-hidden />
-          </button>
-          <button type="button" aria-label={`Next ${noun}`} title="Next (↓)" disabled={last} onClick={() => onStep(1)} className={STEP}>
-            <ChevronDown size={15} aria-hidden />
-          </button>
+          {onStep && (
+            <>
+              <button type="button" aria-label={`Previous ${noun}`} title="Previous (↑)" disabled={first} onClick={() => onStep(-1)} className={STEP}>
+                <ChevronUp size={15} aria-hidden />
+              </button>
+              <button type="button" aria-label={`Next ${noun}`} title="Next (↓)" disabled={last} onClick={() => onStep(1)} className={STEP}>
+                <ChevronDown size={15} aria-hidden />
+              </button>
+            </>
+          )}
           <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={cx(STEP, 'ml-1')}>
             <X size={15} aria-hidden />
           </button>

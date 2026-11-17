@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
-import { countsAs, dayBarsShape, monthFigures, pageShortcut, peekKey, peekReducer, ringArcs, ringLegend } from './cashflow-desk-model';
+import { clickAction, countsAs, dayBarsShape, monthFigures, NO_SELECTION, pageShortcut, peekKey, ringArcs, ringLegend, type Selection, selectionReducer } from './cashflow-desk-model';
 import { CashflowPeek, type PeekView } from './CashflowPeek';
 
 const colour = (id: string) => `#${id.padStart(6, '0').slice(-6)}`;
@@ -103,29 +103,29 @@ describe('Counts as', () => {
 describe('the side peek', () => {
   const ids = ['t1', 't2', 't3'];
   it('opens on a row, steps up and down within the table, and closes', () => {
-    let state = peekReducer({ id: null }, { type: 'open', id: 't2' });
-    expect(state.id).toBe('t2');
-    state = peekReducer(state, { type: 'step', by: 1, ids });
-    expect(state.id).toBe('t3');
+    let state = selectionReducer(NO_SELECTION, { type: 'open', id: 't2' });
+    expect(state.ids).toEqual(['t2']);
+    state = selectionReducer(state, { type: 'step', by: 1, ids });
+    expect(state.ids).toEqual(['t3']);
     // At either end it stays where it is.
-    expect(peekReducer(state, { type: 'step', by: 1, ids })).toBe(state);
-    state = peekReducer(state, { type: 'step', by: -1, ids });
-    state = peekReducer(state, { type: 'step', by: -1, ids });
-    expect(state.id).toBe('t1');
-    expect(peekReducer(state, { type: 'step', by: -1, ids })).toBe(state);
-    expect(peekReducer(state, { type: 'close' })).toEqual({ id: null });
+    expect(selectionReducer(state, { type: 'step', by: 1, ids })).toBe(state);
+    state = selectionReducer(state, { type: 'step', by: -1, ids });
+    state = selectionReducer(state, { type: 'step', by: -1, ids });
+    expect(state.ids).toEqual(['t1']);
+    expect(selectionReducer(state, { type: 'step', by: -1, ids })).toBe(state);
+    expect(selectionReducer(state, { type: 'close' })).toEqual(NO_SELECTION);
     // Closed, a step does nothing.
-    expect(peekReducer({ id: null }, { type: 'step', by: 1, ids })).toEqual({ id: null });
+    expect(selectionReducer(NO_SELECTION, { type: 'step', by: 1, ids })).toBe(NO_SELECTION);
   });
 
   it('closes when its row leaves the table (deleted, filtered out)', () => {
-    expect(peekReducer({ id: 't2' }, { type: 'listed', ids: ['t1', 't3'] })).toEqual({ id: null });
-    const kept = { id: 't2' };
-    expect(peekReducer(kept, { type: 'listed', ids })).toBe(kept);
+    expect(selectionReducer({ ids: ['t2'], anchor: 't2' }, { type: 'listed', ids: ['t1', 't3'] })).toEqual(NO_SELECTION);
+    const kept: Selection = { ids: ['t2'], anchor: 't2' };
+    expect(selectionReducer(kept, { type: 'listed', ids })).toBe(kept);
   });
 
   it('Esc closes, ↑ ↓ step and Return edits — never while typing in a field or under a sheet', () => {
-    const open = { open: true, typing: false, covered: false };
+    const open = { count: 1, typing: false, covered: false };
     expect(peekKey('Escape', open)).toBe('close');
     expect(peekKey('ArrowUp', open)).toBe('up');
     expect(peekKey('ArrowDown', open)).toBe('down');
@@ -133,10 +133,15 @@ describe('the side peek', () => {
     expect(peekKey('a', open)).toBeNull();
     expect(peekKey('Escape', { ...open, typing: true })).toBeNull();
     expect(peekKey('Escape', { ...open, covered: true })).toBeNull();
-    expect(peekKey('Escape', { ...open, open: false })).toBeNull();
+    expect(peekKey('Escape', { ...open, count: 0 })).toBeNull();
+    // Several picked: Esc lets them go; there is no one row to step from or to edit.
+    const many = { ...open, count: 3 };
+    expect(peekKey('Escape', many)).toBe('close');
+    expect(peekKey('ArrowDown', many)).toBeNull();
+    expect(peekKey('Enter', many)).toBeNull();
   });
 
-  it('⌘N is a new transaction and ⌘F the search, Ctrl too; nothing else', () => {
+  it('⌘N is a new transaction, ⌘F the search and ⌘A every row, Ctrl too; nothing else', () => {
     const key = (k: string, mods: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) => pageShortcut({ key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods });
     expect(key('n', { metaKey: true })).toBe('new');
     expect(key('f', { metaKey: true })).toBe('search');
@@ -144,6 +149,8 @@ describe('the side peek', () => {
     expect(key('n')).toBeNull();
     expect(key('n', { metaKey: true, shiftKey: true })).toBeNull();
     expect(key('k', { metaKey: true })).toBeNull();
+    expect(key('a', { metaKey: true })).toBe('all');
+    expect(key('a')).toBeNull();
   });
 
   it('draws the title, amount, date, its lines and Edit · Split · Delete, with ⌃ ⌄ off at the ends', () => {
@@ -184,5 +191,52 @@ describe('the side peek', () => {
     expect(locked).toMatch(/disabled=""[^>]*>Edit</);
     expect(locked).not.toContain('Delete this transaction');
     expect(locked).toMatch(/aria-label="Next transaction"[^>]*disabled=""/);
+  });
+});
+
+describe('picking several rows, the Mac way', () => {
+  const ids = ['t1', 't2', 't3', 't4', 't5'];
+  const keys = (held: Partial<{ metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }> = {}) => ({ metaKey: false, ctrlKey: false, shiftKey: false, ...held });
+  const click = (state: Selection, id: string, held: Partial<{ metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }> = {}) => selectionReducer(state, clickAction(id, keys(held), ids));
+
+  it('a click picks one row alone; ⌘-click adds a row and takes it out again', () => {
+    let state = click(NO_SELECTION, 't2');
+    expect(state).toEqual({ ids: ['t2'], anchor: 't2' });
+    state = click(state, 't4', { metaKey: true });
+    expect(state.ids).toEqual(['t2', 't4']);
+    state = click(state, 't1', { ctrlKey: true });
+    expect(state.ids).toEqual(['t2', 't4', 't1']);
+    state = click(state, 't4', { metaKey: true });
+    expect(state).toEqual({ ids: ['t2', 't1'], anchor: 't4' });
+    // A plain click among several goes back to the one row.
+    expect(click(state, 't5')).toEqual({ ids: ['t5'], anchor: 't5' });
+  });
+
+  it('⇧-click picks every row from the anchor to the one clicked, either way, keeping what was picked', () => {
+    let state = click(NO_SELECTION, 't2');
+    state = click(state, 't4', { shiftKey: true });
+    expect(state).toEqual({ ids: ['t2', 't3', 't4'], anchor: 't2' });
+    // Upwards from the same anchor, the rows already picked are not picked twice.
+    state = click(state, 't1', { shiftKey: true });
+    expect(state.ids).toEqual(['t2', 't3', 't4', 't1']);
+    // ⌘-click moves the anchor; ⇧-click then reaches from there.
+    state = click(click(NO_SELECTION, 't1'), 't4', { metaKey: true });
+    expect(click(state, 't5', { shiftKey: true }).ids).toEqual(['t1', 't4', 't5']);
+    // With nothing picked yet, ⇧-click picks the row alone.
+    expect(click(NO_SELECTION, 't3', { shiftKey: true })).toEqual({ ids: ['t3'], anchor: 't3' });
+  });
+
+  it('⌘A picks every row listed, Esc lets them all go', () => {
+    const all = selectionReducer(click(NO_SELECTION, 't3'), { type: 'all', ids });
+    expect(all).toEqual({ ids, anchor: 't3' });
+    expect(selectionReducer(all, { type: 'close' })).toEqual(NO_SELECTION);
+    expect(selectionReducer(NO_SELECTION, { type: 'close' })).toBe(NO_SELECTION);
+  });
+
+  it('several picked do not step; a row that leaves the table leaves the selection; a bulk action keeps what it left behind', () => {
+    const many: Selection = { ids: ['t1', 't3', 't4'], anchor: 't4' };
+    expect(selectionReducer(many, { type: 'step', by: 1, ids })).toBe(many);
+    expect(selectionReducer(many, { type: 'listed', ids: ['t1', 't2', 't3'] })).toEqual({ ids: ['t1', 't3'], anchor: null });
+    expect(selectionReducer(many, { type: 'keep', ids: ['t3'] })).toEqual({ ids: ['t3'], anchor: 't3' });
   });
 });

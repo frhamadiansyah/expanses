@@ -13,9 +13,20 @@ export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,
 
 /**
  * The wide screen's Cashflow table (Mac Cashflow D): Date, Note, Category, Paid with, Counts as, Amount, then what the
- * row can do. The typing row lays its cells out in this order too, so Tab moves along the columns as they read.
+ * row can do. The typing row lays its cells out in this order too, so Tab moves along the columns as they read. The
+ * columns themselves are the table's to say (`--desk-cols`, one of `DESK_COLUMNS`), so every row narrows at once.
  */
-export const DESK_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,1.2fr)_6.5rem_8rem_6rem] items-center gap-px';
+export const DESK_GRID = 'grid grid-cols-[var(--desk-cols)] items-center gap-px';
+
+/**
+ * The table's columns: `wide` across the box; `peek` while the side peek takes the right of the page — Counts as is
+ * left out (its cells carry `data-col="counts"`, hidden by the table), Note and Category get the room first, Amount is
+ * as wide as a figure and no wider, and the last column still holds Record and its ✕ whole.
+ */
+export const DESK_COLUMNS = {
+  wide: '5.5rem minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.2fr) 6.5rem 8rem 6rem',
+  peek: '4.75rem minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,1fr) 7.25rem 5.75rem',
+} as const;
 
 const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
 const MISSING = 'bg-amber-50 ring-1 ring-amber-400 ring-inset';
@@ -199,7 +210,7 @@ export function QuickRowEditor({
           description,
           category,
           paid,
-          <span key="counts" className="truncate px-2 text-[13px] text-[var(--ph-ink-3)]">
+          <span key="counts" data-col="counts" className="truncate px-2 text-[13px] text-[var(--ph-ink-3)]">
             {countsAs}
           </span>,
           amount,

@@ -4,7 +4,8 @@ import type { ListRow } from './list-model';
 
 /**
  * The wide screen's Cashflow (Mac Cashflow D, 2026-11-17) as data: the ring's legend, the month's four figures, what a
- * row counts as, and the side peek's stepping and keys — each worked out here so it is tested without a page.
+ * row counts as, the rows picked (one for the side peek, several at once) and the keys — each worked out here so it
+ * is tested without a page.
  */
 
 /** A category under the ring: its mark is drawn by the page (`CategoryIcon`), its slice in `colour`. */
@@ -95,47 +96,92 @@ export function dayBarsShape(bars: readonly Pick<TrendBar, 'from' | 'to' | 'tota
   };
 }
 
-/** Which row the side peek shows: none, or one row by its id. */
-export interface PeekState {
-  id: string | null;
+/**
+ * The rows picked in the table, the Mac way (Finder's, Mail's): a click picks one row and its peek opens; ⌘-click adds
+ * a row or takes it out again; ⇧-click picks every row from the anchor — the last row clicked or ⌘-clicked — to this
+ * one; ⌘A picks every row listed; Esc lets them all go. One row picked shows its peek; two or more, what they add up
+ * to and what can be done to them all at once. `ids` are in the order picked.
+ */
+export interface Selection {
+  ids: readonly string[];
+  /** Where a ⇧-click reaches from. */
+  anchor: string | null;
 }
 
-export type PeekAction =
-  | { type: 'open'; id: string }
-  | { type: 'close' }
-  /** ⌃ ⌄ and the arrow keys: the row before or after, in the table's own order, stopping at either end. */
-  | { type: 'step'; by: -1 | 1; ids: readonly string[] }
-  /** The table changed under it: a row no longer listed (deleted, filtered out) closes the peek. */
-  | { type: 'listed'; ids: readonly string[] };
+export const NO_SELECTION: Selection = { ids: [], anchor: null };
 
-export function peekReducer(state: PeekState, action: PeekAction): PeekState {
+export type SelectionAction =
+  /** A plain click: this row alone, and its peek. */
+  | { type: 'open'; id: string }
+  /** ⌘-click: this row added, or taken out when it was already picked. */
+  | { type: 'toggle'; id: string }
+  /** ⇧-click: every row from the anchor to this one, in the table's order, added to what is picked. */
+  | { type: 'range'; id: string; ids: readonly string[] }
+  /** ⌘A: every row listed. */
+  | { type: 'all'; ids: readonly string[] }
+  /** Esc, ✕, or a bulk action that went through: nothing picked. */
+  | { type: 'close' }
+  /** ⌃ ⌄ and the arrow keys, while one row is picked: the row before or after, stopping at either end. */
+  | { type: 'step'; by: -1 | 1; ids: readonly string[] }
+  /** The table changed under it: a row no longer listed (deleted, filtered out, moved away) is no longer picked. */
+  | { type: 'listed'; ids: readonly string[] }
+  /** A bulk action left these rows behind (each with its reason): they stay picked, the rest go. */
+  | { type: 'keep'; ids: readonly string[] };
+
+export function selectionReducer(state: Selection, action: SelectionAction): Selection {
   switch (action.type) {
     case 'open':
-      return { id: action.id };
+      return state.ids.length === 1 && state.ids[0] === action.id && state.anchor === action.id ? state : { ids: [action.id], anchor: action.id };
+    case 'toggle':
+      return state.ids.includes(action.id) ? { ids: state.ids.filter((id) => id !== action.id), anchor: action.id } : { ids: [...state.ids, action.id], anchor: action.id };
+    case 'range': {
+      const to = action.ids.indexOf(action.id);
+      const from = state.anchor === null ? -1 : action.ids.indexOf(state.anchor);
+      if (to < 0) return state;
+      if (from < 0) return { ids: [action.id], anchor: action.id };
+      const span = action.ids.slice(Math.min(from, to), Math.max(from, to) + 1);
+      return { ids: [...state.ids, ...span.filter((id) => !state.ids.includes(id))], anchor: state.anchor };
+    }
+    case 'all':
+      return { ids: [...action.ids], anchor: state.anchor ?? action.ids[0] ?? null };
     case 'close':
-      return state.id === null ? state : { id: null };
+      return state.ids.length === 0 && state.anchor === null ? state : NO_SELECTION;
     case 'step': {
-      if (state.id === null) return state;
-      const at = action.ids.indexOf(state.id);
+      if (state.ids.length !== 1) return state;
+      const at = action.ids.indexOf(state.ids[0]!);
       if (at < 0) return state;
       const next = action.ids[Math.min(action.ids.length - 1, Math.max(0, at + action.by))];
-      return next === undefined || next === state.id ? state : { id: next };
+      return next === undefined || next === state.ids[0] ? state : { ids: [next], anchor: next };
     }
-    case 'listed':
-      return state.id !== null && !action.ids.includes(state.id) ? { id: null } : state;
+    case 'listed': {
+      const ids = state.ids.filter((id) => action.ids.includes(id));
+      const anchor = state.anchor !== null && action.ids.includes(state.anchor) ? state.anchor : null;
+      return ids.length === state.ids.length && anchor === state.anchor ? state : { ids, anchor };
+    }
+    case 'keep': {
+      const ids = state.ids.filter((id) => action.ids.includes(id));
+      return ids.length === state.ids.length ? state : { ids, anchor: ids.at(-1) ?? null };
+    }
   }
 }
 
+/** What a click on a row does, by the keys held: ⇧ a range, ⌘ (Ctrl off a Mac) a toggle, nothing held the row alone. */
+export function clickAction(id: string, keys: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }, ids: readonly string[]): SelectionAction {
+  if (keys.shiftKey) return { type: 'range', id, ids };
+  if (keys.metaKey || keys.ctrlKey) return { type: 'toggle', id };
+  return { type: 'open', id };
+}
+
 /**
- * What a key does on the page while a row is selected: Esc closes the peek, ↑ ↓ step, Return opens the full edit
- * screen. Never while typing in a field (the typing row's own Return records, its Esc clears), and never while a sheet
- * or menu is open over the page — that one's Esc is its own.
+ * What a key does on the page while rows are picked: Esc lets them go; with one row picked ↑ ↓ step and Return opens
+ * the full edit screen. Never while typing in a field (the typing row's own Return records, its Esc clears), and never
+ * while a sheet or menu is open over the page — that one's Esc is its own.
  */
-export function peekKey(key: string, ctx: { open: boolean; typing: boolean; covered: boolean }): 'close' | 'up' | 'down' | 'edit' | null {
-  if (!ctx.open || ctx.typing || ctx.covered) return null;
+export function peekKey(key: string, ctx: { count: number; typing: boolean; covered: boolean }): 'close' | 'up' | 'down' | 'edit' | null {
+  if (ctx.count === 0 || ctx.typing || ctx.covered) return null;
+  if (key === 'Escape') return 'close';
+  if (ctx.count !== 1) return null;
   switch (key) {
-    case 'Escape':
-      return 'close';
     case 'ArrowUp':
       return 'up';
     case 'ArrowDown':
@@ -147,9 +193,9 @@ export function peekKey(key: string, ctx: { open: boolean; typing: boolean; cove
   }
 }
 
-/** ⌘N and ⌘F on a Mac (Ctrl elsewhere): a new transaction, and the search field. */
-export function pageShortcut(event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): 'new' | 'search' | null {
+/** ⌘N, ⌘F and ⌘A on a Mac (Ctrl elsewhere): a new transaction, the search field, and every row listed. */
+export function pageShortcut(event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): 'new' | 'search' | 'all' | null {
   if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return null;
   const key = event.key.toLowerCase();
-  return key === 'n' ? 'new' : key === 'f' ? 'search' : null;
+  return key === 'n' ? 'new' : key === 'f' ? 'search' : key === 'a' ? 'all' : null;
 }

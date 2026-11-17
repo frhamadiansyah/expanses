@@ -3,7 +3,7 @@ import { type AccountRow, categoryTotalsIn, firstTransactionDate } from '@expans
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search, X } from 'lucide-react';
-import { type ReactNode, useEffect, useReducer, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
@@ -12,12 +12,12 @@ import { useCategorySetMembership, useCategorySets } from '../categories/set-que
 import { useResolvedNeeds } from '../essential-split/queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
-import { countsAs, monthFigures, pageShortcut, peekKey, peekReducer, ringLegend } from './cashflow-desk-model';
-import { CashflowPeek, type PeekView } from './CashflowPeek';
+import { clickAction, countsAs, monthFigures, pageShortcut, peekKey, ringLegend, type Selection, type SelectionAction } from './cashflow-desk-model';
+import { type BulkActions, CashflowPeek, type PeekView, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { amountExtraParts, categoryButtonLabel, type ListFilters, type ListRow, type Sort, wholeLeftOut } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
-import { DESK_GRID, type RowOptions } from './QuickRowEditor';
+import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
 import { shortDate } from './quick-row';
 import { ReceiptLink } from './ReceiptLink';
 import { useSpendingTrend } from './SpendingTrend';
@@ -252,6 +252,9 @@ export function DesktopCashflow({
   chips,
   needsCategory,
   helpers,
+  selection,
+  onSelection,
+  bulk,
   notices,
   children,
 }: {
@@ -287,6 +290,11 @@ export function DesktopCashflow({
   chips: { key: string; label: ReactNode; clearLabel: string; onClear: () => void }[];
   needsCategory: { count: number; active: boolean; onShow: () => void; onClear: () => void };
   helpers: DeskRowHelpers;
+  /** The rows picked (`selectionReducer`): the page keeps them, since its bulk actions act on them. */
+  selection: Selection;
+  onSelection: (action: SelectionAction) => void;
+  /** Several rows picked: what they add up to (formatted) and the list's bulk actions. */
+  bulk: BulkActions & { spent: string | null; received: string | null };
   notices?: ReactNode;
   /** The page's sheets: Add, the set-aside question. */
   children?: ReactNode;
@@ -311,17 +319,20 @@ export function DesktopCashflow({
   const bar = useRef<HTMLElement>(null);
   const [peekTop, setPeekTop] = useState(52);
 
-  // The side peek: which row it shows, stepped through the table's own order.
-  const [peek, dispatch] = useReducer(peekReducer, { id: null });
+  // The rows picked, in the table's own order: one shows its side peek, several what can be done to them all at once.
+  const dispatch = onSelection;
   const ids = rows.filter(peekable).map((row) => row.id);
   const idsKey = ids.join(',');
   useEffect(() => dispatch({ type: 'listed', ids }), [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  const selected = peek.id ? rows.find((row) => row.id === peek.id && peekable(row)) : undefined;
+  const picked = new Set(selection.ids);
+  const one = selection.ids.length === 1 ? selection.ids[0]! : null;
+  const selected = one ? rows.find((row) => row.id === one && peekable(row)) : undefined;
+  const many = selection.ids.length > 1;
   useEffect(() => {
-    if (!peek.id) return;
-    document.querySelector(`[data-row-id="${CSS.escape(peek.id)}"]`)?.scrollIntoView({ block: 'nearest' });
-  }, [peek.id]);
-  const peeking = peek.id !== null;
+    if (!one) return;
+    document.querySelector(`[data-row-id="${CSS.escape(one)}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [one]);
+  const peeking = selected !== undefined || many;
   useEffect(() => {
     if (!peeking) return;
     const place = () => setPeekTop(Math.max(0, bar.current?.getBoundingClientRect().bottom ?? 52));
@@ -339,7 +350,7 @@ export function DesktopCashflow({
     if (helpers.editable(row)) onEdit(row);
     else if (row.tx) void navigate({ to: '/transactions/$transactionId', params: { transactionId: row.tx.id } });
   };
-  // Keys for the whole page: ⌘N and ⌘F, and — while a row is selected — Esc, ↑ ↓ and Return.
+  // Keys for the whole page: ⌘N, ⌘F and ⌘A, and — while rows are picked — Esc, and with one ↑ ↓ and Return.
   const keys = useRef<(event: KeyboardEvent) => void>(() => undefined);
   keys.current = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null;
@@ -357,7 +368,13 @@ export function DesktopCashflow({
       search.current?.select();
       return;
     }
-    const action = peekKey(event.key, { open: selected !== undefined, typing, covered });
+    // ⌘A in a field selects its text, as everywhere; on the table it picks every row listed.
+    if (shortcut === 'all' && !typing) {
+      event.preventDefault();
+      if (ids.length > 0) dispatch({ type: 'all', ids });
+      return;
+    }
+    const action = peekKey(event.key, { count: selected ? 1 : selection.ids.length, typing, covered });
     if (!action) return;
     // Return on a button or a link (the peek's Delete, say) is that control's own press, never the edit screen.
     if (action === 'edit' && target?.closest('button, a')) return;
@@ -502,15 +519,22 @@ export function DesktopCashflow({
           />
         </div>
 
-        {/* While the peek is open the table makes room for it, so no column — the amount least of all — is under it. */}
-        {/* Contained inline, so the table's own minimum width scrolls inside the box rather than widening the page. */}
-        <section className={cx(BOX, 'overflow-hidden [contain:inline-size]', selected && 'mr-[322px]')} aria-label="Transactions">
+        {/*
+         * While the peek is open the table makes room for it, so no column — the amount least of all — is under it, and
+         * its columns narrow (`DESK_COLUMNS.peek`): Counts as steps out, Note and Category keep the room.
+         * Contained inline, so the table's own minimum width scrolls inside the box rather than widening the page.
+         */}
+        <section
+          className={cx(BOX, 'overflow-hidden [contain:inline-size]', peeking && 'mr-[322px] [&_[data-col=counts]]:hidden')}
+          style={{ '--desk-cols': peeking ? DESK_COLUMNS.peek : DESK_COLUMNS.wide } as CSSProperties}
+          aria-label="Transactions"
+        >
           <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
             Transactions
             <span className={NOTE}>{limitNote ?? 'Type in the top row · Tab moves along · Return saves · ⌘V pastes a list'}</span>
           </h2>
           <div className="overflow-x-auto border-t border-[var(--ph-hair)]">
-            <div className="min-w-[700px] text-[13px]">
+            <div className={cx('text-[13px]', peeking ? 'min-w-[560px]' : 'min-w-[700px]')}>
               <div className={cx(DESK_GRID, 'sticky top-0 border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-0.5 text-[11px] font-semibold text-[var(--ph-ink-3)]')}>
                 <button type="button" aria-sort={ariaSort('date')} onClick={() => sortBy('date')} className="px-2 py-[7px] text-left hover:text-[var(--ph-ink)]">
                   Date{sortMark('date')}
@@ -518,7 +542,9 @@ export function DesktopCashflow({
                 <span className="px-2 py-[7px]">Note</span>
                 <span className="px-2 py-[7px]">Category</span>
                 <span className="px-2 py-[7px]">Paid with</span>
-                <span className="px-2 py-[7px]">Counts as</span>
+                <span data-col="counts" className="px-2 py-[7px]">
+                  Counts as
+                </span>
                 <button type="button" aria-sort={ariaSort('amount')} onClick={() => sortBy('amount')} className="px-2 py-[7px] text-right hover:text-[var(--ph-ink)]">
                   Amount{sortMark('amount')}
                 </button>
@@ -550,12 +576,12 @@ export function DesktopCashflow({
                     key={`t:${row.id}`}
                     row={row}
                     striped={index % 2 === 1}
-                    selected={selected?.id === row.id}
+                    selected={picked.has(row.id)}
                     today={today}
                     accounts={accounts}
                     countsAs={countsAs(row, needs)}
                     helpers={helpers}
-                    onOpen={() => (peekable(row) ? dispatch({ type: 'open', id: row.id }) : row.instalment ? helpers.openInstalment(row) : undefined)}
+                    onOpen={(keys) => (peekable(row) ? dispatch(keys ? clickAction(row.id, keys, ids) : { type: 'open', id: row.id }) : !keys?.metaKey && !keys?.shiftKey && row.instalment ? helpers.openInstalment(row) : undefined)}
                     onEdit={() => (peekable(row) ? edit(row) : undefined)}
                   />
                 ),
@@ -566,6 +592,9 @@ export function DesktopCashflow({
         </section>
       </div>
 
+      {many && (
+        <SelectionPeek top={peekTop} picked={selection.ids.length} spent={bulk.spent} received={bulk.received} actions={bulk} onClose={() => dispatch({ type: 'close' })} />
+      )}
       {selected && (
         <CashflowPeek
           top={peekTop}
@@ -608,7 +637,8 @@ function DeskRow({
   accounts: readonly AccountRow[];
   countsAs: string;
   helpers: DeskRowHelpers;
-  onOpen: () => void;
+  /** A click, with the keys held (⌘ adds the row, ⇧ a range); Space opens it alone. */
+  onOpen: (keys?: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => void;
   onEdit: () => void;
 }) {
   // Wholly left out of the report, it counts nothing here — Rp 0, grey — and its ⊘ figure says what was left out.
@@ -626,8 +656,8 @@ function DeskRow({
       data-row-id={row.id}
       aria-current={selected ? 'true' : undefined}
       tabIndex={row.sharedTransfer ? undefined : 0}
-      title={row.sharedTransfer ? undefined : 'Click to see it · double-click to edit'}
-      onClick={row.sharedTransfer ? undefined : onOpen}
+      title={row.sharedTransfer ? undefined : 'Click to see it · ⌘-click or ⇧-click to pick several · double-click to edit'}
+      onClick={row.sharedTransfer ? undefined : (event: ReactMouseEvent) => onOpen({ metaKey: event.metaKey, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey })}
       onDoubleClick={row.sharedTransfer ? undefined : onEdit}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
@@ -685,7 +715,9 @@ function DeskRow({
         )}
       </span>
       <span className={cx('truncate px-2 py-[5px]', selected ? 'text-white' : 'text-[var(--ph-ink-2)]')}>{helpers.paidWith(row)}</span>
-      <span className={cx('truncate px-2 py-[5px]', grey)}>{counts}</span>
+      <span data-col="counts" className={cx('truncate px-2 py-[5px]', grey)}>
+        {counts}
+      </span>
       <span className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', income && !selected && 'text-[var(--ph-up)]', out && !selected && 'text-[var(--ph-ink-3)]')}>
         {extra.length > 0 && (
           <span data-testid="amount-extra" title={extra.map((part) => part.text).join(' · ')} className={cx('truncate text-[11px]', grey)}>
