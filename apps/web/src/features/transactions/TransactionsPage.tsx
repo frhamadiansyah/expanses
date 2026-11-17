@@ -1460,7 +1460,13 @@ export function TransactionsPage() {
         const tx = row.tx;
         if (tx && payerShown(tx)) return payerLine(payerShown(tx)!);
         if (tx && onPlaceholder(tx)) return null;
-        return <PaidWith row={row} />;
+        // A table column has room for the account's name beside the card's digits ("BCA Visa 4417"), not the digits alone.
+        return (
+          <>
+            {row.accountLabel}
+            {row.last4 && <span className="ml-1 text-[11px] tabular-nums">{row.last4}</span>}
+          </>
+        );
       },
       editable,
       deletable: (row) => editable(row) || (!!row.tx && !row.deleted && !tradeByTransaction.has(row.tx.id) && isCorrection(row.tx) && !readOnly && filingKnown),

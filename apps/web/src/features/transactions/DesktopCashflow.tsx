@@ -656,7 +656,8 @@ function DeskRow({
           </span>
         )}
       </span>
-      <span className="flex min-w-0 items-center gap-[6px] px-2 py-[3px]">
+      {/* On the selected row's accent the tinted mark sits on white, or it would sink into the blue. */}
+      <span className={cx('flex min-w-0 items-center gap-[6px] px-2 py-[3px]', selected && '[&_[data-testid=category-mark]]:bg-white!')}>
         {kindLabel ? (
           <span className={cx('truncate', grey)}>{kindLabel}</span>
         ) : (

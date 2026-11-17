@@ -49,6 +49,9 @@ export interface TableHandlers {
   paidByOther?: (tx: TransactionView) => boolean;
 }
 
+/** The desk table's Record: small, so it and the discard ✕ fit the last column beside a 13 px row. */
+const DESK_BUTTON = 'px-2 py-[3px] text-[12px]';
+
 const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof QuickValues)[]).every((key) => a[key] === b[key]);
 const currencyOf = (values: QuickValues, accounts: readonly AccountRow[], base: string) => accounts.find((a) => a.id === values.accountId)?.currency ?? base;
 
@@ -140,7 +143,7 @@ export function TypingRow({
         }}
         actions={
           <>
-            <Button className="px-2.5 py-1.5" disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
+            <Button className={desk ? DESK_BUTTON : 'px-2.5 py-1.5'} disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
               Record
             </Button>
             {/* The desk's row keeps an unfinished row with Return alone, as its header says: no second button. */}
@@ -234,7 +237,7 @@ export function EditableRow({
         actions={
           isDraft ? (
             <>
-              <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
+              <Button className={desk ? DESK_BUTTON : 'px-2.5 py-1.5'} disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
                 Record
               </Button>
               <TwoTap busy={busy} label="Discard" onConfirm={() => void handlers.dismissDraft(row.id)} />
