@@ -1482,6 +1482,8 @@ export function TransactionsPage() {
         const plan = row.instalment;
         if (plan && !plan.received) void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: plan.cardAccountId, planId: plan.planId } });
       },
+      // The same gate the list's icon has: a row clickable here, one the gesture can re-file, not a partner's payment.
+      refile: (row) => (row.tx && editable(row) && recategorise.offers(row) && !paidByOther(row.tx) ? () => recategorise.start(row) : null),
       kindLabel: (row) => {
         if (row.instalment) return row.instalment.countMode === 'at_purchase' ? (row.instalment.investment ? 'Saving' : 'Repayment') : null;
         if (row.sharedTransfer) return row.transferName ?? 'Transfer';
@@ -1543,6 +1545,8 @@ export function TransactionsPage() {
       >
         {addSheet}
         {askingSheet}
+        {/* The category sheet and its Undo toast, once for the screen. */}
+        {recategorise.overlay}
       </DesktopCashflow>
     );
   }

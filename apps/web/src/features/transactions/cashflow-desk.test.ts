@@ -58,7 +58,7 @@ describe('the boxes as drawn', () => {
   it('the ring box names its categories with their marks and shares, and the one picked reads pressed', () => {
     const { items } = ringLegend([node('a', 'Food & drink', 600), node('b', 'Groceries', 400)], colour);
     const html = renderToStaticMarkup(
-      createElement(RingBox, { kind: 'expense', items, totalMinor: 1_000_000, currency: 'IDR', picked: 'b', onPick: () => {}, icon: (id: string) => createElement('i', { 'data-icon': id }), ready: true }),
+      createElement(RingBox, { kind: 'expense', items, totalMinor: 1_000_000, currency: 'IDR', picked: 'b', onPick: () => {}, icon: (id: string) => createElement('i', { 'data-icon': id }), ready: true, period: 'November 2026' }),
     );
     expect(html).toContain('Spending by category');
     expect(html).toContain('click to filter');

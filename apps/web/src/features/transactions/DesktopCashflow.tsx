@@ -15,7 +15,7 @@ import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
 import { countsAs, monthFigures, pageShortcut, peekKey, peekReducer, ringLegend } from './cashflow-desk-model';
 import { CashflowPeek, type PeekView } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
-import { type ListFilters, type ListRow, type Sort, amountExtraParts } from './list-model';
+import { amountExtraParts, categoryButtonLabel, type ListFilters, type ListRow, type Sort, wholeLeftOut } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { DESK_GRID, type RowOptions } from './QuickRowEditor';
 import { shortDate } from './quick-row';
@@ -207,6 +207,8 @@ export interface DeskRowHelpers {
   openInstalment: (row: ListRow) => void;
   /** The label of a row that is not spending or income (a loan with a fee, say): "Lend & borrow". */
   kindLabel: (row: ListRow) => string | null;
+  /** The category gesture (spec §9): its icon re-files the row at once, with Undo — when the row offers it. */
+  refile: (row: ListRow) => (() => void) | null;
 }
 
 const peekable = (row: ListRow) => row.kind === 'tx' && !row.instalment && !row.sharedTransfer && !!row.tx;
@@ -481,6 +483,7 @@ export function DesktopCashflow({
             onPick={(id) => setFilter('cat', filters.cat === id ? '' : id)}
             icon={icon}
             ready={ring.ready}
+            period={periodLabel(month)}
           />
           <DailyBox kind={kind} bars={trend?.bars ?? null} unit={trend?.unit ?? 'day'} currency={trend?.currency ?? ring.currency} today={today} note={periodNote} />
           <MonthBox
@@ -535,9 +538,13 @@ export function DesktopCashflow({
                   )}
                 </div>
               )}
+              {/* The month's rows as a list, each an item: a draft is finished in its own cells, the rest open the peek. */}
+              <ul aria-label="Transactions">
               {rows.map((row, index) =>
                 row.kind === 'draft' ? (
-                  <EditableRow key={`d:${row.id}`} row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} desk={desk} />
+                  <li key={`d:${row.id}`} className="list-none">
+                    <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} desk={desk} />
+                  </li>
                 ) : (
                   <DeskRow
                     key={`t:${row.id}`}
@@ -553,6 +560,7 @@ export function DesktopCashflow({
                   />
                 ),
               )}
+              </ul>
             </div>
           </div>
         </section>
@@ -603,17 +611,20 @@ function DeskRow({
   onOpen: () => void;
   onEdit: () => void;
 }) {
-  const income = row.type === 'income' || !!row.refund;
+  // Wholly left out of the report, it counts nothing here — Rp 0, grey — and its ⊘ figure says what was left out.
+  const out = wholeLeftOut(row, 'report');
+  const income = !out && (row.type === 'income' || !!row.refund);
   const sign = income ? '+' : '';
   const kindLabel = helpers.kindLabel(row);
   const grey = selected ? 'text-white/80' : 'text-[var(--ph-ink-3)]';
-  const extra = row.tx ? amountExtraParts(row.tx, undefined, row).map((part) => part.text) : [];
+  const extra = row.tx ? amountExtraParts(row.tx, undefined, row) : [];
   const category = row.categoryName ? `${row.categoryName}${row.moreCounted ? ` +${row.moreCounted}` : ''}` : null;
+  const refile = helpers.refile(row);
   return (
-    <div
+    <li
       data-testid="transaction-row"
       data-row-id={row.id}
-      aria-selected={selected}
+      aria-current={selected ? 'true' : undefined}
       tabIndex={row.sharedTransfer ? undefined : 0}
       title={row.sharedTransfer ? undefined : 'Click to see it · double-click to edit'}
       onClick={row.sharedTransfer ? undefined : onOpen}
@@ -650,26 +661,49 @@ function DeskRow({
           <span className={cx('truncate', grey)}>{kindLabel}</span>
         ) : (
           <>
-            <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="xs" />
+            {refile ? (
+              <button
+                type="button"
+                aria-label={categoryButtonLabel(row.description, { refund: !!row.refund })}
+                title="Change the category"
+                onClick={(event) => {
+                  // Re-filing is not opening: the row's own click (the peek) is left alone.
+                  event.stopPropagation();
+                  refile();
+                }}
+                onDoubleClick={(event) => event.stopPropagation()}
+                className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]"
+              >
+                <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="xs" />
+              </button>
+            ) : (
+              <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="xs" />
+            )}
             <span className="truncate">{category ?? 'Uncategorised'}</span>
           </>
         )}
       </span>
       <span className={cx('truncate px-2 py-[5px]', selected ? 'text-white' : 'text-[var(--ph-ink-2)]')}>{helpers.paidWith(row)}</span>
       <span className={cx('truncate px-2 py-[5px]', grey)}>{counts}</span>
-      <span className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', income && !selected && 'text-[var(--ph-up)]')}>
+      <span className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', income && !selected && 'text-[var(--ph-up)]', out && !selected && 'text-[var(--ph-ink-3)]')}>
         {extra.length > 0 && (
-          <span data-testid="amount-extra" className={cx('truncate text-[11px]', grey)}>
-            {extra.join(' · ')}
+          <span data-testid="amount-extra" title={extra.map((part) => part.text).join(' · ')} className={cx('truncate text-[11px]', grey)}>
+            {extra.map((part, i) => (
+              <span key={i}>
+                {i > 0 && ' · '}
+                {/* Said as what it is ("Excluded from report, Rp 85.000"), as the list's line says it. */}
+                {part.label ? <span aria-label={part.label}>{part.text}</span> : part.text}
+              </span>
+            ))}
           </span>
         )}
         <span className="whitespace-nowrap">
           {sign}
-          {formatMinor(Math.abs(row.amountMinor), row.currency)}
+          {formatMinor(out ? 0 : Math.abs(row.amountMinor), row.currency)}
         </span>
       </span>
       <span className="flex items-center justify-end pr-1">{row.tx && <ReceiptLink transactionId={row.tx.id} description={row.description} />}</span>
-    </div>
+    </li>
   );
 }
 

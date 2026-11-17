@@ -39,7 +39,10 @@ export function RingBox({
   onPick,
   icon,
   ready,
+  period,
 }: {
+  /** The period, named: "November 2026". */
+  period: string;
   kind: 'expense' | 'income';
   items: readonly LegendItem[];
   /** The middle's figure: the period's whole total, as the phone's ring writes it. */
@@ -87,7 +90,7 @@ export function RingBox({
           </text>
         </svg>
         <div className="flex min-w-0 flex-1 flex-col gap-[3px] text-[12px]">
-          {ready && items.length === 0 && <p className="text-[12.5px] text-[var(--ph-ink-3)]">Nothing {kind === 'expense' ? 'spent' : 'received'} in this period.</p>}
+          {ready && items.length === 0 && <p className="text-[12.5px] text-[var(--ph-ink-3)]">Nothing recorded for {period}.</p>}
           {items.map((item) => {
             const inside = (
               <>
