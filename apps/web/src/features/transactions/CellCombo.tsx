@@ -25,6 +25,7 @@ export function CellCombo({
   placeholder,
   resolve,
   invalid,
+  dense = false,
   disabled,
   className,
 }: {
@@ -36,6 +37,8 @@ export function CellCombo({
   /** Reads typed text into a choice when the list was not used, such as a pasted "Bonvoy 8802". */
   resolve?: (text: string) => string | null;
   invalid?: boolean;
+  /** The wide Cashflow table's 13 px cell (Mac Cashflow D), the same height as the rows under it. */
+  dense?: boolean;
   /** Not yet usable, such as while its choices are still loading. */
   disabled?: boolean;
   className?: string;
@@ -115,7 +118,7 @@ export function CellCombo({
         onKeyDown={onKeyDown}
         onBlur={settle}
         className={cx(
-          'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900',
+          dense ? 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] focus:bg-white focus:outline-2 focus:outline-[var(--mac-accent)]' : 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900',
           Boolean(selected?.icon) && query === null && 'pl-9',
           Boolean(selected?.meta) && query === null && 'pr-12',
           invalid && 'bg-amber-50 ring-1 ring-amber-400 ring-inset',

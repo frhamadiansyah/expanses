@@ -11,8 +11,16 @@ import { payerOptions, paymentKey, type QuickValues } from './quick-row';
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
 
+/**
+ * The wide screen's Cashflow table (Mac Cashflow D): Date, Note, Category, Paid with, Counts as, Amount, then what the
+ * row can do. The typing row lays its cells out in this order too, so Tab moves along the columns as they read.
+ */
+export const DESK_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,1.2fr)_6.5rem_8rem_6rem] items-center gap-px';
+
 const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
 const MISSING = 'bg-amber-50 ring-1 ring-amber-400 ring-inset';
+/** The desk table's cell: 13 px, as tall as the rows under it, the Mac accent around the one being typed in. */
+const DESK_CELL = 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] placeholder:text-[var(--ph-ink-3)] focus:bg-white focus:outline-2 focus:outline-[var(--mac-accent)]';
 
 export type RowOptions = ReturnType<typeof buildRowOptions>;
 
@@ -82,6 +90,8 @@ export function QuickRowEditor({
   className,
   onDescriptionBlur,
   onPaste,
+  layout = 'row',
+  countsAs,
 }: {
   values: QuickValues;
   onChange: (patch: Partial<QuickValues>) => void;
@@ -97,14 +107,108 @@ export function QuickRowEditor({
   onDescriptionBlur?: () => void;
   /** Handed text pasted into the date or description cell; return true when it was taken as rows. */
   onPaste?: (text: string) => boolean;
+  /** `desk`: the wide Cashflow table's column order (`DESK_GRID`), with a Counts as cell before the amount. */
+  layout?: 'row' | 'desk';
+  /** What the chosen category counts as, read only: the desk layout's fifth cell. */
+  countsAs?: ReactNode;
 }) {
   const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
     if (onPaste?.(event.clipboardData.getData('text/plain'))) event.preventDefault();
   };
   const missing = (cell: string) => needs.includes(cell);
+  const CELL_ = layout === 'desk' ? DESK_CELL : CELL;
+  const dense = layout === 'desk';
+  const date = (
+    <input
+      key="date"
+      aria-label="Row date"
+      autoComplete="off"
+      placeholder="Date"
+      value={values.date}
+      onPaste={paste}
+      onChange={(event) => onChange({ date: event.target.value })}
+      className={cx(CELL_, 'tabular', missing('date') && MISSING)}
+    />
+  );
+  const description = (
+    <input
+      key="description"
+      aria-label="Row description"
+      autoComplete="off"
+      autoFocus={autoFocus}
+      placeholder={layout === 'desk' ? 'Note' : 'Description'}
+      value={values.description}
+      onPaste={paste}
+      onBlur={onDescriptionBlur}
+      onChange={(event) => onChange({ description: event.target.value })}
+      className={cx(CELL_, missing('description') && MISSING)}
+    />
+  );
+  const amount = (
+    <input
+      key="amount"
+      aria-label={`Row amount (${currency})`}
+      autoComplete="off"
+      inputMode="decimal"
+      placeholder="Amount"
+      value={values.amount}
+      onChange={(event) => onChange({ amount: event.target.value })}
+      className={cx(CELL_, 'tabular text-right', missing('amount') && MISSING)}
+    />
+  );
+  const paid = (
+    <CellCombo
+      key="paid"
+      label="Row paid with"
+      dense={dense}
+      placeholder={layout === 'desk' ? 'Paid with' : 'Name or last digits'}
+      value={paymentKey(values.accountId, values.cardId)}
+      options={options.paidFor(paymentKey(values.accountId, values.cardId))}
+      resolve={options.resolvePaid}
+      disabled={!options.ready}
+      invalid={missing('paid with')}
+      onChange={(key) => {
+        const [accountId = '', cardId = ''] = key.split(':');
+        onChange({ accountId, cardId });
+      }}
+    />
+  );
+  const category = (
+    <CellCombo
+      key="category"
+      label="Row category"
+      dense={dense}
+      placeholder={layout === 'desk' ? 'Category' : 'Search categories'}
+      value={values.categoryId}
+      options={options.categories}
+      resolve={options.resolveCategory}
+      disabled={!options.ready}
+      invalid={missing('category')}
+      onChange={(categoryId) => onChange({ categoryId })}
+    />
+  );
+  const ends = (
+    <div key="actions" className="flex items-center justify-end gap-1 pl-1">
+      {actions}
+    </div>
+  );
+  const cells =
+    layout === 'desk'
+      ? [
+          date,
+          description,
+          category,
+          paid,
+          <span key="counts" className="truncate px-2 text-[13px] text-[var(--ph-ink-3)]">
+            {countsAs}
+          </span>,
+          amount,
+          ends,
+        ]
+      : [date, description, amount, paid, category, ends];
   return (
     <div
-      className={cx(ROW_GRID, className ?? 'rounded-lg bg-white p-0.5 ring-2 ring-slate-900')}
+      className={cx(layout === 'desk' ? DESK_GRID : ROW_GRID, className ?? 'rounded-lg bg-white p-0.5 ring-2 ring-slate-900')}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && (event.target as HTMLElement).tagName === 'INPUT') {
           event.preventDefault();
@@ -115,59 +219,7 @@ export function QuickRowEditor({
         }
       }}
     >
-      <input
-        aria-label="Row date"
-        autoComplete="off"
-        placeholder="Date"
-        value={values.date}
-        onPaste={paste}
-        onChange={(event) => onChange({ date: event.target.value })}
-        className={cx(CELL, 'tabular', missing('date') && MISSING)}
-      />
-      <input
-        aria-label="Row description"
-        autoComplete="off"
-        autoFocus={autoFocus}
-        placeholder="Description"
-        value={values.description}
-        onPaste={paste}
-        onBlur={onDescriptionBlur}
-        onChange={(event) => onChange({ description: event.target.value })}
-        className={cx(CELL, missing('description') && MISSING)}
-      />
-      <input
-        aria-label={`Row amount (${currency})`}
-        autoComplete="off"
-        inputMode="decimal"
-        placeholder="Amount"
-        value={values.amount}
-        onChange={(event) => onChange({ amount: event.target.value })}
-        className={cx(CELL, 'tabular text-right', missing('amount') && MISSING)}
-      />
-      <CellCombo
-        label="Row paid with"
-        placeholder="Name or last digits"
-        value={paymentKey(values.accountId, values.cardId)}
-        options={options.paidFor(paymentKey(values.accountId, values.cardId))}
-        resolve={options.resolvePaid}
-        disabled={!options.ready}
-        invalid={missing('paid with')}
-        onChange={(key) => {
-          const [accountId = '', cardId = ''] = key.split(':');
-          onChange({ accountId, cardId });
-        }}
-      />
-      <CellCombo
-        label="Row category"
-        placeholder="Search categories"
-        value={values.categoryId}
-        options={options.categories}
-        resolve={options.resolveCategory}
-        disabled={!options.ready}
-        invalid={missing('category')}
-        onChange={(categoryId) => onChange({ categoryId })}
-      />
-      <div className="flex items-center justify-end gap-1 pl-1">{actions}</div>
+      {cells}
     </div>
   );
 }

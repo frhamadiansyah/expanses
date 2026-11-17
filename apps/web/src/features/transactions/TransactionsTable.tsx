@@ -70,7 +70,27 @@ function TwoTap({ busy, label, onConfirm }: { busy: boolean; label: string; onCo
   );
 }
 
-function TypingRow({ options, accounts, today, baseCurrency, handlers }: { options: RowOptions; accounts: readonly AccountRow[]; today: string; baseCurrency: string; handlers: TableHandlers }) {
+/** The wide Cashflow's table (Mac Cashflow D) draws the typing row and a waiting draft in its own columns. */
+interface DeskLayout {
+  /** What a category counts as, for the Counts as cell ('' until known). */
+  countsAs: (categoryId: string) => string;
+}
+
+export function TypingRow({
+  options,
+  accounts,
+  today,
+  baseCurrency,
+  handlers,
+  desk,
+}: {
+  options: RowOptions;
+  accounts: readonly AccountRow[];
+  today: string;
+  baseCurrency: string;
+  handlers: TableHandlers;
+  desk?: DeskLayout;
+}) {
   const blank = (carry?: QuickValues): QuickValues => ({ date: carry?.date ?? shortDate(today, today), description: '', amount: '', accountId: carry?.accountId ?? '', cardId: carry?.cardId ?? '', categoryId: '' });
   const [values, setValues] = useState<QuickValues>(() => blank());
   const [guessed, setGuessed] = useState(false);
@@ -88,8 +108,10 @@ function TypingRow({ options, accounts, today, baseCurrency, handlers }: { optio
   };
 
   return (
-    <div data-testid="typing-row" className="border-b border-slate-200 bg-slate-50/60">
+    <div data-testid="typing-row" className={desk ? 'border-b border-dashed border-[var(--ph-chevron)]' : 'border-b border-slate-200 bg-slate-50/60'}>
       <QuickRowEditor
+        layout={desk ? 'desk' : 'row'}
+        countsAs={desk && values.categoryId ? desk.countsAs(values.categoryId) : undefined}
         values={values}
         onChange={(patch) => {
           if ('categoryId' in patch) setGuessed(false);
@@ -121,20 +143,44 @@ function TypingRow({ options, accounts, today, baseCurrency, handlers }: { optio
             <Button className="px-2.5 py-1.5" disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
               Record
             </Button>
-            <Button variant="ghost" className="px-2 py-1.5 text-xs" disabled={!touched || busy} title="Keep it as not recorded, to finish later" onClick={() => void handlers.keepTyped(values).then((ok) => ok && reset())}>
-              Later
-            </Button>
+            {/* The desk's row keeps an unfinished row with Return alone, as its header says: no second button. */}
+            {!desk && (
+              <Button variant="ghost" className="px-2 py-1.5 text-xs" disabled={!touched || busy} title="Keep it as not recorded, to finish later" onClick={() => void handlers.keepTyped(values).then((ok) => ok && reset())}>
+                Later
+              </Button>
+            )}
           </>
         }
       />
-      <p className="px-2.5 pb-1.5 text-xs text-slate-500">
-        {guessed ? 'Category guessed from the last time this was bought here · ' : ''}Type a row and press <kbd>Enter</kbd> · paste rows straight from a spreadsheet · an incomplete row waits as not recorded
-      </p>
+      {/* The desk's box header carries the how-to; only the guess is said under the row. */}
+      {desk ? (
+        guessed && <p className="px-2.5 pb-1 text-[11px] text-[var(--ph-ink-3)]">Category guessed from the last time this was bought here</p>
+      ) : (
+        <p className="px-2.5 pb-1.5 text-xs text-slate-500">
+          {guessed ? 'Category guessed from the last time this was bought here · ' : ''}Type a row and press <kbd>Enter</kbd> · paste rows straight from a spreadsheet · an incomplete row waits as not recorded
+        </p>
+      )}
     </div>
   );
 }
 
-function EditableRow({ row, options, accounts, today, baseCurrency, handlers }: { row: ListRow; options: RowOptions; accounts: readonly AccountRow[]; today: string; baseCurrency: string; handlers: TableHandlers }) {
+export function EditableRow({
+  row,
+  options,
+  accounts,
+  today,
+  baseCurrency,
+  handlers,
+  desk,
+}: {
+  row: ListRow;
+  options: RowOptions;
+  accounts: readonly AccountRow[];
+  today: string;
+  baseCurrency: string;
+  handlers: TableHandlers;
+  desk?: DeskLayout;
+}) {
   const isDraft = row.kind === 'draft';
   const initial = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);
   const [values, setValuesState] = useState(initial);
@@ -175,6 +221,8 @@ function EditableRow({ row, options, accounts, today, baseCurrency, handlers }: 
       }}
     >
       <QuickRowEditor
+        layout={desk ? 'desk' : 'row'}
+        countsAs={desk && values.categoryId ? desk.countsAs(values.categoryId) : undefined}
         values={values}
         onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
         needs={isDraft || dirty ? needs : []}
