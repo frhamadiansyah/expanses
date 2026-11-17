@@ -52,8 +52,8 @@ export function MonthBudgetBox({ title, sheet, view, currency, month, today, mon
   return (
     <section className={BOX} aria-label={title} data-testid="left-to-spend">
       <BoxHead title={title} note={daysNote ?? undefined} />
-      <div className="flex items-center gap-[14px] px-[14px] pb-[10px]">
-        <div className="w-[190px] shrink-0">
+      <div className="flex items-center gap-[12px] px-[14px] pb-[10px]">
+        <div className="w-[184px] shrink-0">
           <BudgetGauge progress={budgetProgress(sheet.lines)} currency={currency} month={month} today={today} monthStart={monthStart} plain />
         </div>
         <div className="min-w-0 flex-1 text-[12.5px]">
@@ -63,8 +63,8 @@ export function MonthBudgetBox({ title, sheet, view, currency, month, today, mon
             ['Not budgeted', view.noBudgetMinor, 'not-budgeted'],
           ].map(([label, minor, testId]) => (
             <div key={label as string} className="flex justify-between gap-3 border-t border-[var(--ph-hair)] py-[5px] first:border-t-0">
-              <span className="text-[var(--ph-ink-3)]">{label}</span>
-              <span data-testid={testId as string} className="text-[var(--ph-ink)] tabular-nums">
+              <span className="whitespace-nowrap text-[var(--ph-ink-3)]">{label}</span>
+              <span data-testid={testId as string} className="whitespace-nowrap text-[var(--ph-ink)] tabular-nums">
                 {formatMinor(minor as number, currency)}
               </span>
             </div>
@@ -203,21 +203,17 @@ export function TakeHomeBox({ sheet, currency, onTakeHome }: { sheet: BudgetShee
 export function GoalsBox({ sheet, currency }: { sheet: BudgetSheetResult; currency: string }) {
   return (
     <section className={BOX} aria-label="Goals">
-      <BoxHead title="Goals" note={sheet.savings.length > 0 ? 'set aside · a month' : undefined} />
+      <BoxHead title="Goals" note={sheet.savings.length > 0 ? 'set aside this month' : undefined} />
       <div>
         {sheet.savings.length === 0 && <p className="px-[14px] pt-[2px] pb-[10px] text-[12.5px] text-[var(--ph-ink-3)]">No goals ask for money this month.</p>}
         {sheet.savings.map((row) => (
-          <Line
-            key={row.goalId}
-            testId={`savings-${row.name}`}
-            label={row.name}
-            value={
-              <>
-                {formatMinor(row.actualMinor, currency)}
-                <span className="text-[var(--ph-ink-3)]"> · {formatMinor(row.planMinor, currency)} a month</span>
-              </>
-            }
-          />
+          <div key={row.goalId} data-testid={`savings-${row.name}`} className="border-t border-[var(--ph-hair)] px-[14px] py-[6px] text-[13px] first:border-t-0">
+            <div className="flex items-baseline gap-3">
+              <span className="min-w-0 flex-1 truncate text-[var(--ph-ink)]">{row.name}</span>
+              <span className="shrink-0 text-[var(--ph-ink)] tabular-nums">{formatMinor(row.actualMinor, currency)}</span>
+            </div>
+            <div className="text-[11.5px] text-[var(--ph-ink-3)] tabular-nums">needs {formatMinor(row.planMinor, currency)} a month</div>
+          </div>
         ))}
       </div>
     </section>

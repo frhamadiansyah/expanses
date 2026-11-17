@@ -504,6 +504,8 @@ function BudgetTableRow({
 }) {
   const group = row.kind === 'group';
   const strong = group ? 'font-semibold' : '';
+  // A budgeted root reads as a heading of its own, as a group does; its figures stay plain.
+  const named = group || (row.section === 'budgeted' && row.depth === 0) ? 'font-semibold' : '';
   const cell = 'px-[10px] py-[5px] whitespace-nowrap';
   const budget: ReactNode =
     group ? (
@@ -597,7 +599,7 @@ function BudgetTableRow({
             <span aria-hidden className="w-[16px] shrink-0" />
           )}
           <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="xs" />
-          <button type="button" onClick={onPeek} title={`See ${row.name}’s transactions`} className={cx('min-w-0 truncate text-left hover:underline', strong)}>
+          <button type="button" onClick={onPeek} title={`See ${row.name}’s transactions`} className={cx('min-w-0 truncate text-left hover:underline', named)}>
             {row.label}
           </button>
         </span>

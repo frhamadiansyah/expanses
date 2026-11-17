@@ -104,7 +104,7 @@ export function CategoryPeek({
       <dl className="border-t border-[var(--ph-hair)]">
         {rows.map((row) => (
           <div key={row.label} className="flex border-t border-[var(--ph-hair)] px-3 py-2 text-[13px] first:border-t-0">
-            <dt className="w-[104px] shrink-0 text-[var(--ph-ink-3)]">{row.label}</dt>
+            <dt className="w-[118px] shrink-0 text-[var(--ph-ink-3)]">{row.label}</dt>
             <dd className={cx('min-w-0 flex-1 break-words tabular-nums', row.muted ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>{row.value}</dd>
           </div>
         ))}

@@ -76,7 +76,7 @@ export function BudgetGauge({
   const centre = size / 2;
   const middle = 152;
   const radius = 112;
-  const width = 12;
+  const width = plain ? 16 : 12;
   // Nine o'clock, over the top, round to three: the arc opens downwards, where the figures sit.
   const from = -Math.PI / 2;
   const span = Math.PI;
@@ -89,14 +89,15 @@ export function BudgetGauge({
 
   return (
     <div>
-      <svg viewBox={`0 0 ${size} ${plain ? middle + width : height}`} className={plain ? 'block w-full' : 'mx-auto block w-full max-w-[300px]'} role="img" aria-label={`${formatMinor(Math.abs(left), currency)} ${(left < 0 ? words.over : words.left).toLowerCase()}`}>
+      {/* Plain, the box is cropped to the arc itself, so the arc fills the width it is given. */}
+      <svg viewBox={plain ? `${centre - radius - width} ${middle - radius - width} ${2 * (radius + width)} ${radius + 2 * width}` : `0 0 ${size} ${height}`} className={plain ? 'block w-full' : 'mx-auto block w-full max-w-[300px]'} role="img" aria-label={`${formatMinor(Math.abs(left), currency)} ${(left < 0 ? words.over : words.left).toLowerCase()}`}>
         <path d={arc(centre, middle, radius, from, from + span)} stroke={plain ? 'var(--ph-track)' : '#e8ecf1'} strokeWidth={width} strokeLinecap="round" fill="none" />
         <path d={arc(centre, middle, radius, from, from + Math.max(0.02, used * span))} stroke={tone} strokeWidth={width} strokeLinecap="round" fill="none" />
-        <circle cx={knobX} cy={knobY} r={7.5} fill={plain ? 'var(--ph-surface)' : '#ffffff'} stroke={tone} strokeWidth={4} />
-        <text x={centre} y={middle - 44} textAnchor="middle" className={plain ? 'fill-[var(--ph-ink-3)] text-[15px]' : 'fill-slate-500 text-[11.5px]'}>
+        {!plain && <circle cx={knobX} cy={knobY} r={7.5} fill={plain ? 'var(--ph-surface)' : '#ffffff'} stroke={tone} strokeWidth={4} />}
+        <text x={centre} y={plain ? middle - 36 : middle - 44} textAnchor="middle" className={plain ? 'fill-[var(--ph-ink-3)] text-[13.5px]' : 'fill-slate-500 text-[11.5px]'}>
           {left < 0 ? words.over : words.left}
         </text>
-        <text x={centre} y={plain ? middle - 12 : middle - 16} textAnchor="middle" className={plain ? 'text-[29px] font-semibold' : 'text-[25px] font-bold'} fill={plain && left >= 0 ? 'var(--ph-ink)' : tone}>
+        <text x={centre} y={plain ? middle - 6 : middle - 16} textAnchor="middle" className={plain ? 'text-[24px] font-semibold' : 'text-[25px] font-bold'} fill={plain && left >= 0 ? 'var(--ph-ink)' : tone}>
           {formatMinor(Math.abs(left), currency)}
         </text>
         {!plain && progress.overCount > 0 && (
