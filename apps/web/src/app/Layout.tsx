@@ -34,6 +34,7 @@ export function Layout() {
    */
   const sideways = useSideways();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const accountScoped = useRouterState({ select: (s) => typeof (s.location.search as { account?: unknown }).account === 'string' });
   useCashflowRotation(pathname);
   const phoneShell = phone || sideways;
   const tableOnly = sideways && rotationFor(pathname) === 'free';
@@ -102,7 +103,7 @@ export function Layout() {
         {/* Out of view the moment anything has scrolled under the status bar; watched, not listened to. */}
         <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
         {/* The Mac pages draw their own title bar and grey page edge to edge (`edgeToEdge`); every other page sits in the column. */}
-        <div className={edgeToEdge(pathname, phoneShell) ? 'w-full' : 'mx-auto max-w-4xl p-4 md:p-8'}>
+        <div className={edgeToEdge(pathname, phoneShell, accountScoped) ? 'w-full' : 'mx-auto max-w-4xl p-4 md:p-8'}>
           <InstallHint />
           {/* What just happened to their data comes before the standing reminder about backing it up. */}
           <AfterUpdateCard />

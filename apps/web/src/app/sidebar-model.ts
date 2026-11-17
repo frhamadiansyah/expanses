@@ -256,10 +256,10 @@ export function footerStatus(input: {
 
 /**
  * The pages that draw their own title bar and grey page edge to edge rather than sitting in the column: Overview (Mac
- * Overview A) always, and Cashflow (Mac Cashflow D) on a wide screen — on a phone, held either way, Cashflow is the
- * phone's own page in the column as before.
+ * Overview A) always, and Cashflow (Mac Cashflow D) on a wide screen — not an account's own history (`?account=`),
+ * which keeps its list, and not on a phone, held either way, where Cashflow is the phone's own page in the column.
  */
 const EDGE_TO_EDGE_WIDE = ['/transactions'];
-export function edgeToEdge(pathname: string, phoneShell: boolean): boolean {
-  return pathname === '/overview' || (!phoneShell && EDGE_TO_EDGE_WIDE.includes(pathname));
+export function edgeToEdge(pathname: string, phoneShell: boolean, accountScoped = false): boolean {
+  return pathname === '/overview' || (!phoneShell && !accountScoped && EDGE_TO_EDGE_WIDE.includes(pathname));
 }

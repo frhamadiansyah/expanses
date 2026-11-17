@@ -220,8 +220,12 @@ export function TransactionsPage() {
    * stays mounted underneath, hidden, so its chart, its open category and its scroll are all there on turning back.
    */
   const sideways = useSideways();
-  // A wide screen — the Mac app, a desktop browser — draws Cashflow as its own page (Mac Cashflow D, `DesktopCashflow`).
-  const desk = !phone && !sideways;
+  /*
+   * A wide screen — the Mac app, a desktop browser — draws Cashflow as its own page (Mac Cashflow D, `DesktopCashflow`).
+   * An account's own history (`?account=`, from its page's See all) is not Cashflow: it lists every row its statement
+   * does, ticks transfers onto a trip, and keeps the list it had.
+   */
+  const desk = !phone && !sideways && !search.account;
   const uprightScroll = useRef(0);
   const sidewaysNow = useRef(sideways);
   useEffect(() => {
@@ -1495,13 +1499,9 @@ export function TransactionsPage() {
         }
       },
     };
-    const deskKind: 'expense' | 'income' = inCategory ? (scope.kind as 'expense' | 'income') : filters.type === 'income' ? 'income' : 'expense';
-    const chips = [
-      ...(scope
-        ? [{ key: 'scope', label: <>Only <b className="font-semibold">{scope.subtype === 'category' ? categoryPath(accounts, scope.id) : scope.name}</b></>, clearLabel: 'Show every account', onClear: () => setSearch({ account: undefined }) }]
-        : []),
-      ...(need ? [{ key: 'need', label: need === 'essential' ? 'Essential' : 'Lifestyle', clearLabel: `Clear ${need}`, onClear: () => setSearch({ need: undefined }) }] : []),
-    ];
+    const deskKind: 'expense' | 'income' = filters.type === 'income' ? 'income' : 'expense';
+    // An account's or category's own list is never this page (`desk`): only Essential or Lifestyle narrows it beyond the filters.
+    const chips = need ? [{ key: 'need', label: need === 'essential' ? 'Essential' : 'Lifestyle', clearLabel: `Clear ${need}`, onClear: () => setSearch({ need: undefined }) }] : [];
     return (
       <DesktopCashflow
         month={month}
@@ -1514,7 +1514,7 @@ export function TransactionsPage() {
         sort={sort}
         onSort={setSort}
         kind={deskKind}
-        paidAccountId={paidAccountId ?? (scope && isMoneyAccount(scope) ? scope.id : undefined)}
+        paidAccountId={paidAccountId}
         rows={shown}
         emptyText={listable.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
         limitNote={month === 'all' && recorded.length >= ALL_TIME_LIMIT ? `The newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only` : undefined}
