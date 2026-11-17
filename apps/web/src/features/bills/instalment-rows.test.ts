@@ -48,7 +48,7 @@ describe('instalmentLines', () => {
 
   it('lists a running plan as "name · card" with how far through it is, and its monthly figure', () => {
     const [line] = instalmentLines([plan({})], cards, 'IDR', '2026-10-15');
-    expect(line).toMatchObject({ title: 'Laptop · Visa', monthlyMinor: 100_000, currency: 'IDR', detail: '3 of 12 · on the statement' });
+    expect(line).toMatchObject({ title: 'Laptop · Visa', description: 'Laptop', cardName: 'Visa', monthlyMinor: 100_000, currency: 'IDR', detail: '3 of 12 · on the statement' });
   });
 
   it('leaves out a plan that has finished, and one on a card that is gone', () => {

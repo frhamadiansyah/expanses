@@ -6,6 +6,9 @@ export interface InstalmentLine {
   id: string;
   cardId: string;
   title: string;
+  /** The plan alone ("Laptop") and the card it is on, for a table that names them in columns of their own. */
+  description: string;
+  cardName: string;
   /** The plan's monthly figure, in the card's currency. */
   monthlyMinor: number;
   currency: string;
@@ -38,6 +41,8 @@ export function instalmentLines(
       id: plan.id,
       cardId: card.id,
       title: `${plan.description} · ${card.name}`,
+      description: plan.description,
+      cardName: card.name,
       monthlyMinor: plan.monthlyMinor,
       currency: card.currency ?? baseCurrency,
       detail: statuses[plan.id]
