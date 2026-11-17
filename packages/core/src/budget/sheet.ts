@@ -65,6 +65,12 @@ export interface BudgetSheetInput {
    * but it did leave the account: it counts in what was spent and what is left, as essential until it is filed.
    */
   unfiledMinor?: number;
+  /**
+   * Card cashback (Cashback & Rewards into a credit card), signed — below nought when money came back. No line and no
+   * cap: it lowers what was spent and what is left, never a category's figure, and counts with Debts & savings, so
+   * essential and lifestyle keep their full amounts and the three still add back to what was spent.
+   */
+  cashbackMinor?: number;
 }
 
 export interface BudgetSheet {
@@ -166,13 +172,14 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
   };
   countOver(lines);
 
-  const spendingActualMinor = lines.reduce((total, line) => total + line.totalMinor, 0) + (input.unfiledMinor ?? 0);
+  const cashbackMinor = input.cashbackMinor ?? 0;
+  const spendingActualMinor = lines.reduce((total, line) => total + line.totalMinor, 0) + (input.unfiledMinor ?? 0) + cashbackMinor;
   // Signed, category by category, over exactly the categories the lines were built from; essential is the rest,
   // so the three always add back to what was spent.
   const markedSpending = (need: 'lifestyle' | 'debts_savings') =>
     input.categories.reduce((total, category) => (input.needs?.[category.id] === need ? total + (own.get(category.id) ?? 0) : total), 0);
   const lifestyleActualMinor = markedSpending('lifestyle');
-  const debtsSavingsActualMinor = markedSpending('debts_savings');
+  const debtsSavingsActualMinor = markedSpending('debts_savings') + cashbackMinor;
   const essentialActualMinor = spendingActualMinor - lifestyleActualMinor - debtsSavingsActualMinor;
   const savingsPlanMinor = input.savings.reduce((total, row) => total + row.planMinor, 0);
   const savingsActualMinor = input.savings.reduce((total, row) => total + row.actualMinor, 0);

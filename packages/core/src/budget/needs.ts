@@ -1,3 +1,4 @@
+import { CARD_CASHBACK } from '../categories/card-cashback';
 import { DEFAULT_CATEGORIES } from '../categories/defaults';
 
 /**
@@ -44,7 +45,9 @@ const LIFESTYLE = [
   ...expenseKeys('gift_giving'),
   ...expenseKeys('travel'),
 ];
-const DEBTS_SAVINGS = [...expenseKeys('protection'), ...expenseKeys('donation'), 'miscellaneous.interest'];
+// Card cashback is neither Essential nor Lifestyle: it lowers what was spent and sits with Debts & savings, inside the
+// remainder, so Essential and Lifestyle keep their full amounts and the three still add back to the income.
+const DEBTS_SAVINGS = [...expenseKeys('protection'), ...expenseKeys('donation'), 'miscellaneous.interest', CARD_CASHBACK.key];
 const ESSENTIAL = [
   ...['utilities', 'household', 'transportation', 'property', 'health_care', 'education', 'government_taxes', 'business'].flatMap(expenseKeys),
   ...expenseKeys('miscellaneous').filter((key) => key !== 'miscellaneous.interest'),

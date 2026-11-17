@@ -25,6 +25,8 @@ export const CATEGORY_COLOURS: Readonly<Record<string, string>> = {
   business: '#334155',
   // Exchange loss is a top-level expense (withdrawal rate §5): the transfer slate, since it is what a transfer cost.
   'expense.exchange_loss': '#475569',
+  // Card cashback (Cashback & Rewards into a credit card) is money back, drawn as Income › Cashback & Rewards is.
+  'expense.cashback': '#059669',
   income: '#059669',
 };
 
@@ -67,6 +69,7 @@ export const CATEGORY_ICONS: Readonly<Record<string, string>> = {
   'income.salary': 'banknote', 'income.bonus': 'trophy', 'income.investment': 'trending-up', 'income.realized_gains': 'chart-line',
   'income.cashback': 'badge-percent', 'income.gifts': 'gift', 'income.side_business': 'store', 'income.other': 'circle-plus',
   'income.exchange_gain': 'arrow-left-right', 'expense.exchange_loss': 'arrow-left-right',
+  'expense.cashback': 'badge-percent',
 };
 
 export const TRANSFER_VISUAL = { icon: 'arrow-left-right', colour: '#475569' } as const;

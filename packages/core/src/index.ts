@@ -4,6 +4,7 @@ export { MCC_NAMES, type MccMatch, mccName, searchMccs } from './mcc/codes';
 export { BUSINESS_CATEGORIES, type BusinessCategory } from './categories/business';
 export { eventCategoryIcon } from './categories/event-icons';
 export { isUncategorisedKey, UNCATEGORISED } from './categories/uncategorised';
+export { CARD_CASHBACK, isCardCashbackKey } from './categories/card-cashback';
 export { CATEGORY_COLOURS, CATEGORY_ICONS, CATEGORY_PALETTE, categoryVisual, isPaletteColour, TRANSFER_VISUAL, UNKNOWN_VISUAL } from './categories/visuals';
 export {
   capturedCategory,
