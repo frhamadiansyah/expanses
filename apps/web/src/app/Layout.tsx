@@ -1,6 +1,5 @@
 import { useCouponsAtStart } from '../features/networth/coupons-at-start';
-import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import { ChevronsUpDown } from 'lucide-react';
+import { Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { sweepPhotosAtStart } from '../photos/sweep-at-start';
 import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
@@ -8,14 +7,12 @@ import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
 import { ReadOnlyNotice } from '../features/sharing/ReadOnlyNotice';
 import { RepairNotice } from '../features/sharing/RepairNotice';
-import { usePendingDraftCount } from '../features/review/queries';
-import { useOpenBook } from '../features/workspaces/queries';
-import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
-import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
 import { cx } from '../ui';
 import { ToastHost } from '../ui/Toast';
 import { EventModeHost } from '../features/events/EventMode';
 import { useApp } from './context';
+import { Sidebar } from './Sidebar';
+import { SETTINGS_TO } from './sidebar-model';
 import { TabBar } from './TabBar';
 import { usePhone, useSideways } from './use-phone';
 import { rotationFor, useCashflowRotation } from '../native/orientation';
@@ -24,71 +21,11 @@ import { useWidgetSummaryWriter } from '../features/account/use-widget-writer';
 import { useICloudBackupAtStart } from '../features/backup/icloud/runner';
 import { useForeignRecalcAtStart } from '../features/accounts/withdrawal-rate-start';
 import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
-import { lateNote } from '../features/debt-plan/plan-view';
-import { useLateDebtCount } from '../features/debt-plan/queries';
-
-const NAV = [
-  { to: '/transactions', label: 'Transactions' },
-  { to: '/wallet', label: 'Wallet' },
-  { to: '/budget', label: 'Budget' },
-  { to: '/events', label: 'Events' },
-  { to: '/goals', label: 'Goals' },
-  { to: '/categories', label: 'Categories' },
-  { to: '/net-worth', label: 'Net worth' },
-] as const;
-
-const MORE = [
-  { to: '/calculators', label: 'Calculators' },
-  { to: '/tax-report', label: 'Tax report' },
-  { to: '/recommend', label: 'Which card?' },
-  { to: '/import', label: 'Import' },
-  { to: '/backup', label: 'Backup' },
-  { to: '/account', label: 'Account' },
-] as const;
-
-/**
- * The queue is only useful if you can tell from anywhere that something is waiting in it, so the
- * count rides on the link rather than being something to remember to go and look at.
- */
-/** The Debt-free plan, one step in under Net worth, with a red pill while a debt is late (spec §4.5). */
-function PlanLink() {
-  const late = useLateDebtCount();
-  return (
-    <Link
-      to="/net-worth/plan"
-      className="flex items-center justify-between rounded-lg py-2 pr-3 pl-6 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
-      activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
-    >
-      Debt-free plan
-      {late > 0 && <span className="rounded-full bg-[var(--ph-alarm)] px-2 py-0.5 text-[11px] font-medium text-white">{lateNote(late)}</span>}
-    </Link>
-  );
-}
-
-function ReviewLink() {
-  const pending = usePendingDraftCount().data ?? 0;
-  return (
-    <Link
-      to="/review"
-      className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
-      activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
-    >
-      Review
-      {pending > 0 && (
-        <span className="rounded-full bg-[var(--ph-ink)] px-2 py-0.5 text-[11px] font-medium text-[var(--ph-surface)]">{pending}</span>
-      )}
-    </Link>
-  );
-}
 
 export function Layout() {
-  const { workspaceName, ws, database } = useApp();
+  const { database } = useApp();
   const navigate = useNavigate();
   const router = useRouter();
-  // The phone reaches the switcher from Cashflow's ⋯; the sidebar is on every screen, so a wide screen
-  // reaches it from more places than a phone does, never fewer.
-  const [choosing, setChoosing] = useState(false);
-  const openBook = useOpenBook();
   const phone = usePhone();
   /*
    * A phone on its side is wider than md, yet still a phone: the shell keeps its phone parts by "is this a phone",
@@ -116,6 +53,12 @@ export function Layout() {
     if (!database) return;
     void sweepPhotosAtStart(database).catch((error: unknown) => console.warn('Photos were not swept', error));
   }, [database]);
+  // The Mac app's cicis › Settings… (⌘,): the shell raises this event (AppDelegate.swift) and Settings opens.
+  useEffect(() => {
+    const open = () => void navigate({ to: SETTINGS_TO });
+    window.addEventListener('cicis:open-settings', open);
+    return () => window.removeEventListener('cicis:open-settings', open);
+  }, [navigate]);
   // The day's closes for the shares that follow Yahoo Finance, once a day each, behind whatever is on screen.
   useYahooClosesAtStart();
   // Bond coupons due since the app was last open, recorded on the bonds set to record their own.
@@ -143,53 +86,8 @@ export function Layout() {
       className="min-h-dvh md:flex"
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
     >
-      {!phoneShell && (
-        <aside className="hidden w-56 shrink-0 border-r border-[var(--ph-hair)] bg-[var(--ph-surface)] p-4 md:block">
-          <button
-            type="button"
-            aria-label="Workspace"
-            onClick={() => setChoosing(true)}
-            className="mb-6 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[var(--ph-fill)]"
-          >
-            <WorkspaceDot book={openBook} />
-            <span className="min-w-0 flex-1">
-              <span className="block text-lg leading-tight font-semibold">Expanses</span>
-              <span className="block truncate text-xs text-[var(--ph-ink-3)]">
-                {openBook?.name ?? workspaceName} · {openBook?.baseCurrency ?? ws.baseCurrency} · on this device
-              </span>
-            </span>
-            <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
-          </button>
-          {choosing && <WorkspaceSheet onClose={() => setChoosing(false)} />}
-          <nav className="space-y-1">
-            {NAV.map((item) => (
-              <div key={item.to} className="space-y-1">
-                <Link
-                  to={item.to}
-                  className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
-                  activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
-                >
-                  {item.label}
-                </Link>
-                {/* A phone never shows the sidebar, so it never reads the plan for it. */ item.to === '/net-worth' && !phone && <PlanLink />}
-              </div>
-            ))}
-          </nav>
-          <div className="mt-6 space-y-1 border-t border-[var(--ph-hair)] pt-4">
-            <ReviewLink />
-            {MORE.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
-                activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </aside>
-      )}
+      {/* The wide screen's sidebar (Mac sidebar A). A phone never draws it, so it never reads its counts or balances. */}
+      {!phoneShell && <Sidebar />}
       {/* Frosted glass over the status bar, as iOS draws it: the page scrolls under the clock and battery
           rather than into them. Only as tall as the inset, so a desktop (inset 0) draws nothing. */}
       {phoneShell && (

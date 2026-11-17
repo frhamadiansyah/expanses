@@ -1,0 +1,187 @@
+import type { AccountRow } from '@expanses/db';
+import { describe, expect, it } from 'vitest';
+import {
+  activeTo,
+  billsDueCount,
+  compactMoney,
+  footerStatus,
+  kindOf,
+  MOVED,
+  readAccountsFolded,
+  SETTINGS_TO,
+  SIDEBAR_GROUPS,
+  SIDEBAR_TOOLS,
+  sidebarAccounts,
+  writeAccountsFolded,
+} from './sidebar-model';
+
+const account = (id: string, name: string, subtype: AccountRow['subtype'], currency = 'IDR') => ({ id, name, subtype, currency }) as AccountRow;
+
+describe('the sidebar groups (option A)', () => {
+  it('reads Cashflow, Budget, Bills, Review; then Money and Plans, with no Overview yet', () => {
+    expect(SIDEBAR_GROUPS.map((group) => [group.title, group.items.map((item) => item.label)])).toEqual([
+      [null, ['Cashflow', 'Budget', 'Bills', 'Review']],
+      ['Money', ['Wallet', 'Net worth', 'Points']],
+      ['Plans', ['Goals', 'Events', 'Debt-free plan']],
+    ]);
+  });
+
+  it('carries the counts where the mockup draws them', () => {
+    const badges = Object.fromEntries(SIDEBAR_GROUPS.flatMap((group) => group.items.map((item) => [item.label, item.badge ?? null])));
+    expect(badges).toMatchObject({ Bills: 'bills', Review: 'review', 'Debt-free plan': 'late', Wallet: null });
+  });
+
+  it('strands nothing the old sidebar had: each old place is a row, a tool or Settings', () => {
+    const rows = new Map(SIDEBAR_GROUPS.flatMap((group) => group.items.map((item) => [item.to, item.label])));
+    const tools = new Set(SIDEBAR_TOOLS.map((tool) => tool.to));
+    for (const [to, where] of Object.entries(MOVED)) {
+      if (where === 'Tools') expect(tools.has(to), to).toBe(true);
+      else if (where === 'Settings') expect([SETTINGS_TO, '/categories', '/backup']).toContain(to);
+      else expect(rows.get(to), to).toBe(where);
+    }
+    expect(Object.keys(MOVED)).toHaveLength(15);
+  });
+});
+
+describe('which row is selected', () => {
+  const rows = SIDEBAR_GROUPS.flatMap((group) => group.items.map((item) => item.to));
+
+  it('lights the deepest row the address sits under', () => {
+    expect(activeTo('/net-worth/plan', rows)).toBe('/net-worth/plan');
+    expect(activeTo('/net-worth', rows)).toBe('/net-worth');
+    expect(activeTo('/net-worth/investments', rows)).toBe('/net-worth');
+    expect(activeTo('/cards/points', rows)).toBe('/cards/points');
+    expect(activeTo('/transactions/new', rows)).toBe('/transactions');
+    expect(activeTo('/transactions/', rows)).toBe('/transactions');
+  });
+
+  it('lights an account row on its own page, else Wallet', () => {
+    expect(activeTo('/accounts/a1', [...rows, '/accounts/a1'])).toBe('/accounts/a1');
+    expect(activeTo('/accounts/a2/edit', [...rows, '/accounts/a1'])).toBe('/wallet');
+    expect(activeTo('/cards/c9/statement', [...rows, '/cards/c9'])).toBe('/cards/c9');
+  });
+
+  it('lights Settings for what moved into it, and nothing for a page with no row', () => {
+    expect(activeTo('/account', rows)).toBe(SETTINGS_TO);
+    expect(activeTo('/account/workspaces/b1', rows)).toBe(SETTINGS_TO);
+    expect(activeTo('/categories', rows)).toBe(SETTINGS_TO);
+    expect(activeTo('/backup', rows)).toBe(SETTINGS_TO);
+    expect(activeTo('/calculators', rows)).toBeNull();
+    // A prefix of a word is not a parent: /budgetary is not under /budget.
+    expect(activeTo('/budgetary', rows)).toBeNull();
+  });
+});
+
+describe("Bills' count", () => {
+  it('counts the bills overdue or due soon, not the open, upcoming, paid or paused ones', () => {
+    const states = ['overdue', 'dueSoon', 'dueSoon', 'open', 'upcoming', 'paid', 'skipped', 'paused'] as const;
+    expect(billsDueCount(states.map((state) => ({ state })))).toBe(3);
+    expect(billsDueCount([])).toBe(0);
+  });
+});
+
+describe('compact balances', () => {
+  it('prints rupiah in jt and M, the way Net worth’s axis does', () => {
+    expect(compactMoney(142_500_000, 'IDR')).toBe('142,5 jt');
+    expect(compactMoney(-8_400_000, 'IDR')).toBe('−8,4 jt');
+    expect(compactMoney(1_250_000_000, 'IDR')).toBe('1,3 M');
+    expect(compactMoney(61_000_000, 'IDR')).toBe('61 jt');
+  });
+
+  it('prints under a million rupiah, and every other currency, in whole units', () => {
+    // The space after the symbol is the locale data's to give (a no-break space, or none): compared without it.
+    const bare = (text: string) => text.replace(/\s/g, '');
+    expect(bare(compactMoney(950_000, 'IDR'))).toBe('Rp950.000');
+    expect(bare(compactMoney(184_000, 'USD'))).toBe('US$1.840');
+    expect(bare(compactMoney(-184_050, 'USD'))).toBe('−US$1.841');
+  });
+});
+
+describe('the accounts list', () => {
+  const bca = account('bca', 'BCA Tahapan', 'savings');
+  const cash = account('cash', 'Wallet cash', 'cash');
+  const gopay = account('gopay', 'GoPay', 'ewallet');
+  const visa = account('visa', 'BCA Visa', 'credit_card');
+
+  it("keeps Wallet's order, money with its figure and a card with what is due now, as owed", () => {
+    const rows = sidebarAccounts({
+      order: ['gopay', 'visa', 'bca', 'cash', 'joint:x'],
+      money: [bca, cash, gopay],
+      credit: [visa],
+      moneyFigure: (a) => ({ minor: { bca: 142_500_000, cash: 300_000, gopay: 1_900_000 }[a.id] ?? 0, currency: 'IDR' }),
+      dueNow: () => 8_400_000,
+      baseCurrency: 'IDR',
+    });
+    expect(rows.map((row) => [row.name, row.kind, row.minor, row.to])).toEqual([
+      ['GoPay', 'wallet', 1_900_000, '/accounts/$accountId'],
+      ['BCA Visa', 'card', -8_400_000, '/cards/$cardId'],
+      ['BCA Tahapan', 'bank', 142_500_000, '/accounts/$accountId'],
+      ['Wallet cash', 'cash', 300_000, '/accounts/$accountId'],
+    ]);
+  });
+
+  it('reads each kind from the subtype', () => {
+    expect(['bank', 'savings', 'time_deposit', 'cash', 'other_cash', 'ewallet', 'emoney', 'credit_card'].map((subtype) => kindOf({ subtype } as AccountRow))).toEqual([
+      'bank',
+      'bank',
+      'bank',
+      'cash',
+      'cash',
+      'wallet',
+      'wallet',
+      'card',
+    ]);
+  });
+});
+
+describe('the Accounts fold', () => {
+  it('stays open until folded, and remembers the fold', () => {
+    const store = new Map<string, string>();
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+    expect(readAccountsFolded(storage)).toBe(false);
+    writeAccountsFolded(true, storage);
+    expect(readAccountsFolded(storage)).toBe(true);
+    writeAccountsFolded(false, storage);
+    expect(readAccountsFolded(storage)).toBe(false);
+  });
+
+  it('reads open when storage throws', () => {
+    expect(
+      readAccountsFolded({
+        getItem: () => {
+          throw new Error('blocked');
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('the status line at the foot', () => {
+  const now = new Date(2026, 10, 17, 14, 0);
+  const at = (h: number, m: number, day = 17) => new Date(2026, 10, day, h, m).getTime();
+
+  it('says a personal workspace is on this device, with the last backup time', () => {
+    expect(footerStatus({ shared: false, running: false, failing: false, lastSyncedAt: null, lastBackupAt: new Date(at(9, 12)).toISOString(), now })).toEqual({
+      text: 'On this device · backed up 09:12',
+      tone: 'ok',
+    });
+  });
+
+  it('says when a shared workspace last synced, and the date for another day', () => {
+    expect(footerStatus({ shared: true, running: false, failing: false, lastSyncedAt: at(13, 5), lastBackupAt: new Date(at(8, 0, 15)).toISOString(), now })).toEqual({
+      text: 'Synced 13:05 · backed up 15 Nov',
+      tone: 'ok',
+    });
+    expect(footerStatus({ shared: true, running: true, failing: false, lastSyncedAt: at(13, 5), lastBackupAt: null, now }).text).toBe('Syncing… · not backed up');
+    expect(footerStatus({ shared: true, running: false, failing: false, lastSyncedAt: null, lastBackupAt: null, now }).text).toBe('Shared · not backed up');
+  });
+
+  it('turns amber without a backup or with one over a week old, red while a sync fails', () => {
+    expect(footerStatus({ shared: false, running: false, failing: false, lastSyncedAt: null, lastBackupAt: null, now }).tone).toBe('warn');
+    expect(footerStatus({ shared: false, running: false, failing: false, lastSyncedAt: null, lastBackupAt: new Date(at(9, 0, 9)).toISOString(), now }).tone).toBe('warn');
+    expect(footerStatus({ shared: true, running: false, failing: true, lastSyncedAt: at(9, 0), lastBackupAt: new Date(at(9, 0)).toISOString(), now })).toEqual({
+      text: 'Sync failed · backed up 09:00',
+      tone: 'alarm',
+    });
+  });
+});

@@ -132,6 +132,15 @@
   --ph-dot: #007aff;
 
   /*
+   * The wide screen's sidebar (Mac sidebar A): a Mac source list's light grey, its selected row a faint grey fill, its
+   * hover fainter still. `--ph-side-top` is the room above the workspace: the Mac app's window buttons sit there.
+   */
+  --ph-side: #ececef;
+  --ph-side-on: rgb(0 0 0 / 0.08);
+  --ph-side-hover: rgb(0 0 0 / 0.04);
+  --ph-side-top: 14px;
+
+  /*
    * Whose an item is, in a household's Net worth (joint-net-worth §8.2; owner rings, 12 Nov): the ring round a row's
    * icon circle. Each member picks one (`RING_COLOURS`, in this order); one who never picks has the colour of their
    * place in the group. Hues no kind, status or tint uses — no red, rose or green, which mean debt, warning and up —
@@ -205,6 +214,11 @@
 
     /* The off-its-rest dot, as iOS lifts its blue for a dark ground. */
     --ph-dot: #0a84ff;
+
+    /* The sidebar as a dark Mac source list: a lifted grey beside the black page, white fills for the selected row. */
+    --ph-side: #232325;
+    --ph-side-on: rgb(255 255 255 / 0.1);
+    --ph-side-hover: rgb(255 255 255 / 0.05);
 
     /* The owner rings as iOS lifts the same hues for a dark ground. */
     --owner-blue: #0a84ff;
@@ -385,4 +399,9 @@ html[data-compact-bar] .ph-status-glass {
  */
 body:has([role='dialog']) .ph-under-dialog {
   pointer-events: none !important;
+}
+
+/* The Mac app: the window's buttons sit over the top of the sidebar (its title bar is hidden), so the sidebar starts below them. */
+.mac-app {
+  --ph-side-top: 40px;
 }

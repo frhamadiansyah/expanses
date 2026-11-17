@@ -4,6 +4,7 @@ import { Check, Plus, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { MORE_GROUPS, type NavItem, SETTINGS_ITEMS } from '../../app/nav';
+import { usePhone } from '../../app/use-phone';
 import { isPhoneApp } from '../../lib/mac';
 import { hasWidget } from '../../native/widget-summary';
 import { ErrorBox } from '../../ui';
@@ -107,6 +108,7 @@ export function AccountMenuPage() {
   }
 
   const lateDebts = useLateDebtCount();
+  const phone = usePhone();
   const note = (to: string) => {
     if (to === '/backup') return lastBackup.isSuccess ? backupNote(lastBackup.data) : undefined;
     if (to === '/review' && pending > 0) return `${pending} waiting`;
@@ -130,7 +132,8 @@ export function AccountMenuPage() {
         <span aria-hidden className="flex h-[84px] w-[84px] items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink-3)]">
           <UserRound size={42} strokeWidth={1.7} />
         </span>
-        <h1 className="mt-[10px] text-[24px] leading-[30px] font-semibold tracking-tight text-[var(--ph-ink)]">Account</h1>
+        {/* The phone's Account tab; on a wide screen the sidebar's Settings (and the Mac app's Settings… ⌘,) opens it. */}
+        <h1 className="mt-[10px] text-[24px] leading-[30px] font-semibold tracking-tight text-[var(--ph-ink)]">{phone ? 'Account' : 'Settings'}</h1>
       </div>
 
       <ErrorBox error={error} />
@@ -155,7 +158,8 @@ export function AccountMenuPage() {
         ]}
       </InsetGroup>
 
-      <InsetGroup header="Settings">{rows(SETTINGS_ITEMS.filter((item) => (item.to !== '/settings/capture' || isPhoneApp()) && (item.to !== '/settings/widget' || hasWidget())))}</InsetGroup>
+      {/* On a wide screen the page itself is Settings, so this group is its General part (as a Mac Settings window names it). */}
+      <InsetGroup header={phone ? 'Settings' : 'General'}>{rows(SETTINGS_ITEMS.filter((item) => (item.to !== '/settings/capture' || isPhoneApp()) && (item.to !== '/settings/widget' || hasWidget())))}</InsetGroup>
 
       {MORE_GROUPS.map((group) => (
         <InsetGroup key={group.title} header={group.title}>
