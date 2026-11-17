@@ -132,6 +132,12 @@ export interface CreateAccountInput {
   openingRateToBase?: number;
   /** Place among its siblings (the existing `sort_order` column); a pocket's order in its account. Defaults to 0. */
   sortOrder?: number;
+  /**
+   * A built-in category's key, written with the row (`ensureCategoryByKeyTx`): set in the same write, the partner's
+   * phone receives it in the category's one op. Set by a second write in the same change set, it lost to the first's
+   * null at the same hlc and the partner kept a category without its key.
+   */
+  systemKey?: string | null;
 }
 
 async function writeAudit(tx: Db, ws: WorkspaceContext, action: string, entityId: string, payload: unknown) {
@@ -378,7 +384,7 @@ export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: Creat
     icon: input.icon ?? null,
     currency: input.currency,
     valuationMode: 'derived',
-    systemKey: null,
+    systemKey: input.systemKey ?? null,
     sortOrder: input.sortOrder ?? 0,
     archivedAt: null,
     createdAt: now,

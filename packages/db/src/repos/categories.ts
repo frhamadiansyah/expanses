@@ -442,8 +442,8 @@ export async function ensureCategoryByKeyTx(
   const found = own(spec.key);
   if (found) return found;
   const parentId = spec.parentKey ? (own(spec.parentKey) ?? null) : null;
-  const made = await createAccountTx(tx, ws, { kind: spec.kind, subtype: 'category', name: spec.name, currency: null, parentId });
-  await withCapture(tx, { entity: 'category', id: made.id }, () => tx.update(accounts).set({ systemKey: spec.key }).where(eq(accounts.id, made.id)));
+  // The key goes in with the row, so it reaches a partner's phone in the category's one op (createAccountTx).
+  const made = await createAccountTx(tx, ws, { kind: spec.kind, subtype: 'category', name: spec.name, currency: null, parentId, systemKey: spec.key });
   return made.id;
 }
 
