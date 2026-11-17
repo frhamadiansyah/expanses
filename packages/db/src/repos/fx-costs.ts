@@ -309,6 +309,14 @@ async function filedInWorkspaceTx(db: Db, transactionId: string, lines: readonly
 const asSpending = (lines: readonly FxTxLine[]): FxTxLine[] =>
   lines.map((line) => (line.role === 'money' || (line.role === 'lot' && line.amountMinor > 0) ? { ...line, role: 'other' } : line));
 
+/**
+ * Whether money leaving a foreign pocket lands in another of the owner's money accounts that holds no lots (R6): the
+ * rupiah bank a pound account is changed back into. Into another foreign pocket, the cost a filed change spreads is
+ * that pocket's lots' cost, which later spending reads: left as it was, so only fee lines are valued again.
+ */
+const ownChange = (lines: readonly FxTxLine[]): boolean =>
+  lines.some((line) => line.role === 'money' && line.amountMinor > 0) && !lines.some((line) => line.role === 'lot' && line.amountMinor > 0);
+
 const expenseOf = (lines: readonly FxTxLine[], base: (line: FxTxLine) => number) =>
   lines.filter((line) => line.accountKind === 'expense').reduce((sum, line) => sum + base(line), 0);
 
@@ -360,9 +368,13 @@ export async function recalcAccountTx(
     // Ruling: a pair is only ever written on a transaction in no workspace; one filed in a workspace spreads its whole
     // cost over its own lines (`asSpending`). Asked only where a pair could arise: money leaving across currencies.
     const filed = out !== undefined && exchanged && (await filedInWorkspaceTx(tx, transactionId, txLines));
+    // A change between the owner's own accounts filed only by a fee typed beside it (owner, 17 Nov 2026) is read as the
+    // change it is: the fee its own units at their cost, the rate's gap left on the exchange account, where it counts
+    // nowhere (no pair: the transaction is filed, R8). Only spending across currencies spreads its whole cost.
+    const spreadsCost = filed && !ownChange(txLines);
     let revalued: Revalued;
     try {
-      revalued = revalueTransaction({ lines: filed ? asSpending(txLines) : txLines, baseCurrency: ws.baseCurrency, ...(out ? { outCosts: out } : {}), ...(into ? { inCosts: into } : {}) });
+      revalued = revalueTransaction({ lines: spreadsCost ? asSpending(txLines) : txLines, baseCurrency: ws.baseCurrency, ...(out ? { outCosts: out } : {}), ...(into ? { inCosts: into } : {}) });
     } catch (error) {
       // A transaction no screen could have made (a pocket paying out with nothing on the other side) keeps the figures
       // it was posted at; one bad row must never stop every other write to this account.

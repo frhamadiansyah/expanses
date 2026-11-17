@@ -293,6 +293,60 @@ describe('a cross-currency withdrawal in Family moved into the shared trip', () 
   });
 });
 
+describe('lira changed back with a lira fee typed beside it (owner, 17 Nov 2026)', () => {
+  it('counts the fee alone in Family on both phones, the rate nowhere; moved to the trip, the fee counts there alone', async () => {
+    const s = await familyAndTrip();
+    const fees = await categoryOf(s.wife.database, s.family, 'Fees & charges');
+    // TRY 2.500 bought for Rp 1.450.000 (580 a lira), then TRY 1.000 changed back for Rp 540.000 with a TRY 50 fee.
+    await atm(s.wife, s.family, s.lira, s.exchange);
+    const id = await postTransaction(s.wife.database, inBook(s.wife.ws, s.family), {
+      occurredOn: '2026-10-08',
+      description: 'Kiosk change back',
+      fileTransfer: true,
+      ratesToBase: { TRY: 560 },
+      lines: exchangeWithFeeLines({ fromAccountId: s.lira, fromAmountMinor: 100_000, fromCurrency: 'TRY', toAccountId: s.wife.cash, toAmountMinor: 540_000, toCurrency: 'IDR', exchangeAccountId: s.exchange, feeMinor: 5_000, feeCategoryId: fees }),
+    });
+    // TRY 10 changed back for Rp 5.000 the next day, no fee: Exchange loss is made here and reaches the partner before
+    // the move below. Made during the move instead, it reaches the partner after the row that uses it, which files it
+    // as Uncategorised there (a separate fault, found here and reported; the same on main).
+    await postTransaction(s.wife.database, inBook(s.wife.ws, s.family), {
+      occurredOn: '2026-10-09',
+      description: 'Kiosk small change',
+      fileTransfer: true,
+      ratesToBase: { TRY: 560 },
+      lines: exchangeLines({ fromAccountId: s.lira, fromAmountMinor: 1_000, fromCurrency: 'TRY', toAccountId: s.wife.cash, toAmountMinor: 5_000, toCurrency: 'IDR', exchangeAccountId: s.exchange }),
+    });
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    /** The fee line's figure on a phone: TRY 50 at 580 a lira, not the Rp 40.000 the kiosk's rate kept on top. */
+    const feeBase = async (d: Device) =>
+      (await d.database.db.values<[number]>(sql`
+        SELECT e.amount_base_minor FROM entries e JOIN transactions t ON t.id = e.transaction_id
+        WHERE t.status = 'posted' AND t.description = 'Kiosk change back' AND e.account_id = ${fees}`)).map(([base]) => Number(base));
+    expect(await feeBase(s.wife)).toEqual([29_000]);
+    expect(await feeBase(s.husband)).toEqual([29_000]);
+    for (const d of [s.wife, s.husband]) expect(await familySpend(s, d)).toBe(29_000);
+    expect(await projectBook(s.wife.database, s.family)).toEqual(await projectBook(s.husband.database, s.family));
+
+    const before = await money(s);
+    const result = await addToTrip(s, [id]);
+    expect(result).toEqual({ moved: [], kept: [], listed: [{ transactionId: id }] });
+    await s.settle();
+    expect(await skipsOf(s.husband.database)).toEqual([]);
+    for (const d of [s.wife, s.husband]) {
+      expect(await familySpend(s, d)).toBe(0);
+      const view = (await sharedEventView(d.database, ownerScope(d.ws), s.trip.eventOf(d)))!;
+      expect(view.expenses.map((e) => [e.note, e.amountMinor, e.currency, e.categoryName])).toEqual([['Kiosk change back', 5_000, 'TRY', 'Fees & charges']]);
+      // TRY 50 on a lira trip: the fee alone.
+      expect(view.spentMinor).toBe(5_000);
+    }
+    // The money accounts hold what they held. (Off Family, the change is in no workspace and takes the withdrawal rate's
+    // pair: its gap moves off Currency Exchange onto the pair, both counting nowhere.)
+    const held = (m: Record<string, number>) => pick(m, [s.wife.cash, s.wife.bank, s.lira]);
+    expect(held(await money(s))).toEqual(held(before));
+  });
+});
+
 /** The transfer row a phone's trip lists, on the recorder's phone: the transaction it stands as now. */
 async function listedOn(s: Setup): Promise<string> {
   return (await sharedEventView(s.wife.database, ownerScope(s.wife.ws), s.trip.eventOf(s.wife)))!.transfers[0]!.transactionId!;

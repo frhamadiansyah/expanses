@@ -11,11 +11,15 @@ import {
   eventPlanFor,
   eventSpendingBetween,
   listAccounts,
+  MIGRATIONS,
+  migrate,
   nativeBalances,
   netWorthAt,
   periodFlows,
   personalBook,
   postTransaction,
+  recalcForeignTx,
+  recalcPendingForeign,
   saveEvent,
   systemAccountId,
   tagTransaction,
@@ -144,11 +148,9 @@ describe('an exchange’s gain or loss counts nowhere (owner, 17 Nov 2026)', () 
     expect(figures['budget.spending']).toBe(fee);
     expect(figures['all.income']).toBe(0);
     expect(figures['budget.exchangeLines']).toBe(0);
-    // Today's figure, unchanged here: a transfer with a fee is filed in a workspace, so the withdrawal rate writes no pair
-    // and spreads the pounds' whole cost over its own lines (`asSpending`). The rupiah line keeps its amount, so the fee
-    // line takes £5 at 21.000 (Rp 105.000) and the Rp 295.000 the bank's rate kept on the £995 (Rp 400.000 in all).
-    // Taking the difference off the fee would change how the recalculation writes base figures: left to the owner.
-    expect(fee).toBe(400_000);
+    // The fee alone (owner, 17 Nov 2026): £5 of pounds that cost 21.000 each. The Rp 295.000 the bank's rate kept on the
+    // £995 counts nowhere: it stays on the Currency Exchange account, as an exchange's gap always did.
+    expect(fee).toBe(105_000);
   });
 
   it('an exchange tagged to an event is no part of what the event spent', async () => {
@@ -160,5 +162,79 @@ describe('an exchange’s gain or loss counts nowhere (owner, 17 Nov 2026)', () 
     expect((await eventPlanFor(t.database, t.ws, eventId)).spentMinor).toBe(0);
     expect((await eventSpendingBetween(t.database, t.ws, NOV.from, NOV.to)).amountMinor).toBe(0);
     expect((await eventSpendingBetween(t.database, t.inPersonal, NOV.from, NOV.to)).amountMinor).toBe(0);
+  });
+});
+
+describe('an exchange with a typed fee: the fee alone, the rate counts nowhere (owner, 17 Nov 2026)', () => {
+  /** The fee'd change of £1.000 (£5 fee, £995 for Rp 20.600.000), and its lines' figures by account. */
+  async function feeMove() {
+    const t = await pounds();
+    const id = await t.move(20_600_000, 500);
+    const fees = t.category('Fees & charges');
+    const lines = async () =>
+      (await t.database.db.values<[string, string, number, number]>(sql`
+        SELECT e.account_id, e.currency, e.amount_minor, e.amount_base_minor FROM entries e WHERE e.transaction_id = ${id} ORDER BY e.rowid`)).map(([a, c, m, b]) => [a, c, Number(m), Number(b)]);
+    const feeBase = async () => (await lines()).find(([account]) => account === fees)![3];
+    const exchangeBase = async () => (await lines()).filter(([account]) => account === t.exchange).reduce((sum, line) => sum + (line[3] as number), 0);
+    const revalues = async () => Number((await t.database.db.values<[number]>(sql`SELECT count(*) FROM audit_log WHERE action = 'revalue'`))[0]![0]);
+    const recalc = () => t.database.transaction((tx) => recalcForeignTx(tx, t.ws, t.gbp, null));
+    /** The figures the old rule left (Rp 400.000 on the fee, the gap spread into it), written back as they were stored. */
+    const asBefore = async () => {
+      await t.database.db.run(sql`UPDATE entries SET amount_base_minor = 400000 WHERE transaction_id = ${id} AND account_id = ${fees}`);
+      await t.database.db.run(sql`UPDATE entries SET amount_base_minor = 20600000 WHERE transaction_id = ${id} AND account_id = ${t.exchange} AND currency = 'GBP'`);
+    };
+    return { ...t, id, fees, lines, feeBase, exchangeBase, revalues, recalc, asBefore };
+  }
+
+  it('the fee is £5 at what the pounds cost; the gap sits on the exchange account, no pair; balances as typed', async () => {
+    const t = await feeMove();
+    expect(await t.feeBase()).toBe(105_000);
+    // The Rp 295.000 the bank's rate kept: on Currency Exchange, which is no category, no balance and no net worth.
+    expect(await t.exchangeBase()).toBe(295_000);
+    expect(await t.resultLine(t.id)).toEqual([]);
+    const balances = await nativeBalances(t.database, t.ws);
+    expect([balances[t.gbp], balances[t.idr]]).toEqual([0, 20_600_000]);
+    expect(await checkLedgerIntegrity(t.database, t.ws)).toEqual([]);
+  });
+
+  it('a past transfer the old rule valued is valued again by the recalculation; balances and net worth do not move', async () => {
+    const t = await feeMove();
+    await t.asBefore();
+    const worth = await netWorthAt(t.database, t.ws, '2026-11-17', RATES);
+    const balances = await nativeBalances(t.database, t.ws);
+    expect(await t.feeBase()).toBe(400_000);
+    await t.recalc();
+    expect(await t.feeBase()).toBe(105_000);
+    expect(await t.exchangeBase()).toBe(295_000);
+    expect(await nativeBalances(t.database, t.ws)).toEqual(balances);
+    expect((await netWorthAt(t.database, t.ws, '2026-11-17', RATES)).netWorthMinor).toBe(worth.netWorthMinor);
+    expect((await t.november())['personal.spending']).toBe(105_000);
+  });
+
+  it('is idempotent: a second recalculation writes nothing', async () => {
+    const t = await feeMove();
+    await t.asBefore();
+    await t.recalc();
+    const lines = await t.lines();
+    const revalues = await t.revalues();
+    await t.recalc();
+    expect(await t.lines()).toEqual(lines);
+    expect(await t.revalues()).toBe(revalues);
+  });
+
+  it('the update queues each pound account with such a transfer, from its first one, and the next run values it again', async () => {
+    const t = await feeMove();
+    await t.asBefore();
+    await t.database.db.run(sql`DELETE FROM fx_recalc_pending`);
+    // The update's migration, run again over this book as an older copy would run it on open.
+    const migration = MIGRATIONS.find((m) => m.name === 'exchange_fee_only')!;
+    await t.database.db.run(sql`DELETE FROM schema_migrations WHERE version = ${migration.version}`);
+    await migrate(t.database, [migration]);
+    expect(await t.database.db.values(sql`SELECT account_id, from_date FROM fx_recalc_pending`)).toEqual([[t.gbp, '2026-11-17']]);
+    // The withdrawal-rate notice is not asked for again: fees only get smaller, nothing else moves.
+    expect(await t.database.db.values(sql`SELECT value FROM settings WHERE key = 'fx.withdrawal_rate_notice'`)).toEqual([]);
+    await recalcPendingForeign(t.database);
+    expect(await t.feeBase()).toBe(105_000);
+    expect(await t.database.db.values(sql`SELECT count(*) FROM fx_recalc_pending`)).toEqual([[0]]);
   });
 });
