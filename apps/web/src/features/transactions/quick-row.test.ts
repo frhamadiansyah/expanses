@@ -1,7 +1,7 @@
 import { matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { isQuickEditable, keepsReadFigure, parsePastedRows, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
+import { groupedAmountCell, isQuickEditable, keepsReadFigure, parsePastedRows, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -51,6 +51,19 @@ describe('cells', () => {
     const values = quickFromTransaction(purchase, TODAY);
     expect(values).toMatchObject({ date: '12 Sep', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
     expect(readQuick(values, accounts, TODAY, 'IDR').read).toEqual({ occurredOn: '2026-09-12', description: 'Superindo', amountMinor: 45000000, currency: 'IDR', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
+  });
+
+  it('groups a waiting row\'s amount as the rows beside it print theirs, and reads it back to the same money', () => {
+    const values = { date: '1/9', description: 'TIKET.COM', amount: '320000', accountId: 'bca', cardId: '', categoryId: 'groceries' };
+    const grouped = groupedAmountCell(values, 'IDR');
+    expect(grouped.amount).toBe('320.000');
+    expect(readQuick(grouped, accounts, TODAY, 'IDR').read!.amountMinor).toBe(320000);
+    const dollars = groupedAmountCell({ ...values, amount: '1234.56', accountId: 'wise' }, 'USD');
+    expect(dollars.amount).toBe('1.234,56');
+    expect(readQuick(dollars, accounts, TODAY, 'IDR').read!.amountMinor).toBe(123456);
+    // An empty cell, or one that is not an amount, is left as typed.
+    expect(groupedAmountCell({ ...values, amount: '' }, 'IDR').amount).toBe('');
+    expect(groupedAmountCell({ ...values, amount: 'abc' }, 'IDR').amount).toBe('abc');
   });
 
   it('reads an amount in the currency of the account paying', () => {

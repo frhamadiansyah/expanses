@@ -10,7 +10,7 @@ import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
 import { ReceiptLink } from './ReceiptLink';
-import { isQuickEditable, parsePastedRows, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
+import { groupedAmountCell, isQuickEditable, parsePastedRows, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
 
 export interface TableHandlers {
   busy: string | null;
@@ -185,7 +185,9 @@ export function EditableRow({
   desk?: DeskLayout;
 }) {
   const isDraft = row.kind === 'draft';
-  const initial = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);
+  const read = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);
+  // The desk's table prints a waiting row's figure grouped, as every row beside it is ("320.000", not "320000").
+  const initial = desk ? groupedAmountCell(read, currencyOf(read, accounts, baseCurrency)) : read;
   const [values, setValuesState] = useState(initial);
   // Leaving the row saves a draft; the cell being left settles its own value in the same moment, so the
   // save reads the newest values from here rather than from a render that has not happened yet.

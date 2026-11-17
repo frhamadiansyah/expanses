@@ -1,4 +1,4 @@
-import { expenseLines, minorToMajorString, parseLooseAmount, parseLooseDate, type PaymentOption, type PostingLine } from '@expanses/core';
+import { expenseLines, groupedMajorString, minorToMajorString, parseLooseAmount, parseLooseDate, type PaymentOption, type PostingLine } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { canPayWith } from '../../lib/account-types';
 import { classify } from './classify';
@@ -79,6 +79,16 @@ export function quickFromDraft(draft: DraftRow, today: string, accounts: readonl
     cardId: draft.cardId ?? '',
     categoryId: draft.categoryAccountId ?? '',
   };
+}
+
+/**
+ * The amount cell grouped as the rows beside it print their figures ("320.000", "1.234,56"), still a cell to type
+ * in: it reads back to the same money (`parseLooseAmount` takes a dot every three as grouping). A cell that does not
+ * read as an amount is left as it was typed.
+ */
+export function groupedAmountCell(values: QuickValues, currency: string): QuickValues {
+  const minor = parseLooseAmount(values.amount, currency);
+  return minor === null ? values : { ...values, amount: groupedMajorString(minor, currency) };
 }
 
 /**
