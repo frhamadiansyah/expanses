@@ -193,19 +193,22 @@ export function sidebarAccounts(input: {
 
 const FOLD_KEY = 'cicis.sidebar.accounts-folded';
 
-/** Whether Accounts is folded, as this browser last left it. Open until folded. */
-export function readAccountsFolded(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): boolean {
+/**
+ * Whether Accounts is folded, as this browser last left it; `unset` until it has been folded or opened once (open for
+ * people; the end-to-end build starts it folded, see Sidebar.tsx).
+ */
+export function readAccountsFolded(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage, unset = false): boolean {
   try {
-    return storage?.getItem(FOLD_KEY) === '1';
+    const stored = storage?.getItem(FOLD_KEY);
+    return stored === '1' ? true : stored === '0' ? false : unset;
   } catch {
-    return false;
+    return unset;
   }
 }
 
-export function writeAccountsFolded(folded: boolean, storage: Pick<Storage, 'setItem' | 'removeItem'> | undefined = globalThis.localStorage): void {
+export function writeAccountsFolded(folded: boolean, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
   try {
-    if (folded) storage?.setItem(FOLD_KEY, '1');
-    else storage?.removeItem(FOLD_KEY);
+    storage?.setItem(FOLD_KEY, folded ? '1' : '0');
   } catch {
     // Without storage the fold lasts until the page reloads.
   }

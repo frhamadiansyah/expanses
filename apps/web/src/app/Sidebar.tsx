@@ -185,7 +185,11 @@ export function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [choosing, setChoosing] = useState(false);
   const [tools, setTools] = useState(false);
-  const [folded, setFolded] = useState(readAccountsFolded);
+  /*
+   * The end-to-end build starts Accounts folded: its journeys find an account by its name on the page they test, and
+   * the same name in the sidebar would be a second match. The sidebar's own journey opens it (e2e/sidebar.spec.ts).
+   */
+  const [folded, setFolded] = useState(() => readAccountsFolded(globalThis.localStorage, import.meta.env.VITE_E2E === '1'));
   const accounts = useSidebarAccounts();
   const destinations = [...SIDEBAR_GROUPS.flatMap((group) => group.items.map((item) => item.to)), ...accounts.map((account) => (account.to === '/cards/$cardId' ? `/cards/${account.id}` : `/accounts/${account.id}`))];
   const on = activeTo(pathname, destinations);

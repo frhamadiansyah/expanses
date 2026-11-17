@@ -124,13 +124,13 @@ async function restore(page: Page, file: string) {
  */
 test('a picture no transaction names is gone the next time the app starts', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Transactions' }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Cashflow' }).first()).toBeVisible();
 
   await plantPhoto(page, 'abandoned-by-a-half-filled-form.jpg', 'a receipt nobody kept');
   expect(await photoFiles(page)).toEqual(['abandoned-by-a-half-filled-form.jpg']);
 
   await page.reload();
-  await expect(page.getByRole('link', { name: 'Transactions' }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Cashflow' }).first()).toBeVisible();
   await expect.poll(() => photoFiles(page), { timeout: 15_000 }).toEqual([]);
 });
 
@@ -227,7 +227,7 @@ test('restoring a backup older than a photograph does not destroy the photograph
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
   await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Transactions' }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Cashflow' }).first()).toBeVisible();
   await expect.poll(() => photoFiles(page), { timeout: 15_000 }).toEqual(['attached-to-superindo.jpg']);
   expect(await photoText(page, 'attached-to-superindo.jpg')).toBe('a receipt');
 

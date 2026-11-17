@@ -479,7 +479,7 @@ test('a database that goes wrong while the app is open swaps the app for the rec
   await expect(page.getByRole('button', { name: 'Download backup' })).toBeVisible({ timeout: 45_000 });
 
   // And then they press a link, like anybody would, and the screen behind it asks for the pages that went.
-  await page.getByRole('navigation').getByRole('link', { name: 'Transactions', exact: true }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Cashflow', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: CORRUPT_HEADLINE, exact: true })).toBeVisible();
   /*

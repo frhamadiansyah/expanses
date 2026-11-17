@@ -189,7 +189,7 @@ test('row 8 — five units, and the total is the sum of the converted lines', as
 });
 test('row 9 — a workspace that reads in dollars types and converts in cents', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByRole('link', { name: 'App settings', exact: true }).click();
   await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });

@@ -135,9 +135,13 @@ describe('the accounts list', () => {
 });
 
 describe('the Accounts fold', () => {
-  it('stays open until folded, and remembers the fold', () => {
+  const memory = () => {
     const store = new Map<string, string>();
-    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+    return { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+  };
+
+  it('stays open until folded, and remembers the fold either way', () => {
+    const storage = memory();
     expect(readAccountsFolded(storage)).toBe(false);
     writeAccountsFolded(true, storage);
     expect(readAccountsFolded(storage)).toBe(true);
@@ -145,14 +149,21 @@ describe('the Accounts fold', () => {
     expect(readAccountsFolded(storage)).toBe(false);
   });
 
-  it('reads open when storage throws', () => {
-    expect(
-      readAccountsFolded({
-        getItem: () => {
-          throw new Error('blocked');
-        },
-      }),
-    ).toBe(false);
+  it('starts as asked while nothing is stored, and a stored choice wins over that', () => {
+    const storage = memory();
+    expect(readAccountsFolded(storage, true)).toBe(true);
+    writeAccountsFolded(false, storage);
+    expect(readAccountsFolded(storage, true)).toBe(false);
+  });
+
+  it('reads the start state when storage throws', () => {
+    const blocked = {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+    };
+    expect(readAccountsFolded(blocked)).toBe(false);
+    expect(readAccountsFolded(blocked, true)).toBe(true);
   });
 });
 

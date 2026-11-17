@@ -69,7 +69,7 @@ async function spend(page: Page, description: string, amount: string) {
 
 /** Makes a workspace through the sidebar switcher and lands in it, as the sheet does on its own. */
 async function newWorkspace(page: Page, name: string, startsWith: string) {
-  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByRole('link', { name: 'App settings', exact: true }).click();
   await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
@@ -112,7 +112,7 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
  */
 test('a Business workspace starts with the business categories, and Personal keeps its own', async ({ page }) => {
   await addBank(page);
-  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByRole('link', { name: 'App settings', exact: true }).click();
   await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
@@ -149,7 +149,7 @@ test('a Business workspace starts with the business categories, and Personal kee
 /** A Business workspace made with Empty categories can take the business list later, from its page, after agreeing to it. */
 test('a Business workspace’s page offers the Business list, and Not now changes nothing', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByRole('link', { name: 'App settings', exact: true }).click();
   await page.getByTestId('add-workspace').click();
   await page.getByTestId('new-workspace').click();
   const sheet = page.getByRole('dialog', { name: 'New workspace' });
@@ -342,10 +342,10 @@ test('the switcher only lists workspaces, and the Account page holds New', async
   await expect(switcher.getByTestId('workspace-choice')).toHaveCount(1);
   await expect(switcher.getByText(/New workspace|Join a workspace|Manage workspaces/)).toHaveCount(0);
   await switcher.getByRole('button', { name: 'Close' }).click();
-  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByRole('link', { name: 'App settings', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Settings', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
   await expect(page.getByTestId('add-workspace')).toBeVisible();
   // The old address still arrives.
