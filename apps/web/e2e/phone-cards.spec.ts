@@ -152,7 +152,7 @@ test('a tapped card rises to the top at its own width and opens its page; ✕ an
   // The summary under the card: what is owed now, the round actions, this statement's points, the instalments and
   // the latest transactions.
   await showCardBack(page);
-  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Owed now');
+  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Outstanding');
   const actions = page.getByRole('group', { name: 'Actions' });
   await expect(actions.getByRole('button')).toHaveText(['Pay']);
   await expect(actions.getByRole('link')).toHaveText(['Spend', 'Points', 'Statement']);

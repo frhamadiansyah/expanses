@@ -238,7 +238,7 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
   await expect(page.getByText(/^cleared \d{4}-\d{2}-\d{2}$/)).toBeVisible();
 });
 
-test('a card paid past its bill holds the surplus: Unpaid at nothing, and the credit named on both screens', async ({ page }) => {
+test('a card paid past its bill holds the surplus: its back reads Credit, and the Debts row names it too', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
   await openCard(page, { name: 'BCA Visa' });
 
@@ -258,9 +258,10 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
   await sheet.getByRole('button', { name: 'Record payment' }).click();
   await expect(sheet).toHaveCount(0);
 
-  // The card owes nothing — Owed now is at nothing, exactly as the Debts row says — and the surplus is named under it.
-  await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 0');
-  await expect(tile.getByTestId('tile-credit')).toHaveText('Credit Rp 250.000');
+  // The card owes nothing, so its back names the surplus in the figure's own place: Credit Rp 250.000, no second line.
+  await expect(tile.getByTestId('tile-figure-label')).toHaveText('Credit');
+  await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 250.000');
+  await expect(tile.getByTestId('tile-credit')).toHaveCount(0);
 
   // And the Debts row says the same thing the card does.
   await page.goto('/net-worth/loans');
@@ -268,6 +269,6 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
   const row = debtRow(page, 'BCA Visa');
   await expect(row).toContainText('Credit Rp 250.000');
   await expect(row).toContainText('0');
-  // The card's drawer is at nothing, which is what the row and the card's own tile both say.
+  // The card's drawer is at nothing: nothing is owed.
   await expect(page.getByTestId('debts-kind-total-credit_card')).toHaveText('Rp 0');
 });

@@ -7,7 +7,7 @@ import { expect, type Page } from '@playwright/test';
 export const walletCard = (page: Page, name: string | RegExp) => page.getByRole('region', { name: 'Cards' }).getByRole('link', { name });
 
 /**
- * The card's back holds Owed now, the limit and the nearest bonus or the points: a tap on the raised card turns it
+ * The card's back holds Outstanding (or Credit), the limit and the nearest bonus or the points: a tap on the raised card turns it
  * over. Turns it when it is not turned already, so a journey that reads the back can call this wherever it is.
  */
 export async function showCardBack(page: Page) {

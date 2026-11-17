@@ -52,7 +52,7 @@ test('swiping the card, or tapping its dots, shows that plastic’s purchases; t
 
   await page.goto('/wallet');
   await page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^Swipe Card(,|$)/ }).click();
-  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Owed now');
+  await expect(page.getByTestId('tile-left-to-pay')).toContainText('Outstanding');
   const owed = (await page.getByTestId('tile-unpaid-balance').textContent()) ?? '';
   const dots = page.getByRole('group', { name: 'Cards on this account' });
   const primaryDot = dots.getByRole('button', { name: /ending 1111/ });

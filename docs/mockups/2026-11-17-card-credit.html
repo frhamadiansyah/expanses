@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Card in credit</title><style>
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:#000; }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1050px; line-height:1.45; }
+  h2 { font-size:18px; margin:28px 0 4px; } .lead { color:#555; margin:0 0 14px; max-width:1050px; line-height:1.45; font-size:14px; }
+  .row { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+  .col { width:330px; } .cap { font-weight:700; margin:0 0 3px; font-size:16px; } .note { font-size:13px; color:#555; margin:0 0 10px; line-height:1.4; min-height:36px; }
+  .lab { display:inline-block; font-size:10px; font-weight:800; letter-spacing:.4px; color:#fff; border-radius:4px; padding:1px 6px; margin-right:6px; vertical-align:2px; } .lab.t { background:#8e8e93; } .lab.n { background:#1a7f37; }
+  .shot { width:330px; border-radius:20px; display:block; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .ph { width:390px; zoom:.846; background:#f2f2f7; border-radius:24px; box-shadow:0 1px 3px rgba(0,0,0,.15); padding:12px 0 18px; height:346px; box-sizing:border-box; overflow:hidden; }
+  .hd { display:flex; justify-content:space-between; padding:0 16px 10px; } .circ { width:44px; height:44px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; }
+  .back { background:#fff; border-radius:22px; margin:0 16px; padding:12px 16px 10px; height:196px; position:relative; display:flex; flex-direction:column; }
+  .k { font-size:13px; line-height:18px; font-weight:500; color:#8e8e93; } .v { font-size:26px; line-height:30px; font-weight:700; letter-spacing:-.02em; } .c { font-size:12.5px; line-height:16px; color:#8e8e93; }
+  .bar { margin-top:8px; height:7px; border-radius:4px; background:#e4e4e9; overflow:hidden; }
+  .rule { margin-top:auto; border-top:1px solid #d8d8dc; padding-top:9px; }
+  .turn { position:absolute; right:12px; top:12px; width:32px; height:32px; border-radius:50%; background:#f0f0f3; display:flex; align-items:center; justify-content:center; color:#3c3c43; }
+  .acts { display:flex; justify-content:space-around; margin:14px 8px 0; } .acts svg { width:20px; height:20px; fill:none; stroke:#000; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; } .acts div { text-align:center; font-size:15px; } .acts span { width:44px; height:44px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; margin:0 auto 6px; font-size:18px; }
+  .new { outline:3px solid #1a7f37; outline-offset:2px; border-radius:6px; position:relative; }
+  .new::before { content:'NEW'; position:absolute; top:-12px; right:-4px; font-size:10px; font-weight:800; color:#fff; background:#1a7f37; border-radius:4px; padding:0 5px; }
+  .gone { font-size:12.5px; color:#d70015; text-decoration:line-through; }
+  .rules { width:700px; background:#fff; border-radius:12px; } .rules .r { display:flex; gap:10px; padding:11px 14px; } .rules .r + .r { border-top:.5px solid #ddd; } .rules .g { flex:1; } .rules .s { font-size:13px; color:#8e8e93; }
+</style></head><body>
+<h1>Card in credit: the back says Credit, and the credit adds to what is available</h1>
+<p class="sub">Invented example: BCA Visa, limit Rp 100.000.000. Paid Rp 50.000.000 more than owed (or a big refund / cashback), so the bank holds Rp 50.000.000 credit. <span class="lab t">TODAY</span> = real screenshots. <span class="lab n">AFTER</span> = drawn; green box = what changes.</p>
+
+<h2>Card in credit</h2>
+<p class="lead">"Owed now · Rp 0" plus a "Credit Rp 50.000.000" line becomes one figure: <b>Credit · Rp 50.000.000</b>. Available counts the credit too: the bank lets the card spend the limit plus the credit, so <b>Rp 150.000.000 available of Rp 100.000.000</b>. The limit itself stays Rp 100.000.000.</p>
+<div class="row">
+  <div class="col"><p class="cap"><span class="lab t">TODAY</span>Back of the card</p><p class="note">Owed now Rp 0, an extra Credit line, and available stops at the limit.</p><img class="shot" src="card-credit/today-back-credit.png"></div>
+  <div class="col"><p class="cap"><span class="lab n">AFTER</span>Back of the card</p><p class="note">Label and figure swap to the credit; no extra line; available includes it.</p>
+    <div class="ph">
+      <div class="hd"><span class="circ">✕</span><span class="circ">⚙</span></div>
+      <div class="back">
+        <span class="turn">↻</span>
+        <div class="new" style="width:max-content;padding:2px 6px 2px 2px"><div class="k">Credit</div><div class="v">Rp 50.000.000</div></div>
+        <div class="c" style="margin-top:2px">Nothing billed on 18 Oct</div>
+        <div class="bar"></div>
+        <div class="c new" style="margin-top:8px;width:max-content;padding:1px 4px 1px 2px">Rp 150.000.000 available of Rp 100.000.000</div>
+        <div class="rule c" style="font-size:14px">Rewards are not set up for this card.</div>
+      </div>
+      <div class="acts"><div><span><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></span></div><div><span><svg viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg></span></div><div><span><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg></span></div><div><span><svg viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6M16 12H8M13 16H8"/></svg></span></div></div>
+    </div></div>
+</div>
+
+<h2>Card owing: no change</h2>
+<div class="row">
+  <div class="col"><p class="cap"><span class="lab t">TODAY = AFTER</span>Back of the card</p><p class="note">Owed now Rp 30.000.000 · Rp 70.000.000 available of Rp 100.000.000.</p><img class="shot" src="card-credit/today-back-owed.png"></div>
+</div>
+
+<h2>The rule</h2>
+<div class="rules">
+  <div class="r"><div class="g">Card owes money<div class="s">Owed now · Rp X · available = limit − owed (as today)</div></div><span class="c">as today</span></div>
+  <div class="r"><div class="g">Card in credit<div class="s">Credit · Rp X · no extra line · available = limit + credit</div></div><b style="color:#1a7f37">NEW</b></div>
+  <div class="r"><div class="g">Nothing owed, no credit<div class="s">Owed now · Rp 0 (as today)</div></div><span class="c">as today</span></div>
+</div>
+</body></html>
