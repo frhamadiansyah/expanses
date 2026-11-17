@@ -24,6 +24,8 @@ KEY_ID=${ASC_KEY_ID:-4CBAJ27SR6}
 ISSUER=${ASC_ISSUER:-800b81f4-e9b0-4b77-a9a8-dee6c6e49d82}
 AUTH=(-allowProvisioningUpdates -authenticationKeyPath $HOME/.appstoreconnect/private_keys/AuthKey_$KEY_ID.p8 -authenticationKeyID $KEY_ID -authenticationKeyIssuerID $ISSUER)
 
+# Never a development bundle (mac/run-local-sample.sh leaves one with the sample household in App/public).
+if grep -rq 'Loading sample data' App/public; then echo "App/public holds a development bundle: run npm run cap:sync first" >&2; exit 4; fi
 $HERE/build-capacitor-catalyst.sh
 rm -rf build/App-mac.xcarchive build/export-mac
 xcodebuild archive -workspace Mac.xcworkspace -scheme App -configuration Release \
