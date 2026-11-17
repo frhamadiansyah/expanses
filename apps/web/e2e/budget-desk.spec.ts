@@ -32,9 +32,22 @@ test('a budget typed into its cell saves at once, and Left, the total and the ga
   await expect(page.getByTestId('total-left')).toHaveText('60.000');
   await expect(page.getByTestId('left-to-spend').getByRole('img')).toHaveAccessibleName(/^Rp\s60\.000 left to spend$/);
 
-  // The parent's own budget, then Tab down to Groceries, typed as a % of it.
+  // A group's Spent is the whole category's; "All Household" is only listed once Household has a budget (or money) of
+  // its own, so its rows add up to the group: here Groceries alone.
+  await expect(budgetCells(page, 'Household').spent).toHaveText('340.000');
+  await expect(budgetRow(page, 'All Household')).toHaveCount(0);
+
+  // The parent's own budget (set on Edit budgets: it has no row of its own yet), then Tab down to Groceries, typed as a % of it.
+  const screen = await openEditBudgets(page);
+  await (await capField(screen, 'Household')).field.fill('1000000');
+  await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('budget-page')).toBeVisible();
+  const own = budgetCells(page, 'All Household');
+  await expect(own.budget).toHaveText('1.000.000');
+  // Nothing booked to Household itself; its budget covers Groceries too.
+  await expect(own.spent).toHaveText('0');
+  await expect(own.left).toHaveText('660.000');
   await page.getByRole('button', { name: 'Budget for All Household', exact: true }).click();
-  await page.keyboard.type('1000000');
   await page.keyboard.press('Tab');
   const field = page.getByRole('textbox', { name: 'Budget for Groceries', exact: true });
   await expect(field).toBeFocused();

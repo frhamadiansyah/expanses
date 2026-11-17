@@ -114,9 +114,17 @@ function lineRow(line: BudgetLine, at: { key: string; label: string; depth: numb
 
 /**
  * The Categories table. Every root with a budget anywhere in it, by name: a root on its own is one row; a root with
- * sub-categories is a group row adding up its outermost budgets, then its own budget as "All <root>", then each
- * sub-category under it that has a budget or spent something (each one typable). Below, No budget yet: each root nothing is budgeted in
- * that spent something, by what it spent, with its spending sub-categories one step in — as the phone lists them.
+ * sub-categories is a group row, then "All <root>", then each sub-category under it that has a budget or spent something
+ * (each one typable). Below, No budget yet: each root nothing is budgeted in that spent something, by what it spent, with
+ * its spending sub-categories one step in — as the phone lists them.
+ *
+ * One plain rule for a group (owner, 17 Nov 2026), so its rows add up the way they read:
+ * - the group row's Spent is the category's whole Spent (the phone's and Cashflow's ring); its Budget is its outermost
+ *   budgets, as the phone's Budgeted counts them, and its Left what is left of those — the phone's drawer figure;
+ * - "All <root>" is listed only when the root has a budget of its own or money was booked to the root itself, and its
+ *   Spent is only that money. Its Budget is the root's own, and its Left what is left of it, as the phone's "All" row
+ *   reads (a parent's budget covers everything under it);
+ * - so the sub-category rows and "All <root>" add up to the group's Spent; what no budget covers is Not budgeted.
  */
 export function deskTable(lines: readonly BudgetLine[], budgets: readonly BudgetRow[]): DeskTable {
   const storedOf = new Map(budgets.map((row) => [row.categoryAccountId, row]));
@@ -141,7 +149,7 @@ export function deskTable(lines: readonly BudgetLine[], budgets: readonly Budget
       depth: 0,
       groupId: null,
       budgetMinor: covered.budgetMinor,
-      spentMinor: covered.spentMinor,
+      spentMinor: root.totalMinor,
       leftMinor: covered.budgetMinor - covered.spentMinor,
       share: covered.budgetMinor > 0 ? covered.spentMinor / covered.budgetMinor : covered.spentMinor > 0 ? 2 : 0,
       tone: toneOf(covered.budgetMinor, covered.spentMinor),
@@ -150,7 +158,11 @@ export function deskTable(lines: readonly BudgetLine[], budgets: readonly Budget
       overridden: false,
       edit: null,
     });
-    rows.push(lineRow(root, { key: `line:${root.id}`, label: `All ${root.name}`, depth: 1, groupId: root.id, section: 'budgeted' }, storedOf.get(root.id)));
+    if (root.capMinor !== null || root.ownMinor !== 0) {
+      // Only what was booked to the root itself: its sub-categories' money is on their own rows.
+      const own = lineRow(root, { key: `line:${root.id}`, label: `All ${root.name}`, depth: 1, groupId: root.id, section: 'budgeted' }, storedOf.get(root.id));
+      rows.push({ ...own, spentMinor: root.ownMinor });
+    }
     // A sub-category with no budget that spent nothing is left to Edit budgets, as the phone leaves it.
     const listed = (line: BudgetLine): boolean => coveredOf(line).any || line.totalMinor !== 0;
     const walk = (parent: BudgetLine, depth: number) => {

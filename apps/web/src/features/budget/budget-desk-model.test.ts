@@ -52,10 +52,10 @@ describe('the Categories table', () => {
   const table = deskTable(lines, budgets);
   const row = (key: string) => table.rows.find((each) => each.key === key)!;
 
-  it('lists the budgeted roots by name, a parent as a group with its own budget first as "All <parent>", then No budget yet', () => {
+  it('lists the budgeted roots by name, a parent as a group with its own budget or money first as "All <parent>", then No budget yet', () => {
     expect(table.rows.map((each) => [each.key, each.label, each.depth, each.section])).toEqual([
       ['group:Food', 'Food', 0, 'budgeted'],
-      ['line:Food', 'All Food', 1, 'budgeted'],
+      // Food has no budget of its own and nothing was booked to Food itself: no "All Food".
       ['line:Coffee', 'Coffee', 1, 'budgeted'],
       // Tea has no budget and spent nothing: Edit budgets has it.
       ['line:Restaurants', 'Restaurants', 1, 'budgeted'],
@@ -73,11 +73,37 @@ describe('the Categories table', () => {
     expect(table.noBudgetCount).toBe(2);
   });
 
-  it('sums a group from its outermost budgets: the parent’s own when it has one, else its budgeted children', () => {
+  it('gives a group the whole category’s Spent, and the Budget and Left of its outermost budgets (the phone’s drawer)', () => {
     // Household's own budget covers everything under it: 300.000 against all 3.761.000 it spent.
     expect(row('group:Household')).toMatchObject({ budgetMinor: 300_000, spentMinor: 3_761_000, leftMinor: -3_461_000, tone: 'over', edit: null });
-    // Food has none of its own: Restaurants and Takeaways add up; Coffee, unbudgeted, is not in it.
-    expect(row('group:Food')).toMatchObject({ budgetMinor: 2_000_000, spentMinor: 2_480_000, leftMinor: -480_000, tone: 'over' });
+    // Food has none of its own: Restaurants and Takeaways are its budget and its Left; Coffee, unbudgeted, is in its
+    // Spent but under no budget (Not budgeted).
+    expect(row('group:Food')).toMatchObject({ budgetMinor: 2_000_000, spentMinor: 2_860_000, leftMinor: -480_000, tone: 'over' });
+  });
+
+  it('gives "All <parent>" only what was booked to the parent itself, against the parent’s own budget', () => {
+    // 120.000 booked to Household itself; its 300.000 covers all 3.761.000 under it, as the phone's "All" row reads.
+    expect(row('line:Household')).toMatchObject({ label: 'All Household', budgetMinor: 300_000, spentMinor: 120_000, leftMinor: -3_461_000, tone: 'over' });
+  });
+
+  it('adds a group’s sub-category rows and its "All" row up to the group’s Spent', () => {
+    // Invented: money on the parent itself and no budget of its own; one sub-category budgeted, one not, one refunded.
+    const home = line('Home', 75_000, null, [line('Repairs', 410_000, 600_000), line('Garden', 96_500, null), line('Decor', -30_000, null), line('Spare', 0, null)]);
+    const pets2 = line('Pets', 0, null, [line('Petfood', 250_000, 300_000), line('Vet', 180_000, null)]);
+    const capped = line('Car', 50_000, 1_000_000, [line('Fuel', 640_000, null), line('Parking', 82_000, 100_000)]);
+    const sums = deskTable([home, pets2, capped], [stored('Repairs', 600_000), stored('Petfood', 300_000), stored('Car', 1_000_000), stored('Parking', 100_000)]);
+    for (const group of sums.rows.filter((each) => each.kind === 'group')) {
+      const under = sums.rows.filter((each) => each.groupId === group.categoryId && each.depth === 1);
+      expect(under.reduce((sum, each) => sum + each.spentMinor, 0)).toBe(group.spentMinor);
+    }
+    const at = (key: string) => sums.rows.find((each) => each.key === key);
+    expect(at('group:Home')).toMatchObject({ budgetMinor: 600_000, spentMinor: 551_500, leftMinor: 190_000 });
+    expect(at('line:Home')).toMatchObject({ label: 'All Home', budgetMinor: null, spentMinor: 75_000, leftMinor: null });
+    // No budget of its own and nothing on Pets itself: no "All Pets", and its two rows make its Spent.
+    expect(at('line:Pets')).toBeUndefined();
+    expect(at('group:Pets')).toMatchObject({ budgetMinor: 300_000, spentMinor: 430_000, leftMinor: 50_000 });
+    expect(at('group:Car')).toMatchObject({ budgetMinor: 1_000_000, spentMinor: 772_000, leftMinor: 228_000 });
+    expect(at('line:Car')).toMatchObject({ budgetMinor: 1_000_000, spentMinor: 50_000, leftMinor: 228_000 });
   });
 
   it('gives each line its budget, spent and left, its % as typed, and an unbudgeted line no left', () => {
