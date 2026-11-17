@@ -77,6 +77,8 @@ describe('Cashback & Rewards into a credit card', () => {
     expect(sheet.essentialActualMinor).toBe(320_000);
     expect(sheet.lifestyleActualMinor).toBe(0);
     expect(sheet.debtsSavingsActualMinor).toBe(-75_000);
+    // Named on its own, so the Essential and lifestyle sheet can show shares of what was bought and the cashback beneath.
+    expect(sheet.cashbackActualMinor).toBe(-75_000);
     expect(sheet.essentialActualMinor + sheet.lifestyleActualMinor + sheet.debtsSavingsActualMinor).toBe(sheet.spendingActualMinor);
     expect(sheet.leftOverActualMinor).toBe(755_000);
   });

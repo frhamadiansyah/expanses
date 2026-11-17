@@ -90,6 +90,11 @@ export interface BudgetSheet {
    * essential nor lifestyle; the three add back to `spendingActualMinor`.
    */
   debtsSavingsActualMinor: number;
+  /**
+   * Card cashback (Cashback & Rewards into a credit card), signed: below nought when money came back. Already inside
+   * `spendingActualMinor` and `debtsSavingsActualMinor`; named apart so a screen can show shares of what was bought.
+   */
+  cashbackActualMinor: number;
   /** What events cost this month: named either way, and inside the lines above only when `eventsInCaps`. */
   eventSpendingMinor: number;
   /** Carried through so a screen can say whether the lines above already contain the event line. */
@@ -193,6 +198,7 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
     essentialActualMinor,
     lifestyleActualMinor,
     debtsSavingsActualMinor,
+    cashbackActualMinor: cashbackMinor,
     eventSpendingMinor: input.eventSpendingMinor,
     eventsInCaps: input.eventsInCaps,
     overCount,
