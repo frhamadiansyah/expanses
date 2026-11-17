@@ -1,5 +1,6 @@
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import { useEffect } from 'react';
+import { isMacApp } from '../lib/mac';
 import { isNative } from '../lib/pwa';
 
 /**
@@ -20,11 +21,11 @@ export async function lockPortrait(): Promise<void> {
   }
 }
 
-/** Frees the turn on entering Cashflow and locks it upright again on leaving. In the native app only. */
+/** Frees the turn on entering Cashflow and locks it upright again on leaving. In the iPhone app only, not the Mac app. */
 export function useCashflowRotation(pathname: string): void {
   const rotation = rotationFor(pathname);
   useEffect(() => {
-    if (!isNative()) return;
+    if (!isNative() || isMacApp()) return;
     const turn = rotation === 'free' ? ScreenOrientation.unlock() : ScreenOrientation.lock({ orientation: 'portrait' });
     void turn.catch((error: unknown) => console.warn('The screen turn was not set', error));
   }, [rotation]);

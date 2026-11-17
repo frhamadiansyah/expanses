@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin, WebPlugin } from '@capacitor/core';
 import { formatMinor } from '@expanses/core';
+import { isPhoneApp } from '../lib/mac';
 
 /** This month's spending for the open workspace, as the medium home screen widget shows it. */
 export interface WidgetSummary {
@@ -55,8 +56,8 @@ export async function eraseWidgetSummary(plugin: Pick<WidgetSummaryPluginApi, 'e
   for (const listener of [...erasedListeners]) listener();
 }
 
-/** The widget exists only in the iOS app. */
-export const hasWidget = (): boolean => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+/** The widget exists only in the iPhone app; the Mac app is built without it. */
+export const hasWidget = (): boolean => isPhoneApp() && Capacitor.getPlatform() === 'ios';
 
 export function summaryOf(
   sheet: { spendingActualMinor: number; capsTotalMinor: number; currency: string },

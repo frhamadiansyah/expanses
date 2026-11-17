@@ -5,6 +5,7 @@ import { useApp } from '../../app/context';
 import { type DrainReport, drainNow, lastDrain } from '../../capture/drain';
 import { native } from '../../capture/native';
 import { useAccounts } from '../../lib/queries';
+import { hasNfc } from './emoney/plugin';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow } from '../../ui/native';
 import { useCaptureSources } from '../review/queries';
@@ -142,10 +143,12 @@ export function CaptureSettingsPage() {
 
       <HoldingArea />
 
-      {/* A test tool: read a Mandiri e-money card over NFC. Diagnostic only — nothing is saved or sent. */}
-      <InsetGroup header="E-money (test)" info="A test tool: tap a card to read its number and balance over NFC. Nothing is saved or sent.">
-        <InsetRow title="Read an e-money card (test)" to="/settings/capture/emoney" />
-      </InsetGroup>
+      {/* A test tool: read a Mandiri e-money card over NFC. Diagnostic only — nothing is saved or sent. Phone only. */}
+      {hasNfc() && (
+        <InsetGroup header="E-money (test)" info="A test tool: tap a card to read its number and balance over NFC. Nothing is saved or sent.">
+          <InsetRow title="Read an e-money card (test)" to="/settings/capture/emoney" />
+        </InsetGroup>
+      )}
     </div>
   );
 }

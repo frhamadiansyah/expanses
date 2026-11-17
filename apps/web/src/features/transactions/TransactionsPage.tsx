@@ -35,7 +35,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { useRemembered } from '../../lib/page-memory';
 import { useApp } from '../../app/context';
 import { usePhone, useSideways } from '../../app/use-phone';
-import { isNative } from '../../lib/pwa';
+import { isPhoneApp } from '../../lib/mac';
 import { canPayWith } from '../../lib/account-types';
 import { loadPurchasePoints } from '../../lib/purchase-points';
 import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
@@ -240,7 +240,7 @@ export function TransactionsPage() {
    * "Turn sideways for the table": in the iOS app on a phone, the first few visits, until the table has been opened
    * sideways or the tip closed. Decided once as the page opens, so the visit that uses up the count still shows it.
    */
-  const [tipOn, setTipOn] = useState(() => isNative() && tipShown(readTip()));
+  const [tipOn, setTipOn] = useState(() => isPhoneApp() && tipShown(readTip()));
   const visitCounted = useRef(false);
   useEffect(() => {
     if (!tipOn || visitCounted.current) return;
@@ -248,7 +248,7 @@ export function TransactionsPage() {
     writeTip(afterVisit(readTip()));
   }, [tipOn]);
   useEffect(() => {
-    if (!sideways || !isNative()) return;
+    if (!sideways || !isPhoneApp()) return;
     setTipOn(false);
     const tip = readTip();
     if (!tip.done) writeTip(afterSideways(tip));

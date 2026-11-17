@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin, WebPlugin } from '@capacitor/core';
+import { isPhoneApp } from '../../../lib/mac';
 import type { CardAnswer } from './apdu';
 import type { CardLink } from './reader';
 
@@ -43,8 +44,8 @@ export const EmoneyReader = registerPlugin<EmoneyReaderPlugin>('EmoneyReader', {
   web: () => Promise.resolve(new EmoneyReaderWeb()),
 });
 
-/** Core NFC lives only in the iOS app. Everywhere else the screen says NFC is not available. */
-export const hasNfc = (): boolean => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+/** Core NFC lives only in the iPhone app (not the Mac app). Everywhere else the screen says NFC is not available. */
+export const hasNfc = (): boolean => isPhoneApp() && Capacitor.getPlatform() === 'ios';
 
 /** The rejection code a plugin call carries, or null. */
 export const codeOf = (error: unknown): string | null => {

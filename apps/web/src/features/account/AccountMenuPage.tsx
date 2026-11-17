@@ -4,7 +4,7 @@ import { Check, Plus, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { MORE_GROUPS, type NavItem, SETTINGS_ITEMS } from '../../app/nav';
-import { isNative } from '../../lib/pwa';
+import { isPhoneApp } from '../../lib/mac';
 import { hasWidget } from '../../native/widget-summary';
 import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, ROW_PAD_X, ROW_PAD_Y, SCREEN, TAP } from '../../ui/native';
@@ -155,7 +155,7 @@ export function AccountMenuPage() {
         ]}
       </InsetGroup>
 
-      <InsetGroup header="Settings">{rows(SETTINGS_ITEMS.filter((item) => (item.to !== '/settings/capture' || isNative()) && (item.to !== '/settings/widget' || hasWidget())))}</InsetGroup>
+      <InsetGroup header="Settings">{rows(SETTINGS_ITEMS.filter((item) => (item.to !== '/settings/capture' || isPhoneApp()) && (item.to !== '/settings/widget' || hasWidget())))}</InsetGroup>
 
       {MORE_GROUPS.map((group) => (
         <InsetGroup key={group.title} header={group.title}>

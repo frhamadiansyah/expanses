@@ -10,13 +10,15 @@ import { ErrorBoundary } from './features/recovery/ErrorBoundary';
 import { OpeningScreen } from './features/recovery/OpeningScreen';
 import { paceStages } from './features/recovery/opening-copy';
 import { RecoveryScreen } from './features/recovery/RecoveryScreen';
-import { isNative, registerServiceWorker } from './lib/pwa';
+import { isPhoneApp } from './lib/mac';
+import { registerServiceWorker } from './lib/pwa';
 import { lockPortrait } from './native/orientation';
 import { noteSkippedCopy } from './sync/sync-log-device';
 import './styles.css';
 
-// Upright from the first frame in the iOS app: Info.plist lists landscape only so Cashflow can unlock it (native/orientation.ts).
-if (isNative()) void lockPortrait();
+// Upright from the first frame in the iPhone app: Info.plist lists landscape only so Cashflow can unlock it
+// (native/orientation.ts). A Mac window has no way up, so the Mac app is left alone.
+if (isPhoneApp()) void lockPortrait();
 
 registerServiceWorker();
 
