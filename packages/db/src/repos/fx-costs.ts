@@ -27,6 +27,7 @@ import { dayOrderExists } from './day-order-column';
 import { clampEventItemsTx } from './event-items';
 import { type GainLossPair, inNoWorkspaceTx, pairByShape, writeGainLossTx } from './fx-gain-loss';
 import { fxTablesExist, queueForeignRecalcTx } from './fx-tables';
+import { sharedTransferBooksTx } from './shared-transfers';
 
 /*
  * The withdrawal rate's recalculation (spec §6). One foreign account is replayed from its first entry (ruling R10): its
@@ -372,6 +373,12 @@ export async function recalcAccountTx(
     // change it is: the fee its own units at their cost, the rate's gap left on the exchange account, where it counts
     // nowhere (no pair: the transaction is filed, R8). Only spending across currencies spreads its whole cost.
     const spreadsCost = filed && !ownChange(txLines);
+    // A change shown to a household as its redacted transfer row (0094; on a shared trip, 0114) takes no pair either
+    // (trip change-back fix, owner 17 Nov 2026): the pair counts nowhere anyway, and on it the transfer would read as a
+    // purchase — filed in the shared workspace beside its redacted row (a second copy on the partner's phone, under an
+    // Exchange gain or loss the partner may not have yet), and no longer a transfer a trip can list. The gap stays on
+    // the exchange account, as for a change filed by its fee.
+    const shownAsTransfer = !filed && out !== undefined && exchanged && (await sharedTransferBooksTx(tx, transactionId)).length > 0;
     let revalued: Revalued;
     try {
       revalued = revalueTransaction({ lines: spreadsCost ? asSpending(txLines) : txLines, baseCurrency: ws.baseCurrency, ...(out ? { outCosts: out } : {}), ...(into ? { inCosts: into } : {}) });
@@ -399,7 +406,7 @@ export async function recalcAccountTx(
         await tx.run(sql`UPDATE entries SET amount_base_minor = ${base}, fx_rate_to_base = ${rateFor(line, base, ws.baseCurrency)} WHERE id = ${line.entryId}`);
       }
     }
-    const gainLossBaseMinor = filed ? 0 : revalued.gainLossBaseMinor;
+    const gainLossBaseMinor = filed || shownAsTransfer ? 0 : revalued.gainLossBaseMinor;
     // Only an exchange can carry a pair, or one that already has one (I2): a plain spend reads and writes nothing here.
     const pairWritten = exchanged || pair ? await writeGainLossTx(tx, ws, transactionId, gainLossBaseMinor, pair) : false;
     // Final review M1: a cheaper cost lowers what a purchase spent, and an event plan's covers of it are stored figures
