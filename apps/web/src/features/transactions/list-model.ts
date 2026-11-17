@@ -440,8 +440,10 @@ export function buildRows(
     const named = moved.length === 2 ? transferName({ subtype: moved[0]!.accountSubtype ?? '', currency: moved[0]!.currency }, { subtype: moved[1]!.accountSubtype ?? '', currency: moved[1]!.currency }) : null;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
     // `counted` leaves out the lines switched to Exclude from report on their own (0096), which the day's total must not add.
+    // An exchange's gain or loss is never one of its lines: it counts nowhere (owner, 17 Nov 2026).
     const baseOf = (kind: 'expense' | 'income', counted = false) =>
-      (kind === 'expense' ? 1 : -1) * tx.entries.filter((e) => e.accountKind === kind && !(counted && e.excluded)).reduce((sum, e) => sum + e.amountBaseMinor, 0) || 0;
+      (kind === 'expense' ? 1 : -1) *
+        tx.entries.filter((e) => e.accountKind === kind && !isExchangeResultKey(e.accountSystemKey) && !(counted && e.excluded)).reduce((sum, e) => sum + e.amountBaseMinor, 0) || 0;
     return {
       kind: 'tx',
       id: tx.id,

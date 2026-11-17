@@ -1,4 +1,4 @@
-import { formatMinor, isoDate } from '@expanses/core';
+import { formatMinor, isExchangeResultKey, isoDate } from '@expanses/core';
 import { type SharedEventView, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Plus, Settings } from 'lucide-react';
@@ -302,8 +302,10 @@ function LocalEventPage() {
   const historyRows = new Map(buildRows(history.data ?? [], [], accounts, []).map((row) => [row.id, row]));
   /** Whether an expense line is the picked category's: `none` is the row of spending with no category. */
   const inPicked = (entry: { accountKind: string; accountId: string }) => entry.accountKind === 'expense' && (picked === 'none' ? false : entry.accountId === picked);
+  /** A spending line the day's total adds: never an exchange's gain or loss, which counts nowhere (owner, 17 Nov 2026). */
+  const spendLine = (entry: { accountKind: string; accountSystemKey?: string | null }) => entry.accountKind === 'expense' && !isExchangeResultKey(entry.accountSystemKey);
   const shown = (history.data ?? []).filter((tx) =>
-    picked === null ? true : picked === 'none' ? !tx.entries.some((e) => e.accountKind === 'expense') : tx.entries.some(inPicked),
+    picked === null ? true : picked === 'none' ? !tx.entries.some(spendLine) : tx.entries.some(inPicked),
   );
   const days = new Map<string, NonNullable<typeof history.data>>();
   for (const tx of shown) days.set(tx.occurredOn, [...(days.get(tx.occurredOn) ?? []), tx]);
@@ -512,7 +514,7 @@ function LocalEventPage() {
           {days.size === 0 && <p className="px-[4px] pb-3 text-[13px] text-[var(--ph-ink-3)]">No payments in this category.</p>}
           {[...days.entries()].map(([date, txs]) => {
             const d = new Date(`${date}T00:00:00`);
-            const total = txs.reduce((sum, tx) => sum + tx.entries.filter((e) => e.accountKind === 'expense' && (picked === null || picked === 'none' || inPicked(e))).reduce((s, e) => s + e.amountBaseMinor, 0), 0);
+            const total = txs.reduce((sum, tx) => sum + tx.entries.filter((e) => spendLine(e) && (picked === null || picked === 'none' || inPicked(e))).reduce((s, e) => s + e.amountBaseMinor, 0), 0);
             return (
               <Panel key={date}>
                 <div className="-mx-[13px] flex items-center gap-3 border-b-[0.5px] border-[var(--ph-hair)] px-[13px] pb-2">

@@ -29,6 +29,8 @@ const accounts = [
   account('groceries', 'expense', 'category', { name: 'Groceries' }),
   account('salary', 'income', 'category', { name: 'Salary' }),
   account('fx', 'equity', 'equity', { name: 'Currency exchange', systemKey: 'currency_exchange' }),
+  account('loss', 'expense', 'category', { name: 'Exchange loss', systemKey: 'expense.exchange_loss' }),
+  account('gain', 'income', 'category', { name: 'Exchange gain', systemKey: 'income.exchange_gain' }),
   account('fixed', 'equity', 'equity', { name: 'Balance correction', systemKey: 'balance_correction' }),
   account('start', 'equity', 'equity', { name: 'Opening balances', systemKey: 'opening_balance' }),
 ];
@@ -194,5 +196,32 @@ describe('what the rule never touches', () => {
   it('the Type filter narrows to income alone, and to spending alone', () => {
     expect(names(cashflow(personal, { type: 'income' }))).toEqual([pay.description]);
     expect(names(cashflow(personal, { type: 'expense' }))).not.toContain(pay.description);
+  });
+});
+
+describe('an exchange’s gain or loss counts nowhere (owner, 17 Nov 2026)', () => {
+  const row = (t: TransactionView) => buildRows([t], [], accounts, cards)[0]!;
+  // US$100 out of the dollar cash for Rp 1.570.000, the withdrawal rate's pair beside it: a loss, then a gain.
+  const usdOut = (pair: [string, number][], fee: [string, number, string?][] = []) =>
+    tx('Back to rupiah', [['cashUsd', -100_00, 'USD'], ['fx', 100_00, 'USD'], ['cash', 1_570_000_00], ['fx', -1_570_000_00], ...pair.map(([id, amount]): [string, number] => [id, amount]), ...fee]);
+  const withLoss = usdOut([['loss', 30_000_00], ['fx', -30_000_00]]);
+  const withGain = usdOut([['gain', -20_000_00], ['fx', 20_000_00]]);
+  // A typed fee beside it (a partner's edit reposted the pair as two plain lines, final review I3): only the fee counts.
+  const withFeeAndLoss = usdOut([['loss', 30_000_00], ['fx', -30_000_00]], [['fees', 2_00, 'USD']]);
+  // On a partner's phone a shared Personal exchange arrives as its pair alone, against the payer's placeholder.
+  const partnersCopy = tx('Back to rupiah', [['loss', 30_000_00], ['partner', -30_000_00]]);
+
+  it('leaves the transfer off Cashflow, spending nothing and earning nothing', () => {
+    for (const t of [withLoss, withGain, partnersCopy]) {
+      const r = row(t);
+      expect([countsInOrOut(r), r.spentMinor, r.earnedMinor]).toEqual([false, 0, 0]);
+    }
+  });
+
+  it('counts a typed fee as the fee alone', () => {
+    const r = row(withFeeAndLoss);
+    expect(countsInOrOut(r)).toBe(true);
+    expect(r.spentMinor).toBe(2_00);
+    expect(totals([r]).spentMinor).toBe(2_00);
   });
 });

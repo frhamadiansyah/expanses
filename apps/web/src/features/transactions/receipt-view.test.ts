@@ -504,3 +504,55 @@ describe('a purchase with a part Not counted', () => {
     expect(splitParts({ ...shop, excluded: true }, withParts, business).map((part) => part.excluded)).toEqual([true, false]);
   });
 });
+
+describe('a transfer between currencies (owner, 17 Nov 2026)', () => {
+  const banks = [
+    { id: 'acct-gbp', name: 'BCA GBP', kind: 'asset', subtype: 'bank', currency: 'GBP' },
+    { id: 'acct-idr', name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' },
+  ] as AccountRow[];
+  /** £1.000 (less any fee) out of the pound bank, Rp 20.700.000 into the rupiah one, with the withdrawal rate's pair. */
+  const exchange = (feeMinor = 0, received = 20_700_000) =>
+    ({
+      id: 'tx-gbp',
+      occurredOn: '2026-11-17',
+      description: 'GBP to IDR',
+      status: 'posted',
+      cardId: null,
+      entries: [
+        { accountId: 'acct-gbp', accountKind: 'asset', accountSubtype: 'bank', amountMinor: -100_000, amountBaseMinor: -21_000_000, currency: 'GBP' },
+        { accountId: 'acct-fx', accountKind: 'equity', accountSystemKey: 'currency_exchange', amountMinor: 100_000 - feeMinor, amountBaseMinor: 21_000_000, currency: 'GBP' },
+        { accountId: 'acct-idr', accountKind: 'asset', accountSubtype: 'bank', amountMinor: received, amountBaseMinor: received, currency: 'IDR' },
+        { accountId: 'acct-fx', accountKind: 'equity', accountSystemKey: 'currency_exchange', amountMinor: -received, amountBaseMinor: -received, currency: 'IDR' },
+        ...(feeMinor > 0
+          ? [{ accountId: 'cat-fees', accountKind: 'expense', amountMinor: feeMinor, amountBaseMinor: 105_000, currency: 'GBP' }]
+          : [
+              { accountId: 'cat-loss', accountKind: 'expense', accountSystemKey: 'expense.exchange_loss', amountMinor: 300_000, amountBaseMinor: 300_000, currency: 'IDR' },
+              { accountId: 'acct-fx', accountKind: 'equity', accountSystemKey: 'currency_exchange', amountMinor: -300_000, amountBaseMinor: -300_000, currency: 'IDR' },
+            ]),
+      ],
+    }) as unknown as TransactionView;
+  const withdrawal = { accountId: 'acct-gbp', currency: 'GBP', minor: 100_000, costBaseMinor: 21_000_000, uncoveredMinor: 0, ratePerUnit: 21_000, uses: [{ lotId: 'w1', lotDate: '2026-03-01', minor: 100_000, costBaseMinor: 21_000_000 }] };
+  const lineOf = (lines: { label: string; value: string; detail?: string }[], label: string) => {
+    const line = lines.find((one) => one.label === label);
+    return line && { value: line.value.replace(/ /g, ' '), detail: line.detail?.replace(/ /g, ' ') ?? null };
+  };
+
+  it('reads one Rate row, the market under it, in place of Cost and Withdrawn; nothing says it counts', () => {
+    const lines = receiptLines({ tx: exchange(), accounts: banks, cards: [], currency: 'IDR', points: null, owed: [], withdrawal, today: '2026-11-17', ratesToBase: { GBP: 21_000 } });
+    expect(lineOf(lines, 'Rate')).toEqual({ value: 'Rp 20.700 per GBP', detail: 'market 21.000 · −1,4 %' });
+    expect(lines.map((line) => line.label)).toEqual(['Paid with', 'Into', 'Total', 'Rate']);
+    expect(JSON.stringify(lines)).not.toMatch(/exchange|recorded as|spending|income/i);
+  });
+
+  it('reads the rate alone when no market rate is held for the day', () => {
+    const lines = receiptLines({ tx: exchange(), accounts: banks, cards: [], currency: 'IDR', points: null, owed: [], withdrawal, today: '2026-11-17', ratesToBase: {} });
+    expect(lineOf(lines, 'Rate')).toEqual({ value: 'Rp 20.700 per GBP', detail: null });
+    expect(lines.map((line) => line.label)).not.toContain('Cost');
+  });
+
+  it('prices only what was changed, never the fee beside it', () => {
+    // £5 fee, £995 changed for Rp 20.596.500: Rp 20.700 a pound.
+    const lines = receiptLines({ tx: exchange(500, 20_596_500), accounts: banks, cards: [], currency: 'IDR', points: null, owed: [], withdrawal, today: '2026-11-17', ratesToBase: { GBP: 21_000 } });
+    expect(lineOf(lines, 'Rate')).toEqual({ value: 'Rp 20.700 per GBP', detail: 'market 21.000 · −1,4 %' });
+  });
+});
