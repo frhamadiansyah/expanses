@@ -23,7 +23,7 @@ const stored = (categoryAccountId: string, amountMinor: number, extra: Partial<B
 
 // Household: its own 300.000 and two budgeted children. Food: no budget of its own, Restaurants over, Takeaways a 20%.
 const household = line('Household', 120_000, 300_000, [line('Groceries', 3_412_000, 4_000_000), line('Supplies', 229_000, 500_000)]);
-const food = line('Food', 0, null, [line('Restaurants', 1_960_000, 1_500_000), line('Takeaways', 520_000, 500_000), line('Coffee', 380_000, null)]);
+const food = line('Food', 0, null, [line('Restaurants', 1_960_000, 1_500_000), line('Takeaways', 520_000, 500_000), line('Coffee', 380_000, null), line('Tea', 0, null)]);
 const health = line('Health', 94_500, 500_000);
 const gifts = line('Gifts', 150_000, null);
 const electronics = line('Electronics', 0, null, [line('Phones', 600_000, null), line('Cables', 0, null)]);
@@ -57,6 +57,7 @@ describe('the Categories table', () => {
       ['group:Food', 'Food', 0, 'budgeted'],
       ['line:Food', 'All Food', 1, 'budgeted'],
       ['line:Coffee', 'Coffee', 1, 'budgeted'],
+      // Tea has no budget and spent nothing: Edit budgets has it.
       ['line:Restaurants', 'Restaurants', 1, 'budgeted'],
       ['line:Takeaways', 'Takeaways', 1, 'budgeted'],
       ['line:Health', 'Health', 0, 'budgeted'],

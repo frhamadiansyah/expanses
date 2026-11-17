@@ -114,8 +114,8 @@ function lineRow(line: BudgetLine, at: { key: string; label: string; depth: numb
 
 /**
  * The Categories table. Every root with a budget anywhere in it, by name: a root on its own is one row; a root with
- * sub-categories is a group row adding up its outermost budgets, then its own budget as "All <root>", then every
- * sub-category under it (each one typable, budgeted or not). Below, No budget yet: each root nothing is budgeted in
+ * sub-categories is a group row adding up its outermost budgets, then its own budget as "All <root>", then each
+ * sub-category under it that has a budget or spent something (each one typable). Below, No budget yet: each root nothing is budgeted in
  * that spent something, by what it spent, with its spending sub-categories one step in — as the phone lists them.
  */
 export function deskTable(lines: readonly BudgetLine[], budgets: readonly BudgetRow[]): DeskTable {
@@ -151,8 +151,11 @@ export function deskTable(lines: readonly BudgetLine[], budgets: readonly Budget
       edit: null,
     });
     rows.push(lineRow(root, { key: `line:${root.id}`, label: `All ${root.name}`, depth: 1, groupId: root.id, section: 'budgeted' }, storedOf.get(root.id)));
+    // A sub-category with no budget that spent nothing is left to Edit budgets, as the phone leaves it.
+    const listed = (line: BudgetLine): boolean => coveredOf(line).any || line.totalMinor !== 0;
     const walk = (parent: BudgetLine, depth: number) => {
       for (const child of [...parent.children].sort(byName)) {
+        if (!listed(child)) continue;
         rows.push(lineRow(child, { key: `line:${child.id}`, label: child.name, depth, groupId: root.id, section: 'budgeted' }, storedOf.get(child.id)));
         walk(child, depth + 1);
       }

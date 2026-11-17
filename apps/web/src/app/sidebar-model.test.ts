@@ -199,7 +199,7 @@ describe('the status line at the foot', () => {
 });
 
 describe('which pages run edge to edge', () => {
-  it('Overview always; Cashflow on a wide screen only, never in the phone shell or for one account', () => {
+  it('Overview always; Cashflow and Budget on a wide screen only, never in the phone shell or for one account', () => {
     expect(edgeToEdge('/overview', false)).toBe(true);
     expect(edgeToEdge('/overview', true)).toBe(true);
     expect(edgeToEdge('/transactions', false)).toBe(true);
@@ -207,6 +207,8 @@ describe('which pages run edge to edge', () => {
     // An account's own history keeps its list in the column.
     expect(edgeToEdge('/transactions', false, true)).toBe(false);
     expect(edgeToEdge('/transactions/new', false)).toBe(false);
-    expect(edgeToEdge('/budget', false)).toBe(false);
+    expect(edgeToEdge('/budget', false)).toBe(true);
+    expect(edgeToEdge('/budget', true)).toBe(false);
+    expect(edgeToEdge('/budget/edit', false)).toBe(false);
   });
 });

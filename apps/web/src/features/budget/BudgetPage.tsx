@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { CalendarDays, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Scale, Target } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { useAccounts } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
@@ -13,6 +14,7 @@ import { CappedRow, FigureRow, OverRow, UseBar, useCategoryMarks } from './budge
 import { daysLeft, findLine, noBudgetRows, planSplit, spendingView } from './budget-view';
 import { MonthSheet, SplitSheet, TakeHomeSheet } from './BudgetSheets';
 import { CapSheet } from './CapSheet';
+import { DesktopBudget } from './DesktopBudget';
 import { dependantsOf, shareBaseOf } from './share-form';
 import { useBudgets, useBudgetSheet, useCommittedBills, useSpendingHistory } from './queries';
 
@@ -67,7 +69,17 @@ function TintedGlyph({ icon, colour }: { icon: ReactNode; colour: string }) {
 
 const PLAN_COLOURS = { debt: 'var(--ph-ink-2)', goals: 'var(--ph-info-ink)', budgeted: 'var(--ph-up)', unplanned: 'var(--ph-track)' } as const;
 
+/**
+ * Budget: on a wide screen (the Mac app, a desktop browser) the Mac page (`DesktopBudget`); on a phone, held either
+ * way, the phone's own page, exactly as it was.
+ */
 export function BudgetPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopBudget /> : <PhoneBudgetPage />;
+}
+
+function PhoneBudgetPage() {
   const { ws } = useApp();
   const today = isoDate();
   // Edit budgets sends the reader back to the month they left from.

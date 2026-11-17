@@ -1,7 +1,8 @@
-import { addMonths } from '@expanses/core';
-import { budgetSheetFor, committedByCategory, listBudgets } from '@expanses/db';
+import { addMonths, monthPeriod } from '@expanses/core';
+import { budgetSheetFor, categoryItemsIn, committedByCategory, listBudgets } from '@expanses/db';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
+import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { historyOf } from './budget-view';
 
 export function useBudgetSheet(month: string, enabled = true) {
@@ -44,4 +45,21 @@ export function useSpendingHistory(month: string, currency: string) {
     sheets.map((sheet) => sheet.data!.lines),
     currency,
   );
+}
+
+/**
+ * What a budget line's Spent is made of, transaction by transaction: the month's rows in these categories, read the way
+ * the sheet reads them (bills in their own month, events held out unless the workspace counts them) — so they add up
+ * to the line. The wide screen's side peek lists them.
+ */
+export function useCategoryItems(categoryIds: readonly string[], month: string, enabled = true) {
+  const { database, ws } = useApp();
+  const monthStart = useMonthStart();
+  const eventsInCaps = useOpenBook()?.countEventsInBudget ?? false;
+  const { from, to } = monthPeriod(month, monthStart);
+  return useQuery({
+    queryKey: ['category-items', ws.workspaceId, ws.bookId ?? null, categoryIds.join(','), month, monthStart, eventsInCaps],
+    queryFn: () => categoryItemsIn(database, ws, 'expense', categoryIds, from, to, { excludeEvents: !eventsInCaps, billMonths: true }),
+    enabled: enabled && categoryIds.length > 0,
+  });
 }
