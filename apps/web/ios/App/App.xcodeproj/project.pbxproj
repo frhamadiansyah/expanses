@@ -26,7 +26,7 @@
 		CA5704042FE9A10100000004 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5705042FE9A10100000004 /* ShareViewController.swift */; };
 		CA5704052FE9A10100000005 /* HoldingArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702032FE9A10100000003 /* HoldingArea.swift */; };
 		CA5704062FE9A10100000006 /* TextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5702022FE9A10100000002 /* TextRecognizer.swift */; };
-		CA5704072FE9A10100000007 /* CaptureShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CA5705072FE9A10100000007 /* CaptureShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CA5704072FE9A10100000007 /* CaptureShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CA5705072FE9A10100000007 /* CaptureShare.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		95F1D0012FEA000000000001 /* AppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA000000000001 /* AppViewController.swift */; };
 		95F1D0012FEA000000000002 /* IdxDownloadPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA000000000002 /* IdxDownloadPlugin.swift */; };
 		95F1D0012FEA000000000003 /* ICloudBackupPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA000000000003 /* ICloudBackupPlugin.swift */; };
@@ -40,8 +40,8 @@
 		CC5901012FEC000000000005 /* WidgetSummaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5802012FEB000000000001 /* WidgetSummaryStore.swift */; };
 		CC5901012FEC000000000006 /* OpenOneLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000007 /* OpenOneLineIntent.swift */; };
 		CC5901012FEC000000000007 /* OpenOneLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000007 /* OpenOneLineIntent.swift */; };
-		CC5901012FEC000000000008 /* CicisWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000008 /* CicisWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		95F1D0012FEA0000000000E1 /* EmoneyReaderPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA0000000000E1 /* EmoneyReaderPlugin.swift */; };
+		CC5901012FEC000000000008 /* CicisWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC5902012FEC000000000008 /* CicisWidgets.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		95F1D0012FEA0000000000E1 /* EmoneyReaderPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F1D0002FEA0000000000E1 /* EmoneyReaderPlugin.swift */; platformFilter = ios; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -436,11 +436,13 @@
 /* Begin PBXTargetDependency section */
 		CA5707082FE9A10100000008 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = CA5707012FE9A10100000001 /* CaptureShare */;
 			targetProxy = CA5707092FE9A10100000009 /* PBXContainerItemProxy */;
 		};
 		CC5904012FEC000000000008 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = CC5904012FEC000000000001 /* CicisWidgets */;
 			targetProxy = CC5904012FEC000000000009 /* PBXContainerItemProxy */;
 		};
@@ -596,7 +598,16 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 5.0;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = App/App.mac.entitlements;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
+				"GENERATE_INFOPLIST_FILE[sdk=macosx*]" = YES;
+				"INFOPLIST_KEY_LSApplicationCategoryType[sdk=macosx*]" = "public.app-category.finance";
+				"PRODUCT_MODULE_NAME[sdk=macosx*]" = App;
+				"PRODUCT_NAME[sdk=macosx*]" = cicis;
+				SUPPORTS_MACCATALYST = YES;
 				TARGETED_DEVICE_FAMILY = 1;
+				"TARGETED_DEVICE_FAMILY[sdk=macosx*]" = "2,6";
 			};
 			name = Debug;
 		};
@@ -619,7 +630,16 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = App/App.mac.entitlements;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
+				"GENERATE_INFOPLIST_FILE[sdk=macosx*]" = YES;
+				"INFOPLIST_KEY_LSApplicationCategoryType[sdk=macosx*]" = "public.app-category.finance";
+				"PRODUCT_MODULE_NAME[sdk=macosx*]" = App;
+				"PRODUCT_NAME[sdk=macosx*]" = cicis;
+				SUPPORTS_MACCATALYST = YES;
 				TARGETED_DEVICE_FAMILY = 1;
+				"TARGETED_DEVICE_FAMILY[sdk=macosx*]" = "2,6";
 			};
 			name = Release;
 		};

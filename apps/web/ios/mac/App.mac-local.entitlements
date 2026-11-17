@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- For mac/run-local.sh only: a Mac app built on this Mac without a provisioning profile ("Sign to Run Locally").
+	     Such a build may carry only the entitlements that need no profile, so iCloud is missing here and iCloud backup
+	     shows as not available. The sandbox is the same as the real Mac app's (App/App.mac.entitlements), so the
+	     database lives in the same container, ~/Library/Containers/com.cicis.app. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+</dict>
+</plist>

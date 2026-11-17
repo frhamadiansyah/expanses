@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The Mac app (Mac Catalyst) only; the iPhone app keeps App.entitlements. Picked by
+	     CODE_SIGN_ENTITLEMENTS[sdk=macosx*], so nothing here reaches the iPhone build. -->
+
+	<!-- Every Mac App Store / TestFlight app runs sandboxed. The database (SQLite in the web view's storage) then lives
+	     in the app's own container, ~/Library/Containers/com.cicis.app, and nowhere else on the Mac. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Out to the sync relay, the price sources and iCloud; the app accepts no connections. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- The Open and Save panels: attaching a receipt or a statement picture, importing a file, saving an export. Only
+	     what the person picks in a panel is reachable. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+
+	<!-- iCloud backup: the same container as the iPhone app (ICloudBackupPlugin.swift). The container id is permanent. -->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.cicis.app</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudDocuments</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.com.cicis.app</string>
+	</array>
+
+	<!-- Left out on purpose: the app group (only the iPhone's share extension, widget and capture shortcuts use it, and
+	     none of them is in the Mac app) and NFC (no Mac reads a card). -->
+</dict>
+</plist>

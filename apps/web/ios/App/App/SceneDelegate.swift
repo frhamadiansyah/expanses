@@ -10,6 +10,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = UIWindow(windowScene: windowScene)
         window?.rootViewController = AppViewController()
         window?.makeKeyAndVisible()
+        #if targetEnvironment(macCatalyst)
+        sizeMacWindow(windowScene)
+        #endif
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
         openRouteFromLaunchArguments()
@@ -37,6 +40,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
         }
     }
+
+    #if targetEnvironment(macCatalyst)
+    /**
+     * The Mac window: never narrower than the width the page draws its sidebar at (768, `usePhone`, plus room for the
+     * content), so the Mac always shows the wide layout and never a phone-shaped one. The first time the app opens it
+     * is given a desktop size; after that macOS puts it back where and how big it was left.
+     */
+    private func sizeMacWindow(_ windowScene: UIWindowScene) {
+        windowScene.sizeRestrictions?.minimumSize = CGSize(width: 900, height: 600)
+        let sizedKey = "macWindowSized"
+        guard !UserDefaults.standard.bool(forKey: sizedKey) else { return }
+        UserDefaults.standard.set(true, forKey: sizedKey)
+        let screen = windowScene.screen.bounds
+        let size = CGSize(width: min(1280, screen.width - 80), height: min(860, screen.height - 80))
+        let frame = CGRect(x: (screen.width - size.width) / 2, y: (screen.height - size.height) / 2, width: size.width, height: size.height)
+        windowScene.requestGeometryUpdate(.Mac(systemFrame: frame)) { error in
+            print("The Mac window was not sized: \(error)")
+        }
+    }
+    #endif
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         SceneDelegateProxy.shared.scene(scene, openURLContexts: URLContexts)
