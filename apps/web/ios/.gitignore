@@ -16,3 +16,10 @@ App/App/config.xml
 App/*.xcarchive
 App/*.ipa
 *.p8
+
+# Mac app: Capacitor built for Mac Catalyst by mac/build-capacitor-catalyst.sh — build output, never committed.
+mac/.build
+mac/capacitor-swift-pm/*.xcframework
+mac/capacitor-swift-pm/.version
+mac/capacitor-swift-pm/.build
+mac/capacitor-swift-pm/.swiftpm
