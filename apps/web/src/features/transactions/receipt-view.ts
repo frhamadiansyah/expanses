@@ -1,4 +1,4 @@
-import { formatMinor, monthName } from '@expanses/core';
+import { formatMinor, isCardCashbackKey, monthName } from '@expanses/core';
 import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, SplitBook, TransactionView, WithdrawalsUsed } from '@expanses/db';
 import { fromWithdrawalsText, receiptWithdrawalLine } from '../../lib/withdrawal-rate';
 import { classify } from './classify';
@@ -131,7 +131,10 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   // Money back on a purchase: its category was credited. Said so, and its total reads as money in.
   const spent = tx.entries.filter((entry) => entry.accountKind === 'expense');
   const refund = spent.length > 0 && spent.reduce((sum, entry) => sum + entry.amountMinor, 0) < 0;
-  if (refund) lines.push({ label: 'Refund', value: 'Money back' });
+  // Cashback & Rewards into a credit card is no refund of anything: it says what it does instead (owner, 17 Nov 2026).
+  const cashback = refund && spent.every((entry) => isCardCashbackKey(entry.accountSystemKey));
+  if (cashback) lines.push({ label: 'Cashback', value: 'Lowers spending' });
+  else if (refund) lines.push({ label: 'Refund', value: 'Money back' });
   if (paid && !across) lines.push({ label: 'Total', value: `${refund ? '+' : ''}${formatMinor(Math.abs(paid.amountMinor), currency)}` });
   // Withdrawal rate §7: what the foreign money cost, and which withdrawals it came from.
   if (input.withdrawal) {

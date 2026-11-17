@@ -1,4 +1,4 @@
-import { categoryPath } from '@expanses/core';
+import { CARD_CASHBACK, categoryPath, categoryVisual } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { Check, Tag } from 'lucide-react';
@@ -7,13 +7,14 @@ import { Sheet, SheetAddButton, SheetSearchButton } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
 import { SearchPill, SegmentedControl } from '../../ui/native';
-import { CategoryIcon, ICONS } from '../categories/CategoryIcon';
+import { CategoryIcon, ICONS, MarkChip } from '../categories/CategoryIcon';
 import { categoryGroups, offeredCategories, setCategoriesElsewhere } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useCategoryBooks, useCategoryWorkspaces } from '../workspaces/queries';
 import { RowGlyph } from './FormRow';
 import { useNewCategoryForm } from './NewCategorySheet';
 import { useShareCategoryIds } from './queries';
+import { CARD_CASHBACK_CHOICE, isCardCashbackChoice } from './tx-form';
 
 /** One top-level category and what hangs off it — the card the picker draws per root. */
 export interface PickerGroup {
@@ -135,6 +136,12 @@ function CategoryButton({
   );
 }
 
+/** Cashback & Rewards into a credit card's mark: its badge-percent in the income green, before the book holds it. */
+export function CardCashbackMark({ size = 'md' }: { size?: 'md' | 'sm' | 'row' }) {
+  const look = categoryVisual(CARD_CASHBACK.key, CARD_CASHBACK.key);
+  return <MarkChip Glyph={ICONS[look.icon] ?? Tag} colour={look.colour} size={size} />;
+}
+
 /**
  * Choosing a category, for every screen that files one: the form's Category row and the list's category gesture.
  *
@@ -164,6 +171,7 @@ export function CategoryPicker({
   header,
   onNone,
   noneChosen = !value,
+  cardCashback = false,
 }: {
   /** The tab the form is on, which is the kind the sheet opens showing. */
   kind: 'expense' | 'income';
@@ -207,6 +215,11 @@ export function CategoryPicker({
   onNone?: () => void;
   /** Whether No category carries the ✓: by default when nothing is chosen. */
   noneChosen?: boolean;
+  /**
+   * Offer Cashback & Rewards, on its own at the top of the spending list: only for money back into a credit card
+   * (`cardCashbackOffered`). Picking it picks the stand-in (`CARD_CASHBACK_CHOICE`); Save makes the book's own.
+   */
+  cardCashback?: boolean;
 }) {
   const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
@@ -237,6 +250,8 @@ export function CategoryPicker({
     onPick(categoryId);
     onClose();
   };
+  // Cashback & Rewards, first in the spending list when the money goes back into a credit card; found by its name too.
+  const cashbackShown = cardCashback && showing === 'expense' && CARD_CASHBACK.name.toLowerCase().includes(search.trim().toLowerCase());
   // New category is a step this sheet moves to, not a sheet stacked on it.
   const newCategory = useNewCategoryForm({ kind: showing, parents, onCreated: (categoryId) => choose(categoryId) });
 
@@ -347,6 +362,24 @@ export function CategoryPicker({
           </div>
         )}
 
+        {cashbackShown && (
+          <div className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] py-1">
+            <button
+              type="button"
+              data-testid="category-card-cashback"
+              aria-current={value && isCardCashbackChoice(value, accounts) ? 'true' : undefined}
+              onClick={() => choose(CARD_CASHBACK_CHOICE)}
+              className="ph-focus-inset relative flex w-full items-center gap-3 pl-[14px] text-left active:bg-[var(--ph-fill)]"
+            >
+              <CardCashbackMark />
+              <span className="ph-row-body flex min-h-[46px] min-w-0 flex-1 items-center gap-2 pr-[14px]">
+                <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{CARD_CASHBACK.name}</span>
+                {value && isCardCashbackChoice(value, accounts) && <Check size={18} aria-hidden className="shrink-0 text-[var(--ph-tint)]" />}
+              </span>
+            </button>
+          </div>
+        )}
+
         {groups.map((group) => (
           <div
             key={group.root.id}
@@ -358,7 +391,7 @@ export function CategoryPicker({
             ))}
           </div>
         ))}
-        {groups.length === 0 && (
+        {groups.length === 0 && !cashbackShown && (
           <p className="px-1 py-3 text-[15px] text-[var(--ph-ink-3)]">
             {search.trim()
               ? 'Nothing here by that name.'

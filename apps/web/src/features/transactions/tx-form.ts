@@ -1,6 +1,7 @@
 import type { ReceiptMemo } from './receipt-split-model';
 import {
   cardTopUpLines,
+  isCardCashbackKey,
   convertMinor,
   CURRENCIES,
   currencyInfo,
@@ -437,6 +438,43 @@ export function refundAllowed(draft: FormDraft): boolean {
 export function isRefund(draft: Pick<FormDraft, 'mode' | 'amount'>): boolean {
   return draft.mode === 'expense' && MINUS_FIRST.test(draft.amount);
 }
+
+/**
+ * Stands in for Cashback & Rewards (`CARD_CASHBACK`) from the moment it is picked until Save makes the book's own
+ * (`cardCashbackCategory`), as "Choose later" does for Uncategorised: picking it writes nothing.
+ */
+export const CARD_CASHBACK_CHOICE = '\u0000card-cashback';
+
+/** Whether a form's category is Cashback & Rewards: the stand-in for it, or the category itself. */
+export function isCardCashbackChoice(categoryId: string, accounts: readonly AccountRow[]): boolean {
+  if (!categoryId) return false;
+  return categoryId === CARD_CASHBACK_CHOICE || isCardCashbackKey(accounts.find((a) => a.id === categoryId)?.systemKey);
+}
+
+/**
+ * Whether Cashback & Rewards may be chosen (owner, 17 Nov 2026): money back — an expense typed minus first, under one
+ * category — whose Into is a credit card. The one rule: anywhere else cashback is Income › Cashback & Rewards.
+ */
+export function cardCashbackOffered(draft: FormDraft, accounts: readonly AccountRow[]): boolean {
+  return refundAllowed(draft) && isRefund(draft) && accountOf(draft, accounts)?.subtype === 'credit_card';
+}
+
+/**
+ * The form with Cashback & Rewards taken away once it no longer fits — Into moved off the card, the minus gone — so it
+ * never sits there wrongly; the same draft otherwise. Nothing is cleared while the accounts are still being read.
+ */
+export function withoutStrayCashback(draft: FormDraft, accounts: readonly AccountRow[]): FormDraft {
+  if (!isCardCashbackChoice(draft.categoryId, accounts)) return draft;
+  if (draft.moneyId && !accountOf(draft, accounts)) return draft;
+  return cardCashbackOffered(draft, accounts) ? draft : { ...draft, categoryId: '' };
+}
+
+/** The draft with the stand-in answered by the book's own Cashback & Rewards; any other category is left as it is. */
+export function withCardCashback(draft: FormDraft, cashbackId: string): FormDraft {
+  return draft.categoryId === CARD_CASHBACK_CHOICE ? { ...draft, categoryId: cashbackId } : draft;
+}
+
+export const CARD_CASHBACK_REFUSAL = 'Cashback & Rewards is money back into a credit card: start the amount with a minus and choose the card in Into';
 
 /**
  * Whether a figure on this screen may be typed in a currency of its own.
@@ -1123,6 +1161,11 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
   if (peopleOn(draft).length > 0) {
     const refusal = extraRowRefusal('with', draft);
     if (refusal) throw new Error(refusal);
+  }
+
+  // Cashback & Rewards is money back into a credit card and nothing else: never a purchase, never into a bank.
+  if (draft.mode === 'expense' && draft.splits.length === 0 && isCardCashbackChoice(draft.categoryId, accounts) && !cardCashbackOffered(draft, accounts)) {
+    throw new Error(CARD_CASHBACK_REFUSAL);
   }
 
   // Money back goes back under one category, from the one account it was paid with.

@@ -1,4 +1,4 @@
-import { formatMinor, isoDate } from '@expanses/core';
+import { formatMinor, isCardCashbackKey, isoDate } from '@expanses/core';
 import { type AccountRow, replaceTransaction, type TransactionView } from '@expanses/db';
 import { Copy, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { type MouseEvent, type ReactNode, useState } from 'react';
@@ -141,9 +141,12 @@ export function TransactionRow({
   // Money back wears a small return arrow on its category's circle, where a shared row wears its workspace: the
   // category stays the category, and the green plus beside it says the rest. A workspace mark takes the corner first,
   // then the refund's arrow, then an event's plane.
+  // Cashback & Rewards into a card is money back too, but no refund of a purchase: its own badge says what it is.
+  const cashback = !!row.refund && isCardCashbackKey(accounts.find((a) => a.id === row.categoryId)?.systemKey);
+  const refundMark = !!row.refund && !cashback;
   const mark =
     iconMark ??
-    (row.refund ? (
+    (refundMark ? (
       <span
         className="absolute -right-1 -bottom-1 flex h-[15px] w-[15px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)] ring-2 ring-[var(--ph-surface)]"
         title="Refund"
@@ -215,7 +218,7 @@ export function TransactionRow({
           {refile ? (
             <button
               type="button"
-              aria-label={categoryButtonLabel(row.description, { workspace: iconMark ? iconMarkLabel : null, refund: row.refund, eventName })}
+              aria-label={categoryButtonLabel(row.description, { workspace: iconMark ? iconMarkLabel : null, refund: refundMark, eventName })}
               title="Change the category"
               onClick={(event) => {
                 // The row around it may be clickable too; re-filing is not opening.

@@ -1,4 +1,4 @@
-import { CASH_ITEMS, isoDate, type MoneyAccountSubtype, type PaymentOption, statementCycleFor, tradeRateNeeds } from '@expanses/core';
+import { CARD_CASHBACK, CASH_ITEMS, isoDate, type MoneyAccountSubtype, type PaymentOption, statementCycleFor, tradeRateNeeds } from '@expanses/core';
 import {
   type AccountRow,
   type CardRow,
@@ -32,6 +32,7 @@ import {
   topUpsCategory,
   type TransactionView,
   uncategorisedCategory,
+  cardCashbackCategory,
 } from '@expanses/db';
 import { ArrowDownLeft, ArrowUpRight, Check, CreditCard, Hash, Home, Landmark, Tag, Split, Target } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -68,7 +69,7 @@ import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, tradeMoneyChoices, 
 import { InvestmentSheet } from './InvestmentSheet';
 import { amountRowText, chargedRowText, feeRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
 import { DateRow, NoteRow } from './CardRows';
-import { CategoryPicker } from './CategoryPicker';
+import { CardCashbackMark, CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { useOpenings, useOpeningDay } from '../accounts/queries';
 import { Chevron, FieldRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
@@ -90,7 +91,7 @@ import { draftIn } from './move-workspace';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { heldForm, releaseForm } from './receipt-split-hold';
 import { applyReceipt, filledLine, type ReceiptFilled, readReceiptPhoto, recognizeEach } from './receipt-fill';
-import { autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, eventForMode, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
+import { CARD_CASHBACK_CHOICE, cardCashbackOffered, withCardCashback, withoutStrayCashback, autoCategoryOutOfSet, categoryFromNote, categoryLater, type CategorySource, initialCategorySource, currencyChoosable, currencyFlag, isRefund, withCategoryLater, detailsToggleLabel, duplicateDraft, emptyForm, type CardSeed, type ExtraRow, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, isExpenseTopUp, eventForMode, memberTransferOf, topUpWallets, typedCurrency, ownTransferAccountId, rateDateFor, receivedField, sayPaidWithError, seeded, sharedPaymentOf, transferFigure } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /** Stands in for Uncategorised while the ✓ asks whether the form would post; Save files under the real one. */
@@ -580,6 +581,12 @@ function CardBody({
     setDraft((d) => ({ ...d, bookId, categoryId: '', splits: [] }));
   }, [bookId, draft.bookId]);
 
+  // Cashback & Rewards is money back into a credit card only: Into moved off the card, or the minus gone, takes it away
+  // rather than leave a category the save would refuse.
+  useEffect(() => {
+    setDraft((d) => withoutStrayCashback(d, accounts));
+  }, [draft.mode, draft.amount, draft.moneyId, draft.categoryId, draft.splits.length, accounts]);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     // Enter submits too: the question is a condition on Save however Save is reached.
@@ -641,7 +648,9 @@ function CardBody({
       // made the first time one is needed. A capture's draft keeps its own rule (`finish` returned above). Moving to
       // another workspace names that workspace's Uncategorised, never the open one's, so the move happens.
       const later = categoryLater(draft);
-      const categorised = later ? withCategoryLater(draft, await uncategorisedCategory(database, moveTo ? inBook(ws, moveTo) : ws, later)) : draft;
+      const laterFiled = later ? withCategoryLater(draft, await uncategorisedCategory(database, moveTo ? inBook(ws, moveTo) : ws, later)) : draft;
+      // Cashback & Rewards into a credit card is made the first time one is saved, in the workspace it is saved into.
+      const categorised = laterFiled.categoryId === CARD_CASHBACK_CHOICE ? withCardCashback(laterFiled, await cardCashbackCategory(database, moveTo ? inBook(ws, moveTo) : ws)) : laterFiled;
       const from = accounts.find((account) => account.id === categorised.moneyId);
       const to = accounts.find((account) => account.id === categorised.toId);
       const topsUp = categorised.mode === 'transfer' && !!from && !!to && cardTopsUpWallet(from, to);
@@ -846,7 +855,7 @@ function CardBody({
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
   const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : !finish && isRefund(draft) ? 'Into' : 'Paid with';
-  const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
+  const categoryName = draft.categoryId === CARD_CASHBACK_CHOICE ? CARD_CASHBACK.name : draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
   // Where a transfer may land: money you hold, by the rule the From list uses — never a motorbike, a laptop or a
   // car, which hold value but receive nothing; never a card or a loan, which are paid through their own Pay; never
   // a time deposit or a loan with a person, which have flows of their own. And only what pairs with the From
@@ -860,7 +869,9 @@ function CardBody({
    * Every row of the card leads with a circle of the same size, so the lead column reads as one column. The rest
    * wear the kit's fill; a chosen category keeps its own colour, as it does everywhere else a category is drawn.
    */
-  const categoryLead = draft.categoryId ? (
+  const categoryLead = draft.categoryId === CARD_CASHBACK_CHOICE ? (
+    <CardCashbackMark size="row" />
+  ) : draft.categoryId ? (
     <CategoryIcon categoryId={draft.categoryId} accounts={accounts} size="row" />
   ) : (
     <RowGlyph>
@@ -1645,6 +1656,7 @@ function CardBody({
           kind={draft.mode === 'income' ? 'income' : 'expense'}
           value={draft.categoryId}
           setId={eventSet}
+          cardCashback={cardCashbackOffered(draft, accounts)}
           onPick={(categoryId) => {
             categorySource.current = 'hand';
             /*

@@ -347,6 +347,20 @@ describe('money back on a purchase', () => {
     expect(valueOf(lines, 'Refund')).toBe('Money back');
     expect(valueOf(lines, 'Total')).toBe('+Rp 450.000');
   });
+
+  it('reads Cashback · Lowers spending for Cashback & Rewards into a card, and no Refund', () => {
+    const promo = dinner({
+      description: 'Promo cashback',
+      entries: [
+        { accountId: 'acct-card', accountKind: 'liability', amountMinor: 75_000, amountBaseMinor: 75_000, currency: 'IDR' },
+        { accountId: 'cat-cashback', accountKind: 'expense', accountSystemKey: 'expense.cashback', amountMinor: -75_000, amountBaseMinor: -75_000, currency: 'IDR' },
+      ] as TransactionView['entries'],
+    });
+    const lines = receiptLines({ tx: promo, accounts, cards: [card], currency: 'IDR', points: null, owed: [] });
+    expect(valueOf(lines, 'Cashback')).toBe('Lowers spending');
+    expect(lines.some((line) => line.label === 'Refund')).toBe(false);
+    expect(valueOf(lines, 'Total')).toBe('+Rp 75.000');
+  });
 });
 
 describe('a spend from foreign cash (withdrawal rate §7)', () => {

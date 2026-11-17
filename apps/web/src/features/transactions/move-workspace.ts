@@ -1,5 +1,5 @@
 import type { AccountRow } from '@expanses/db';
-import type { FormDraft } from './tx-form';
+import { CARD_CASHBACK_CHOICE, type FormDraft, isCardCashbackChoice } from './tx-form';
 
 /** Each category's workspace, by category id. */
 export type CategoryBooks = Readonly<Record<string, string>>;
@@ -39,6 +39,8 @@ export function draftIn(
   const missing: string[] = [];
   const swap = (id: string) => {
     if (!id) return '';
+    // Cashback & Rewards is made where it is first saved: the stand-in goes, and Save makes that workspace's own.
+    if (isCardCashbackChoice(id, accounts)) return CARD_CASHBACK_CHOICE;
     const there = categoryIn(id, toBook, accounts, books);
     if (!there) missing.push(nameOf(id));
     return there ?? '';

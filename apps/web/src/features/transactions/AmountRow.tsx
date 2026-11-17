@@ -232,7 +232,8 @@ export function AmountRow({
   const named = currencyShown(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);
-  // Money back: a minus typed first on an expense. The figure turns the green of money coming in, and says where to.
+  // Money back: a minus typed first on an expense. The figure turns the green of money coming in; Into says where to
+  // (owner, 17 Nov 2026: no line under the amount saying so).
   const refundable = !noRefund && refundAllowed(draft);
   const refund = !noRefund && isRefund(draft);
   const { rate } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
@@ -404,12 +405,6 @@ export function AmountRow({
           )}
         </span>
       </div>
-
-      {refund && (
-        <p data-testid="refund-caption" className="pb-[6px] pl-[48px] text-[12.5px] leading-4 text-[var(--ph-up)]">
-          Refund: money back to {account?.name ?? 'the account'}
-        </p>
-      )}
 
       {picking && (
         <CurrencySheet

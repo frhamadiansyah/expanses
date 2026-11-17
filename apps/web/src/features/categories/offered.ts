@@ -1,4 +1,4 @@
-import { isUncategorisedKey } from '@expanses/core';
+import { isCardCashbackKey, isUncategorisedKey } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 
 /**
@@ -32,8 +32,11 @@ export function offeredCategories(
   setId: string | null = null,
 ): AccountRow[] {
   // Uncategorised is where "Choose later" files a transaction, never a category to choose: it is left out of every picker.
+  // So is Cashback & Rewards into a credit card: the Add screen offers it on its own, only for money back into a card.
   const inScope = (a: AccountRow) => (setId ? membership[a.id] === setId : membership[a.id] === undefined);
-  return accounts.filter((a) => a.kind === kind && a.archivedAt === null && inScope(a) && !isUncategorisedKey(a.systemKey) && keep(a));
+  return accounts.filter(
+    (a) => a.kind === kind && a.archivedAt === null && inScope(a) && !isUncategorisedKey(a.systemKey) && !isCardCashbackKey(a.systemKey) && keep(a),
+  );
 }
 
 /**
