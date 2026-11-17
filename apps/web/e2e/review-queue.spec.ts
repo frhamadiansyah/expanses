@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { pickDraftCategory } from './review';
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -50,7 +51,7 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
 
   // The parser's guess is a starting point; the category is chosen here.
-  await page.getByLabel('Category for SUPERINDO KEBAYORAN').selectOption({ label: 'Groceries' });
+  await pickDraftCategory(page, 'SUPERINDO KEBAYORAN', 'Groceries');
   await page.getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
 
@@ -115,10 +116,10 @@ test('the queue row is the way in to Review, and leaves with the last draft', as
   await queue.getByRole('link').click();
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
 
-  await page.getByLabel('Category for SUPERINDO KEBAYORAN').selectOption({ label: 'Groceries' });
+  await pickDraftCategory(page, 'SUPERINDO KEBAYORAN', 'Groceries');
   await page.getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
-  await page.getByLabel('Category for APOTEK K24').selectOption({ label: 'Pharmacy' });
+  await pickDraftCategory(page, 'APOTEK K24', 'Pharmacy');
   await page.getByRole('button', { name: 'Record APOTEK K24' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
 

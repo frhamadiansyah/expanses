@@ -7,6 +7,7 @@ import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
 import { paySeveral } from './bills-desk';
+import { pickDraftCategory } from './review';
 import { openShortTrade, openTradeDetails, pickTradeCash, recordShortTrade, shortTrade } from './trades';
 
 /*
@@ -504,7 +505,7 @@ test('confirming a draft that takes promised money asks in the same sheet', asyn
   await expect(page.getByText(/Nothing is recorded until confirmed there/)).toBeVisible();
 
   await page.goto('/review');
-  await page.getByLabel('Category for LAPTOP STORE').selectOption({ label: 'Groceries' });
+  await pickDraftCategory(page, 'LAPTOP STORE', 'Groceries');
   await page.getByRole('button', { name: 'Record LAPTOP STORE' }).click();
   const sheet = page.getByRole('dialog', { name: 'Money set aside' });
   await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();

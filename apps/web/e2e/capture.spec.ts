@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { answerSource, inject, notice, picture, screen } from './capture';
 import { expectBalance } from './deposit-maturity';
+import { choosePayment } from './add-transaction';
+import { pickDraftCategory } from './review';
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -21,16 +23,16 @@ test('a notification becomes a draft the owner files, and recording it leaves a 
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('TOKO KOPI');
   await expect(row).toContainText('38.000');
-  await expect(row).toContainText('2026-09-30');
+  await expect(row).toContainText('Today');
 
-  // Whose money it was is the one thing a notification cannot know, and the row asks it. Recording before the
-  // question is answered is refused, in the ledger's own words, rather than filed against nothing.
-  const paidWith = page.getByLabel('Account for TOKO KOPI');
-  await expect(paidWith).toHaveValue('');
-  await page.getByRole('button', { name: 'Record TOKO KOPI' }).click();
-  await expect(page.getByRole('alert')).toContainText('Say which account paid before confirming');
-  await paidWith.selectOption({ label: 'Everyday bank (IDR)' });
-  await page.getByLabel('Category for TOKO KOPI').selectOption({ label: 'Groceries' });
+  // Whose money it was is the one thing a notification cannot know, and the row asks it (Mac Review): Record waits
+  // greyed until the question is answered, rather than filing it against nothing.
+  const paidWith = row.getByRole('button', { name: 'Account for TOKO KOPI' });
+  await expect(paidWith).toHaveText('Which account?');
+  await expect(page.getByRole('button', { name: 'Record TOKO KOPI' })).toBeDisabled();
+  await paidWith.click();
+  await choosePayment(page, 'Everyday bank', 'Paid with');
+  await pickDraftCategory(page, 'TOKO KOPI', 'Groceries');
   await page.getByRole('button', { name: 'Record TOKO KOPI' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
 
@@ -114,6 +116,8 @@ test('an offer is skipped rather than queued, and can be brought back', async ({
 
   // Not a payment: nothing waits in the queue, and the foot of the page keeps it, with the way back.
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  // Mac Review folds the list at the foot of the queue: "Skipped · 1 ▸ show".
+  await page.getByRole('button', { name: /^Skipped · 1/ }).click();
   await expect(page.getByText('Skipped (1)')).toBeVisible();
   const skipped = page.getByTestId('skipped-row');
   await expect(skipped).toContainText('Looked like an offer');
@@ -124,4 +128,5 @@ test('an offer is skipped rather than queued, and can be brought back', async ({
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
   await expect(page.getByTestId('draft-row')).toContainText('10.000');
   await expect(page.getByText('Skipped (1)')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Skipped ·/ })).toHaveCount(0);
 });
