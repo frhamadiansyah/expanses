@@ -475,11 +475,16 @@ test('a database that goes wrong while the app is open swaps the app for the rec
    * The app opens, and it opens properly. This is not the recovery screen with a different heading on it:
    * it is the app, out of the very file that is holed, on a screen that has no reason to read the ledger.
    */
+  /*
+   * In the phone's shell: a wide screen's sidebar counts the month's bills on every screen (Mac sidebar A), which reads
+   * the ledger, so there the swap comes before any link is pressed. The phone's tab bar reads nothing of the kind.
+   */
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/backup');
   await expect(page.getByRole('button', { name: 'Download backup' })).toBeVisible({ timeout: 45_000 });
 
   // And then they press a link, like anybody would, and the screen behind it asks for the pages that went.
-  await page.getByRole('navigation').getByRole('link', { name: 'Cashflow', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Transactions', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: CORRUPT_HEADLINE, exact: true })).toBeVisible();
   /*
