@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
-import { clickAction, countsAs, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, waitingOrder } from './cashflow-desk-model';
+import { clickAction, countsAs, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, waitingOrder, waitingSpan } from './cashflow-desk-model';
 import type { ListRow } from './list-model';
 import { PeekRow } from './ReceiptPeek';
 import { kindWord, peekFigure, receiptPeekLines } from './receipt-peek-model';
@@ -280,23 +280,71 @@ describe('the waiting rows, the typing row and Record', () => {
     expect(waitingOrder(rows, ['b', 'a', 'z']).map((row) => row.id)).toEqual(['old', 'b', 'a', 'z']);
   });
 
-  it('records the complete ones of several picked, in the table’s order, and says how many are skipped', () => {
-    const waiting = [draft('a', {}), draft('b', { categoryAccountId: null }), draft('c', { amountMinor: 0 }), draft('d', {})].map((d) => ({ id: d.id, draft: d }));
-    const { ready, skipped } = recordable(['d', 'b', 'a', 'c'], waiting, accounts, '2026-11-18', 'IDR');
-    expect(ready.map((row) => row.id)).toEqual(['a', 'd']);
-    expect(skipped).toBe(2);
+  it('records those of several picked that can be, in the table’s order: a blank category is no reason to skip one', () => {
+    const waiting = [
+      draft('a', {}),
+      draft('b', { categoryAccountId: null }),
+      draft('c', { amountMinor: 0 }),
+      draft('d', {}),
+      draft('e', { accountId: null }),
+      draft('f', { occurredOn: 'soon' }),
+      draft('g', { description: '', categoryAccountId: null }),
+    ].map((d) => ({ id: d.id, draft: d }));
+    const { ready, skipped } = recordable(['d', 'b', 'a', 'c', 'e', 'f', 'g'], waiting, accounts, '2026-11-18', 'IDR');
+    // b (no category) and g (no note, no category) are recorded, under Uncategorised; c, e and f lack an amount, Paid
+    // with and a date.
+    expect(ready.map((row) => row.id)).toEqual(['a', 'b', 'd', 'g']);
+    expect(skipped).toBe(3);
     // A picked recorded row is no waiting row: neither recorded here nor skipped.
     expect(recordable(['a', 'tx1'], waiting, accounts, '2026-11-18', 'IDR')).toMatchObject({ skipped: 0 });
-    expect(skippedLine(1)).toBe('1 with a blank cell is skipped');
-    expect(skippedLine(2)).toBe('2 with a blank cell are skipped');
+    expect(skippedLine(1)).toBe('1 missing a date, amount or Paid with is skipped');
+    expect(skippedLine(2)).toBe('2 missing a date, amount or Paid with are skipped');
+  });
+
+  it('Record all is every waiting row that can be recorded, and says how many stay', () => {
+    const waiting = [draft('a', {}), draft('b', { categoryAccountId: null }), draft('c', { accountId: null }), draft('d', { occurredOn: '2026-08-30' })].map((d) => ({ id: d.id, draft: d }));
+    const all = recordable(waiting.map((row) => row.id), waiting, accounts, '2026-11-18', 'IDR');
+    expect(all.ready.map((row) => row.id)).toEqual(['a', 'b', 'd']);
+    expect(all.skipped).toBe(1);
+    expect(recordable([], waiting, accounts, '2026-11-18', 'IDR')).toEqual({ ready: [], skipped: 0 });
+  });
+
+  it('a click on a waiting row, then ⇧-click on another, picks every row between them; ⌘-click still toggles one', () => {
+    const ids = ['t1', 't2', 'w1', 'w2', 'w3', 'w4', 'w5'];
+    // A recorded row's peek was open; a plain click on the first waiting row (to type in it) lets it go and anchors there.
+    let state = selectionReducer({ ids: ['t2'], anchor: 't2' }, { type: 'anchor', id: 'w1' });
+    expect(state).toEqual({ ids: [], anchor: 'w1' });
+    expect(selectionReducer(state, { type: 'anchor', id: 'w1' })).toBe(state);
+    state = selectionReducer(state, clickAction('w4', { metaKey: false, ctrlKey: false, shiftKey: true }, ids));
+    expect(state.ids).toEqual(['w1', 'w2', 'w3', 'w4']);
+    // Upwards just the same.
+    expect(selectionReducer({ ids: [], anchor: 'w5' }, clickAction('w2', { metaKey: false, ctrlKey: false, shiftKey: true }, ids)).ids).toEqual(['w2', 'w3', 'w4', 'w5']);
+    state = selectionReducer(state, clickAction('w2', { metaKey: true, ctrlKey: false, shiftKey: false }, ids));
+    expect(state.ids).toEqual(['w1', 'w3', 'w4']);
+    // With nothing clicked yet, ⇧-click picks that row alone.
+    expect(selectionReducer(NO_SELECTION, clickAction('w3', { metaKey: false, ctrlKey: false, shiftKey: true }, ids))).toEqual({ ids: ['w3'], anchor: 'w3' });
+  });
+
+  it('says the waiting rows picked and the days they span', () => {
+    expect(waitingSpan(['2026-09-12', '2026-08-01', '2026-09-08'])).toBe('3 waiting rows · 1 Aug – 12 Sep 2026');
+    expect(waitingSpan(['2026-09-12'])).toBe('1 waiting row · 12 Sep 2026');
+    expect(waitingSpan(['2026-01-03', '2025-12-28'])).toBe('2 waiting rows · 28 Dec 2025 – 3 Jan 2026');
+    expect(waitingSpan(['2026-09-12', 'soon'])).toBe('2 waiting rows · 12 Sep 2026');
+    expect(waitingSpan(['soon'])).toBe('1 waiting row');
   });
 
   it('says where recorded rows went, by month, and Show › opens the latest', () => {
     expect(recordedToast(['2026-09'])).toEqual({ text: 'Recorded in September 2026', show: '2026-09' });
-    expect(recordedToast(['2026-09', '2026-08', '2026-09'])).toEqual({ text: 'Recorded in August and September 2026', show: '2026-09' });
-    expect(recordedToast(['2026-09', '2026-07', '2026-08'])).toEqual({ text: 'Recorded in July, August and September 2026', show: '2026-09' });
-    expect(recordedToast(['2026-01', '2025-12'])).toEqual({ text: 'Recorded in December 2025 and January 2026', show: '2026-01' });
+    expect(recordedToast(['2026-09', '2026-08', '2026-09'])).toEqual({ text: 'Recorded 3 in August and September 2026', show: '2026-09' });
+    expect(recordedToast(['2026-09', '2026-07', '2026-08'])).toEqual({ text: 'Recorded 3 in July, August and September 2026', show: '2026-09' });
+    expect(recordedToast(['2026-01', '2025-12'])).toEqual({ text: 'Recorded 2 in December 2025 and January 2026', show: '2026-01' });
     expect(recordedToast([])).toBeNull();
+  });
+
+  it('several rows recorded say how many, and those left waiting only when there are some', () => {
+    expect(recordedToast(['2026-09', '2026-08', '2026-09'], 0)).toEqual({ text: 'Recorded 3 in August and September 2026', show: '2026-09' });
+    expect(recordedToast(['2026-09', '2026-08'], 1)).toEqual({ text: 'Recorded 2 in August and September 2026 · 1 skipped', show: '2026-09' });
+    expect(recordedToast(['2026-09'], 2)?.text).toBe('Recorded in September 2026 · 2 skipped');
   });
 
   it('reads oldest at the top, the row typed last at the bottom, as newest first turned round whole', () => {

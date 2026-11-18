@@ -188,6 +188,17 @@ describe('Notion links remembered on this device', () => {
     expect(stale!.values.accountId).toBe('');
   });
 
+  it('a row recorded with no category (under Uncategorised) teaches its link nothing and fills no other row', () => {
+    const store = memory();
+    keepMarks({ n1: { text: FOOD, paid: CARD }, n2: { text: FOOD } }, new Set(), store);
+    const learnt = learnFromSaved('n1', blank({ accountId: 'bca' }), true, [{ id: 'n2', values: blank() }], store);
+    expect(rememberedCategory(FOOD, store)).toBeNull();
+    expect(learnt.fills).toEqual([]);
+    expect(learnt.marks).toEqual({ n2: { text: FOOD } });
+    // What paid is the owner's own pick, and is still learnt.
+    expect(rememberedPaid(CARD, store)).toBe('bca');
+  });
+
   it('a comma-separated cell is its own key, apart from either link alone', async () => {
     const store = memory();
     keepMarks({ c1: { text: BOTH } }, new Set(), store);

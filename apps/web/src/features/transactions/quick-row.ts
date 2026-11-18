@@ -100,23 +100,42 @@ export function keepsReadFigure(draft: DraftRow, values: QuickValues, today: str
   return draft.amountMinor !== 0 && values.amount.trim() === '' && quickFromDraft(draft, today, accounts).amount === '';
 }
 
-/** Reads the cells: either everything a purchase needs, or the list of what is missing, in cell order. */
-export function readQuick(values: QuickValues, accounts: readonly AccountRow[], today: string, baseCurrency: string): { read: QuickRead; needs: [] } | { read: null; needs: string[] } {
+/**
+ * Reads the cells: either everything a purchase needs, or the list of what is missing, in cell order.
+ *
+ * `categoryLater` is the desk's rule (Mac Cashflow, owner 2026-11-18): only a date, an amount and Paid with are needed.
+ * A row with no note records with none; one with no category (or one no spending category has) reads with `categoryId`
+ * '' and is recorded under Uncategorised (`withUncategorised`), where Cashflow's "Waiting for a category" finds it.
+ */
+export function readQuick(
+  values: QuickValues,
+  accounts: readonly AccountRow[],
+  today: string,
+  baseCurrency: string,
+  opts: { categoryLater?: boolean } = {},
+): { read: QuickRead; needs: [] } | { read: null; needs: string[] } {
   const account = accounts.find((a) => a.id === values.accountId);
   const currency = account?.currency ?? baseCurrency;
   const occurredOn = parseLooseDate(values.date, today);
   const amountMinor = parseLooseAmount(values.amount, currency);
+  const filed = accounts.some((a) => a.id === values.categoryId && a.kind === 'expense');
+  const later = !!opts.categoryLater;
   const needs: string[] = [];
   if (!occurredOn) needs.push('date');
-  if (!values.description.trim()) needs.push('description');
+  if (!later && !values.description.trim()) needs.push('description');
   if (amountMinor === null) needs.push('amount');
   if (!account) needs.push('paid with');
-  if (!accounts.some((a) => a.id === values.categoryId && a.kind === 'expense')) needs.push('category');
+  if (!later && !filed) needs.push('category');
   if (needs.length > 0 || !occurredOn || amountMinor === null || !account) return { read: null, needs };
   return {
-    read: { occurredOn, description: values.description.trim(), amountMinor, currency, accountId: account.id, cardId: values.cardId || null, categoryId: values.categoryId },
+    read: { occurredOn, description: values.description.trim(), amountMinor, currency, accountId: account.id, cardId: values.cardId || null, categoryId: filed ? values.categoryId : '' },
     needs: [],
   };
+}
+
+/** A row read with no category (`categoryLater`) filed under Uncategorised: `uncategorised` is asked only then. */
+export async function withUncategorised(read: QuickRead, uncategorised: () => Promise<string>): Promise<QuickRead> {
+  return read.categoryId ? read : { ...read, categoryId: await uncategorised() };
 }
 
 /**

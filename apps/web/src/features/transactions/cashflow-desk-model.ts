@@ -115,6 +115,11 @@ export const NO_SELECTION: Selection = { ids: [], anchor: null };
 export type SelectionAction =
   /** A plain click: this row alone, and its peek. */
   | { type: 'open'; id: string }
+  /**
+   * A plain click on a waiting row, to type in it: the rows picked let go, and a ⇧-click reaches from this row
+   * (Record many, B: click the first, ⇧-click the last).
+   */
+  | { type: 'anchor'; id: string }
   /** ⌘-click: this row added, or taken out when it was already picked. */
   | { type: 'toggle'; id: string }
   /** ⇧-click: every row from the anchor to this one, in the table's order, added to what is picked. */
@@ -134,6 +139,8 @@ export function selectionReducer(state: Selection, action: SelectionAction): Sel
   switch (action.type) {
     case 'open':
       return state.ids.length === 1 && state.ids[0] === action.id && state.anchor === action.id ? state : { ids: [action.id], anchor: action.id };
+    case 'anchor':
+      return state.ids.length === 0 && state.anchor === action.id ? state : { ids: [], anchor: action.id };
     case 'toggle':
       return state.ids.includes(action.id) ? { ids: state.ids.filter((id) => id !== action.id), anchor: action.id } : { ids: [...state.ids, action.id], anchor: action.id };
     case 'range': {
@@ -236,8 +243,10 @@ export function waitingOrder<T extends { id: string; draft?: Pick<DraftRow, 'cre
 }
 
 /**
- * Record N, with several waiting rows picked: the complete ones (by the very reading each row's own Record uses,
- * `readQuick`), in the table's order, and how many are skipped for a blank cell.
+ * Record N, with several waiting rows picked, and Record all: the ones that can be recorded (by the very reading each
+ * row's own Record uses, `readQuick` with the desk's `categoryLater`), in the table's order, and how many are skipped.
+ * Only a date, an amount or Paid with missing (or not read) skips a row: one with no category is recorded under
+ * Uncategorised (owner 2026-11-18).
  */
 export function recordable<T extends { id: string; draft?: DraftRow | null }>(
   picked: readonly string[],
@@ -247,25 +256,41 @@ export function recordable<T extends { id: string; draft?: DraftRow | null }>(
   baseCurrency: string,
 ): { ready: T[]; skipped: number } {
   const chosen = waiting.filter((row) => picked.includes(row.id) && row.draft);
-  const ready = chosen.filter((row) => readQuick(quickFromDraft(row.draft!, today, accounts), accounts, today, baseCurrency).needs.length === 0);
+  const ready = chosen.filter((row) => readQuick(quickFromDraft(row.draft!, today, accounts), accounts, today, baseCurrency, { categoryLater: true }).needs.length === 0);
   return { ready, skipped: chosen.length - ready.length };
 }
 
-/** Under Record N: "1 with a blank cell is skipped". */
-export const skippedLine = (count: number) => `${count} with a blank cell ${count === 1 ? 'is' : 'are'} skipped`;
+/** Under Record N: "1 missing a date, amount or Paid with is skipped" (a blank category skips nothing). */
+export const skippedLine = (count: number) => `${count} missing a date, amount or Paid with ${count === 1 ? 'is' : 'are'} skipped`;
+
+/** The waiting rows picked, under their total: "10 waiting rows · 1 Aug – 12 Sep 2026" (a date not read is left out). */
+export function waitingSpan(dates: readonly string[]): string {
+  const count = `${dates.length} waiting ${dates.length === 1 ? 'row' : 'rows'}`;
+  const read = dates.filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort();
+  if (read.length === 0) return count;
+  const first = read[0]!;
+  const last = read.at(-1)!;
+  const day = (iso: string, year: boolean) => `${Number(iso.slice(8))} ${monthName(iso.slice(0, 7), 'short')}${year ? ` ${iso.slice(0, 4)}` : ''}`;
+  const span = first === last ? day(first, true) : `${day(first, first.slice(0, 4) !== last.slice(0, 4))} – ${day(last, true)}`;
+  return `${count} · ${span}`;
+}
 
 /**
  * The toast after waiting rows are recorded: where they went, as months ("Recorded in September 2026"; several, "Recorded
  * in August and September 2026", or "Recorded in December 2025 and January 2026" across a year's end), and the month
- * Show › opens — the latest of them. `months` are YYYY-MM, each a recorded row's own period (`periodMonthOf`).
+ * Show › opens — the latest of them. `months` are YYYY-MM, each a recorded row's own period (`periodMonthOf`). Several
+ * rows say how many ("Recorded 29 in August and September 2026"); rows Record N or Record all left waiting are said
+ * only when there are some ("· 1 skipped").
  */
-export function recordedToast(months: readonly string[]): { text: string; show: string } | null {
+export function recordedToast(months: readonly string[], skipped = 0): { text: string; show: string } | null {
   const sorted = [...new Set(months)].sort();
   if (sorted.length === 0) return null;
   const years = new Set(sorted.map((month) => month.slice(0, 4)));
   const names = sorted.map((month) => (years.size === 1 ? monthName(month, 'long') : `${monthName(month, 'long')} ${month.slice(0, 4)}`));
   const listed = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names.at(-1)!}`;
-  return { text: `Recorded in ${listed}${years.size === 1 ? ` ${sorted[0]!.slice(0, 4)}` : ''}`, show: sorted.at(-1)! };
+  const how = months.length > 1 ? ` ${months.length}` : '';
+  const left = skipped > 0 ? ` · ${skipped} skipped` : '';
+  return { text: `Recorded${how} in ${listed}${years.size === 1 ? ` ${sorted[0]!.slice(0, 4)}` : ''}${left}`, show: sorted.at(-1)! };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cleanPastedCell, groupedAmountCell, isNotionPageLinks, notionKey, isQuickEditable, keepsReadFigure, lastFourOf, matchLastFour, parsePastedRows, pastedCells, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutNotionLinks, withoutPlaceholders } from './quick-row';
+import { cleanPastedCell, groupedAmountCell, isNotionPageLinks, notionKey, isQuickEditable, keepsReadFigure, lastFourOf, matchLastFour, parsePastedRows, pastedCells, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutNotionLinks, withoutPlaceholders, withUncategorised } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -74,6 +74,26 @@ describe('cells', () => {
 
   it('says what a row still needs, in cell order', () => {
     expect(readQuick({ date: 'soon', description: '', amount: '0', accountId: '', cardId: '', categoryId: 'salary' }, accounts, TODAY, 'IDR').needs).toEqual(['date', 'description', 'amount', 'paid with', 'category']);
+  });
+
+  it('on the desk needs only a date, an amount and Paid with: no category reads as none, to be filed under Uncategorised', async () => {
+    const later = { categoryLater: true };
+    expect(readQuick({ date: 'soon', description: '', amount: '0', accountId: '', cardId: '', categoryId: 'salary' }, accounts, TODAY, 'IDR', later).needs).toEqual(['date', 'amount', 'paid with']);
+    const blank = readQuick({ date: '12/9', description: '', amount: '45.000', accountId: 'bca', cardId: '', categoryId: '' }, accounts, TODAY, 'IDR', later);
+    expect(blank.needs).toEqual([]);
+    expect(blank.read).toMatchObject({ occurredOn: '2026-09-12', description: '', amountMinor: 45000, categoryId: '' });
+    // A category no spending category has (income's, say) is no category either.
+    expect(readQuick({ date: '12/9', description: 'Pasar', amount: '45.000', accountId: 'bca', cardId: '', categoryId: 'salary' }, accounts, TODAY, 'IDR', later).read?.categoryId).toBe('');
+    // Uncategorised is asked for only when the row has no category.
+    const asked: string[] = [];
+    const uncategorised = async () => {
+      asked.push('asked');
+      return 'uncat';
+    };
+    expect((await withUncategorised(blank.read!, uncategorised)).categoryId).toBe('uncat');
+    const filed = readQuick({ date: '12/9', description: 'Pasar', amount: '45.000', accountId: 'bca', cardId: '', categoryId: 'groceries' }, accounts, TODAY, 'IDR', later).read!;
+    expect((await withUncategorised(filed, uncategorised)).categoryId).toBe('groceries');
+    expect(asked).toEqual(['asked']);
   });
 
   it('fills cells from a draft, leaving an unreadable date as it came', () => {
