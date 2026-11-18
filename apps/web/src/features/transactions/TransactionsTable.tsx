@@ -10,7 +10,7 @@ import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
 import { ReceiptLink } from './ReceiptLink';
-import { groupedAmountCell, isQuickEditable, parsePastedRows, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
+import { groupedAmountCell, isQuickEditable, parsePastedRows, pastedCells, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
 
 export interface TableHandlers {
   busy: string | null;
@@ -18,7 +18,8 @@ export interface TableHandlers {
   recordTyped: (values: QuickValues) => Promise<boolean>;
   /** Keeps a typed row as not recorded, to finish later. */
   keepTyped: (values: QuickValues) => Promise<boolean>;
-  keepPasted: (rows: QuickValues[]) => Promise<boolean>;
+  /** Keeps pasted rows as not recorded. Resolves to the drafts made (in the order pasted), or null when none could be. */
+  keepPasted: (rows: QuickValues[]) => Promise<string[] | null>;
   guessCategory: (description: string) => Promise<string | null>;
   saveRecorded: (id: string, values: QuickValues) => Promise<boolean>;
   saveDraft: (id: string, values: QuickValues, record: boolean) => Promise<boolean>;
@@ -82,6 +83,8 @@ function TwoTap({ busy, label, onConfirm, compact = false }: { busy: boolean; la
 interface DeskLayout {
   /** What a category counts as, for the Counts as cell ('' until known). */
   countsAs: (categoryId: string) => string;
+  /** The line under the typing row after a paste: how many rows came in, and what can be done with them. */
+  pasted?: ReactNode;
 }
 
 export function TypingRow({
@@ -143,7 +146,9 @@ export function TypingRow({
         onPaste={(text) => {
           const rows = parsePastedRows(text);
           if (rows.length === 0) return false;
-          void handlers.keepPasted(rows.map((cells) => valuesFromCells(cells, { paid: options.resolvePaid, category: options.resolveCategory }, today)));
+          // Read in the columns this table shows; a header row (taken, never kept) may name them in any order.
+          const cells = pastedCells(rows, desk ? 'desk' : 'row');
+          if (cells.length > 0) void handlers.keepPasted(cells.map((each) => valuesFromCells(each, { paid: options.resolvePaid, category: options.resolveCategory }, today)));
           return true;
         }}
         actions={
@@ -162,7 +167,13 @@ export function TypingRow({
       />
       {/* The desk's box header carries the how-to; only the guess is said under the row. */}
       {desk ? (
-        guessed && <p className="px-2.5 pb-1 text-[11px] text-[var(--ph-ink-3)]">Category guessed from the last time this was bought here</p>
+        <>
+          {guessed && <p className="px-2.5 pb-1 text-[11px] text-[var(--ph-ink-3)]">Category guessed from the last time this was bought here</p>}
+          <p data-testid="paste-hint" className="px-2.5 pb-1 text-[11px] text-[var(--ph-ink-3)]">
+            Paste from a spreadsheet: Date · Note · Category · Paid with · Amount (or with a header row, any order)
+          </p>
+          {desk.pasted}
+        </>
       ) : (
         <p className="px-2.5 pb-1.5 text-xs text-slate-500">
           {guessed ? 'Category guessed from the last time this was bought here · ' : ''}Type a row and press <kbd>Enter</kbd> · paste rows straight from a spreadsheet · an incomplete row waits as not recorded

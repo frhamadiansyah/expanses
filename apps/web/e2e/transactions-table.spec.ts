@@ -87,7 +87,8 @@ test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) =
   // The pasted days are September's, and the table shows the month the clock reads: the clock is that month's.
   await page.clock.setSystemTime(new Date('2026-09-20T12:00:00'));
   await setUp(page);
-  const sheet = ['1/9\tGrab to office\t32.000\tBCA Tahapan\t', '2/9\tStarbucks\t58.000\tBCA\t'].join('\n');
+  // In the wide table's visible order (Date, Note, Category, Paid with, Amount), which is the order a paste is read in.
+  const sheet = ['1/9\tGrab to office\t\tBCA Tahapan\t32.000', '2/9\tStarbucks\t\tBCA\t58.000'].join('\n');
   // The cells read pasted names against the accounts, which are still loading while the cells wait (disabled).
   await expect(page.getByTestId('typing-row').getByLabel('Row paid with')).toBeEnabled();
   await page.getByTestId('typing-row').getByLabel('Row description').evaluate((input, text) => {
@@ -100,6 +101,63 @@ test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) =
   const grab = page.getByTestId('not-recorded-row').filter({ has: page.locator('input[value="Grab to office"]') });
   await expect(grab.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
   await expect(page.getByTestId('typing-row').getByLabel('Row description')).toHaveValue('');
+  await expect(grab.getByLabel('Row amount (IDR)')).toHaveValue('32.000');
+});
+
+/** Pastes text into the typing row's Note cell, as ⌘V from a spreadsheet does. */
+async function pasteInto(page: Page, text: string) {
+  await expect(page.getByTestId('typing-row').getByLabel('Row paid with')).toBeEnabled();
+  await page.getByTestId('typing-row').getByLabel('Row description').evaluate((input, sheet) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', sheet);
+    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
+}
+
+const draftRow = (page: Page, note: string) => page.getByTestId('not-recorded-row').filter({ has: page.locator(`input[value="${note}"]`) });
+
+test('rows pasted in the table’s own column order land in the right cells; Record ready records the ready ones, Undo takes a paste away', async ({ page }) => {
+  await page.clock.setSystemTime(new Date('2026-11-18T12:00:00'));
+  await setUp(page);
+  await expect(page.getByTestId('paste-hint')).toHaveText('Paste from a spreadsheet: Date · Note · Category · Paid with · Amount (or with a header row, any order)');
+
+  // Date, Note, Category, Paid with, Amount — as Sheets copies it, a Notion date and the money's name included. Invented.
+  const sheet = [
+    '2026-11-17\tPasar Santa\tGroceries\tBCA Tahapan\tRp 64.500',
+    'Nov 16, 2026\tWarung Tegal\tRestaurants\tBCA\t38,000',
+    '15/11/2026\tSomething odd\tNo such category\tBCA\t12000',
+  ].join('\n');
+  await pasteInto(page, sheet);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  const pasar = draftRow(page, 'Pasar Santa');
+  await expect(pasar.getByLabel('Row category')).toHaveValue('Groceries');
+  await expect(pasar.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
+  await expect(pasar.getByLabel('Row amount (IDR)')).toHaveValue('64.500');
+  await expect(pasar.getByLabel('Row date')).toHaveValue('17 Nov');
+  const warung = draftRow(page, 'Warung Tegal');
+  await expect(warung.getByLabel('Row category')).toHaveValue('Restaurants');
+  await expect(warung.getByLabel('Row amount (IDR)')).toHaveValue('38.000');
+  await expect(warung.getByLabel('Row date')).toHaveValue('16 Nov');
+  // A category it cannot find is left empty for the row to show, never guessed.
+  await expect(draftRow(page, 'Something odd').getByLabel('Row category')).toHaveValue('');
+
+  const summary = page.getByTestId('paste-summary');
+  await expect(summary).toContainText('Pasted 3 rows · 2 ready to record · 1 needs a fix');
+  await summary.getByRole('button', { name: 'Record 2 ready' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(page.getByTestId('transaction-row')).toHaveCount(2);
+  await expect(summary).toContainText('Pasted 3 rows · 0 ready to record · 1 needs a fix');
+
+  // A header row, in another order, names the columns; it is not kept as a row. Undo takes the whole paste away.
+  await pasteInto(page, ['Amount\tKategori\tNote\tDate\tPaid with', '25.000\tGroceries\tKios buah\t17 Nov\tBCA', '9.000\tGroceries\tKios sayur\t17 Nov\tBCA'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  await expect(draftRow(page, 'Kios buah').getByLabel('Row amount (IDR)')).toHaveValue('25.000');
+  await expect(draftRow(page, 'Kios buah').getByLabel('Row category')).toHaveValue('Groceries');
+  await expect(page.locator('input[value="Note"]')).toHaveCount(0);
+  await expect(summary).toContainText('Pasted 2 rows · 2 ready to record · 0 need a fix');
+  await summary.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(summary).toHaveCount(0);
 });
 
 /**

@@ -200,8 +200,8 @@ export function payerOptions(accounts: readonly AccountRow[], cards: readonly Ca
 
 /**
  * Rows pasted from a spreadsheet, as cells. Text with no tab and no line break is an ordinary paste
- * into one cell and gives nothing back. Columns are read in the table's order: date, description,
- * amount, paid with, category; a row that is blank throughout is skipped.
+ * into one cell and gives nothing back. A row that is blank throughout is skipped. Which cell is which is
+ * `pastedCells`' work.
  */
 export function parsePastedRows(text: string): string[][] {
   if (!/[\t\n]/.test(text.trim())) return [];
@@ -212,14 +212,90 @@ export function parsePastedRows(text: string): string[][] {
     .filter((cells) => cells.some(Boolean));
 }
 
+/** One pasted row's cells, named. */
+export interface PastedCells {
+  date: string;
+  description: string;
+  amount: string;
+  paid: string;
+  category: string;
+}
+
+type PastedColumn = keyof PastedCells | 'countsAs';
+
+/**
+ * The columns a paste with no header row is read in: the order the table shows them, so a sheet laid out as the
+ * table reads straight in. `row` is the list's (and the narrow table's) Date, Description, Amount, Paid with,
+ * Category; `desk` the wide Cashflow's Date, Note, Category, Paid with, Amount — and with a sixth column, the one
+ * before the amount is its Counts as, which is the category's own and is not read.
+ */
+export const PASTE_COLUMNS: Record<'row' | 'desk', readonly PastedColumn[]> = {
+  row: ['date', 'description', 'amount', 'paid', 'category'],
+  desk: ['date', 'description', 'category', 'paid', 'amount'],
+};
+const DESK_SIX: readonly PastedColumn[] = ['date', 'description', 'category', 'paid', 'countsAs', 'amount'];
+
+/** A header row's names, in English and Indonesian, any case. */
+const HEADER_NAMES: Record<string, PastedColumn> = {
+  date: 'date',
+  tanggal: 'date',
+  tgl: 'date',
+  note: 'description',
+  notes: 'description',
+  description: 'description',
+  keterangan: 'description',
+  category: 'category',
+  kategori: 'category',
+  'paid with': 'paid',
+  account: 'paid',
+  akun: 'paid',
+  amount: 'amount',
+  jumlah: 'amount',
+  nominal: 'amount',
+  'counts as': 'countsAs',
+};
+
+const headerOf = (cell: string): PastedColumn | null => HEADER_NAMES[cell.trim().toLowerCase().replace(/\s+/g, ' ')] ?? null;
+
+/**
+ * A first row that names columns is a header — every cell in it a column's name, or at least two of them with others
+ * the app does not know (left out): its names say which cell is which, in any order, and it is not a row to keep.
+ */
+function headerColumns(cells: readonly string[]): (PastedColumn | null)[] | null {
+  const named = cells.map(headerOf);
+  const known = named.filter((column) => column !== null).length;
+  const filled = cells.filter(Boolean).length;
+  return known > 0 && (known === filled || known >= 2) ? named : null;
+}
+
+/**
+ * Pasted rows as named cells. A header row maps them by name; with none, they are read in `layout`'s visible order
+ * (`PASTE_COLUMNS`), the wide table's six columns when the paste has six. Nothing is guessed: a cell sits where its
+ * column says, and one that cannot be read is left for the row to show as missing.
+ */
+export function pastedCells(rows: readonly (readonly string[])[], layout: 'row' | 'desk'): PastedCells[] {
+  if (rows.length === 0) return [];
+  const header = headerColumns(rows[0]!);
+  const body = header ? rows.slice(1) : rows;
+  const wide = Math.max(...rows.map((cells) => cells.length));
+  const columns: readonly (PastedColumn | null)[] = header ?? (layout === 'desk' && wide >= 6 ? DESK_SIX : PASTE_COLUMNS[layout]);
+  return body.map((cells) => {
+    const named: PastedCells = { date: '', description: '', amount: '', paid: '', category: '' };
+    columns.forEach((column, i) => {
+      // The first column of a name wins, should a header name one twice.
+      if (column && column !== 'countsAs' && !named[column]) named[column] = cells[i] ?? '';
+    });
+    return named;
+  });
+}
+
 /** Cells as pasted, into row values: a date read where it can be, the account and category matched by name. */
 export function valuesFromCells(
-  cells: readonly string[],
+  cells: PastedCells,
   resolve: { paid: (text: string) => string | null; category: (text: string) => string | null },
   today: string,
 ): QuickValues {
-  const [date = '', description = '', amount = '', paid = '', category = ''] = cells;
-  const iso = parseLooseDate(date, today);
-  const [accountId = '', cardId = ''] = (resolve.paid(paid) ?? '').split(':');
-  return { date: iso ? shortDate(iso, today) : date, description, amount, accountId, cardId, categoryId: resolve.category(category) ?? '' };
+  const iso = parseLooseDate(cells.date, today);
+  const [accountId = '', cardId = ''] = (resolve.paid(cells.paid) ?? '').split(':');
+  return { date: iso ? shortDate(iso, today) : cells.date, description: cells.description, amount: cells.amount, accountId, cardId, categoryId: resolve.category(cells.category) ?? '' };
 }

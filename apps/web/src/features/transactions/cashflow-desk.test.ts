@@ -1,9 +1,10 @@
 import type { TrendBar } from '@expanses/core';
+import type { AccountRow, DraftRow } from '@expanses/db';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
-import { clickAction, countsAs, dayBarsShape, monthFigures, NO_SELECTION, pageShortcut, peekKey, ringArcs, ringLegend, type Selection, selectionReducer } from './cashflow-desk-model';
+import { clickAction, countsAs, dayBarsShape, monthFigures, NO_SELECTION, pageShortcut, pasteLine, pasteSummary, peekKey, ringArcs, ringLegend, type Selection, selectionReducer } from './cashflow-desk-model';
 import { CashflowPeek, type PeekView } from './CashflowPeek';
 
 const colour = (id: string) => `#${id.padStart(6, '0').slice(-6)}`;
@@ -238,5 +239,30 @@ describe('picking several rows, the Mac way', () => {
     expect(selectionReducer(many, { type: 'step', by: 1, ids })).toBe(many);
     expect(selectionReducer(many, { type: 'listed', ids: ['t1', 't2', 't3'] })).toEqual({ ids: ['t1', 't3'], anchor: null });
     expect(selectionReducer(many, { type: 'keep', ids: ['t3'] })).toEqual({ ids: ['t3'], anchor: 't3' });
+  });
+});
+
+describe('a paste into the typing row', () => {
+  const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null): AccountRow => ({
+    id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency, valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-11-01T00:00:00Z',
+  });
+  const accounts = [account('bca', 'asset', 'bank', 'IDR'), account('groceries', 'expense', 'category', null)];
+  const draft = (id: string, extra: Partial<DraftRow>): DraftRow => ({
+    id, source: 'manual', kind: 'expense', status: 'pending', rawPayload: null, occurredOn: '2026-11-17', description: 'Pasar', amountMinor: 50_000, currency: 'IDR',
+    accountId: 'bca', toAccountId: null, categoryAccountId: 'groceries', cardId: null, sourceId: null, captureIds: [], imageFile: null, reading: null, mergedInto: null,
+    confidence: null, externalRef: null, transactionId: null, ...extra,
+  });
+
+  it('counts the rows pasted, the ones ready to record and the ones with a cell to fix, from the drafts as they are now', () => {
+    const drafts = [draft('a', {}), draft('b', { categoryAccountId: null }), draft('c', { amountMinor: 0 }), draft('other', {})];
+    const summary = pasteSummary(['a', 'b', 'c'], drafts, accounts, '2026-11-18', 'IDR');
+    expect(summary.ready.map((d) => d.id)).toEqual(['a']);
+    expect([summary.pasted, summary.waiting.length, summary.toFix]).toEqual([3, 3, 2]);
+    expect(pasteLine(summary)).toBe('Pasted 3 rows · 1 ready to record · 2 need a fix');
+    // One recorded (or discarded) has left the drafts: it is no longer waiting.
+    const after = pasteSummary(['a', 'b', 'c'], drafts.slice(1), accounts, '2026-11-18', 'IDR');
+    expect(pasteLine(after)).toBe('Pasted 3 rows · 0 ready to record · 2 need a fix');
+    expect(pasteLine(pasteSummary(['a'], drafts, accounts, '2026-11-18', 'IDR'))).toBe('Pasted 1 row · 1 ready to record · 0 need a fix');
+    expect(pasteLine(pasteSummary(['a', 'b'], drafts, accounts, '2026-11-18', 'IDR'))).toBe('Pasted 2 rows · 1 ready to record · 1 needs a fix');
   });
 });

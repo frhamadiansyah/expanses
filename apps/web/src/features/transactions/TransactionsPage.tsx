@@ -955,10 +955,14 @@ export function TransactionsPage() {
   }
 
   const keepTyped = (values: QuickValues) => run('typing', () => createDraft(database, ws, { source: 'manual', ...draftFields(values) }));
-  const keepPasted = (pasted: QuickValues[]) =>
-    run('typing', async () => {
-      for (const values of pasted) await createDraft(database, ws, { source: 'manual', ...draftFields(values) });
+  const keepPasted = async (pasted: QuickValues[]) => {
+    const made: string[] = [];
+    const ok = await run('typing', async () => {
+      for (const values of pasted) made.push(await createDraft(database, ws, { source: 'manual', ...draftFields(values) }));
     });
+    // Those made before a failure are kept, and named, so the paste can still be undone whole.
+    return ok || made.length > 0 ? made : null;
+  };
 
   async function saveDraft(id: string, values: QuickValues, record: boolean): Promise<boolean> {
     const fields = draftFields(values);
@@ -1608,6 +1612,7 @@ export function TransactionsPage() {
         emptyText={listable.length === 0 ? 'No transactions in this period. Type the first one above.' : 'Nothing matches the search and filters.'}
         limitNote={month === 'all' && recorded.length >= ALL_TIME_LIMIT ? `The newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only` : undefined}
         pendingCount={pending.length}
+        drafts={drafts.data ?? []}
         accounts={accounts}
         rowOptions={rowOptions}
         handlers={tableHandlers}

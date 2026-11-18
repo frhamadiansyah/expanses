@@ -1,5 +1,5 @@
 import { categoryTree, formatMinor, monthName, parsePeriod, periodLabel, stepPeriod } from '@expanses/core';
-import { type AccountRow, categoryTotalsIn, firstTransactionDate } from '@expanses/db';
+import { type AccountRow, categoryTotalsIn, type DraftRow, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search, X } from 'lucide-react';
@@ -12,13 +12,13 @@ import { useCategorySetMembership, useCategorySets } from '../categories/set-que
 import { useResolvedNeeds } from '../essential-split/queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
-import { clickAction, countsAs, monthFigures, pageShortcut, peekKey, ringLegend, type Selection, type SelectionAction } from './cashflow-desk-model';
+import { clickAction, countsAs, monthFigures, pageShortcut, pasteLine, pasteSummary, peekKey, ringLegend, type Selection, type SelectionAction } from './cashflow-desk-model';
 import { type BulkActions, CashflowPeek, type PeekView, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { amountExtraParts, categoryButtonLabel, type ListFilters, type ListRow, type Sort, wholeLeftOut } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
-import { shortDate } from './quick-row';
+import { quickFromDraft, shortDate } from './quick-row';
 import { ReceiptLink } from './ReceiptLink';
 import { useSpendingTrend } from './SpendingTrend';
 import { EditableRow, type TableHandlers, TypingRow } from './TransactionsTable';
@@ -237,6 +237,7 @@ export function DesktopCashflow({
   emptyText,
   limitNote,
   pendingCount,
+  drafts,
   accounts,
   rowOptions,
   handlers,
@@ -274,6 +275,8 @@ export function DesktopCashflow({
   emptyText: string;
   limitNote?: string;
   pendingCount: number;
+  /** Every row waiting as not recorded: where a paste's rows are found again, whatever the table is narrowed to. */
+  drafts: readonly DraftRow[];
   accounts: readonly AccountRow[];
   rowOptions: RowOptions;
   handlers: TableHandlers;
@@ -390,6 +393,50 @@ export function DesktopCashflow({
   }, []);
 
   const icon = (categoryId: string) => <CategoryIcon categoryId={categoryId} accounts={accounts} size="xs" />;
+  // The last paste into the typing row: its drafts, kept as rows to finish, and the line that says where they stand.
+  const [pasted, setPasted] = useState<{ ids: string[]; recorded: boolean } | null>(null);
+  const [pasteBusy, setPasteBusy] = useState(false);
+  const typingHandlers: TableHandlers = {
+    ...handlers,
+    keepPasted: async (values) => {
+      const ids = await handlers.keepPasted(values);
+      if (ids && ids.length > 0) setPasted({ ids, recorded: false });
+      return ids;
+    },
+  };
+  const paste = pasted ? pasteSummary(pasted.ids, drafts, accounts, today, baseCurrency) : null;
+  const pasteWork = (work: () => Promise<void>) => {
+    setPasteBusy(true);
+    void work().finally(() => setPasteBusy(false));
+  };
+  // Each ready row is recorded the way its own Record records a draft, one after another.
+  const recordReady = () =>
+    pasteWork(async () => {
+      for (const draft of paste?.ready ?? []) await handlers.saveDraft(draft.id, quickFromDraft(draft, today, accounts), true);
+      setPasted((was) => (was ? { ...was, recorded: true } : was));
+    });
+  // Undo takes the whole paste away: every row of it still waiting is discarded.
+  const undoPaste = () =>
+    pasteWork(async () => {
+      for (const draft of paste?.waiting ?? []) await handlers.dismissDraft(draft.id);
+      setPasted(null);
+    });
+  const pastedLine =
+    paste && paste.waiting.length > 0 ? (
+      <p data-testid="paste-summary" role="status" className="flex flex-wrap items-center gap-x-[10px] gap-y-[2px] px-2.5 pb-1.5 text-[11.5px] text-[var(--ph-ink-2)]">
+        <span>{pasteLine(paste)}</span>
+        {paste.ready.length > 0 && (
+          <button type="button" disabled={pasteBusy} onClick={recordReady} className="font-medium text-[var(--mac-accent)] hover:underline disabled:opacity-50">
+            Record {paste.ready.length} ready
+          </button>
+        )}
+        {!pasted?.recorded && (
+          <button type="button" disabled={pasteBusy} onClick={undoPaste} className="text-[var(--mac-accent)] hover:underline disabled:opacity-50">
+            Undo
+          </button>
+        )}
+      </p>
+    ) : null;
   const desk = { countsAs: (categoryId: string) => countsAs({ type: 'expense', categoryId }, needs) };
   const at = selected ? ids.indexOf(selected.id) : -1;
   const sortBy = (key: Sort['key']) => onSort({ key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' });
@@ -550,7 +597,7 @@ export function DesktopCashflow({
                 </button>
                 <span />
               </div>
-              {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} desk={desk} />}
+              {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={typingHandlers} desk={{ ...desk, pasted: pastedLine }} />}
               {rows.length === 0 && (
                 <div className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
                   {emptyText}

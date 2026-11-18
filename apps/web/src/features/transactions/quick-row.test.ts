@@ -1,7 +1,7 @@
 import { matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { groupedAmountCell, isQuickEditable, keepsReadFigure, parsePastedRows, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
+import { groupedAmountCell, isQuickEditable, keepsReadFigure, parsePastedRows, pastedCells, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -243,14 +243,65 @@ describe('pasting rows', () => {
     expect(parsePastedRows('Superindo\n')).toEqual([]);
   });
 
-  it('reads spreadsheet rows in column order, skipping blank ones', () => {
+  it('reads spreadsheet rows in the list’s column order, skipping blank ones', () => {
     const rows = parsePastedRows('12/9\tSuperindo\t450.000\tBonvoy 8802\tGroceries\r\n\t\t\n13 Sep\tGrab\t32000\n');
     expect(rows).toEqual([
       ['12/9', 'Superindo', '450.000', 'Bonvoy 8802', 'Groceries'],
       ['13 Sep', 'Grab', '32000'],
     ]);
-    expect(valuesFromCells(rows[0]!, resolve, TODAY)).toEqual({ date: '12 Sep', description: 'Superindo', amount: '450.000', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
-    expect(valuesFromCells(rows[1]!, resolve, TODAY)).toMatchObject({ date: '13 Sep', accountId: '', categoryId: '' });
+    const cells = pastedCells(rows, 'row');
+    expect(valuesFromCells(cells[0]!, resolve, TODAY)).toEqual({ date: '12 Sep', description: 'Superindo', amount: '450.000', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
+    expect(valuesFromCells(cells[1]!, resolve, TODAY)).toMatchObject({ date: '13 Sep', accountId: '', categoryId: '' });
+  });
+
+  it('reads the wide table’s order with no header: Date, Note, Category, Paid with, Amount', () => {
+    const rows = parsePastedRows('12/9\tSuperindo\tGroceries\tBonvoy 8802\t450.000\n13 Sep\tGrab\tTransport\tBCA\t32000');
+    expect(pastedCells(rows, 'desk')).toEqual([
+      { date: '12/9', description: 'Superindo', category: 'Groceries', paid: 'Bonvoy 8802', amount: '450.000' },
+      { date: '13 Sep', description: 'Grab', category: 'Transport', paid: 'BCA', amount: '32000' },
+    ]);
+    expect(valuesFromCells(pastedCells(rows, 'desk')[0]!, resolve, TODAY)).toEqual({ date: '12 Sep', description: 'Superindo', amount: '450.000', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
+    // The same text in the list's order reads the category as the amount: each table reads its own order.
+    expect(pastedCells(rows, 'row')[0]).toMatchObject({ amount: 'Groceries', category: '450.000' });
+  });
+
+  it('takes a sixth column as the table’s Counts as and leaves it out', () => {
+    const rows = parsePastedRows('17 Nov 2026\tSuperindo\tGroceries\tBonvoy 8802\tEssential\tRp 450.000\n18 Nov 2026\tGrab\tTransport\tBCA\t\t32.000');
+    expect(pastedCells(rows, 'desk')).toEqual([
+      { date: '17 Nov 2026', description: 'Superindo', category: 'Groceries', paid: 'Bonvoy 8802', amount: 'Rp 450.000' },
+      { date: '18 Nov 2026', description: 'Grab', category: 'Transport', paid: 'BCA', amount: '32.000' },
+    ]);
+  });
+
+  it('maps a header row by its names, in any order and any case, and does not keep it', () => {
+    const rows = parsePastedRows('AMOUNT\tKeterangan\tTanggal\tSource\tAkun\tKategori\n50.000\tSuperindo\t17/11/2026\tsheet\tBonvoy 8802\tGroceries');
+    expect(pastedCells(rows, 'desk')).toEqual([{ date: '17/11/2026', description: 'Superindo', category: 'Groceries', paid: 'Bonvoy 8802', amount: '50.000' }]);
+    // English names, Counts as named and left out.
+    const english = parsePastedRows('Paid with\tCounts as\tNote\tDate\tCategory\tAmount\nBCA\tEssential\tGrab\t2026-11-17\tTransport\t32000');
+    expect(pastedCells(english, 'desk')).toEqual([{ date: '2026-11-17', description: 'Grab', category: 'Transport', paid: 'BCA', amount: '32000' }]);
+    expect(pastedCells(parsePastedRows('Description\tAccount\tNominal\nGojek\tBCA\t15000'), 'row')).toEqual([{ date: '', description: 'Gojek', category: '', paid: 'BCA', amount: '15000' }]);
+  });
+
+  it('a header with nothing under it pastes no rows', () => {
+    expect(pastedCells(parsePastedRows('Date\tNote\tCategory\tPaid with\tAmount\n'), 'desk')).toEqual([]);
+    expect(pastedCells(parsePastedRows('Tanggal\tJumlah'), 'desk')).toEqual([]);
+  });
+
+  it('reads the dates Sheets and Notion copy, and leaves one it cannot read as it was, never guessed', () => {
+    const date = (text: string) => valuesFromCells({ date: text, description: 'x', amount: '1', paid: '', category: '' }, resolve, '2026-11-18').date;
+    for (const text of ['2026-11-17', '17/11/2026', '17-11-2026', '17 Nov 2026', '17 Nov', 'November 17, 2026', 'Nov 17, 2026']) expect(date(text), text).toBe('17 Nov');
+    expect(date('sometime')).toBe('sometime');
+    expect(date('31/02/2026')).toBe('31/02/2026');
+  });
+
+  it('reads the amounts a sheet holds, with or without the money’s name, and refuses one that is not a figure', () => {
+    const values = (amount: string) => valuesFromCells({ date: '17 Nov', description: 'x', amount, paid: '8802', category: 'Groceries' }, resolve, TODAY);
+    for (const amount of ['Rp 50.000', '50.000', '50,000', '50000', 'Rp50.000', 'IDR 50.000']) {
+      const read = readQuick(values(amount), accounts, TODAY, 'IDR');
+      expect(read.needs, amount).toEqual([]);
+      expect(read.read?.amountMinor, amount).toBe(50_000);
+    }
+    expect(readQuick(values('lima puluh'), accounts, TODAY, 'IDR').needs).toEqual(['amount']);
   });
 });
 
