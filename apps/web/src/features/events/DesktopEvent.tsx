@@ -11,9 +11,12 @@ import { goalCard } from '../goals/goal-cards';
 import { useGoalPlans } from '../goals/queries';
 import { BOX, BoxHead, NOTE, RingBox } from '../transactions/CashflowBoxes';
 import { ringLegend } from '../transactions/cashflow-desk-model';
-import { amountExtraParts, buildRows } from '../transactions/list-model';
+import { amountExtraParts, buildRows, categoryButtonLabel, type ListRow } from '../transactions/list-model';
 import { shortDate } from '../transactions/quick-row';
 import { ReceiptPeek } from '../transactions/ReceiptPeek';
+import { useRecategorise } from '../transactions/TransactionRow';
+import { editInsteadIn } from '../workspaces/filing';
+import { useWorkspaceBadges } from '../workspaces/queries';
 import { addSpendingTarget, buyTarget } from './buy-item';
 import { AddCostLink, BoxRow, EventDesk, EventTitleBar, PlanBox, PlanTable, TableTabs, TD, TH } from './DeskEventParts';
 import { eventDates } from './event-dates';
@@ -57,6 +60,10 @@ export function DesktopLocalEvent() {
   const colourFor = useCategoryMarkColour();
   const today = isoDate();
   const currency = ws.baseCurrency;
+  // The category gesture, as on the phone's history: a row filed in the open workspace may be re-filed from its icon.
+  const recategorise = useRecategorise();
+  const historyBadges = useWorkspaceBadges((history.data ?? []).map((tx) => tx.id));
+  const filedHere = (transactionId: string) => historyBadges.ready && editInsteadIn(historyBadges.of(transactionId), ws.bookId) === null;
 
   const [error, setError] = useState<unknown>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -244,6 +251,12 @@ export function DesktopLocalEvent() {
               )}
               <span className="flex-1" />
               <span className={NOTE}>{table === 'plan' ? 'type a planned figure in its row · Status ticks Done buying' : shown.length > 0 ? 'click a row to see it' : ''}</span>
+              {/* The phone's plan page, whole: its summary, what nobody planned and money back by row, Link to costs. */}
+              {table === 'plan' && planned && (
+                <Link to="/events/$eventId/plan" params={{ eventId }} search={{ ws: openTab ?? undefined }} data-testid="open-plan" className="shrink-0 text-[12px] text-[var(--mac-accent)] hover:underline">
+                  Whole plan ›
+                </Link>
+              )}
             </div>
             {table === 'plan' && planned && data ? (
               <PlanTable
@@ -267,7 +280,16 @@ export function DesktopLocalEvent() {
                 addCost={<AddCostLink to="/events/$eventId/plan/new" eventId={eventId} />}
               />
             ) : (
-              <TransactionsTable txs={shown} accounts={accounts} today={today} currency={currency} peekId={peeking ? peekId : null} onPeek={setPeekId} filtered={picked !== null} />
+              <TransactionsTable
+                txs={shown}
+                accounts={accounts}
+                today={today}
+                currency={currency}
+                peekId={peeking ? peekId : null}
+                onPeek={setPeekId}
+                filtered={picked !== null}
+                refile={(row) => (recategorise.offers(row) && filedHere(row.id) ? () => recategorise.start(row) : null)}
+              />
             )}
           </section>
         )}
@@ -306,6 +328,8 @@ export function DesktopLocalEvent() {
         )}
       </div>
 
+      {/* The category sheet and its Undo toast, once for the page. */}
+      {recategorise.overlay}
       {peeking && peekId && (
         <ReceiptPeek
           top={peekTop}
@@ -334,7 +358,10 @@ function TransactionsTable({
   peekId,
   onPeek,
   filtered,
+  refile,
 }: {
+  /** Re-filing a row from its icon (the phone history's gesture), where it may be. */
+  refile: (row: ListRow) => (() => void) | null;
   txs: readonly TransactionView[];
   accounts: Parameters<typeof buildRows>[2];
   today: string;
@@ -391,7 +418,23 @@ function TransactionsTable({
               </td>
               <td className={cx(TD, selected && '[&_[data-testid=category-mark]]:bg-white!')}>
                 <span className="flex min-w-0 items-center gap-[6px]">
-                  <CategoryIcon categoryId={expense?.accountId ?? null} accounts={accounts} size="xs" />
+                  {listRow && refile(listRow) ? (
+                    <button
+                      type="button"
+                      aria-label={categoryButtonLabel(tx.description, { refund: !!listRow.refund })}
+                      title="Change the category"
+                      onClick={(event) => {
+                        // Re-filing is not opening: the row's own click (the peek) is left alone.
+                        event.stopPropagation();
+                        refile(listRow)?.();
+                      }}
+                      className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]"
+                    >
+                      <CategoryIcon categoryId={expense?.accountId ?? null} accounts={accounts} size="xs" />
+                    </button>
+                  ) : (
+                    <CategoryIcon categoryId={expense?.accountId ?? null} accounts={accounts} size="xs" />
+                  )}
                   <span className="truncate">{expense?.accountName ?? 'No category'}</span>
                 </span>
               </td>
