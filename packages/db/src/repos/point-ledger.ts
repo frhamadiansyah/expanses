@@ -20,7 +20,7 @@ import {
 } from '@expanses/core';
 import { and, eq, getTableColumns, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Tx } from '../database';
 import { accounts } from '../schema';
 import { earnsInto, pointEntries, pointProgrammes, pointSnapshots, rewardPrograms } from '../schema-points';
 import { findProgramme, programmeIdOf, programmesExist, readProgrammeValues } from './programme-link';
@@ -174,8 +174,11 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
   }
 
   await database.transaction(async (tx) => {
-    await tx
-      .delete(pointEntries)
+    // Each entry keeps its id from one working-out to the next: a write-off or a redemption names the batch it drew on
+    // by that id, so a batch written again under a new one would look full again and die a second time.
+    const existing = await tx
+      .select({ id: pointEntries.id, transactionId: pointEntries.transactionId, occurredOn: pointEntries.occurredOn, quantity: pointEntries.quantity, status: pointEntries.status, source: pointEntries.source, expiresOn: pointEntries.expiresOn, programId: pointEntries.programId })
+      .from(pointEntries)
       .where(
         and(
           eq(pointEntries.workspaceId, ws.workspaceId),
@@ -185,11 +188,123 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
           gte(pointEntries.occurredOn, cycle.start),
           lte(pointEntries.occurredOn, cycle.end),
         ),
-      );
-    if (fresh.length > 0) await tx.insert(pointEntries).values(fresh);
+      )
+      .orderBy(pointEntries.id);
+    // The same purchase on the same day is the same batch, whatever the evidence for its figure: the issuer's figure
+    // replacing the app's own keeps the batch, and what was drawn on it.
+    const keyOf = (entry: { transactionId: string | null; occurredOn: string }) => `${entry.transactionId ?? ''}|${entry.occurredOn}`;
+    const unmatched = new Map<string, (typeof existing)[number][]>();
+    for (const entry of existing) unmatched.set(keyOf(entry), [...(unmatched.get(keyOf(entry)) ?? []), entry]);
+
+    const added: ReturnType<typeof row>[] = [];
+    const changed: string[] = [];
+    for (const entry of fresh) {
+      const kept = unmatched.get(keyOf(entry))?.shift();
+      if (!kept) {
+        added.push(entry);
+        continue;
+      }
+      entry.id = kept.id;
+      const same = kept.quantity === entry.quantity && kept.status === entry.status && kept.source === entry.source && kept.expiresOn === entry.expiresOn && kept.programId === entry.programId;
+      if (same) continue;
+      await tx
+        .update(pointEntries)
+        .set({ programId: entry.programId, quantity: entry.quantity, status: entry.status, source: entry.source, expiresOn: entry.expiresOn })
+        .where(eq(pointEntries.id, kept.id));
+      if (kept.quantity !== entry.quantity || kept.expiresOn !== entry.expiresOn) changed.push(kept.id);
+    }
+    const gone = [...unmatched.values()].flat().map((entry) => entry.id);
+    if (gone.length > 0) await tx.delete(pointEntries).where(inArray(pointEntries.id, gone));
+    if (added.length > 0) await tx.insert(pointEntries).values(added);
+    await mendBatchesTx(tx, ws, gone, changed);
   });
 
   return fresh.length;
+}
+
+/** A write-off is the app's own act, worked out again from the batches whenever it is missing. */
+const isWriteOff = and(eq(pointEntries.kind, 'expire'), eq(pointEntries.source, 'system'));
+
+/**
+ * After batches went away (`gone`) or changed figure or date (`changed`): their write-offs are dropped, for
+ * `expireDueEntries` to write again from what the batch now holds, and whatever else drew on a batch that went away
+ * is drawn again from the batches still there (`redrawTx`).
+ */
+async function mendBatchesTx(tx: Tx, ws: WorkspaceContext, gone: string[], changed: string[]): Promise<void> {
+  const touched = [...gone, ...changed];
+  if (touched.length === 0) return;
+  await tx.delete(pointEntries).where(and(eq(pointEntries.workspaceId, ws.workspaceId), isWriteOff, inArray(pointEntries.batchId, touched)));
+  if (gone.length === 0) return;
+  const orphans = await tx
+    .select()
+    .from(pointEntries)
+    .where(and(eq(pointEntries.workspaceId, ws.workspaceId), inArray(pointEntries.batchId, gone)));
+  await redrawTx(tx, ws, orphans);
+}
+
+/**
+ * Draws each spending, conversion out or correction downward whose batch no longer exists from the batches that were
+ * live on its day, soonest to die first, as `recordRedemption` would have. One that spans batches becomes one entry per
+ * batch, as a redemption is written; what no live batch can cover stays in the total, drawn on no batch. The
+ * write-offs of the batches drawn on are dropped, to be written again from what each now holds.
+ */
+async function redrawTx(tx: Tx, ws: WorkspaceContext, orphans: (typeof pointEntries.$inferSelect)[]): Promise<void> {
+  const ordered = [...orphans].sort((a, b) => a.occurredOn.localeCompare(b.occurredOn) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  const drawnOn = new Set<string>();
+  for (const orphan of ordered) {
+    const wanted = -orphan.quantity;
+    if (!(wanted > 0)) {
+      await tx.update(pointEntries).set({ batchId: null }).where(eq(pointEntries.id, orphan.id));
+      continue;
+    }
+    // What was live on the day, before anything was written off: a write-off is dated when its batch died.
+    const ledger = (await tx.select().from(pointEntries).where(and(eq(pointEntries.workspaceId, ws.workspaceId), eq(pointEntries.programId, orphan.programId))))
+      .filter((entry) => entry.id !== orphan.id && !(entry.kind === 'expire' && entry.source === 'system'));
+    const take = Math.min(wanted, spendableOf(ledger, orphan.occurredOn));
+    let pieces: { batchId: string | null; quantity: number }[] = [];
+    try {
+      if (take > 0) pieces = consumeFifo(ledger, take, orphan.occurredOn);
+    } catch {
+      // A rounding hair short of the batches' sum: left on no batch, the total is still right.
+      pieces = [];
+    }
+    const drawn = pieces.reduce((total, piece) => total + piece.quantity, 0);
+    if (wanted - drawn > 1e-9 || pieces.length === 0) pieces.push({ batchId: null, quantity: wanted - drawn });
+    const [first, ...rest] = pieces;
+    await tx.update(pointEntries).set({ batchId: first!.batchId, quantity: -first!.quantity }).where(eq(pointEntries.id, orphan.id));
+    if (rest.length > 0) {
+      // The act's value stays on its first entry, as a redemption is written.
+      await tx.insert(pointEntries).values(rest.map((piece) => ({ ...orphan, id: uuidv7(), batchId: piece.batchId, quantity: -piece.quantity, valueMinor: null })));
+    }
+    for (const piece of pieces) if (piece.batchId !== null) drawnOn.add(piece.batchId);
+  }
+  if (drawnOn.size > 0) {
+    await tx.delete(pointEntries).where(and(eq(pointEntries.workspaceId, ws.workspaceId), isWriteOff, inArray(pointEntries.batchId, [...drawnOn])));
+  }
+}
+
+/**
+ * Mends a programme's ledger an earlier build left wrong. That build wrote a cycle's batches again under new ids each
+ * time the cycle was worked out, leaving write-offs and spending that name a batch no longer there: the batch under its
+ * new id looked full and died again, and the balance fell with every refresh. Write-offs of a missing batch are dropped
+ * (`expireDueEntries` writes the one still due), and spending left on one is drawn again from the batches still there.
+ * Nothing the owner typed is removed. Costs one query when there is nothing to mend.
+ */
+async function mendOrphansTx(tx: Tx, ws: WorkspaceContext, programId: string): Promise<void> {
+  const missingBatch = sql`NOT EXISTS (SELECT 1 FROM point_entries b WHERE b.id = point_entries.batch_id)`;
+  const orphans = await tx.values<[string]>(sql`
+    SELECT id FROM point_entries
+    WHERE workspace_id = ${ws.workspaceId} AND program_id = ${programId} AND batch_id IS NOT NULL AND ${missingBatch}
+    LIMIT 1
+  `);
+  if (orphans.length === 0) return;
+  await tx.run(sql`
+    DELETE FROM point_entries
+    WHERE workspace_id = ${ws.workspaceId} AND program_id = ${programId} AND kind = 'expire' AND source = 'system'
+      AND batch_id IS NOT NULL AND ${missingBatch}
+  `);
+  const spending = await tx.select().from(pointEntries).where(and(eq(pointEntries.workspaceId, ws.workspaceId), eq(pointEntries.programId, programId), sql`${pointEntries.batchId} IS NOT NULL`, missingBatch));
+  if (spending.length > 0) await redrawTx(tx, ws, spending);
 }
 
 /**
@@ -287,6 +402,7 @@ export async function setProgramExpiry(
  * nothing, so running this again writes nothing.
  */
 export async function expireDueEntries(database: Database, ws: WorkspaceContext, programId: string, today: string): Promise<number> {
+  await database.transaction((tx) => mendOrphansTx(tx, ws, programId));
   const due = dueToExpire(await listPointEntries(database, ws, programId), today);
   if (due.length === 0) return 0;
 
