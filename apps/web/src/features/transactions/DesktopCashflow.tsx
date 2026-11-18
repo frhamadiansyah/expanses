@@ -452,13 +452,17 @@ export function DesktopCashflow({
     },
     // A pasted row saved or recorded teaches its unmatched name or Notion link the value picked for it, and the other
     // waiting rows naming it fill in (`learnFromSaved`); one discarded is let go.
+    // Taught as the save starts, so a paste straight after already knows it; a save that fails puts the marks back.
     saveDraft: async (id, values, record) => {
-      const ok = await handlers.saveDraft(id, values, record);
-      if (!ok) return ok;
+      const mine = readMarks()[id];
       const waiting = drafts.filter((draft) => draft.id !== id && marks[draft.id]).map((draft) => ({ id: draft.id, values: quickFromDraft(draft, today, accounts) }));
-      const learnt = learnFromSaved(id, values, record, waiting);
-      setMarks(learnt.marks);
-      for (const fill of learnt.fills) await handlers.saveDraft(fill.id, fill.values, false);
+      const { fills } = learnFromSaved(id, values, record, waiting);
+      const ok = await handlers.saveDraft(id, values, record);
+      // Read back from the device, not from before the save: a paste made meanwhile has marks of its own.
+      const now = readMarks();
+      setMarks(!ok && mine ? keepMarks({ [id]: mine }, new Set(Object.keys(now))) : now);
+      if (!ok) return ok;
+      for (const fill of fills) await handlers.saveDraft(fill.id, fill.values, false);
       return ok;
     },
     dismissDraft: async (id) => {
@@ -496,8 +500,10 @@ export function DesktopCashflow({
   // Undo takes the whole paste away: every row of it still waiting is discarded.
   const undoPaste = () =>
     pasteWork(async () => {
+      const undone = pasted;
       for (const draft of paste?.waiting ?? []) await deskHandlers.dismissDraft(draft.id);
-      setPasted(null);
+      // A paste made while the undo was still going is a new one, and keeps its line.
+      setPasted((now) => (now === undone ? null : now));
     });
   const linksLine =
     unknown > 0 ? (
