@@ -13,19 +13,19 @@ import { foldName, lastFourOf, matchLastFour, payerOptions, paymentKey, type Qui
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
 
 /**
- * The wide screen's Cashflow table (Mac Cashflow D): Date, Note, Category, Paid with, Counts as, Amount, then what the
- * row can do. The typing row lays its cells out in this order too, so Tab moves along the columns as they read. The
+ * The wide screen's Cashflow table (Mac Cashflow D): Date, Note, Category, Paid with, Amount, then what the row can
+ * do (what a category counts as is the peek's to say, not a column's). The typing row lays its cells out in this order too, so Tab moves along the columns as they read. The
  * columns themselves are the table's to say (`--desk-cols`, one of `DESK_COLUMNS`), so every row narrows at once.
  */
 export const DESK_GRID = 'grid grid-cols-[var(--desk-cols)] items-center gap-px';
 
 /**
- * The table's columns: `wide` across the box; `peek` while the side peek takes the right of the page — Counts as is
- * left out (its cells carry `data-col="counts"`, hidden by the table), Note and Category get the room first, Amount is
- * as wide as a figure and no wider, and the last column still holds Record and its ✕ whole.
+ * The table's columns: `wide` across the box; `peek` while the side peek takes the right of the page. Note and
+ * Category get the room first, Amount is as wide as a figure and no wider, and the last column holds Record and its ✕
+ * whole.
  */
 export const DESK_COLUMNS = {
-  wide: '5.5rem minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.2fr) 6.5rem 8rem 6rem',
+  wide: '5.5rem minmax(0,2fr) minmax(0,1.7fr) minmax(0,1.2fr) 8rem 6rem',
   peek: '4.75rem minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,1fr) 7.25rem 5.75rem',
 } as const;
 
@@ -123,7 +123,6 @@ export function QuickRowEditor({
   onDescriptionBlur,
   onPaste,
   layout = 'row',
-  countsAs,
   categoryGuessed,
   paidGuessed,
   cellRow,
@@ -143,10 +142,8 @@ export function QuickRowEditor({
   onDescriptionBlur?: () => void;
   /** Handed text (and its HTML, when the clipboard has some) pasted into the date or description cell; true when taken as rows. */
   onPaste?: (text: string, html: string) => boolean;
-  /** `desk`: the wide Cashflow table's column order (`DESK_GRID`), with a Counts as cell before the amount. */
+  /** `desk`: the wide Cashflow table's column order (`DESK_GRID`). */
   layout?: 'row' | 'desk';
-  /** What the chosen category counts as, read only: the desk layout's fifth cell. */
-  countsAs?: ReactNode;
   /** The category was filled in by a guess (a paste's): why, said on the cell. */
   categoryGuessed?: string | null;
   /** Paid with was filled in from what this device remembers of a paste's cell: why, said on the cell. */
@@ -257,9 +254,6 @@ export function QuickRowEditor({
           cell('description', description),
           cell('category', category),
           cell('paid', paid),
-          <span key="counts" data-col="counts" className="truncate px-2 text-[13px] text-[var(--ph-ink-3)]">
-            {countsAs}
-          </span>,
           cell('amount', amount),
           ends,
         ]

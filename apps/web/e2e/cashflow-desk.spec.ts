@@ -45,7 +45,9 @@ test('a row typed in the top row is saved with Return, counted in the boxes, and
   const superindo = page.getByTestId('transaction-row').filter({ hasText: 'Superindo' });
   await expect(superindo).toContainText('Groceries');
   await expect(superindo).toContainText('BCA Tahapan');
-  await expect(superindo).toContainText('Essential');
+  // What a category counts as is the peek's to say, not a column's: the row has no Counts as cell.
+  await expect(superindo).not.toContainText('Essential');
+  await expect(page.getByTestId('desktop-cashflow').getByText('Counts as', { exact: true })).toHaveCount(0);
   await expect(superindo).toContainText('450.000');
   // The boxes read the same month: the ring names Household (Groceries' top level, as the phone's ring), This month has both spent.
   await expect(page.getByTestId('cashflow-ring').getByRole('button', { name: /Household/ })).toBeVisible();
@@ -59,6 +61,8 @@ test('a row typed in the top row is saved with Return, counted in the boxes, and
   await expect(peek.getByTestId('peek-title')).toHaveText('Superindo');
   await expect(peek).toContainText('450.000');
   await expect(peek).toContainText('Groceries');
+  await expect(peek).toContainText('Counts as');
+  await expect(peek).toContainText('Essential');
   await expect(superindo).toHaveAttribute('aria-current', 'true');
 
   // ⌃ ⌄ and the arrow keys step through the table's rows (newest first: Kopi Kenangan was typed last, same day).

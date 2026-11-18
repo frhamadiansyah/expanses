@@ -315,7 +315,8 @@ export function withoutNotionLinks(cell: string): string {
  * The columns a paste with no header row is read in: the order the table shows them, so a sheet laid out as the
  * table reads straight in. `row` is the list's (and the narrow table's) Date, Description, Amount, Paid with,
  * Category; `desk` the wide Cashflow's Date, Note, Category, Paid with, Amount — and with a sixth column, the one
- * before the amount is its Counts as, which is the category's own and is not read.
+ * before the amount is a Counts as (as a sheet laid out after the table once was), which is the category's own and
+ * is not read.
  */
 export const PASTE_COLUMNS: Record<'row' | 'desk', readonly PastedColumn[]> = {
   row: ['date', 'description', 'amount', 'paid', 'category'],

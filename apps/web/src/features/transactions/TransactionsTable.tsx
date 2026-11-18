@@ -87,8 +87,6 @@ function TwoTap({ busy, label, onConfirm, compact = false }: { busy: boolean; la
 
 /** The wide Cashflow's table (Mac Cashflow D) draws the typing row and a waiting draft in its own columns. */
 interface DeskLayout {
-  /** What a category counts as, for the Counts as cell ('' until known). */
-  countsAs: (categoryId: string) => string;
   /** The line under the typing row after a paste: how many rows came in, and what can be done with them. */
   pasted?: ReactNode;
 }
@@ -130,7 +128,6 @@ export function TypingRow({
     <div data-testid="typing-row" className={desk ? 'border-b border-dashed border-[var(--ph-chevron)]' : 'border-b border-slate-200 bg-slate-50/60'}>
       <QuickRowEditor
         layout={desk ? 'desk' : 'row'}
-        countsAs={desk && values.categoryId ? desk.countsAs(values.categoryId) : undefined}
         values={values}
         onChange={(patch) => {
           if ('categoryId' in patch) setGuessed(false);
@@ -291,7 +288,6 @@ export function EditableRow({
     >
       <QuickRowEditor
         layout={desk ? 'desk' : 'row'}
-        countsAs={desk && values.categoryId ? desk.countsAs(values.categoryId) : undefined}
         categoryGuessed={guess && values.categoryId === guess.categoryId ? guess.hint : null}
         paidGuessed={paidGuess && paymentKey(values.accountId, values.cardId) === paidGuess.key ? paidGuess.hint : null}
         cellRow={desk ? row.id : undefined}

@@ -80,7 +80,7 @@ export function monthFigures(spentMinor: number | null, receivedMinor: number | 
 const NEED_WORDS: Record<CategoryNeed, string> = { essential: 'Essential', lifestyle: 'Lifestyle', debts_savings: 'Debts & savings' };
 
 /**
- * The Counts as column: what a spending row's category counts as (Essential, Lifestyle, Debts & savings — its own mark,
+ * The receipt peek's Counts as line: what a spending row's category counts as (Essential, Lifestyle, Debts & savings — its own mark,
  * an ancestor's, the built-in one, else essential). Income and every other row count as none of them: a dash.
  * Blank while the marks are still being read.
  */

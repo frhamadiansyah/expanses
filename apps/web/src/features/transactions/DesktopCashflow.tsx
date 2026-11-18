@@ -10,10 +10,9 @@ import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CategoryIcon, useCategoryMarkColour } from '../categories/CategoryIcon';
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
-import { useResolvedNeeds } from '../essential-split/queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
-import { clickAction, countsAs, deskAmount, monthFigures, pageShortcut, pasteLine, pasteSummary, peekKey, ringLegend, type Selection, type SelectionAction } from './cashflow-desk-model';
+import { clickAction, deskAmount, monthFigures, pageShortcut, pasteLine, pasteSummary, peekKey, ringLegend, type Selection, type SelectionAction } from './cashflow-desk-model';
 import { type BulkActions, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
@@ -349,7 +348,6 @@ export function DesktopCashflow({
   const spent = useRing('expense', month, paidAccountId, notMonthly.out);
   const received = useRing('income', month, paidAccountId, notMonthly.out);
   const trend = useSpendingTrend(month, kind, !ring.eventsInCaps, notMonthly.out);
-  const needs = useResolvedNeeds().data;
   const legend = ringLegend(ring.tree, colourFor, ring.setsMinor);
   const figures = monthFigures(spent.ready ? spent.totalMinor : null, received.ready ? received.totalMinor : null, reviewCount);
   const monthStart = useMonthStart();
@@ -534,7 +532,8 @@ export function DesktopCashflow({
         {linksLine}
       </>
     ) : null;
-  const desk = { countsAs: (categoryId: string) => countsAs({ type: 'expense', categoryId }, needs) };
+  // The typing row and the waiting drafts take the table's own columns (an empty layout: nothing more to say yet).
+  const desk = {};
   const at = selected ? ids.indexOf(selected.id) : -1;
   const sortBy = (key: Sort['key']) => onSort({ key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' });
   const sortMark = (key: Sort['key']) => (sort.key === key ? (sort.dir === 'desc' ? ' ↓' : ' ↑') : '');
@@ -669,11 +668,11 @@ export function DesktopCashflow({
 
         {/*
          * While the peek is open the table makes room for it, so no column — the amount least of all — is under it, and
-         * its columns narrow (`DESK_COLUMNS.peek`): Counts as steps out, Note and Category keep the room.
+         * its columns narrow (`DESK_COLUMNS.peek`): Note and Category keep the room.
          * Contained inline, so the table's own minimum width scrolls inside the box rather than widening the page.
          */}
         <section
-          className={cx(BOX, 'overflow-hidden [contain:inline-size]', peeking && 'mr-[322px] [&_[data-col=counts]]:hidden')}
+          className={cx(BOX, 'overflow-hidden [contain:inline-size]', peeking && 'mr-[322px]')}
           style={{ '--desk-cols': peeking ? DESK_COLUMNS.peek : DESK_COLUMNS.wide } as CSSProperties}
           aria-label="Transactions"
         >
@@ -693,9 +692,6 @@ export function DesktopCashflow({
                 <span className="px-2 py-[7px]">Note</span>
                 <span className="px-2 py-[7px]">Category</span>
                 <span className="px-2 py-[7px]">Paid with</span>
-                <span data-col="counts" className="px-2 py-[7px]">
-                  Counts as
-                </span>
                 <button type="button" aria-sort={ariaSort('amount')} onClick={() => sortBy('amount')} className="px-2 py-[7px] text-right hover:text-[var(--ph-ink)]">
                   Amount{sortMark('amount')}
                 </button>
@@ -731,7 +727,6 @@ export function DesktopCashflow({
                     pickedCell={cells.pickedColumn(row.id)}
                     today={today}
                     accounts={accounts}
-                    countsAs={countsAs(row, needs)}
                     helpers={helpers}
                     onOpen={(keys) => (peekable(row) ? dispatch(keys ? clickAction(row.id, keys, ids) : { type: 'open', id: row.id }) : !keys?.metaKey && !keys?.shiftKey && row.instalment ? helpers.openInstalment(row) : undefined)}
                     onEdit={() => (peekable(row) ? edit(row) : undefined)}
@@ -772,7 +767,6 @@ function DeskRow({
   pickedCell,
   today,
   accounts,
-  countsAs: counts,
   helpers,
   onOpen,
   onEdit,
@@ -784,7 +778,6 @@ function DeskRow({
   pickedCell: CellColumn | null;
   today: string;
   accounts: readonly AccountRow[];
-  countsAs: string;
   helpers: DeskRowHelpers;
   /** A click, with the keys held (⌘ adds the row, ⇧ a range); Space opens it alone. */
   onOpen: (keys?: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => void;
@@ -890,9 +883,6 @@ function DeskRow({
       </span>
       <span {...cell('paid')} className={cx('truncate px-2 py-[5px]', selected ? 'text-white' : 'text-[var(--ph-ink-2)]', blue('paid'))}>
         {helpers.paidWith(row)}
-      </span>
-      <span data-col="counts" className={cx('truncate px-2 py-[5px]', grey)}>
-        {counts}
       </span>
       <span
         {...cell('amount')}
