@@ -294,9 +294,15 @@ export async function showPlan(page: Page) {
   }).toPass();
 }
 
-/** The plan card sits under Against the plan, the chart that reads it: swipe there first when the event has a plan. */
+/** The plan card sits under Against the plan, the chart that reads it: swipe there first when the event has a plan. On a wide screen, the Plan tab. */
 export async function showPlanCard(page: Page) {
-  await expect(page.getByTestId('event-sheet')).toBeVisible();
+  // A wide screen's event page (Mac Events) keeps the plan in its table's Plan tab, with the whole plan page a link away.
+  await expect(page.getByTestId('event-sheet').or(page.getByTestId('event-table-box'))).toBeVisible();
+  if ((await page.getByTestId('event-table-box').count()) > 0) {
+    await page.getByRole('tab', { name: /^Plan · / }).click();
+    await expect(page.getByTestId('open-plan')).toBeVisible();
+    return;
+  }
   const card = page.getByTestId('open-plan');
   // Retried, because a workspace tab just chosen redraws the chart under the click.
   await expect(async () => {

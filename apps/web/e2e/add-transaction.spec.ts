@@ -728,11 +728,8 @@ test('every extra survives the save, and leaving it out of the report leaves onl
 
   // Event spending is not in Cashflow's list: its receipt is reached from the event's own page.
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toHaveCount(0);
-  await page.goto('/events');
-  await page.getByTestId('event-row').filter({ hasText: 'Lebaran' }).click();
   // The receipt carries the event and the channel it was given, and says it is out of the chart.
-  await page.getByTestId('event-history').filter({ hasText: 'Superindo' }).getByRole('button', { name: /Superindo/ }).click();
-  await expect(page.getByTestId('receipt-hero')).toBeVisible();
+  await openEventReceipt(page, 'Lebaran', 'Superindo');
   /*
    * And the split itself reached the ledger as **two** categories. This spec set a two-row split up in ten
    * lines and then asserted nothing about where the money was filed: collapsing `splitExpenseLines` to a
@@ -1253,7 +1250,11 @@ async function eventHistoryRow(page: Page, event: string, what: string) {
 /** The receipt of an event purchase, opened from the event's page. */
 async function openEventReceipt(page: Page, event: string, what: string) {
   const row = await eventHistoryRow(page, event, what);
-  await row.getByRole('button').and(row.getByTitle('Open the receipt')).click();
+  // A wide screen's event row opens the Mac receipt peek beside the page; the receipt page these checks read is the same
+  // receipt (one hook, `useReceipt`), reached here by its address.
+  const id = await row.getAttribute('data-event-tx');
+  if (id) await page.goto(`/transactions/${id}`);
+  else await row.getByRole('button').and(row.getByTitle('Open the receipt')).click();
   await expect(page.getByTestId('receipt-hero')).toBeVisible();
 }
 

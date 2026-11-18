@@ -384,7 +384,7 @@ test('gold bought for Umrah uses Umrah\'s own money first, and borrows only the 
 test('spending on an event from Jenius asks', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await page.goto('/events');
-  await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByRole('button', { name: /^(New event|Add an event)$/ }).click();
   await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).pressSequentially('Lebaran');
   await page.getByLabel('Starts on').fill(TODAY);

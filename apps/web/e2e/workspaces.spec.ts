@@ -435,6 +435,9 @@ async function spendOn(page: Page, description: string, category: string, amount
  * `option` is what the picker calls that category: once there is more than one workspace it says which workspace
  * each option belongs to, since two workspaces can hold copies of one category and the name alone is a coin toss.
  */
+/** The event's total, as the Mac event page's ring box says it. */
+const eventTotal = (page: Page) => page.getByTestId('event-ring').getByTestId('period-total');
+
 async function planAndTag(page: Page, category: string, description: string, option = category) {
   // What it is expected to cost: a plan is a list of things to pay, and an item without a price is not one.
   await planFor(page, category, '1000000', option);
@@ -454,7 +457,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await spendOn(page, 'Hotel dinner', 'Restaurants', '4200000');
 
   await page.goto('/events');
-  await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByRole('button', { name: /^(New event|Add an event)$/ }).click();
   await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Singapore holiday');
   await page.getByLabel('Starts on').fill(TODAY);
@@ -488,9 +491,9 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   const tabs = page.getByTestId('event-workspaces');
   // A segmented control: the tabs are one radio group now, so the three of them are radios and not buttons.
   await expect(tabs.getByRole('radio')).toHaveText(['All', 'Personal', 'Business']);
-  await expect(page.getByTestId('event-total')).toContainText('4.840.000');
-  await page.getByTestId('event-sheet').getByTestId('see-categories').click();
-  await expect(page.getByTestId('event-detail-sheet')).toContainText('Restaurants');
+  // The Mac event page: the ring box says the total and lists its categories beside the ring.
+  await expect(eventTotal(page)).toContainText('4.840.000');
+  await expect(page.getByTestId('event-ring')).toContainText('Restaurants');
   // The history is owner-wide on purpose — one trip is paid for out of several workspaces — but the category
   // gesture is not: the sheet it opens offers the *open* workspace's categories, so Personal's dinner is not
   // offered the circle while Business is open. A refusal met after the choice is a choice not to offer.
@@ -500,9 +503,9 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
 
   // Business: its own share, and only the categories filed in it.
   await tabs.getByRole('radio', { name: 'Business' }).click();
-  await expect(page.getByTestId('event-total')).toContainText('640.000');
-  await expect(page.getByTestId('event-detail-sheet')).toContainText('Client lunches');
-  await expect(page.getByTestId('event-detail-sheet')).not.toContainText('Restaurants');
+  await expect(eventTotal(page)).toContainText('640.000');
+  await expect(page.getByTestId('event-ring')).toContainText('Client lunches');
+  await expect(page.getByTestId('event-ring')).not.toContainText('Restaurants');
   // And its own history: the dinner is Personal's, so it is not under this tab.
   await expect(page.getByText('Hotel dinner')).toHaveCount(0);
 
@@ -517,11 +520,11 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Plan · Singapore holiday' })).toBeVisible();
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await expect(tabs.getByRole('radio', { name: 'Business' })).toHaveAttribute('aria-checked', 'true');
-  await expect(page.getByTestId('event-total')).toContainText('640.000');
+  await expect(eventTotal(page)).toContainText('640.000');
 
   // Back to All, and the whole trip is there again.
   await tabs.getByRole('radio', { name: 'All' }).click();
-  await expect(page.getByTestId('event-total')).toContainText('4.840.000');
+  await expect(eventTotal(page)).toContainText('4.840.000');
 });
 
 /**
@@ -543,7 +546,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await spendOn(page, 'Hotel dinner', 'Restaurants', '4200000');
 
   await page.goto('/events');
-  await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByRole('button', { name: /^(New event|Add an event)$/ }).click();
   await page.getByTestId('new-event').click();
   await page.getByLabel('Name', { exact: true }).fill('Singapore holiday');
   await page.getByLabel('Starts on').fill(TODAY);
@@ -577,7 +580,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   // Read whole, the Personal item takes Rp400.000 of the Business receipt. Odd of a person, and perfectly legal:
   // an event is one trip and the workspaces are only how its money is filed.
   await showPlanCard(page);
-  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('open-plan').click();
   await page.getByTestId('plan-item').filter({ hasText: 'Welcome dinner' }).getByRole('link').click();
   await page.getByRole('link', { name: 'Link a payment' }).click();
   await page.getByRole('link', { name: /Supplier lunch/ }).click();

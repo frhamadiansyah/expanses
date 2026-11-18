@@ -6,12 +6,35 @@ import { addForm, addTransaction, choosePayment, saveButton } from './add-transa
 import { addEvent, addItem, addWallet, buyItNow, expectCover, expectFigures, expectGauge, expectKitFigures, expectPlanHero, figures, fillItem, moneyIn, recordIntoEvent, spend, showPlanCard, showPlan } from './event-plan';
 import { replaceTheDatabase } from './recovery-fixture';
 
+/*
+ * The phone's event page, read at a phone's width: its ring and the swipe to the plan's gauge, Where it went, the plan
+ * card under the gauge and the history by day. A wide screen draws the Mac event page instead (events-desk.spec.ts).
+ */
+test.use({ viewport: { width: 390, height: 844 } });
+
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
 /** Records spending straight into the open event: its Add spending opens the Add screen with the event set. */
 const recordInto = (page: Page, description: string, amount: string) => recordIntoEvent(page, { description, amount });
+
+/** A wide screen, for the steps only its Add screen takes: a figure typed in the amount field (money back with a minus). */
+const WIDE = { width: 1280, height: 720 };
+const PHONE = { width: 390, height: 844 };
+
+/** Money back is typed with a minus, which only a wide screen's amount field takes: recorded there, read on the phone. */
+async function recordBack(page: Page, description: string, amount: string) {
+  await page.setViewportSize(WIDE);
+  await recordInto(page, description, amount);
+  await page.setViewportSize(PHONE);
+}
+
+/** The event's whole plan page, from the event: the phone's plan card, or a wide screen's Plan tab. */
+async function openWholePlan(page: Page) {
+  await showPlanCard(page);
+  await page.getByTestId('open-plan').click();
+}
 
 /**
  * The ledger as the database actually holds it, taken out through the door a user has: Download backup.
@@ -253,11 +276,13 @@ test('what was tagged before the plan is not planned: said on the event, and kep
  * together and checked against the one payment. Nothing here splits the transaction: the shares are a reading of it.
  */
 test('an item is bought at the real price, and one receipt can answer three', async ({ page }) => {
+  // The Add screen's amount field, typed into: a wide screen's (the phone's is a keypad of digits).
+  await page.setViewportSize(WIDE);
   await addWallet(page);
   // Recorded before the event exists, so it is there to be tagged and then shared out.
   await spend(page, 'Mothercare', '4150000');
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await openWholePlan(page);
   await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
   await addItem(page, { name: 'Newborn clothes', quantity: '10', price: '150000', category: 'Food and beverage' });
@@ -290,8 +315,7 @@ test('an item is bought at the real price, and one receipt can answer three', as
   // One receipt over two items, with what is left reading as not planned.
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
-  await showPlanCard(page);
-  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await openWholePlan(page);
   await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
   await page.getByRole('link', { name: 'Link a payment' }).click();
   await page.getByRole('link', { name: /Mothercare/ }).click();
@@ -517,6 +541,8 @@ test('one receipt answers two items and not one entry of the ledger moves', asyn
  * rows adding to 5.000.000 with the refund named nowhere at all.
  */
 test('money back is named with the rows it adds up, beside spending nobody planned', async ({ page }) => {
+  // Two screen widths and a few refunds: longer than a minute on a busy machine.
+  test.setTimeout(120_000);
   await addWallet(page);
   await addEvent(page, 'Newborn');
   await page.getByRole('link', { name: 'Plan what to pay' }).click();
@@ -528,8 +554,8 @@ test('money back is named with the rows it adds up, beside spending nobody plann
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await recordInto(page, 'Hampers', '5000000');
   // Two of them, so the heading is the sum of its rows rather than a copy of the only one there is.
-  await recordInto(page, 'Toko Bayi refund', '-600000');
-  await recordInto(page, 'Ongkir refund', '-400000');
+  await recordBack(page, 'Toko Bayi refund', '-600000');
+  await recordBack(page, 'Ongkir refund', '-400000');
 
   await showPlanCard(page);
   await page.getByRole('link', { name: 'See the whole plan' }).click();
@@ -559,6 +585,8 @@ test('money back is named with the rows it adds up, beside spending nobody plann
  * under with the chart and all three figures are read in one arrangement.
  */
 test('an event whose refunds outran it says what came back, and shows no negative and no bare nought', async ({ page }) => {
+  // Two screen widths and a few refunds: longer than a minute on a busy machine.
+  test.setTimeout(120_000);
   await addWallet(page);
   await addEvent(page, 'Newborn');
   await page.getByRole('link', { name: 'Plan what to pay' }).click();
@@ -569,7 +597,7 @@ test('an event whose refunds outran it says what came back, and shows no negativ
   // Nothing is ticked off: the refund answers no item, and 3.000.000 back against 2.000.000 out is 1.000.000 more
   // than the event ever spent.
   await recordInto(page, 'Hampers', '2000000');
-  await recordInto(page, 'Toko Bayi refund', '-3000000');
+  await recordBack(page, 'Toko Bayi refund', '-3000000');
 
   const sheet = page.getByTestId('event-sheet');
   const chart = page.getByTestId('event-total');
@@ -665,9 +693,11 @@ test('a purchase can be unticked from either screen, and the item itself removed
  * the Add screen never offers Save for it at all; it is the negative case that holds the ledger.
  */
 test('buying something for nothing is refused before a rupiah is written', async ({ page }) => {
+  // The Add screen's amount field, typed into: a wide screen's (the phone's is a keypad of digits).
+  await page.setViewportSize(WIDE);
   await addWallet(page);
   await addEvent(page, 'Newborn');
-  await page.getByRole('link', { name: 'Plan what to pay' }).click();
+  await openWholePlan(page);
   await page.getByRole('link', { name: 'Add the first cost' }).click();
   await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
 
@@ -676,8 +706,7 @@ test('buying something for nothing is refused before a rupiah is written', async
 
   await page.goto('/events');
   await page.getByTestId('event-row').click();
-  await showPlanCard(page);
-  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await openWholePlan(page);
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   const buying = await buyItNow(page, { paid: '-5000', done: false });
   // Still on the Add screen, so nothing was carried off to the plan as if the item were bought.
@@ -696,8 +725,7 @@ test('buying something for nothing is refused before a rupiah is written', async
   // same as for any other purchase, so there is no Save to refuse.
   await page.goto('/events');
   await page.getByTestId('event-row').click();
-  await showPlanCard(page);
-  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await openWholePlan(page);
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await page.getByRole('button', { name: 'Pay now' }).click();
   await buying.getByRole('button', { name: /^Paid with/ }).click();

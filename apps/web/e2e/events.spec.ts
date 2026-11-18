@@ -3,6 +3,12 @@ import { expect, test } from '@playwright/test';
 import { addEvent, addWallet, fillItem, planFor, recordIntoEvent, spend, showPlanCard, showPlan } from './event-plan';
 import { addCap, budgetCells, budgetTab, monthSoFar } from './budget';
 
+/*
+ * The phone's event page, read at a phone's width: its ring and the swipe to the plan's gauge, Where it went, the plan
+ * card under the gauge and the history by day. A wide screen draws the Mac event page instead (events-desk.spec.ts).
+ */
+test.use({ viewport: { width: 390, height: 844 } });
+
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
@@ -33,6 +39,8 @@ test('an event is planned as a list of things to pay, and suggests what to tag',
 });
 
 test('tagged spending leaves the monthly caps but is still taken off what is left', async ({ page }) => {
+  // Budget's own cells are a wide screen's; the event is read there too, on the Mac page's ring.
+  await page.setViewportSize({ width: 1280, height: 720 });
   await addWallet(page);
   await spend(page, 'Hampers', '4200000');
 
@@ -48,7 +56,7 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
   await planFor(page, 'Food and beverage', '1000000');
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Hampers' }).click();
   // Wait for the write to land: navigating on the next line can abandon it in flight.
-  await expect(page.getByTestId('event-sheet')).toContainText('4.200.000');
+  await expect(page.getByTestId('event-ring').getByTestId('period-total')).toContainText('4.200.000');
 
   await page.goto('/budget');
   // Out of the caps, named on its own line, and what is left has not moved.

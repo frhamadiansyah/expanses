@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { addEvent, addWallet, buyItNow, expectFigures, fillItem, recordIntoEvent, showPlanCard, showPlan } from './event-plan';
 
+/*
+ * The phone's event page, read at a phone's width: its ring and the swipe to the plan's gauge, Where it went, the plan
+ * card under the gauge and the history by day. A wide screen draws the Mac event page instead (events-desk.spec.ts).
+ */
+test.use({ viewport: { width: 390, height: 844 } });
+
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
