@@ -1,59 +1,27 @@
-import { formatMinor, isoDate } from '@expanses/core';
-import {
-  eventPostingOf,
-  eventTransferOf,
-  jointRowNote,
-  tagTransactions,
-  listPhotos,
-  listTransactions,
-  ownerScope,
-  paidOffMarkOf,
-  removeTransferFromSharedEvent,
-  standingTransaction,
-  setSettledBeforeApp,
-  type TransactionPhotoRow,
-} from '@expanses/db';
+import { formatMinor } from '@expanses/core';
+import type { AccountRow, TransactionPhotoRow } from '@expanses/db';
 import { deletedCopyLine } from '../events/delete-copy';
-import { deleteTransaction } from './member-transfer';
-import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { FROM_TRANSACTION, originHref } from '../../app/from-search';
+import { originHref } from '../../app/from-search';
 import { Copy, EyeOff, Pencil } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { BackButton, ROUND } from '../../app/BackHeader';
-import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { Sheet } from '../../app/Sheet';
-import { loadPurchasePoints } from '../../lib/purchase-points';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { usePhotoUrls } from '../../photos/use-photo-urls';
+import { useAccounts } from '../../lib/queries';
 import { Card, cx, Empty, ErrorBox } from '../../ui';
 import { DestructiveRow, GROUP_GAP, InsetGroup, InsetRow, SwitchRow } from '../../ui/native';
-import { useBillOfPurchase } from '../bills/queries';
-import { historyIndex, markReceiptAt } from '../bills/receipt-return';
-import { showToast } from '../../ui/Toast';
-import { useCardsWithArchived } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { usePeopleDebts } from '../debts/queries';
-import { useEvents } from '../events/queries';
-import { useGoals } from '../goals/queries';
-import { usePurchasePayers } from '../sharing/queries';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
-import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
-import { classify } from './classify';
 import { isCorrection } from './draft';
-import { useChangeable } from './queries';
-import { heroCaption, receiptLines, splitParts } from './receipt-view';
-import { instalmentCardOf, instalmentRowValue, spreadCaption } from './turn-into';
+import { instalmentRowValue } from './turn-into';
 import { TurnIntoSheet } from './TurnIntoSheet';
-import { useInstallments } from '../loans/queries';
 import { TransactionCard } from './TransactionCard';
-import { useDuplicable } from './duplicable';
 import { rowByLine } from '../sharing/JointAccountRows';
 import { TwoTapDelete } from './TwoTapDelete';
-import { useWithdrawalsUsed } from '../../lib/withdrawal-queries';
-import { useHeldRates } from '../accounts/queries';
+import { useReceipt } from './use-receipt';
+import type { SplitPart } from './receipt-view';
 
 const route = getRouteApi('/transactions/$transactionId');
 
@@ -74,78 +42,20 @@ export function ReceiptRoute() {
  * shows under Show deleted, can still be opened and read.
  */
 export function ReceiptPage({ transactionId }: { transactionId: string }) {
-  const { database, ws } = useApp();
   const router = useRouter();
   const navigate = useNavigate();
   const phone = usePhone();
-  const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  // Removed cards too: a purchase made on one still names it, by its digits.
-  const cards = useCardsWithArchived().data ?? [];
-  const goals = useGoals().data ?? [];
-  const today = isoDate();
 
   const [editing, setEditing] = useState(false);
   // Turn into instalments (option A): the sheet, open or not.
   const [turning, setTurning] = useState(false);
-  const plans = useInstallments();
   const [viewing, setViewing] = useState<TransactionPhotoRow | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
 
-  const receipt = useQuery({
-    queryKey: ['receipt', ws.workspaceId, transactionId],
-    queryFn: async () => (await listTransactions(database, ownerScope(ws), { id: transactionId, includeVoid: true }))[0] ?? null,
+  const { receipt, tx, view, busy, error, remove, removeFromEvent, markPaidOff, photos, urls, jointNote, fromEvent, onEvent, paidOffMark, bill, changeable, elsewhere, isTrade, holdingId } = useReceipt(transactionId, {
+    onDeleted: () => router.history.push(originHref()),
+    onReplaced: (standing) => void navigate({ to: '/transactions/$transactionId', params: { transactionId: standing }, replace: true }),
   });
-  const tx = receipt.data ?? null;
-
-  const points = useQuery({
-    queryKey: ['receipt-points', ws.workspaceId, transactionId],
-    enabled: tx !== null && accounts.length > 0,
-    queryFn: () => loadPurchasePoints(database, ws, [tx!], accounts),
-  });
-  // Both through the hooks that already own these cache keys. A second `useQuery` on ['events', …] here would
-  // be the same key holding a workspace-narrowed list, and whichever screen mounted first would decide what the
-  // other one saw — an event read owner-wide, as `useEvents` reads it, is the one that is right.
-  const debts = usePeopleDebts(today);
-  const events = useEvents();
-  const photoRows = useQuery({ queryKey: ['photos', ws.workspaceId, transactionId], queryFn: () => listPhotos(database, ws, transactionId) });
-  const badges = useWorkspaceBadges(tx ? [tx.id] : []);
-  // A purchase in a shared workspace (spec §11): who paid, and with what, as the payer's device named it.
-  const payerOf = usePurchasePayers(tx ? [tx.id] : [], true);
-  const duplicable = useDuplicable(tx ? [tx] : []);
-  const urls = usePhotoUrls(photoRows.data ?? []);
-  /*
-   * The three refusals, asked once for the whole app rather than copied onto every way in: a trade is
-   * corrected on its holding's page so its units stay in step, an opening balance and a deleted row have no form that
-   * could represent them, and another workspace's row is read-only until that workspace is open. The form
-   * route asks the same hook, so the two can never answer differently.
-   */
-  const { changeable, elsewhere, isTrade, holdingId } = useChangeable(tx);
-  // A row of a joint account or card: who recorded it and who changed it.
-  const jointNote = useQuery({ queryKey: ['joint-row-note', transactionId], queryFn: () => jointRowNote(database, transactionId) }).data ?? null;
-  /*
-   * A transaction a shared event put here follows its record (shared events §5, §7): it is changed on the event — Edit
-   * opens the expense's own card, or the event for a settle-up — never deleted or copied on its own (the ledger refuses
-   * it: EVENT_POSTING), and it says who last changed the record when that was not this phone's person.
-   */
-  const fromEvent = useQuery({ queryKey: ['event-posting', transactionId], queryFn: () => eventPostingOf(database, transactionId) }).data ?? null;
-  // A shared workspace's transfer listed on a shared event instead of the workspace (an ATM withdrawal for a trip): the
-  // event it is on, and Remove from event to put it back.
-  const onEvent = useQuery({ queryKey: ['event-transfer', transactionId], queryFn: () => eventTransferOf(database, transactionId) }).data ?? null;
-  // Withdrawal rate §7: the withdrawals a spend from foreign money came from.
-  const withdrawal = useWithdrawalsUsed(tx?.id ?? null).data ?? null;
-  // The market rates held for the day, for a transfer between currencies' Rate row (owner, 17 Nov 2026). Only the
-  // currencies its money moved in; the base is never asked for.
-  const moneyCurrencies = (tx?.entries ?? []).filter((entry) => entry.accountKind === 'asset' || entry.accountKind === 'liability').map((entry) => entry.currency);
-  const heldRates = useHeldRates(new Set(moneyCurrencies).size > 1 ? moneyCurrencies : [], tx?.occurredOn ?? today).data?.rates ?? {};
-  // The recurring bill this purchase settles a month of, when it does (linked afterwards, or paid from the bill).
-  const bill = useBillOfPurchase(transactionId).data ?? null;
-  /*
-   * A credit card purchase or refund that can carry the paid-off mark — the same answer the card's statement gives
-   * before it offers Paid off — switches it here too, where a tap on the row lands. Null for everything else.
-   */
-  const paidOffMark = useQuery({ queryKey: ['paid-off-mark', ws.workspaceId, transactionId], queryFn: () => paidOffMarkOf(database, ws, transactionId) }).data ?? null;
 
   if (receipt.isSuccess && !tx) {
     return (
@@ -157,60 +67,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       </div>
     );
   }
-  if (!tx) return <ErrorBox error={receipt.error} />;
+  if (!tx || !view) return <ErrorBox error={receipt.error} />;
 
-  const kind = classify(tx);
-  const categoryNames = kind.categoryIds.map((id) => accounts.find((account) => account.id === id)?.name).filter(Boolean);
-  const book = badges.of(tx.id);
-  // Who owes what on *this* transaction: its own debt entries, named by the person each debt account belongs to.
-  const personByAccount = new Map(
-    [...(debts.data?.owedToYou ?? []), ...(debts.data?.settled ?? [])].flatMap((person) => person.loans.map((loan) => [loan.accountId, person.personName] as const)),
-  );
-  const owed = tx.entries
-    .filter((entry) => entry.amountMinor > 0 && personByAccount.has(entry.accountId))
-    .map((entry) => ({ personName: personByAccount.get(entry.accountId)!, totalMinor: entry.amountMinor }));
-
-  const lines = receiptLines({
-    tx,
-    accounts,
-    cards,
-    currency: ws.baseCurrency,
-    points: points.data?.[tx.id] ?? null,
-    owed,
-    eventName: (events.data ?? []).find((event) => event.id === tx.eventId)?.name,
-    goalName: goals.find((goal) => goal.id === tx.goalId)?.name,
-    payer: payerOf(tx.id),
-    withdrawal,
-    today,
-    ratesToBase: heldRates,
-  });
-
-  /*
-   * What this purchase may do with a bill, by the same refusals the old "Link to a bill" and Unlink rows asked: a
-   * purchase still posted and filed here, not a trade (changed on its holding) nor a shared event's (changed there).
-   */
-  const mayChange = !(isTrade && holdingId) && (changeable || (isCorrection(tx) && !isTrade)) && !fromEvent;
-  const billRow = tx.status === 'posted' && !elsewhere && (bill !== null || (kind.type === 'expense' && mayChange));
-  // None, or a link this purchase may move or let go: the bill list, its ✓ on the current one. Pay's own payment, or a
-  // link it may not change, opens the bill itself.
-  const openBill = () => {
-    if (!bill || (bill.linked && changeable)) {
-      // Linking from the list comes back to this very entry (`stepsBackToReceipt`), not a second receipt on top.
-      markReceiptAt(transactionId, historyIndex(router.history));
-      void navigate({ to: '/transactions/$transactionId/bill', params: { transactionId } });
-    } else {
-      void navigate({ to: '/bills/$billId', params: { billId: bill.templateId }, search: FROM_TRANSACTION });
-    }
-  };
-
-  const caption = heroCaption(tx, kind.amountMinor);
-  // A credit card purchase of this phone's own card can be turned into instalments; one already is reads its plan.
-  const plan = (plans.data ?? []).find((row) => row.transactionId === tx.id) ?? null;
-  // An investment bought with the card can be turned too (TF 139): never spending, so its plan counts At purchase.
-  const instalmentCard = instalmentCardOf(tx, accounts, { trade: isTrade });
-  const spread = spreadCaption(plan, kind.currency);
-  // One purchase split across workspaces, or with a part Not counted: each part, with the workspace it is counted in.
-  const parts = splitParts(tx, accounts, book);
+  const { kind, categoryNames, book, lines, billRow, openBill, caption, plan, instalmentCard, spread, parts } = view;
 
   /*
    * A phone's Edit is the Add screen, opened on this transaction: one full card for every kind of transaction,
@@ -228,57 +87,6 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
       : phone
         ? void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId } })
         : setEditing(true);
-
-  async function remove() {
-    setError(null);
-    setBusy(true);
-    try {
-      await deleteTransaction(database, ws, transactionId);
-      await invalidate();
-      router.history.push(originHref());
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /**
-   * Takes the purchase out of its event: it comes back to Cashflow, and the event no longer counts it. A transfer listed
-   * on a shared event comes back to its workspace's list, on every phone in it, and off the event.
-   */
-  async function removeFromEvent() {
-    setError(null);
-    setBusy(true);
-    try {
-      if (onEvent) await removeTransferFromSharedEvent(database, ws, transactionId);
-      else await tagTransactions(database, ws, [transactionId], null);
-      await invalidate();
-      // A fee split off the transfer for the trip goes back onto it, which replaces it: the receipt follows the row.
-      const standing = onEvent ? await standingTransaction(database, transactionId) : transactionId;
-      if (standing !== transactionId) void navigate({ to: '/transactions/$transactionId', params: { transactionId: standing }, replace: true });
-      showToast(`Removed from ${onEvent ? (onEvent.eventName ?? 'the event') : ((events.data ?? []).find((event) => event.id === tx?.eventId)?.name ?? 'the event')}`);
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** The paid-off mark, on or off: a balancing settlement beside the purchase, so the card still owes what it owed. */
-  async function markPaidOff(on: boolean) {
-    setError(null);
-    setBusy(true);
-    try {
-      await setSettledBeforeApp(database, ws, transactionId, on);
-      // The statement and this receipt both read the mark: every query hears.
-      await invalidate();
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   /**
    * An edit replaces the transaction: the original is voided and a new one posted under a new id. So when the
@@ -303,7 +111,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
                 <Pencil size={16} aria-hidden />
               </button>
             )}
-            {duplicable(tx) && !fromEvent && (
+            {view.duplicable && (
               <button
                 type="button"
                 onClick={() => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId } })}
@@ -459,44 +267,15 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
             </h2>
             <Card className="divide-y divide-slate-100">
               {parts.map((part, i) => (
-                <div
-                  key={`${part.book?.id ?? 'not-counted'}:${part.categoryId}:${i}`}
-                  data-testid="split-part"
-                  data-excluded={part.excluded ? 'true' : undefined}
-                  className="flex items-center gap-3 py-2 text-sm"
-                >
-                  {/* The workspace's letter on the category's icon, as a list holding several workspaces marks a row. A part
-                      Not counted has no category and no workspace: a plain mark in the icon's place. */}
-                  <span className="relative shrink-0">
-                    {part.book || part.categoryId ? (
-                      <>
-                        <CategoryIcon categoryId={part.categoryId} accounts={accounts} size="sm" />
-                        <WorkspaceBadge book={part.book} corner />
-                      </>
-                    ) : (
-                      <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                        <EyeOff size={14} />
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className={cx('truncate', part.excluded && 'text-slate-500')}>{part.categoryName}</span>
-                    <span className="truncate text-xs text-slate-500">
-                      {part.book || part.categoryId
-                        ? [part.book?.name, part.excluded ? 'Excluded from report' : null].filter(Boolean).join(' · ')
-                        : 'In no workspace and no report'}
-                    </span>
-                  </span>
-                  <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>
-                </div>
+                <SplitPartLine key={`${part.book?.id ?? 'not-counted'}:${part.categoryId}:${i}`} part={part} accounts={accounts} />
               ))}
             </Card>
           </section>
         )}
 
-        {(photoRows.data ?? []).length > 0 && (
+        {photos.length > 0 && (
           <div data-testid="photo-strip" className="flex gap-2 overflow-x-auto" style={{ marginBottom: GROUP_GAP }}>
-            {(photoRows.data ?? []).map((row) =>
+            {photos.map((row) =>
               urls[row.fileName] ? (
                 // Tapped to see it full size, the same promise the Photos sheet makes while it is being attached.
                 <button
@@ -564,6 +343,44 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
           <TransactionCard initial={tx} onDone={() => void afterEdit()} />
         </Sheet>
       )}
+    </div>
+  );
+}
+
+/**
+ * One part of a split purchase: its category's icon with the workspace's letter on it (or a plain mark for a part Not
+ * counted), its category and workspace, and what it came to. The phone's receipt and the Mac's receipt peek list them alike.
+ */
+export function SplitPartLine({ part, accounts, className = 'flex items-center gap-3 py-2 text-sm' }: { part: SplitPart; accounts: readonly AccountRow[]; className?: string }) {
+  return (
+    <div
+      data-testid="split-part"
+      data-excluded={part.excluded ? 'true' : undefined}
+      className={className}
+    >
+      {/* The workspace's letter on the category's icon, as a list holding several workspaces marks a row. A part
+          Not counted has no category and no workspace: a plain mark in the icon's place. */}
+      <span className="relative shrink-0">
+        {part.book || part.categoryId ? (
+          <>
+            <CategoryIcon categoryId={part.categoryId} accounts={accounts} size="sm" />
+            <WorkspaceBadge book={part.book} corner />
+          </>
+        ) : (
+          <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+            <EyeOff size={14} />
+          </span>
+        )}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={cx('truncate', part.excluded && 'text-slate-500')}>{part.categoryName}</span>
+        <span className="truncate text-xs text-slate-500">
+          {part.book || part.categoryId
+            ? [part.book?.name, part.excluded ? 'Excluded from report' : null].filter(Boolean).join(' · ')
+            : 'In no workspace and no report'}
+        </span>
+      </span>
+      <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>
     </div>
   );
 }
