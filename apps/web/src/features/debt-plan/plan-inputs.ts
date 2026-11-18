@@ -10,7 +10,7 @@ import {
   periodOn,
 } from '@expanses/core';
 import type { CardInstallmentRow, DebtMovement, LoanPlanFact, LoanTermsRow, PeopleDebts, PersonDebtRow } from '@expanses/db';
-import { type CardFacts, type DebtAccount, type DebtRow, dayMonth, groupDebts } from '../networth/debt-rows';
+import { type CardFacts, type DebtAccount, type DebtIcon, type DebtRow, dayMonth, groupDebts } from '../networth/debt-rows';
 import { cardPay, loanPay, type PayTarget, personPay } from './pay-target';
 
 /**
@@ -66,6 +66,9 @@ export interface PlanDebt {
   accountId: string | null;
   personName: string | null;
   name: string;
+  /** What the Liabilities page draws it as (`DebtRow.icon`), and the catalogue kind a loan was opened as, if any. */
+  icon: DebtIcon;
+  itemId: string | null;
   currency: string;
   /** Own currency; borrowed = left + repaid always. */
   leftMinor: number;
@@ -196,6 +199,8 @@ function loanDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDebt
     accountId,
     personName: null,
     name: row.name,
+    icon: row.icon,
+    itemId: readings.items[accountId] ?? null,
     currency: row.currency,
     leftMinor,
     borrowedMinor,
@@ -264,6 +269,8 @@ function cardDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDebt
     accountId,
     personName: null,
     name: row.name,
+    icon: row.icon,
+    itemId: null,
     currency: row.currency,
     leftMinor,
     borrowedMinor,
@@ -346,6 +353,8 @@ function personDebt(row: DebtRow, readings: PlanReadings, today: string): PlanDe
     accountId: null,
     personName: row.personName,
     name: row.name,
+    icon: row.icon,
+    itemId: null,
     currency: row.currency,
     leftMinor,
     borrowedMinor,
@@ -394,6 +403,8 @@ function payableDebt(row: DebtRow, readings: PlanReadings): PlanDebt {
     accountId,
     personName: null,
     name: row.name,
+    icon: row.icon,
+    itemId: readings.items[accountId] ?? null,
     currency: row.currency,
     leftMinor,
     borrowedMinor,
@@ -425,6 +436,8 @@ function paidOffDebt(parts: Pick<PlanDebt, 'key' | 'kind' | 'accountId' | 'perso
     accountId: parts.accountId,
     personName: parts.personName,
     name: parts.name,
+    icon: parts.kind === 'person' ? 'person' : 'loan',
+    itemId: parts.accountId ? (readings.items[parts.accountId] ?? null) : null,
     currency: parts.currency,
     leftMinor: 0,
     borrowedMinor: parts.borrowed,

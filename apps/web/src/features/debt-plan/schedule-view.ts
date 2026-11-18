@@ -153,7 +153,7 @@ function loanItems(input: MonthInput): PlanItem[] {
  * The number of a scheduled instalment ahead: one more than the last tracked one per month in between, or — with
  * nothing tracked — counted back from the tenor, since the schedule's last row is the tenor's last instalment.
  */
-function instalmentNumberFrom(debt: PlanDebt, fact: LoanPlanFact, onDate: string): number {
+export function instalmentNumberFrom(debt: PlanDebt, fact: LoanPlanFact, onDate: string): number {
   const last = fact.instalments.at(-1);
   if (last) return last.number + instalmentNumber({ firstPaymentOn: last.dueOn }, onDate) - 1;
   const end = fact.schedule.at(-1);
