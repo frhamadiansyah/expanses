@@ -1,16 +1,15 @@
-import { DEFAULT_EMERGENCY_BASE, healthRatios, householdEmergencyMonths, type PeriodFlows, type RatioStatus, type SheetTotals } from '@expanses/core';
+import type { PeriodFlows, RatioStatus, SheetTotals } from '@expanses/core';
 import { usePhone } from '../../app/use-phone';
 import { Panel, type Segment, SegmentedControl } from '../../ui/native';
-import { useGoalCalculators, useGoals } from '../goals/queries';
-import { EMPTY_FLOWS, emergencyGoalBase, periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading, withJointRatios } from './health-cards';
-import { useHealthSettings } from './health-settings';
+import { periodChoices, periodRange, type RatioPeriod, ratioDisplay } from './health-cards';
+import { useHealthRatios } from './use-health';
 import { useEssentialSplit, useSpendingGuide } from '../essential-split/queries';
 import { SplitBar } from '../essential-split/SplitBar';
 import { splitCard } from '../essential-split/split-view';
 import { useMonthStart } from '../workspaces/queries';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
-const STATUS_INK: Record<RatioStatus, string> = {
+export const STATUS_INK: Record<RatioStatus, string> = {
   good: 'text-[var(--ph-up)]',
   watch: 'text-[var(--ph-warn)]',
   act: 'text-[var(--ph-alarm)]',
@@ -53,29 +52,9 @@ export function HealthRatios({
   /** Currencies the household's sheet has no rate for, named under the ratios they blank. */
   jointMissing?: readonly string[];
 }) {
-  // What the emergency fund counts and the debt guide, as set on this screen's Settings page (the ⚙ in the corner).
-  // The base stays unset until it is switched: until then it is the emergency goal's own.
-  const settings = useHealthSettings();
   const phone = usePhone();
-  // Q5: the card grades against the household's own months, read from its emergency goal — never a copy of them.
-  // Called whether or not the totals are there: hooks run on every render.
-  const goals = useGoals();
-  const calculators = useGoalCalculators();
-  const emergencyTargetMonths = householdEmergencyMonths(goals.data ?? []) ?? undefined;
-  // It opens on the base that goal counts, so the card and the goal it grades against measure the same months.
-  const emergencyBase = settings.emergencyBase ?? emergencyGoalBase(goals.data ?? [], calculators.data ?? []) ?? DEFAULT_EMERGENCY_BASE;
-  // No ratios at all without every rate: a ratio worked out from a total that left some money at 0 is wrong, not partial.
-  const ratioSettings = { ...settings, emergencyBase, emergencyTargetMonths };
-  const ratios =
-    totals === null
-      ? []
-      : withEmergencyLoading(
-          withJointRatios(
-            healthRatios(flows ?? EMPTY_FLOWS, totals, ratioSettings),
-            jointTotals === undefined ? undefined : jointTotals === null ? null : healthRatios(flows ?? EMPTY_FLOWS, jointTotals, ratioSettings),
-          ),
-          goals.isPending || calculators.isPending,
-        );
+  // Graded as the health screen always graded them (`useHealthRatios`), so the Mac Net worth's box reads the same.
+  const ratios = useHealthRatios({ flows, totals, jointTotals });
   const choices = periodChoices(today, earliestYear);
   // Essential · Lifestyle · Debts & savings over the same period, owner-wide as the flows are, graded by the workspace's guide.
   const range = periodRange(period, today, useMonthStart());
