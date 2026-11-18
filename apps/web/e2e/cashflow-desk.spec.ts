@@ -6,7 +6,7 @@ import { peekBill, peekButton } from './bills-desk';
 
 /*
  * The wide screen's Cashflow (Mac Cashflow D, 2026-11-17): three boxes, the typing table across the full width, and a
- * side peek. A row is typed in the top row and saved with Return; a click opens its peek, Esc closes it, ⌃ ⌄ step, and a
+ * side peek. A row is typed in the last row and saved with Return; a click opens its peek, Esc closes it, ⌃ ⌄ step, and a
  * double-click opens the full edit screen.
  */
 
@@ -27,7 +27,7 @@ async function typeRow(page: Page, description: string, amount: string, category
   await expect(page.getByTestId('transaction-row').filter({ hasText: description })).toHaveCount(1);
 }
 
-test('a row typed in the top row is saved with Return, counted in the boxes, and its peek opens, steps and closes', async ({ page }) => {
+test('a row typed in the last row is saved with Return, counted in the boxes, and its peek opens, steps and closes', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');
   await expect(page.getByRole('heading', { name: 'Cashflow', level: 1 })).toBeVisible();
@@ -65,7 +65,7 @@ test('a row typed in the top row is saved with Return, counted in the boxes, and
   await expect(peek).toContainText('Essential');
   await expect(superindo).toHaveAttribute('aria-current', 'true');
 
-  // ⌃ ⌄ and the arrow keys step through the table's rows (newest first: Kopi Kenangan was typed last, same day).
+  // ⌃ ⌄ and the arrow keys step through the table's rows (oldest first: Kopi Kenangan was typed last, same day).
   const titles = await page.getByTestId('transaction-row').allInnerTexts();
   const other = titles.findIndex((text) => text.includes('Kopi Kenangan')) < titles.findIndex((text) => text.includes('Superindo')) ? 'Previous transaction' : 'Next transaction';
   await peek.getByRole('button', { name: other }).click();

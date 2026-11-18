@@ -31,7 +31,7 @@ test('Show, Filter and the Amount header narrow and sort the table, and Clear pu
   await show.getByRole('button', { name: 'All' }).click();
   await expect(rows).toHaveCount(3);
 
-  // The Amount header sorts largest first, then smallest; Date puts it back to newest.
+  // The Amount header sorts largest first, then smallest; Clear puts it back to oldest at the top.
   await page.getByRole('button', { name: /^Amount/ }).click();
   await expect(rows.first()).toContainText('Salary');
   await page.getByRole('button', { name: /^Amount/ }).click();
@@ -48,7 +48,9 @@ test('Show, Filter and the Amount header narrow and sort the table, and Clear pu
 
   await menu.getByRole('button', { name: 'Clear filters' }).click();
   await expect(rows).toHaveCount(3);
-  await expect(rows.first()).toContainText('Salary');
+  // Oldest at the top, the row added last at the bottom, just above the typing row.
+  await expect(rows.first()).toContainText('Kopi Kenangan');
+  await expect(rows.last()).toContainText('Salary');
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Filter', exact: true })).toBeVisible();

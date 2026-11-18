@@ -45,6 +45,10 @@ async function copyOnPage(page: Page): Promise<string> {
 }
 
 const draftRow = (page: Page, note: string) => page.getByTestId('not-recorded-row').filter({ has: page.locator(`input[value="${note}"]`) });
+/** A waiting row's figure, read as the recorded rows print it ("Rp 31.000") while its cell is not typed in. */
+const money = (figure: string) => new RegExp(`^Rp\\s?${figure.replace(/\./g, '\\.')}$`);
+/** A waiting row's own Record: black once complete, disabled (grey) while a cell is blank. */
+const recordOf = (page: Page, note: string) => draftRow(page, note).getByRole('button', { name: `Record ${note}` });
 const cellOf = (row: Locator, column: string) => row.locator(`[data-cell="${column}"]`);
 
 /** Drags from one cell down to another in the same column: the blue range between them. */
@@ -60,12 +64,11 @@ test('three pasted rows with no category get one, picked once for the range, and
   await page.goto('/transactions');
   await pasteInto(page, ['2026-10-14\tPasar Lama\t\tBank Contoh\t41.500', '2026-10-15\tKios Sayur\t\tBank Contoh\t17.250', '2026-10-16\tToko Beras\t\tBank Contoh\t96.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
-  const summary = page.getByTestId('paste-summary');
-  await expect(summary).toContainText('Pasted 3 rows · 0 ready to record · 3 need a fix');
+  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(recordOf(page, note)).toBeDisabled();
 
-  // The rows come in newest first: Toko Beras, Kios Sayur, Pasar Lama. Click the first category cell, ⇧-click the last.
-  await draftRow(page, 'Toko Beras').getByLabel('Row category').click();
-  await draftRow(page, 'Pasar Lama').getByLabel('Row category').click({ modifiers: ['Shift'] });
+  // The rows wait in the order pasted: Pasar Lama, Kios Sayur, Toko Beras. Click the first category cell, ⇧-click the last.
+  await draftRow(page, 'Pasar Lama').getByLabel('Row category').click();
+  await draftRow(page, 'Toko Beras').getByLabel('Row category').click({ modifiers: ['Shift'] });
   await expect(page.locator('[data-cell="category"][data-picked="true"]')).toHaveCount(3);
   await expect(page.getByTestId('table-note')).toContainText('3 cells');
   await page.screenshot({ path: test.info().outputPath('cashflow-range.png') });
@@ -75,11 +78,16 @@ test('three pasted rows with no category get one, picked once for the range, and
   await page.getByRole('dialog', { name: 'Category for 3 rows' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await expect(page.getByTestId('cell-change')).toContainText('Changed 3 cells');
   for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('Groceries');
-  await expect(summary).toContainText('Pasted 3 rows · 3 ready to record · 0 need a fix');
+  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(recordOf(page, note)).toBeEnabled();
 
-  await summary.getByRole('button', { name: 'Record 3 ready' }).click();
+  // ⌘-click picks the three; the peek's Record 3 records them together, into the month on show.
+  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await draftRow(page, note).getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  const picked = page.getByTestId('cashflow-selection');
+  await expect(picked.getByTestId('peek-title')).toHaveText('3 selected');
+  await picked.getByTestId('record-many').click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
   await expect(page.getByTestId('transaction-row')).toHaveCount(3);
+  await expect(page.getByTestId('recorded-toast')).toContainText('Recorded in October 2026');
 });
 
 test('⌘D fills down from the top cell, Delete clears drafts only, ⌘C copies the cells, ⌘V fills them, and Undo puts a change back', async ({ page }) => {
@@ -87,8 +95,7 @@ test('⌘D fills down from the top cell, Delete clears drafts only, ⌘C copies 
   await page.goto('/transactions');
   await pasteInto(page, ['2026-10-16\tWarung Satu\tRestaurants\tBank Contoh\t21.000', '2026-10-15\tWarung Dua\t\tBank Contoh\t23.000', '2026-10-14\tWarung Tiga\t\tBank Contoh\t25.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
-  // The paste's line lands under the typing row a moment after its rows: the table settles before the drag.
-  await expect(page.getByTestId('paste-summary')).toContainText('Pasted 3 rows');
+  await expect(draftRow(page, 'Warung Satu').getByLabel('Row category')).toHaveValue('Restaurants');
 
   // A drag down the Category column picks the three cells.
   await dragCells(page, cellOf(draftRow(page, 'Warung Satu'), 'category'), cellOf(draftRow(page, 'Warung Tiga'), 'category'));
@@ -106,11 +113,11 @@ test('⌘D fills down from the top cell, Delete clears drafts only, ⌘C copies 
   // Amounts: several lines fill the picked cells in order; one value fills them all; Delete clears them (drafts).
   await dragCells(page, cellOf(draftRow(page, 'Warung Satu'), 'amount'), cellOf(draftRow(page, 'Warung Tiga'), 'amount'));
   await pasteOnPage(page, '31.000\n32.000\n33.000\n');
-  await expect(draftRow(page, 'Warung Satu').getByLabel('Row amount (IDR)')).toHaveValue('31.000');
-  await expect(draftRow(page, 'Warung Dua').getByLabel('Row amount (IDR)')).toHaveValue('32.000');
-  await expect(draftRow(page, 'Warung Tiga').getByLabel('Row amount (IDR)')).toHaveValue('33.000');
+  await expect(draftRow(page, 'Warung Satu').getByLabel('Row amount (IDR)')).toHaveValue(money('31.000'));
+  await expect(draftRow(page, 'Warung Dua').getByLabel('Row amount (IDR)')).toHaveValue(money('32.000'));
+  await expect(draftRow(page, 'Warung Tiga').getByLabel('Row amount (IDR)')).toHaveValue(money('33.000'));
   await pasteOnPage(page, '40.000');
-  for (const note of ['Warung Satu', 'Warung Dua', 'Warung Tiga']) await expect(draftRow(page, note).getByLabel('Row amount (IDR)')).toHaveValue('40.000');
+  for (const note of ['Warung Satu', 'Warung Dua', 'Warung Tiga']) await expect(draftRow(page, note).getByLabel('Row amount (IDR)')).toHaveValue(money('40.000'));
   await page.keyboard.press('Delete');
   for (const note of ['Warung Satu', 'Warung Dua', 'Warung Tiga']) await expect(draftRow(page, note).getByLabel('Row amount (IDR)')).toHaveValue('');
   await page.keyboard.press('Escape');
@@ -121,9 +128,10 @@ test('a range of recorded rows changes them by their own edit, never clears them
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
   await pasteInto(page, ['2026-10-16\tToko A\tGroceries\tBank Contoh\t11.000', '2026-10-15\tToko B\tGroceries\tBank Contoh\t12.000'].join('\n'));
-  await page.getByTestId('paste-summary').getByRole('button', { name: 'Record 2 ready' }).click();
+  await recordOf(page, 'Toko A').click();
+  await recordOf(page, 'Toko B').click();
   await expect(page.getByTestId('transaction-row')).toHaveCount(2);
-  await expect(page.getByTestId('paste-summary')).toHaveCount(0);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
 
   const recorded = (note: string) => page.getByTestId('transaction-row').filter({ hasText: note });
   await dragCells(page, cellOf(recorded('Toko A'), 'category'), cellOf(recorded('Toko B'), 'category'));
@@ -174,14 +182,17 @@ test('a Notion copy reads right: its header names, YYYY/MM/DD dates, a card by i
   await pasteInto(page, notion);
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
   const toko = draftRow(page, 'Toko Sumber Rejeki');
-  await expect(toko.getByLabel('Row date')).toHaveValue('3 Oct');
+  // A waiting row says its year: it waits whatever month is on show.
+  await expect(toko.getByLabel('Row date')).toHaveValue('3 Oct 2026');
   await expect(toko.getByLabel('Row category')).toHaveValue('Groceries');
   await expect(toko.getByLabel('Row paid with')).toHaveValue('Kartu Contoh');
-  await expect(toko.getByLabel('Row amount (IDR)')).toHaveValue('123.400');
+  await expect(toko.getByLabel('Row amount (IDR)')).toHaveValue(money('123.400'));
   await expect(draftRow(page, 'Kedai Kopi Senja').getByLabel('Row paid with')).toHaveValue('Kartu Contoh');
   // Digits no card or account shows: the cell stays to be filled, never guessed.
   await expect(draftRow(page, 'Parkir Mal').getByLabel('Row paid with')).toHaveValue('');
-  await expect(page.getByTestId('paste-summary')).toContainText('Pasted 3 rows · 2 ready to record · 1 needs a fix');
+  await expect(recordOf(page, 'Toko Sumber Rejeki')).toBeEnabled();
+  await expect(recordOf(page, 'Kedai Kopi Senja')).toBeEnabled();
+  await expect(recordOf(page, 'Parkir Mal')).toBeDisabled();
 });
 
 test('Notion’s whole rows (page links, no cells) are not pasted as notes: a line says how to copy cells', async ({ page }) => {
@@ -198,9 +209,9 @@ test('a paste’s empty category is guessed from the place’s last purchase, an
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
   await pasteInto(page, ['2026-10-10\tWarung Bu Sri\tRestaurants\tBank Contoh\t22.000', '2026-10-11\tKantin Kantor\tMakan\tBank Contoh\t19.000'].join('\n'));
-  // "Makan" is no category's name: orange, never guessed.
+  // "Makan" is no category's name: left blank, never guessed.
   await expect(draftRow(page, 'Kantin Kantor').getByLabel('Row category')).toHaveValue('');
-  await page.getByTestId('paste-summary').getByRole('button', { name: 'Record 1 ready' }).click();
+  await recordOf(page, 'Warung Bu Sri').click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   // Picked for that row and recorded: "Makan" is remembered as Restaurants on this device.
   const kantin = draftRow(page, 'Kantin Kantor');
@@ -218,7 +229,7 @@ test('a paste’s empty category is guessed from the place’s last purchase, an
   const lantai = draftRow(page, 'Kantin Lantai 3').getByLabel('Row category');
   await expect(lantai).toHaveValue('Restaurants');
   await expect(lantai).toHaveAttribute('title', 'Category guessed from an earlier paste of “makan”');
-  // No history for that place and nothing named: orange.
+  // No history for that place and nothing named: blank.
   await expect(draftRow(page, 'Toko Baru Sekali').getByLabel('Row category')).toHaveValue('');
   await expect(draftRow(page, 'Toko Baru Sekali').getByLabel('Row category')).not.toHaveAttribute('data-guessed', 'true');
 });
@@ -233,8 +244,9 @@ test('a Notion relation’s page links are picked once and remembered: the other
   const rows = [`2026/10/14\tPasar Contoh\t${food}\t${bank}\t41,500`, `2026/10/15\tKios Contoh\t${food}\t${bank}\t17,250`, `2026/10/16\tToko Contoh\t${other}\t\t9,000`].join('\n');
   await pasteInto(page, rows);
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
-  const links = page.getByTestId('paste-links');
-  await expect(links).toHaveText('3 Notion links not known yet — pick once, they are remembered');
+  // A light grey count in the box header, no colour.
+  const links = page.getByTestId('links-to-pick');
+  await expect(links).toHaveText('3 Notion links to pick');
   // No address is put into a cell.
   for (const note of ['Pasar Contoh', 'Kios Contoh', 'Toko Contoh']) {
     await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('');
@@ -252,7 +264,7 @@ test('a Notion relation’s page links are picked once and remembered: the other
   await expect(kios.getByLabel('Row category')).toHaveAttribute('data-guessed', 'true');
   await expect(kios.getByLabel('Row category')).toHaveAttribute('title', 'Category remembered for this Notion link');
   await expect(draftRow(page, 'Toko Contoh').getByLabel('Row category')).toHaveValue('');
-  await expect(links).toHaveText('2 Notion links not known yet — pick once, they are remembered');
+  await expect(links).toHaveText('2 Notion links to pick');
 
   // Paid with, the same way.
   await pasar.getByLabel('Row paid with').fill('Bank Contoh');
@@ -260,10 +272,13 @@ test('a Notion relation’s page links are picked once and remembered: the other
   await page.getByRole('heading', { name: 'Cashflow' }).click();
   await expect(kios.getByLabel('Row paid with')).toHaveValue('Bank Contoh');
   await expect(kios.getByLabel('Row paid with')).toHaveAttribute('title', 'Paid with remembered for this Notion link');
-  await expect(links).toHaveText('1 Notion link not known yet — pick once, it is remembered');
+  await expect(links).toHaveText('1 Notion link to pick');
 
-  // The whole paste undone, then pasted again: the known links fill in on their own.
-  await page.getByTestId('paste-summary').getByRole('button', { name: 'Undo' }).click();
+  // The rows discarded (✕, twice), then pasted again: the known links fill in on their own.
+  for (const note of ['Pasar Contoh', 'Kios Contoh', 'Toko Contoh']) {
+    await draftRow(page, note).getByRole('button', { name: 'Discard' }).click();
+    await draftRow(page, note).getByRole('button', { name: 'Click again to discard' }).click();
+  }
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
   await expect(links).toHaveCount(0);
   await pasteInto(page, rows);
@@ -272,8 +287,10 @@ test('a Notion relation’s page links are picked once and remembered: the other
     await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('Groceries');
     await expect(draftRow(page, note).getByLabel('Row paid with')).toHaveValue('Bank Contoh');
   }
-  await expect(links).toHaveText('1 Notion link not known yet — pick once, it is remembered');
-  await expect(page.getByTestId('paste-summary')).toContainText('Pasted 3 rows · 2 ready to record · 1 needs a fix');
+  await expect(links).toHaveText('1 Notion link to pick');
+  await expect(recordOf(page, 'Pasar Contoh')).toBeEnabled();
+  await expect(recordOf(page, 'Kios Contoh')).toBeEnabled();
+  await expect(recordOf(page, 'Toko Contoh')).toBeDisabled();
 });
 
 test('a pasted category is matched with accents left out and “&” as “and”, and nothing looser', async ({ page }) => {
@@ -284,6 +301,6 @@ test('a pasted category is matched with accents left out and “&” as “and�
   await expect(draftRow(page, 'Toko Contoh').getByLabel('Row category')).toHaveValue('Cafe & dessert');
   await expect(draftRow(page, 'Warung Contoh').getByLabel('Row category')).toHaveValue('Restaurants');
   await expect(draftRow(page, 'Kedai Contoh').getByLabel('Row category')).toHaveValue('Groceries');
-  // A misspelling stays orange.
+  // A misspelling stays blank.
   await expect(draftRow(page, 'Kue Contoh').getByLabel('Row category')).toHaveValue('');
 });
