@@ -1,6 +1,6 @@
 import { formatMinor, fundingOrder, type GoalClass, goalClass, isoDate } from '@expanses/core';
 import { type GoalPlanRow, reorderGoals, retagTrade } from '@expanses/db';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { type DragEvent, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -447,9 +447,21 @@ function GoalRow({
           <KindIcon kind={card.kind} size={24} />
           <span className="min-w-0">
             <span className="flex min-w-0 items-center gap-[6px]">
-              <span className="min-w-0 break-words" data-testid="goal-row-name">
+              {/* The name is the goal's page, as a link: a click still opens the peek, a double-click the page. */}
+              <Link
+                to="/goals/$goalId"
+                params={{ goalId: card.goalId }}
+                draggable={false}
+                onClick={onClick}
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
+                  onOpen();
+                }}
+                className="min-w-0 break-words"
+                data-testid="goal-row-name"
+              >
                 {card.name}
-              </span>
+              </Link>
               {goal.initials && <Initials initials={goal.initials} testId="goal-row-initials" selected={selected} />}
             </span>
             {/* In a narrower page the date, the status and Funded by fold under the name, so no figure is cut. */}
