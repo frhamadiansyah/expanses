@@ -41,13 +41,21 @@ test('a loan opens Pay or Pay extra from its link, and goes back after', async (
   await opensNothing(page, `/net-worth/loans/${id}`, 'Pay');
 });
 
-test('a card opens its pay sheet from its link, and goes back after', async ({ page }) => {
+test('a card’s pay link opens “Pay credit card”; a plain visit opens nothing', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
   await openCard(page, { name: 'BCA Visa', owed: '1500000' });
   const id = new URL(page.url()).pathname.split('/').at(-1)!;
 
-  await opensAndGoesBack(page, '/net-worth/loans', `/cards/${id}?pay=1`, 'Pay BCA Visa');
-  await opensNothing(page, `/cards/${id}`, 'Pay BCA Visa');
+  // Card Pay is the Add screen's "Pay credit card" (owner, 17 Nov 2026), no longer a sheet on the card page. Back to
+  // where Pay was tapped is walked by phone-card-pay-spend (a typed address has no in-app history to go back to).
+  await page.goto(`/cards/${id}?pay=1`);
+  await expect(page.getByRole('heading', { name: 'Pay credit card', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/transactions\/new\?/);
+  // A plain visit stays on the card page.
+  await page.goto(`/cards/${id}`);
+  await expect(page.getByRole('main')).toBeVisible();
+  await page.waitForTimeout(300);
+  await expect(page.getByRole('heading', { name: 'Pay credit card', exact: true })).toHaveCount(0);
 });
 
 test('a bill opens its pay sheet from its link, and goes back after', async ({ page }) => {
