@@ -30,9 +30,16 @@ async function cardEarningInto(page: Page, card: string, programme: string) {
   await expect(page.getByText('1 per Rp')).toBeVisible();
 }
 
-/** A programme's face on the Points page's pile, named by the programme, its balance and who earns into it. */
+/**
+ * A programme's row on the wide screen's Points table (Mac Points), named by the programme, its balance and who earns
+ * into it as the phone's face is. A click there opens its side peek; `openProgramme` opens its page, by a double-click.
+ */
 const programmeRow = (page: Page, name: string) =>
-  page.getByRole('region', { name: 'Points' }).getByRole('link', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}, `) });
+  page.getByRole('region', { name: 'Programmes' }).getByRole('link', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}, `) });
+const openProgramme = async (page: Page, name: string) => {
+  await programmeRow(page, name).dblclick();
+  await expect(page).toHaveURL(/\/cards\/points\/[^/]+$/);
+};
 
 test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page }) => {
   await cardEarningInto(page, 'Mandiri Prioritas', "Livin' Poin");
@@ -40,7 +47,7 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
   // The programme is on the Cards page, called by the card that earns into it.
   await page.goto('/cards/points');
   await expect(programmeRow(page, "Livin' Poin")).toHaveAccessibleName(new RegExp('Mandiri Prioritas'));
-  await programmeRow(page, "Livin' Poin").click();
+  await openProgramme(page, "Livin' Poin");
   await expect(page.getByTestId('programme-balance')).toHaveText('0 points');
 
   // Its balance set to the one the bank's app shows.
@@ -68,7 +75,7 @@ test("converting Livin' Poin into KrisFlyer shows both balances", async ({ page 
   await expect(programmeRow(page, 'KrisFlyer')).toHaveAccessibleName(new RegExp('6\\.660 miles'));
   await expect(programmeRow(page, 'KrisFlyer')).toHaveAccessibleName(new RegExp('No card · converted in'));
 
-  await programmeRow(page, 'KrisFlyer').click();
+  await openProgramme(page, 'KrisFlyer');
   await expect(page.getByTestId('programme-balance')).toHaveText('6.660 miles');
   await expect(page.getByTestId('programme-history')).toContainText("From Livin' Poin");
 
@@ -93,7 +100,7 @@ test('a second card of the bank joins its programme', async ({ page }) => {
   await page.goto('/cards/points');
   await expect(programmeRow(page, "Livin' Poin")).toHaveAccessibleName(new RegExp('2 cards earn here'));
   await expect(programmeRow(page, 'Platinum points')).toHaveCount(0);
-  await programmeRow(page, "Livin' Poin").click();
+  await openProgramme(page, "Livin' Poin");
   // The cards earning here are in the programme's settings.
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByRole('button', { name: /Mandiri Prioritas/ })).toBeVisible();

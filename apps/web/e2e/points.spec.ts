@@ -64,10 +64,11 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   // The page's own Points link; the sidebar has one too (Mac sidebar A).
   await page.getByRole('main').getByRole('link', { name: 'Points', exact: true }).click();
   await expect(page).toHaveURL(/\/cards\/points$/);
-  await expect(page.getByRole('region', { name: 'Points' }).getByRole('link', { name: /6\.200 points/ })).toBeVisible();
-  // The programmes are a pile of faces, as Wallet's cards are; ＋ to add one is in the title's corner.
-  await expect(page.getByRole('region', { name: 'Points' }).getByTestId('wallet-card')).toHaveCount(1);
-  await page.locator('header').getByRole('button', { name: 'New programme' }).click();
+  // On a wide screen the programmes are one table (Mac Points), each row with its small card; ＋ Add programme is in the
+  // title bar. The phone's pile is phone-programme-page.spec.ts's.
+  await expect(page.getByRole('region', { name: 'Programmes' }).getByRole('link', { name: /6\.200 points/ })).toBeVisible();
+  await expect(page.getByTestId('points-row')).toHaveCount(1);
+  await page.locator('header').getByRole('button', { name: 'Add programme' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
 
