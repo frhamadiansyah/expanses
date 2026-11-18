@@ -1,7 +1,7 @@
-import type { CategoryNeed, TrendBar } from '@expanses/core';
+import { type CategoryNeed, monthName, type TrendBar } from '@expanses/core';
 import type { AccountRow, DraftRow } from '@expanses/db';
 import { OTHER_COLOUR, ringSlices } from './category-colours';
-import { type AmountExtraPart, amountExtraParts, type ListRow, wholeLeftOut } from './list-model';
+import { type AmountExtraPart, amountExtraParts, type ListRow, type Sort, sortRows, wholeLeftOut } from './list-model';
 import { quickFromDraft, readQuick } from './quick-row';
 
 /**
@@ -200,6 +200,72 @@ export function pageShortcut(event: { key: string; metaKey: boolean; ctrlKey: bo
   if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return null;
   const key = event.key.toLowerCase();
   return key === 'n' ? 'new' : key === 'f' ? 'search' : key === 'a' ? 'all' : null;
+}
+
+// ── The waiting rows and the typing row (Mac Cashflow option E, owner 2026-11-18) ───────────────────────────────────
+
+/**
+ * The desk's own order: oldest at the top, newest at the bottom, where the typing row adds the next one (the Date header
+ * still turns it round). The phone keeps newest first.
+ */
+export const DESK_SORT: Sort = { key: 'date', dir: 'asc' };
+
+/**
+ * The desk's rows in its order. Oldest first is newest first turned round whole — within a day too, so the row typed last
+ * is the bottom one, just above the typing row (the phone's oldest first keeps a day newest first, `sortRows`).
+ */
+export function sortDesk(rows: readonly ListRow[], sort: Sort): ListRow[] {
+  return sort.key === 'date' && sort.dir === 'asc' ? sortRows(rows, { key: 'date', dir: 'desc' }).reverse() : sortRows(rows, sort);
+}
+
+/** The box header's grey note on the order the table reads in. */
+export function orderNote(sort: Sort): string {
+  if (sort.key === 'amount') return `${sort.dir === 'asc' ? 'smallest' : 'largest'} at the top · new rows at the bottom`;
+  return `${sort.dir === 'asc' ? 'oldest' : 'newest'} at the top · new rows at the bottom`;
+}
+
+/**
+ * The rows typed or pasted to finish later (drafts with source manual), just above the typing row, in the order they
+ * came in — whatever month they are dated in. By when each was made; rows made in the same moment by one paste keep that
+ * paste's order (`pasted`, the ids it made, as this page heard them), then their ids.
+ */
+export function waitingOrder<T extends { id: string; draft?: Pick<DraftRow, 'createdAt'> | null }>(rows: readonly T[], pasted: readonly string[] = []): T[] {
+  const at = new Map(pasted.map((id, i) => [id, i]));
+  const rank = (row: T) => at.get(row.id) ?? Number.MAX_SAFE_INTEGER;
+  return [...rows].sort((a, b) => (a.draft?.createdAt ?? '').localeCompare(b.draft?.createdAt ?? '') || rank(a) - rank(b) || a.id.localeCompare(b.id));
+}
+
+/**
+ * Record N, with several waiting rows picked: the complete ones (by the very reading each row's own Record uses,
+ * `readQuick`), in the table's order, and how many are skipped for a blank cell.
+ */
+export function recordable<T extends { id: string; draft?: DraftRow | null }>(
+  picked: readonly string[],
+  waiting: readonly T[],
+  accounts: readonly AccountRow[],
+  today: string,
+  baseCurrency: string,
+): { ready: T[]; skipped: number } {
+  const chosen = waiting.filter((row) => picked.includes(row.id) && row.draft);
+  const ready = chosen.filter((row) => readQuick(quickFromDraft(row.draft!, today, accounts), accounts, today, baseCurrency).needs.length === 0);
+  return { ready, skipped: chosen.length - ready.length };
+}
+
+/** Under Record N: "1 with a blank cell is skipped". */
+export const skippedLine = (count: number) => `${count} with a blank cell ${count === 1 ? 'is' : 'are'} skipped`;
+
+/**
+ * The toast after waiting rows are recorded: where they went, as months ("Recorded in September 2026"; several, "Recorded
+ * in August and September 2026", or "Recorded in December 2025 and January 2026" across a year's end), and the month
+ * Show › opens — the latest of them. `months` are YYYY-MM, each a recorded row's own period (`periodMonthOf`).
+ */
+export function recordedToast(months: readonly string[]): { text: string; show: string } | null {
+  const sorted = [...new Set(months)].sort();
+  if (sorted.length === 0) return null;
+  const years = new Set(sorted.map((month) => month.slice(0, 4)));
+  const names = sorted.map((month) => (years.size === 1 ? monthName(month, 'long') : `${monthName(month, 'long')} ${month.slice(0, 4)}`));
+  const listed = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names.at(-1)!}`;
+  return { text: `Recorded in ${listed}${years.size === 1 ? ` ${sorted[0]!.slice(0, 4)}` : ''}`, show: sorted.at(-1)! };
 }
 
 // ── A paste into the typing row ─────────────────────────────────────────────────────────────────────────────────────

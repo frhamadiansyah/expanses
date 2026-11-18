@@ -4,7 +4,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
-import { clickAction, countsAs, dayBarsShape, monthFigures, NO_SELECTION, pageShortcut, pasteLine, pasteSummary, peekKey, ringArcs, ringLegend, type Selection, selectionReducer } from './cashflow-desk-model';
+import { clickAction, countsAs, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, pasteLine, pasteSummary, peekKey, recordable, recordedToast, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, waitingOrder } from './cashflow-desk-model';
+import type { ListRow } from './list-model';
 import { PeekRow } from './ReceiptPeek';
 import { kindWord, peekFigure, receiptPeekLines } from './receipt-peek-model';
 
@@ -256,7 +257,7 @@ describe('picking several rows, the Mac way', () => {
   });
 });
 
-describe('a paste into the typing row', () => {
+describe('the waiting rows, the typing row and Record', () => {
   const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null): AccountRow => ({
     id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency, valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-11-01T00:00:00Z',
   });
@@ -278,5 +279,50 @@ describe('a paste into the typing row', () => {
     expect(pasteLine(after)).toBe('Pasted 3 rows · 0 ready to record · 2 need a fix');
     expect(pasteLine(pasteSummary(['a'], drafts, accounts, '2026-11-18', 'IDR'))).toBe('Pasted 1 row · 1 ready to record · 0 need a fix');
     expect(pasteLine(pasteSummary(['a', 'b'], drafts, accounts, '2026-11-18', 'IDR'))).toBe('Pasted 2 rows · 1 ready to record · 1 needs a fix');
+  });
+
+  it('lists the waiting rows in the order they came in, whatever month they are dated in, a paste breaking its own ties', () => {
+    const rows = [
+      { id: 'z', draft: draft('z', { createdAt: '2026-11-18T09:00:00.002Z', occurredOn: '2026-09-14' }) },
+      { id: 'b', draft: draft('b', { createdAt: '2026-11-18T09:00:00.001Z', occurredOn: '2026-11-02' }) },
+      { id: 'a', draft: draft('a', { createdAt: '2026-11-18T09:00:00.001Z', occurredOn: '2026-08-01' }) },
+      { id: 'old', draft: draft('old', { createdAt: '2026-11-17T08:00:00.000Z', occurredOn: '2026-11-17' }) },
+    ];
+    // Made first is first; a tie keeps the paste's own order when it is known, else the ids.
+    expect(waitingOrder(rows).map((row) => row.id)).toEqual(['old', 'a', 'b', 'z']);
+    expect(waitingOrder(rows, ['b', 'a', 'z']).map((row) => row.id)).toEqual(['old', 'b', 'a', 'z']);
+  });
+
+  it('records the complete ones of several picked, in the table’s order, and says how many are skipped', () => {
+    const waiting = [draft('a', {}), draft('b', { categoryAccountId: null }), draft('c', { amountMinor: 0 }), draft('d', {})].map((d) => ({ id: d.id, draft: d }));
+    const { ready, skipped } = recordable(['d', 'b', 'a', 'c'], waiting, accounts, '2026-11-18', 'IDR');
+    expect(ready.map((row) => row.id)).toEqual(['a', 'd']);
+    expect(skipped).toBe(2);
+    // A picked recorded row is no waiting row: neither recorded here nor skipped.
+    expect(recordable(['a', 'tx1'], waiting, accounts, '2026-11-18', 'IDR')).toMatchObject({ skipped: 0 });
+    expect(skippedLine(1)).toBe('1 with a blank cell is skipped');
+    expect(skippedLine(2)).toBe('2 with a blank cell are skipped');
+  });
+
+  it('says where recorded rows went, by month, and Show › opens the latest', () => {
+    expect(recordedToast(['2026-09'])).toEqual({ text: 'Recorded in September 2026', show: '2026-09' });
+    expect(recordedToast(['2026-09', '2026-08', '2026-09'])).toEqual({ text: 'Recorded in August and September 2026', show: '2026-09' });
+    expect(recordedToast(['2026-09', '2026-07', '2026-08'])).toEqual({ text: 'Recorded in July, August and September 2026', show: '2026-09' });
+    expect(recordedToast(['2026-01', '2025-12'])).toEqual({ text: 'Recorded in December 2025 and January 2026', show: '2026-01' });
+    expect(recordedToast([])).toBeNull();
+  });
+
+  it('reads oldest at the top, the row typed last at the bottom, as newest first turned round whole', () => {
+    const tx = (id: string, date: string, createdAt: string) => ({ id, kind: 'tx', date, amountMinor: 1, tx: { createdAt, dayOrder: null } }) as unknown as ListRow;
+    const rows = [tx('b', '2026-11-17', '2026-11-17T08:00:00Z'), tx('a', '2026-11-01', '2026-11-01T08:00:00Z'), tx('c', '2026-11-17', '2026-11-17T09:00:00Z')];
+    expect(sortDesk(rows, DESK_SORT).map((row) => row.id)).toEqual(['a', 'b', 'c']);
+    expect(sortDesk(rows, { key: 'date', dir: 'desc' }).map((row) => row.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('reads oldest at the top by default, and says so in the box header', () => {
+    expect(DESK_SORT).toEqual({ key: 'date', dir: 'asc' });
+    expect(orderNote(DESK_SORT)).toBe('oldest at the top · new rows at the bottom');
+    expect(orderNote({ key: 'date', dir: 'desc' })).toBe('newest at the top · new rows at the bottom');
+    expect(orderNote({ key: 'amount', dir: 'desc' })).toBe('largest at the top · new rows at the bottom');
   });
 });
