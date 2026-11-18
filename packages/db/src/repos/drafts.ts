@@ -336,6 +336,15 @@ export async function listDrafts(database: Database, ws: WorkspaceContext, statu
   return rows.map(toRow);
 }
 
+/**
+ * Whether a draft is Review's: a capture (an SMS, a notification, an email, a screenshot or a photo, a receipt, a voice
+ * note) or an import sent there. A row typed or pasted into Cashflow's table (`manual`) is not — it is finished where it
+ * was typed, as a row of that table, and Review lists and counts none of them (owner 2026-11-18). No new mark: the
+ * draft's own source already says which door it came in by.
+ */
+export const inReviewQueue = (draft: Pick<DraftRow, 'source'>): boolean => draft.source !== 'manual';
+
+/** How many drafts Review has to deal with (`inReviewQueue`): the badge that says there is anything to do. */
 export async function countPendingDrafts(database: Database, ws: WorkspaceContext): Promise<number> {
   const [row] = await database.db
     .select({ count: sql<number>`count(*)` })
@@ -346,6 +355,7 @@ export async function countPendingDrafts(database: Database, ws: WorkspaceContex
         eq(draftTransactions.workspaceId, ws.workspaceId),
         eq(draftTransactions.status, 'pending'),
         isNull(draftTransactions.mergedInto),
+        ne(draftTransactions.source, 'manual'),
       ),
     );
   return Number(row?.count ?? 0);

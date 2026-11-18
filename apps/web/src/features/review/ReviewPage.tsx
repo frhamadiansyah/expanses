@@ -47,7 +47,7 @@ import { type Correction, corrections, draftPatch, foreignPair, quickCharge, rec
 import { DesktopReview } from './DesktopReview';
 import { useCards } from '../cards/card-queries';
 import { chargedFigure, type FormDraft } from '../transactions/tx-form';
-import { useCaptureSources, useDraftCategoryGuesses, useDrafts } from './queries';
+import { useCaptureSources, useDraftCategoryGuesses, useReviewDrafts } from './queries';
 import { SkippedList } from './SkippedList';
 import { useSharedEventSummaries } from '../events/shared-queries';
 import { moveAfterSave, postTag, recordedIntoText } from '../transactions/shared-move';
@@ -85,7 +85,8 @@ export function ReviewPage() {
   // held either way, keeps its own.
   const sideways = useSideways();
   const desk = !phone && !sideways;
-  const drafts = useDrafts();
+  // Captures and imports only: a row typed or pasted into Cashflow is finished there (`inReviewQueue`).
+  const drafts = useReviewDrafts();
   const guesses = useDraftCategoryGuesses(drafts.data ?? []).data;
   const accounts = useAccounts().data ?? [];
   const cards = useCards().data ?? [];

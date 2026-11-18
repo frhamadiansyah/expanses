@@ -1,14 +1,29 @@
-import { countPendingDrafts, type DraftRow, guessCategoryFromHistory, listDrafts, listSkipped, listSources } from '@expanses/db';
+import { countPendingDrafts, type DraftRow, guessCategoryFromHistory, inReviewQueue, listDrafts, listSkipped, listSources } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
-/** The drafts in one state: the queue (pending), or what it became — recorded or discarded — read only when asked for. */
+/**
+ * Every draft in one state, whatever door it came in by — Cashflow's own rows typed or pasted to finish later among
+ * them: what Cashflow's table lists. Review reads `useReviewDrafts`.
+ */
 export function useDrafts(status: DraftRow['status'] = 'pending', enabled = true) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['drafts', ws.workspaceId, status], queryFn: () => listDrafts(database, ws, status), enabled });
 }
 
-/** How many captures are waiting, for the badge that says there is anything to do. */
+const reviewOnly = (drafts: DraftRow[]) => drafts.filter(inReviewQueue);
+
+/**
+ * Review's drafts in one state: the queue (pending), or what it became — recorded or discarded — read only when asked
+ * for. Captures and imports only (`inReviewQueue`): a row typed or pasted into Cashflow is finished there. The same
+ * query as `useDrafts`, read through its filter, so the two never disagree about a draft.
+ */
+export function useReviewDrafts(status: DraftRow['status'] = 'pending', enabled = true) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['drafts', ws.workspaceId, status], queryFn: () => listDrafts(database, ws, status), enabled, select: reviewOnly });
+}
+
+/** How many captures are waiting (`inReviewQueue`), for the badge that says there is anything to do. */
 export function usePendingDraftCount() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['drafts-pending-count', ws.workspaceId], queryFn: () => countPendingDrafts(database, ws) });

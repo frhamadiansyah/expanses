@@ -4,9 +4,11 @@ import {
   confirmDraft,
   countPendingDrafts,
   createAccount,
+  createDraft,
   dismissDraft,
   editDraft,
   existingExternalRefs,
+  inReviewQueue,
   listAccounts,
   listDrafts,
   listTransactions,
@@ -50,6 +52,19 @@ describe('capturing drafts', () => {
     // The same source read twice must not ask the owner to dismiss the same rows again.
     expect(await captureDrafts(database, ws, [draft()])).toEqual({ captured: 0, skipped: 1 });
     expect(await countPendingDrafts(database, ws)).toBe(2);
+  });
+
+  it('counts for Review only what was captured or imported: a row typed or pasted into Cashflow’s table is not Review’s', async () => {
+    const { database, ws, draft } = await workspace();
+    await captureDrafts(database, ws, [draft(), draft({ externalRef: 'mail', source: 'email', description: 'TIKET' })]);
+    const pasted = await createDraft(database, ws, { source: 'manual', occurredOn: '2026-09-10', description: 'Warung Bu Tini', amountMinor: 18_500, currency: 'IDR' });
+    expect(await countPendingDrafts(database, ws)).toBe(2);
+    // Cashflow's table still lists it, among every other draft waiting.
+    const all = await listDrafts(database, ws);
+    expect(all.map((d) => d.id)).toContain(pasted);
+    expect(all.filter(inReviewQueue).map((d) => d.source).sort()).toEqual(['csv', 'email']);
+    for (const source of ['csv', 'voice', 'receipt', 'email', 'notification', 'screen', 'photo'] as const) expect(inReviewQueue({ source }), source).toBe(true);
+    expect(inReviewQueue({ source: 'manual' })).toBe(false);
   });
 
   it('skips what has already been posted to the ledger', async () => {

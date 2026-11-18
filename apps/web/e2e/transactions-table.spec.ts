@@ -51,8 +51,8 @@ test('an unfinished row waits as not recorded, and is finished in place', async 
 
   const waiting = page.getByTestId('not-recorded-row');
   await expect(waiting).toHaveCount(1);
-  // This month's To review counts it.
-  await expect(page.getByTestId('month-review')).toHaveText('1');
+  // It waits here, in Cashflow's table, not in Review: This month's To review counts captures only.
+  await expect(page.getByTestId('month-review')).toHaveText('0');
   await pick(waiting, 'Row paid with', 'bca');
   await pick(waiting, 'Row category', 'pharm');
   await waiting.getByRole('button', { name: 'Record Apotek K24' }).click();

@@ -7,6 +7,7 @@ import {
   dismissDraft,
   editDraft,
   guessCategoryFromHistory,
+  inReviewQueue,
   inBook as workspaceInBook,
   instalmentSpendingIn,
   listTransactionsIn,
@@ -1615,6 +1616,7 @@ export function TransactionsPage() {
         emptyText={listable.length === 0 ? 'No transactions in this period. Type the first one above.' : 'Nothing matches the search and filters.'}
         limitNote={month === 'all' && recorded.length >= ALL_TIME_LIMIT ? `The newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only` : undefined}
         pendingCount={pending.length}
+        reviewCount={pending.filter(inReviewQueue).length}
         drafts={drafts.data ?? []}
         accounts={accounts}
         rowOptions={rowOptions}
@@ -1850,7 +1852,8 @@ export function TransactionsPage() {
       {!inCategory && chartShown && (
         <WaitingBox
           today={today}
-          drafts={pending}
+          // Its To review row is Review's: captures and imports, not the rows typed or pasted into Cashflow's table.
+          drafts={pending.filter(inReviewQueue)}
           needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
         />
       )}
