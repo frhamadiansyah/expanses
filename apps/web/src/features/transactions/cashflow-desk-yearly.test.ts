@@ -43,18 +43,17 @@ const rows = buildRows([yearly, monthly, dinner], [], accounts, []);
 const march = { ...EMPTY_FILTERS, month: '2027-03' };
 
 describe('a yearly bill in the desk table', () => {
-  it('over a month reads whole, in grey, with "Yearly bill · in the year" first under it', () => {
+  it('over a month reads whole and in grey, the row tagged as a yearly bill', () => {
     const row = leaveOutYearlyBills(rows).find((r) => r.id === yearly.id)!;
     const amount = deskAmount(row);
     expect(amount).toMatchObject({ minor: 8_400_000_00, sign: '', tone: 'grey', yearlyOut: true });
-    expect(amount.extra[0]).toEqual({ text: YEARLY_BILL_LINE, tone: 'foreign' });
+    expect(YEARLY_BILL_LINE).toBe('Yearly bill · in the year');
   });
 
   it('counted (the switch on, or a year) reads as any spending, with no tag', () => {
     const row = rows.find((r) => r.id === yearly.id)!;
     const amount = deskAmount(row);
     expect(amount).toMatchObject({ minor: 8_400_000_00, tone: 'ink', yearlyOut: false });
-    expect(amount.extra.map((part) => part.text)).not.toContain(YEARLY_BILL_LINE);
     // The monthly bill and the dinner never carry it.
     for (const other of rows.filter((r) => r.id !== yearly.id)) expect(deskAmount(leaveOutYearlyBills([other])[0]!).yearlyOut).toBe(false);
   });

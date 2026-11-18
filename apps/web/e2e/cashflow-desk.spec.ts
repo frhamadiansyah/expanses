@@ -214,7 +214,8 @@ test('a yearly bill is listed greyed and left out of a month’s ring, boxes and
   const premium = page.getByTestId('transaction-row').filter({ hasText: 'Life cover premium' });
   await expect(premium).toHaveAttribute('data-yearly-out', 'true');
   await expect(premium).toContainText('12.000.000');
-  await expect(premium.getByTestId('amount-extra')).toHaveText('Yearly bill · in the year');
+  await expect(premium.getByTestId('yearly-tag')).toHaveText('Yearly bill');
+  await expect(premium.getByTestId('yearly-tag')).toHaveAttribute('title', 'Yearly bill · in the year');
   await expect(page.getByTestId('yearly-bills-note')).toHaveText('1 yearly bill not in the ring');
   const bars = page.getByTestId('cashflow-days');
   await expect(bars.locator('[title*="12.000.000"]')).toHaveCount(0);
@@ -223,6 +224,9 @@ test('a yearly bill is listed greyed and left out of a month’s ring, boxes and
   // Its peek says which bill, and that the year counts it.
   await premium.click();
   await expect(page.getByTestId('cashflow-peek').getByTestId('yearly-note')).toHaveText('Life cover premium · Yearly bill · in the year');
+  // Beside the peek the tag and the amount stay whole.
+  await expect(premium.getByTestId('yearly-tag')).toHaveText('Yearly bill');
+  await expect(premium).toContainText('12.000.000');
   await page.keyboard.press('Escape');
 
   // Filter: Yearly bills off, saying what that means; on, the month counts it like any spending.
@@ -238,7 +242,7 @@ test('a yearly bill is listed greyed and left out of a month’s ring, boxes and
   await expect(bars.locator('[title*="12.000.000"]')).toHaveCount(1);
   await expect(page.getByTestId('yearly-bills-note')).toHaveCount(0);
   await expect(premium).not.toHaveAttribute('data-yearly-out', /.*/);
-  await expect(premium.getByTestId('amount-extra')).toHaveCount(0);
+  await expect(premium.getByTestId('yearly-tag')).toHaveCount(0);
   await expect(filter).toHaveText(/Filter · 1/);
   // Clear filters puts it back off.
   await page.getByRole('dialog', { name: 'Filter' }).getByRole('button', { name: 'Clear filters' }).click();
@@ -252,7 +256,7 @@ test('a yearly bill is listed greyed and left out of a month’s ring, boxes and
   await picker.getByRole('button', { name: '2027', exact: true }).click();
   await expect(page.getByTestId('chart-month')).toHaveText(/2027/);
   await expect(total).toHaveText(/^Rp\s12\.286\.000$/);
-  await expect(premium.getByTestId('amount-extra')).toHaveCount(0);
+  await expect(premium.getByTestId('yearly-tag')).toHaveCount(0);
   await filter.click();
   await expect(page.getByTestId('yearly-bills-filter')).toBeDisabled();
   await expect(page.getByTestId('yearly-bills-filter')).toContainText('A year always counts them');

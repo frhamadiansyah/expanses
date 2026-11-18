@@ -23,6 +23,7 @@ import { quickFromDraft, shortDate } from './quick-row';
 import { ReceiptPeek } from './ReceiptPeek';
 import { SwitchLook, yearlyBillsHint } from './SortFilterMenu';
 import { useSpendingTrend } from './SpendingTrend';
+import { YEARLY_BILL_LINE } from './yearly-bills';
 import { EditableRow, type TableHandlers, TypingRow } from './TransactionsTable';
 
 type Filters = Omit<ListFilters, 'month'>;
@@ -760,6 +761,17 @@ function DeskRow({
       <span className={cx('truncate px-2 py-[5px] tabular-nums', grey)}>{shortDate(row.date, today)}</span>
       <span className={cx('flex min-w-0 items-center gap-1.5 px-2 py-[5px]', row.deleted && 'line-through')}>
         <span className="truncate">{row.description || <span className={grey}>{category ?? kindLabel ?? 'No note'}</span>}</span>
+        {/* A yearly bill a month leaves out: said beside the note as a short pill, the whole line on hover and to a reader. */}
+        {yearlyOut && (
+          <span
+            data-testid="yearly-tag"
+            title={YEARLY_BILL_LINE}
+            aria-label={YEARLY_BILL_LINE}
+            className={cx('shrink-0 rounded-full px-[6px] text-[11px] whitespace-nowrap', selected ? 'bg-white/20 text-white' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}
+          >
+            Yearly bill
+          </span>
+        )}
         {row.instalment && (
           <span data-testid="instalment-pill" className={cx('shrink-0 rounded-full px-[6px] text-[11px] tabular-nums', selected ? 'bg-white/20' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}>
             {row.instalment.number} of {row.instalment.of}
