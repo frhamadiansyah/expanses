@@ -5,6 +5,7 @@ import { moneyHolders } from '../../lib/queries';
 import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
+import type { CellColumn } from './cell-range';
 import { CellCombo, type ComboOption } from './CellCombo';
 import { lastFourOf, matchLastFour, payerOptions, paymentKey, type QuickValues } from './quick-row';
 
@@ -30,6 +31,8 @@ export const DESK_COLUMNS = {
 
 const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
 const MISSING = 'bg-amber-50 ring-1 ring-amber-400 ring-inset';
+/** A cell in a range of blue cells (`useCellRange`): the Mac accent's wash, edged in the accent. */
+export const PICKED_CELL = 'bg-[var(--mac-accent-wash)] outline outline-1 -outline-offset-1 outline-[var(--mac-accent)]';
 /** The desk table's cell: 13 px, as tall as the rows under it, the Mac accent around the one being typed in. */
 const DESK_CELL = 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] placeholder:text-[var(--ph-ink-3)] focus:bg-white focus:outline-2 focus:outline-[var(--mac-accent)]';
 
@@ -116,6 +119,8 @@ export function QuickRowEditor({
   layout = 'row',
   countsAs,
   categoryGuessed,
+  cellRow,
+  pickedCell,
 }: {
   values: QuickValues;
   onChange: (patch: Partial<QuickValues>) => void;
@@ -137,6 +142,13 @@ export function QuickRowEditor({
   countsAs?: ReactNode;
   /** The category was filled in by a guess (a paste's): why, said on the cell. */
   categoryGuessed?: string | null;
+  /**
+   * A desk row's id, which marks each of its cells for a range of blue cells (`useCellRange`): `data-cell` and
+   * `data-cell-row` on the cell. Left out on the typing row, which is no part of a range.
+   */
+  cellRow?: string;
+  /** The column of this row's cell in a range of blue cells, if one is. */
+  pickedCell?: CellColumn | null;
 }) {
   const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
     if (onPaste?.(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'))) event.preventDefault();
@@ -219,17 +231,26 @@ export function QuickRowEditor({
       {actions}
     </div>
   );
+  // A desk row's cells are marked for a range of blue cells, and drawn blue while in one.
+  const cell = (column: CellColumn, node: ReactNode) =>
+    layout === 'desk' && cellRow ? (
+      <div key={column} data-cell={column} data-cell-row={cellRow} data-picked={pickedCell === column || undefined} className={cx('min-w-0 rounded-[5px]', pickedCell === column && PICKED_CELL)}>
+        {node}
+      </div>
+    ) : (
+      node
+    );
   const cells =
     layout === 'desk'
       ? [
-          date,
-          description,
-          category,
-          paid,
+          cell('date', date),
+          cell('description', description),
+          cell('category', category),
+          cell('paid', paid),
           <span key="counts" data-col="counts" className="truncate px-2 text-[13px] text-[var(--ph-ink-3)]">
             {countsAs}
           </span>,
-          amount,
+          cell('amount', amount),
           ends,
         ]
       : [date, description, amount, paid, category, ends];

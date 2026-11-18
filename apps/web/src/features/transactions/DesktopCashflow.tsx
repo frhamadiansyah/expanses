@@ -18,7 +18,9 @@ import { type BulkActions, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
-import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
+import { DESK_COLUMNS, DESK_GRID, PICKED_CELL, type RowOptions } from './QuickRowEditor';
+import type { CellColumn } from './cell-range';
+import { useCashflowCells } from './cashflow-cells';
 import { forgetMark, guessHint, keepMarks, learnFromRecorded, readMarks } from './paste-categories';
 import { quickFromDraft, shortDate } from './quick-row';
 import { ReceiptPeek } from './ReceiptPeek';
@@ -463,6 +465,9 @@ export function DesktopCashflow({
       return ok;
     },
   };
+  // The blue cells: a range down one column, across drafts and recorded rows (`cashflow-cells`). Starting one lets the
+  // picked rows and their peek go, so the two selections never show at once.
+  const cells = useCashflowCells({ rows, today, accounts, rowOptions, handlers, saveDraft: deskHandlers.saveDraft, readOnly, onStart: () => dispatch({ type: 'close' }) });
   const guessOf = (id: string) => {
     const mark = marks[id];
     const hint = guessHint(mark);
@@ -646,8 +651,11 @@ export function DesktopCashflow({
         >
           <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
             Transactions
-            <span className={NOTE}>{limitNote ?? 'Type in the top row · Tab moves along · Return saves · ⌘V pastes a list'}</span>
+            <span className={NOTE} data-testid="table-note">
+              {cells.hint ?? limitNote ?? 'Type in the top row · Tab moves along · Return saves · ⌘V pastes a list'}
+            </span>
           </h2>
+          {cells.line}
           <div className="overflow-x-auto border-t border-[var(--ph-hair)]">
             <div className={cx('text-[13px]', peeking ? 'min-w-[560px]' : 'min-w-[700px]')}>
               <div className={cx(DESK_GRID, 'sticky top-0 border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-0.5 text-[11px] font-semibold text-[var(--ph-ink-3)]')}>
@@ -680,11 +688,11 @@ export function DesktopCashflow({
                 </div>
               )}
               {/* The month's rows as a list, each an item: a draft is finished in its own cells, the rest open the peek. */}
-              <ul aria-label="Transactions">
+              <ul aria-label="Transactions" {...cells.containerProps}>
               {rows.map((row, index) =>
                 row.kind === 'draft' ? (
                   <li key={`d:${row.id}`} className="list-none">
-                    <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={desk} guess={guessOf(row.id)} />
+                    <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={desk} guess={guessOf(row.id)} pickedCell={cells.pickedColumn(row.id)} />
                   </li>
                 ) : (
                   <DeskRow
@@ -692,6 +700,7 @@ export function DesktopCashflow({
                     row={row}
                     striped={index % 2 === 1}
                     selected={picked.has(row.id)}
+                    pickedCell={cells.pickedColumn(row.id)}
                     today={today}
                     accounts={accounts}
                     countsAs={countsAs(row, needs)}
@@ -721,6 +730,7 @@ export function DesktopCashflow({
           onClose={() => dispatch({ type: 'close' })}
         />
       )}
+      {cells.picker}
       {children}
     </div>
   );
@@ -731,6 +741,7 @@ function DeskRow({
   row,
   striped,
   selected,
+  pickedCell,
   today,
   accounts,
   countsAs: counts,
@@ -741,6 +752,8 @@ function DeskRow({
   row: ListRow;
   striped: boolean;
   selected: boolean;
+  /** The column of its cell in a range of blue cells (`useCellRange`), if one is. */
+  pickedCell: CellColumn | null;
   today: string;
   accounts: readonly AccountRow[];
   countsAs: string;
@@ -756,6 +769,9 @@ function DeskRow({
   const grey = selected ? 'text-white/80' : 'text-[var(--ph-ink-3)]';
   const category = row.categoryName ? `${row.categoryName}${row.moreCounted ? ` +${row.moreCounted}` : ''}` : null;
   const refile = helpers.refile(row);
+  // Each cell is marked for a range of blue cells, and drawn blue while in one.
+  const cell = (column: CellColumn) => ({ 'data-cell': column, 'data-cell-row': row.id, 'data-picked': pickedCell === column || undefined });
+  const blue = (column: CellColumn) => pickedCell === column && PICKED_CELL;
   return (
     <li
       data-testid="transaction-row"
@@ -784,8 +800,10 @@ function DeskRow({
         row.deleted && 'opacity-50',
       )}
     >
-      <span className={cx('truncate px-2 py-[5px] tabular-nums', grey)}>{shortDate(row.date, today)}</span>
-      <span className={cx('flex min-w-0 items-center gap-1.5 px-2 py-[5px]', row.deleted && 'line-through')}>
+      <span {...cell('date')} className={cx('truncate px-2 py-[5px] tabular-nums', grey, blue('date'))}>
+        {shortDate(row.date, today)}
+      </span>
+      <span {...cell('description')} className={cx('flex min-w-0 items-center gap-1.5 px-2 py-[5px]', row.deleted && 'line-through', blue('description'))}>
         <span className="truncate">{row.description || <span className={grey}>{category ?? kindLabel ?? 'No note'}</span>}</span>
         {/* A yearly bill a month leaves out: said beside the note as a short pill, the whole line on hover and to a reader. */}
         {yearlyOut && (
@@ -805,7 +823,7 @@ function DeskRow({
         )}
       </span>
       {/* On the selected row's accent the tinted mark sits on white, or it would sink into the blue. */}
-      <span className={cx('flex min-w-0 items-center gap-[6px] px-2 py-[3px]', selected && '[&_[data-testid=category-mark]]:bg-white!')}>
+      <span {...cell('category')} className={cx('flex min-w-0 items-center gap-[6px] px-2 py-[3px]', selected && '[&_[data-testid=category-mark]]:bg-white!', blue('category'))}>
         {kindLabel ? (
           <span className={cx('truncate', grey)}>{kindLabel}</span>
         ) : (
@@ -832,11 +850,16 @@ function DeskRow({
           </>
         )}
       </span>
-      <span className={cx('truncate px-2 py-[5px]', selected ? 'text-white' : 'text-[var(--ph-ink-2)]')}>{helpers.paidWith(row)}</span>
+      <span {...cell('paid')} className={cx('truncate px-2 py-[5px]', selected ? 'text-white' : 'text-[var(--ph-ink-2)]', blue('paid'))}>
+        {helpers.paidWith(row)}
+      </span>
       <span data-col="counts" className={cx('truncate px-2 py-[5px]', grey)}>
         {counts}
       </span>
-      <span className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', amount.tone === 'up' && !selected && 'text-[var(--ph-up)]', amount.tone === 'grey' && !selected && 'text-[var(--ph-ink-3)]')}>
+      <span
+        {...cell('amount')}
+        className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', amount.tone === 'up' && !selected && 'text-[var(--ph-up)]', amount.tone === 'grey' && !selected && 'text-[var(--ph-ink-3)]', blue('amount'))}
+      >
         {extra.length > 0 && (
           <span data-testid="amount-extra" title={extra.map((part) => part.text).join(' · ')} className={cx('truncate text-[11px]', grey)}>
             {extra.map((part, i) => (

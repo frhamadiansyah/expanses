@@ -6,6 +6,7 @@ import { Button, cx } from '../../ui';
 import { payerLine } from '../sharing/sharing-copy';
 import type { RowBook } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
+import type { CellColumn } from './cell-range';
 import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
@@ -25,7 +26,8 @@ export interface TableHandlers {
    */
   keepPasted: (rows: QuickValues[], marks?: PasteMark[]) => Promise<string[] | null>;
   guessCategory: (description: string) => Promise<string | null>;
-  saveRecorded: (id: string, values: QuickValues) => Promise<boolean>;
+  /** Saves a recorded row's cells. An edit replaces the row: `onSaved` hears the new row's id. */
+  saveRecorded: (id: string, values: QuickValues, onSaved?: (replacement: string) => void) => Promise<boolean>;
   saveDraft: (id: string, values: QuickValues, record: boolean) => Promise<boolean>;
   dismissDraft: (id: string) => Promise<boolean>;
   deleteRecorded: (id: string) => Promise<boolean>;
@@ -224,6 +226,7 @@ export function EditableRow({
   handlers,
   desk,
   guess,
+  pickedCell,
 }: {
   row: ListRow;
   options: RowOptions;
@@ -234,6 +237,8 @@ export function EditableRow({
   desk?: DeskLayout;
   /** A pasted row's category filled in by a guess: marked as guessed while the row still names it. */
   guess?: { categoryId: string; hint: string } | null;
+  /** The column of this row's cell in the desk's range of blue cells, if one is. */
+  pickedCell?: CellColumn | null;
 }) {
   const isDraft = row.kind === 'draft';
   const read = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);
@@ -280,6 +285,8 @@ export function EditableRow({
         layout={desk ? 'desk' : 'row'}
         countsAs={desk && values.categoryId ? desk.countsAs(values.categoryId) : undefined}
         categoryGuessed={guess && values.categoryId === guess.categoryId ? guess.hint : null}
+        cellRow={desk ? row.id : undefined}
+        pickedCell={pickedCell}
         values={values}
         onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
         needs={isDraft || dirty ? needs : []}

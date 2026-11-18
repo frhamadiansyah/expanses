@@ -932,12 +932,14 @@ export function TransactionsPage() {
     setArmed(null);
   }
 
-  async function saveRecorded(id: string, values: QuickValues): Promise<boolean> {
+  /** An edit replaces the row with a new one: `onSaved` hears its id (an Undo of several cells puts it back by it). */
+  async function saveRecorded(id: string, values: QuickValues, onSaved?: (replacement: string) => void): Promise<boolean> {
     const { read } = readQuick(values, accounts, today, ws.baseCurrency);
     if (!read) return false;
     const input = quickToInput(read, accounts);
     return guarded(id, spendingDoor(read.accountId, outflowFrom(input.lines, read.accountId)), id, async (choice) => {
-      await replaceTransaction(database, ws, id, { ...input, ratesToBase: await ratesFor(read), setAside: choice });
+      const replacement = await replaceTransaction(database, ws, id, { ...input, ratesToBase: await ratesFor(read), setAside: choice });
+      onSaved?.(replacement);
       close();
     });
   }
