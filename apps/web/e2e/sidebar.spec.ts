@@ -52,22 +52,19 @@ test('Cashflow is the old Transactions; Tools and Settings reach the rest', asyn
   await expect(page).toHaveURL(/\/transactions$/);
   await expect(side.getByRole('link', { name: 'Cashflow', exact: true })).toHaveAttribute('aria-current', 'page');
 
-  const tools = side.getByRole('button', { name: 'Tools' });
+  // Tools › opens the Tools page (Mac Settings and Tools, B); a tool's page keeps Tools lit.
+  const tools = side.getByRole('link', { name: 'Tools', exact: true });
   await tools.click();
-  const menu = page.getByRole('menu', { name: 'Tools' });
-  await expect(menu.getByRole('menuitem')).toHaveText(['Calculators', 'Which card?', 'Tax report', 'Import', /^Statement check/]);
-  await menu.getByRole('menuitem', { name: 'Tax report' }).click();
+  await expect(page).toHaveURL(/\/tools$/);
+  await expect(tools).toHaveAttribute('aria-current', 'page');
+  await page.getByTestId('tools-page').getByRole('link', { name: /^Tax report/ }).click();
   await expect(page).toHaveURL(/\/tax-report$/);
-  await expect(menu).toHaveCount(0);
+  await expect(tools).toHaveAttribute('aria-current', 'page');
 
   await tools.click();
-  await menu.getByRole('menuitem', { name: /^Statement check/ }).click();
-  await menu.getByRole('menuitem', { name: 'Bank Satu' }).click();
+  await page.getByRole('button', { name: /^Statement check/ }).click();
+  await page.getByRole('menu', { name: /Statement check/ }).getByRole('menuitem', { name: 'Bank Satu' }).click();
   await expect(page).toHaveURL(/\/statement\/list\?account=/);
-
-  await tools.click();
-  await page.keyboard.press('Escape');
-  await expect(menu).toHaveCount(0);
 
   await side.getByRole('link', { name: 'App settings', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);

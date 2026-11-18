@@ -1,6 +1,7 @@
 import type { MonthlyBill } from '@expanses/db';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
+import { TOOL_GROUPS } from '../features/tools/tools-model';
 import {
   activeTo,
   billsDueCount,
@@ -12,7 +13,7 @@ import {
   readAccountsFolded,
   SETTINGS_TO,
   SIDEBAR_GROUPS,
-  SIDEBAR_TOOLS,
+  TOOLS_TO,
   sidebarAccounts,
   writeAccountsFolded,
 } from './sidebar-model';
@@ -35,7 +36,8 @@ describe('the sidebar groups (option A)', () => {
 
   it('strands nothing the old sidebar had: each old place is a row, a tool or Settings', () => {
     const rows = new Map(SIDEBAR_GROUPS.flatMap((group) => group.items.map((item) => [item.to, item.label])));
-    const tools = new Set(SIDEBAR_TOOLS.map((tool) => tool.to));
+    // A tool is a tile on the Tools page; Calculators is its first row (each calculator a tile of its own).
+    const tools = new Set(['/calculators', ...TOOL_GROUPS.flatMap((group) => group.tiles.map((tile) => tile.to))]);
     for (const [to, where] of Object.entries(MOVED)) {
       if (where === 'Tools') expect(tools.has(to), to).toBe(true);
       else if (where === 'Settings') expect([SETTINGS_TO, '/categories', '/backup']).toContain(to);
@@ -68,7 +70,14 @@ describe('which row is selected', () => {
     expect(activeTo('/account/workspaces/b1', rows)).toBe(SETTINGS_TO);
     expect(activeTo('/categories', rows)).toBe(SETTINGS_TO);
     expect(activeTo('/backup', rows)).toBe(SETTINGS_TO);
-    expect(activeTo('/calculators', rows)).toBeNull();
+    expect(activeTo('/tools', rows)).toBe(TOOLS_TO);
+    expect(activeTo('/calculators', rows)).toBe(TOOLS_TO);
+    expect(activeTo('/calculators/loan', rows)).toBe(TOOLS_TO);
+    expect(activeTo('/statement/list', rows)).toBe(TOOLS_TO);
+    expect(activeTo('/cards/merchants', rows)).toBe(TOOLS_TO);
+    expect(activeTo('/tax-report', rows)).toBe(TOOLS_TO);
+    // A tool under a row of its own stays that row's: Lend & borrow is in Net worth.
+    expect(activeTo('/net-worth/lend-borrow', rows)).toBe('/net-worth');
     // A prefix of a word is not a parent: /budgetary is not under /budget.
     expect(activeTo('/budgetary', rows)).toBeNull();
   });
@@ -260,5 +269,7 @@ describe('which pages run edge to edge', () => {
     // A goal's own page, its history and its form keep the column.
     expect(edgeToEdge('/goals/g1', false)).toBe(false);
     expect(edgeToEdge('/goals/new', false)).toBe(false);
+    expect(edgeToEdge('/tools', false)).toBe(true);
+    expect(edgeToEdge('/tools', true)).toBe(false);
   });
 });

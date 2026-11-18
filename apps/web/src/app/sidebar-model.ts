@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { isDueSoon } from '../features/bills/bill-view';
+import { TOOLS_TO } from '../features/tools/tools-model';
 
 /*
  * The wide screen's sidebar (Mac app and a wide browser), option A of the Mac sidebar mockup (2026-11-17): three short
@@ -71,14 +72,8 @@ export const SIDEBAR_GROUPS: readonly SidebarGroup[] = [
   },
 ];
 
-/** The Tools menu at the foot. Statement check needs an account, so it asks which before it opens. */
-export const SIDEBAR_TOOLS: readonly { to: string; label: string }[] = [
-  { to: '/calculators', label: 'Calculators' },
-  { to: '/recommend', label: 'Which card?' },
-  { to: '/tax-report', label: 'Tax report' },
-  { to: '/import', label: 'Import' },
-];
-export const STATEMENT_CHECK = '/statement/list';
+/** Tools ›: the Tools page (Mac Settings and Tools, B), a tile for each tool — Statement check among them. */
+export { TOOLS_TO } from '../features/tools/tools-model';
 
 /** Settings: the Account page, which holds workspaces and sharing, Categories, Backup, Activity, Capture and the rest. */
 export const SETTINGS_TO = '/account';
@@ -105,8 +100,17 @@ export const MOVED: Readonly<Record<string, string>> = {
   '/account': 'Settings',
 };
 
-/** Pages without a row of their own, read as the row they belong to (a card page under Wallet, Backup under Settings). */
+/**
+ * Pages without a row of their own, read as the row they belong to (a card page under Wallet, Backup under Settings, a
+ * calculator under Tools). The first that fits wins, so a tool under /cards is listed before /cards itself.
+ */
 const BELONGS: readonly [prefix: string, to: string][] = [
+  ['/calculators', TOOLS_TO],
+  ['/recommend', TOOLS_TO],
+  ['/tax-report', TOOLS_TO],
+  ['/import', TOOLS_TO],
+  ['/statement', TOOLS_TO],
+  ['/cards/merchants', TOOLS_TO],
   ['/accounts', '/wallet'],
   ['/cards', '/wallet'],
   ['/categories', SETTINGS_TO],
@@ -122,7 +126,7 @@ const under = (pathname: string, prefix: string) => pathname === prefix || pathn
  */
 export function activeTo(pathname: string, destinations: readonly string[]): string | null {
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
-  const best = [...destinations, SETTINGS_TO].filter((to) => under(path, to)).sort((a, b) => b.length - a.length)[0];
+  const best = [...destinations, SETTINGS_TO, TOOLS_TO].filter((to) => under(path, to)).sort((a, b) => b.length - a.length)[0];
   if (best) return best;
   return BELONGS.find(([prefix]) => under(path, prefix))?.[1] ?? null;
 }
@@ -277,6 +281,8 @@ const EDGE_TO_EDGE_WIDE = [
   '/net-worth/plan/schedule',
   '/net-worth/plan/report',
   '/net-worth/plan/pay-first',
+  // Tools (Mac Settings and Tools, B): a page of tiles under its own title bar.
+  '/tools',
 ];
 /** Pages of one thing, drawn edge to edge on a wide screen: an event (Mac Events) — not its settings, plan or costs. */
 const EDGE_TO_EDGE_PATTERNS = [/^\/events\/[^/]+$/];

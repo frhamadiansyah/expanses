@@ -21,6 +21,7 @@ import { BudgetPage } from '../features/budget/BudgetPage';
 import { budgetSearch } from '../features/budget/budget-search';
 import { EditBudgetsPage } from '../features/budget/EditBudgetsPage';
 import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
+import { ToolsPage } from '../features/tools/ToolsPage';
 import { EducationFundPage } from '../features/calculators/EducationFundPage';
 import { EmergencyFundPage } from '../features/calculators/EmergencyFundPage';
 import { LifeCoverPage } from '../features/calculators/LifeCoverPage';
@@ -571,6 +572,8 @@ const routeTree = rootRoute.addChildren([
     component: LoanDetailPage,
     validateSearch: (search: Record<string, unknown>): { pay?: 'due' | 'extra' } => (search.pay === 'due' || search.pay === 'extra' ? { pay: search.pay } : {}),
   }),
+  // Tools (Mac Settings and Tools, B): the sidebar's Tools › opens a page of every tool; a phone's address leads to Account.
+  createRoute({ getParentRoute: () => rootRoute, path: '/tools', component: ToolsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/tax-report', component: CoretaxPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),

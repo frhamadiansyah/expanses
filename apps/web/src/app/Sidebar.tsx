@@ -2,8 +2,8 @@ import { isoDate } from '@expanses/core';
 import { type AccountRow, pocketParentIds } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Settings, Wrench } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, ChevronsUpDown, Settings, Wrench } from 'lucide-react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { getLastBackupAt } from '../features/backup/backupState';
 import { useMonthlyBills } from '../features/bills/queries';
 import { dueNowMinor, laterByCard } from '../features/cards/limit-usage';
@@ -23,7 +23,6 @@ import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
 import { useAccounts, useBalances, useIsBookShared } from '../lib/queries';
 import { cx } from '../ui';
 import { useApp } from './context';
-import { useEscape } from './use-escape';
 import {
   ACCOUNT_ICONS,
   activeTo,
@@ -33,11 +32,10 @@ import {
   readAccountsFolded,
   SETTINGS_TO,
   SIDEBAR_GROUPS,
-  SIDEBAR_TOOLS,
   type SidebarAccount,
   type SidebarItem,
   sidebarAccounts,
-  STATEMENT_CHECK,
+  TOOLS_TO,
   writeAccountsFolded,
 } from './sidebar-model';
 
@@ -53,7 +51,7 @@ const PILL = 'ml-auto shrink-0 whitespace-nowrap rounded-full bg-[var(--ph-alarm
  * (the ledger's balances, the cards' instalments) are read only while the list is open: folded, the sidebar asks the
  * ledger nothing, and a screen that needs no ledger reads none.
  */
-function useSidebarAccounts(withFigures: boolean): SidebarAccount[] {
+export function useSidebarAccounts(withFigures: boolean): SidebarAccount[] {
   const { ws } = useApp();
   const accounts = useAccounts();
   const balances = useBalances(undefined, withFigures);
@@ -69,7 +67,7 @@ function useSidebarAccounts(withFigures: boolean): SidebarAccount[] {
   const later = laterByCard(plans.data ?? [], isoDate());
   if (!accounts.isSuccess) return [];
   if (!withFigures || !balances.isSuccess) {
-    // Folded (or still reading): the names alone, for the Tools menu's Statement check.
+    // Folded (or still reading): the names alone, as the Tools page's Statement check asks for them too.
     return sidebarAccounts({ order: walletKeys(everything, [], readJointOrder()), money, credit, moneyFigure: (account) => ({ minor: null, currency: account.currency ?? ws.baseCurrency }), dueNow: () => 0, baseCurrency: ws.baseCurrency }).map((row) => ({ ...row, minor: null }));
   }
   return sidebarAccounts({
@@ -111,55 +109,6 @@ function NavRow({ to, params, label, icon, on, right, name }: { to: string; para
   );
 }
 
-/** Tools ›: a small menu over the foot of the sidebar. Statement check asks which account first. */
-function ToolsMenu({ accounts, onClose }: { accounts: readonly SidebarAccount[]; onClose: () => void }) {
-  const [checking, setChecking] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useEscape(onClose);
-  useEffect(() => {
-    const away = (event: MouseEvent) => {
-      if (box.current && !box.current.contains(event.target as Node)) onClose();
-    };
-    document.addEventListener('mousedown', away);
-    return () => document.removeEventListener('mousedown', away);
-  }, [onClose]);
-  const item = 'flex h-[24px] items-center rounded-[5px] px-[10px] text-[13px] text-[var(--ph-ink)] hover:bg-[var(--ph-dot)] hover:text-white';
-  return (
-    <div
-      ref={box}
-      role="menu"
-      aria-label="Tools"
-      className="absolute bottom-full left-0 z-40 mb-1 min-w-[220px] rounded-[9px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[6px] shadow-[0_8px_24px_rgb(0_0_0/0.18)]"
-    >
-      {checking ? (
-        <>
-          <button type="button" className={cx(item, 'w-full gap-1 text-[var(--ph-ink-3)]')} onClick={() => setChecking(false)}>
-            <ChevronLeft size={13} aria-hidden /> Statement check · which account?
-          </button>
-          {accounts.length === 0 && <p className="px-[10px] py-1 text-[12px] text-[var(--ph-ink-3)]">No accounts yet.</p>}
-          {accounts.map((account) => (
-            <Link key={account.id} role="menuitem" to={STATEMENT_CHECK} search={{ account: account.id }} className={item} onClick={onClose}>
-              {account.name}
-            </Link>
-          ))}
-        </>
-      ) : (
-        <>
-          <p className="px-[10px] pt-[2px] pb-[2px] text-[11px] font-semibold text-[var(--ph-ink-3)]">Tools</p>
-          {SIDEBAR_TOOLS.map((tool) => (
-            <Link key={tool.to} role="menuitem" to={tool.to} className={item} onClick={onClose}>
-              {tool.label}
-            </Link>
-          ))}
-          <button type="button" role="menuitem" className={cx(item, 'w-full justify-between')} onClick={() => setChecking(true)}>
-            Statement check <ChevronRight size={13} aria-hidden />
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
 function Footer() {
   const { database, ws } = useApp();
   const shared = useIsBookShared();
@@ -192,7 +141,6 @@ export function Sidebar() {
   const shared = useIsBookShared();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [choosing, setChoosing] = useState(false);
-  const [tools, setTools] = useState(false);
   /*
    * The end-to-end build starts Accounts folded: its journeys find an account by its name on the page they test, and
    * the same name in the sidebar would be a second match. The sidebar's own journey opens it (e2e/sidebar.spec.ts).
@@ -263,12 +211,14 @@ export function Sidebar() {
       </div>
 
       <div className="relative pt-2">
-        {tools && <ToolsMenu accounts={accounts} onClose={() => setTools(false)} />}
-        <button type="button" aria-haspopup="menu" aria-expanded={tools} onClick={() => setTools(!tools)} className={cx(ROW, 'w-full')}>
-          <Wrench className="h-[15px] w-[15px] shrink-0 text-[var(--ph-ink-2)]" strokeWidth={1.7} aria-hidden />
-          Tools
-          <ChevronRight size={13} aria-hidden className="ml-auto text-[var(--ph-ink-3)]" />
-        </button>
+        {/* Tools › opens the Tools page (Mac Settings and Tools, B): every tool a tile, Statement check among them. */}
+        <NavRow
+          to={TOOLS_TO}
+          label="Tools"
+          icon={<Wrench className="h-[15px] w-[15px] shrink-0 text-[var(--ph-ink-2)]" strokeWidth={1.7} aria-hidden />}
+          on={on === TOOLS_TO}
+          right={<ChevronRight size={13} aria-hidden className="ml-auto shrink-0 text-[var(--ph-ink-3)]" />}
+        />
         <NavRow to={SETTINGS_TO} label="Settings" name="App settings" icon={<Settings className="h-[15px] w-[15px] shrink-0 text-[var(--ph-ink-2)]" strokeWidth={1.7} aria-hidden />} on={on === SETTINGS_TO} />
         <div className="mt-1">
           <Footer />
