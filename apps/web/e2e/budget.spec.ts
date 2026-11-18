@@ -22,12 +22,14 @@ test('a cap on a parent counts what its children spent, and an over cap is liste
   await page.goto('/budget');
   await setBudget(page, 'Food and beverage', '300000');
 
-  // 500.000 spent under Restaurants against a 300.000 cap on the parent: its group row and its own budget both say so.
+  // 500.000 spent under Restaurants against a 300.000 cap on the parent: the group row says so. Every row's Left is its
+  // own Budget less its own Spent, so "All Food and beverage" (nothing booked to the parent itself) has all 300.000.
   const group = budgetCells(page, 'Food and beverage');
   await expect(group.budget).toHaveText('300.000');
   await expect(group.spent).toHaveText('500.000');
   await expect(group.left).toHaveText('−200.000');
-  await expect(budgetCells(page, 'All Food and beverage').left).toHaveText('−200.000');
+  await expect(budgetCells(page, 'All Food and beverage').spent).toHaveText('0');
+  await expect(budgetCells(page, 'All Food and beverage').left).toHaveText('300.000');
   // Needs a look names it, and the gauge says the month is over, and by how much.
   await expect(page.getByTestId('needs-a-look')).toContainText('Food and beverage over');
   await expect(page.getByTestId('needs-a-look')).toContainText(/−Rp\s200\.000/);

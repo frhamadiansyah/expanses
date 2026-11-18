@@ -44,9 +44,11 @@ test('a budget typed into its cell saves at once, and Left, the total and the ga
   await expect(page.getByTestId('budget-page')).toBeVisible();
   const own = budgetCells(page, 'All Household');
   await expect(own.budget).toHaveText('1.000.000');
-  // Nothing booked to Household itself; its budget covers Groceries too.
+  // Nothing booked to Household itself: every row's Left is its Budget less its Spent, so "All Household" has all
+  // of it left, and the group (Groceries' 340.000 spent in it) 660.000.
   await expect(own.spent).toHaveText('0');
-  await expect(own.left).toHaveText('660.000');
+  await expect(own.left).toHaveText('1.000.000');
+  await expect(budgetCells(page, 'Household').left).toHaveText('660.000');
   await page.getByRole('button', { name: 'Budget for All Household', exact: true }).click();
   await page.keyboard.press('Tab');
   const field = page.getByRole('textbox', { name: 'Budget for Groceries', exact: true });
@@ -90,6 +92,15 @@ test('Edit budgets still sets any budget, and the table shows it', async ({ page
   await expect(budgetCells(page, 'Restaurants').budget).toHaveText('700.000');
   await expect(budgetCells(page, 'Restaurants').left).toHaveText('200.000');
   await expect(budgetCells(page, 'Food and beverage').budget).toHaveText('700.000');
+  await expect(budgetCells(page, 'Food and beverage').left).toHaveText('200.000');
+
+  // Over its budget, a sub-category's Left is below nought, in red, and takes its group's Left down with it.
+  await typeBudget(page, 'Restaurants', '300000');
+  const restaurants = budgetCells(page, 'Restaurants');
+  await expect(restaurants.left).toHaveText('−200.000');
+  await expect(restaurants.left).toHaveClass(/ph-alarm/);
+  await expect(budgetCells(page, 'Food and beverage').left).toHaveText('−200.000');
+  await expect(page.getByTestId('total-left')).toHaveText('−200.000');
 });
 
 test('a category’s name opens its side peek: the month’s figures and transactions, stepped with ↓ and closed with Esc', async ({ page }) => {
