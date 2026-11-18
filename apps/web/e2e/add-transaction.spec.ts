@@ -647,7 +647,8 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
   await page.goto('/goals');
   // The funding line is a row of the goal's own page: the name, what the funding is and the figure are parts of
   // one row rather than one run of text, so the row is named and asked — the same fix `goals.spec.ts` made.
-  await page.getByTestId('goal-row').filter({ hasText: 'University for Aisyah' }).first().click();
+  // On a wide screen a click opens the goal's side peek; a double-click opens its page.
+  await page.getByTestId('goal-row').filter({ hasText: 'University for Aisyah' }).first().dblclick();
   await expect(page).toHaveURL(/\/goals\/[^/]+$/);
   const fundedBy = page.getByTestId('goal-link').filter({ hasText: 'Wise USD' }).first();
   await expect(fundedBy).toBeVisible();

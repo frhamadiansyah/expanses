@@ -31,7 +31,16 @@ export async function goalCard(page: Page, name: string) {
   // A form page saving: leaving before the ✓ has landed would drop the save, so wait for the page to close.
   if (/\/goals\/(new|[^/]+\/edit)$/.test(page.url())) await expect(page).not.toHaveURL(/\/(new|edit)$/);
   if (!/\/goals$/.test(page.url())) await page.goto('/goals');
-  await goalRow(page, name).click();
+  // On a wide screen (Mac Goals) a click opens the goal's side peek and a double-click its page; a phone's tap opens it.
+  const row = goalRow(page, name);
+  const desk = page.locator('[data-testid="goals-page"][data-desk="true"]');
+  await row.or(desk).first().waitFor();
+  if ((await desk.count()) > 0) {
+    // The wide screen lists a finished goal under Done, not Active.
+    await row.or(page.getByTestId('goals-table')).or(page.getByText('Every goal is done.')).first().waitFor();
+    if ((await row.count()) === 0) await page.getByRole('radio', { name: 'Done' }).click();
+    await row.dblclick();
+  } else await row.click();
   await expect(page).toHaveURL(/\/goals\/[^/]+$/);
   // Scoped by the goal's own name in the title: a locator kept while another goal is opened must not quietly
   // read that goal's page instead.
