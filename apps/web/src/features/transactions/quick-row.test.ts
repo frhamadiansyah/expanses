@@ -1,7 +1,7 @@
 import { matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { groupedAmountCell, isQuickEditable, keepsReadFigure, parsePastedRows, pastedCells, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
+import { cleanPastedCell, groupedAmountCell, isNotionPageLinks, isQuickEditable, keepsReadFigure, lastFourOf, matchLastFour, parsePastedRows, pastedCells, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -302,6 +302,90 @@ describe('pasting rows', () => {
       expect(read.read?.amountMinor, amount).toBe(50_000);
     }
     expect(readQuick(values('lima puluh'), accounts, TODAY, 'IDR').needs).toEqual(['amount']);
+  });
+});
+
+describe('pasting from Notion', () => {
+  const resolve = { paid: (text: string) => (text === '5521' ? 'bonvoy:c2' : null), category: (text: string) => (text === 'Groceries' ? 'groceries' : null) };
+
+  it('maps Notion’s own column names: Name or Title as the note, Sub Categories as the category, Account, Card or Bank as Paid with', () => {
+    const rows = parsePastedRows('Date\tName\tSub Categories\tAccount\tAmount\n2026/10/03\tToko Sumber Rejeki\tGroceries\t5521\t123,400');
+    expect(pastedCells(rows, 'desk')).toEqual([{ date: '2026/10/03', description: 'Toko Sumber Rejeki', category: 'Groceries', paid: '5521', amount: '123,400' }]);
+    expect(valuesFromCells(pastedCells(rows, 'desk')[0]!, resolve, TODAY)).toEqual({ date: '3 Oct', description: 'Toko Sumber Rejeki', amount: '123,400', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
+    for (const [note, category, paid] of [
+      ['Title', 'Sub Category', 'Card'],
+      ['NAME', 'subcategory', 'bank'],
+      ['title', 'Sub-category', 'CARD'],
+    ] as const) {
+      const header = parsePastedRows(`${paid}\t${note}\t${category}\tAmount\nBCA\tKopi\tCafe\t9.000`);
+      expect(pastedCells(header, 'desk'), note).toEqual([{ date: '', description: 'Kopi', category: 'Cafe', paid: 'BCA', amount: '9.000' }]);
+    }
+  });
+
+  it('reads a header in another order, and six columns with no header as the table’s own', () => {
+    const rows = parsePastedRows('Amount\tAccount\tSub Categories\tDate\tName\n77,250\t5521\tGroceries\t2026/9/7\tPasar Minggu');
+    expect(valuesFromCells(pastedCells(rows, 'desk')[0]!, resolve, TODAY)).toEqual({ date: '7 Sep', description: 'Pasar Minggu', amount: '77,250', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
+    const six = parsePastedRows('2026/09/08\tWarung Bu Tini\tGroceries\t5521\tEssential\t18,500');
+    expect(pastedCells(six, 'desk')).toEqual([{ date: '2026/09/08', description: 'Warung Bu Tini', category: 'Groceries', paid: '5521', amount: '18,500' }]);
+  });
+
+  it('a Notion header with nothing under it pastes no rows', () => {
+    expect(pastedCells(parsePastedRows('Date\tName\tSub Categories\tAccount\tAmount'), 'desk')).toEqual([]);
+  });
+
+  it('reads Notion’s YYYY/MM/DD dates', () => {
+    const date = (text: string) => valuesFromCells({ date: text, description: 'x', amount: '1', paid: '', category: '' }, resolve, '2026-11-18').date;
+    expect(date('2026/10/03')).toBe('3 Oct');
+    expect(date('2026/1/9')).toBe('9 Jan');
+    expect(date('2025/12/31')).toBe('31 Dec 2025');
+    expect(date('2026/02/30')).toBe('2026/02/30');
+  });
+
+  it('reads a figure written with comma grouping, as Notion shows it', () => {
+    const values = (amount: string) => valuesFromCells({ date: '17 Nov', description: 'x', amount, paid: '5521', category: 'Groceries' }, resolve, TODAY);
+    for (const [amount, minor] of [['123,400', 123_400], ['1,250,000', 1_250_000], ['Rp 98,000', 98_000]] as const) {
+      expect(readQuick(values(amount), accounts, TODAY, 'IDR').read?.amountMinor, amount).toBe(minor);
+    }
+  });
+
+  it('leaves a relation’s or a link’s address out, in every column', () => {
+    expect(cleanPastedCell('Groceries (https://www.notion.so/Groceries-0a1b2c3d4e5f)')).toBe('Groceries');
+    expect(cleanPastedCell('[Groceries](https://www.notion.so/0a1b2c3d4e5f)')).toBe('Groceries');
+    expect(cleanPastedCell(' 5521 (https://app.notion.com/p/abc) ')).toBe('5521');
+    expect(cleanPastedCell('Kopi (oat)')).toBe('Kopi (oat)');
+    const rows = parsePastedRows('2026/10/03\t[Toko Sumber Rejeki](https://www.notion.so/x1)\tGroceries (https://www.notion.so/x2)\t5521 (https://www.notion.so/x3)\t123,400');
+    expect(valuesFromCells(pastedCells(rows, 'desk')[0]!, resolve, TODAY)).toMatchObject({ description: 'Toko Sumber Rejeki', categoryId: 'groceries', accountId: 'bonvoy', cardId: 'c2' });
+  });
+
+  it('tells Notion’s whole rows (page links, no cells) from cells', () => {
+    const html = '<meta charset="utf-8"><p><a href="https://app.notion.com/p/Toko-0a1b">Toko</a></p><p><a href="https://app.notion.com/p/Kopi-2c3d">Kopi</a></p>';
+    expect(isNotionPageLinks('# Toko\n\nToko\n\nKopi', html)).toBe(true);
+    expect(isNotionPageLinks('Toko\nKopi', '<a href="https://www.notion.so/Toko-0a1b">Toko</a>')).toBe(true);
+    // Cells carry tabs; a sheet's HTML carries no Notion links; and plain text has no HTML at all.
+    expect(isNotionPageLinks('2026/10/03\tToko\t5521', html)).toBe(false);
+    expect(isNotionPageLinks('Toko\nKopi', '<table><tr><td>Toko</td></tr></table>')).toBe(false);
+    expect(isNotionPageLinks('Toko\nKopi', '')).toBe(false);
+  });
+});
+
+describe('a Paid with cell of four digits', () => {
+  const options = paymentOptions(accounts, cards);
+
+  it('reads the digits bare or after a mask, and nothing else', () => {
+    for (const text of ['5521', '····5521', '•••• 5521', 'xxxx5521', 'XXXX 5521', '**** 5521', 'x5521']) expect(lastFourOf(text), text).toBe('5521');
+    for (const text of ['552', '55210', 'BCA 5521', '5521 BCA', '']) expect(lastFourOf(text), text).toBeNull();
+  });
+
+  it('names the one card, or the one account by its own number, whose last four they are', () => {
+    expect(matchLastFour('8802', options)).toBe('bonvoy:c2');
+    expect(matchLastFour('1467', options)).toBe('bonvoy:c1');
+    // An account with no card is known by the digits the app shows beside it (its number).
+    expect(matchLastFour('3021', options, { bca: '3021' })).toBe('bca');
+  });
+
+  it('leaves the cell for the owner when no card or several show those digits', () => {
+    expect(matchLastFour('0000', options)).toBeNull();
+    expect(matchLastFour('8802', options, { bca: '8802' })).toBeNull();
   });
 });
 

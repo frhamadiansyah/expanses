@@ -6,7 +6,7 @@ import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CellCombo, type ComboOption } from './CellCombo';
-import { payerOptions, paymentKey, type QuickValues } from './quick-row';
+import { lastFourOf, matchLastFour, payerOptions, paymentKey, type QuickValues } from './quick-row';
 
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
@@ -48,6 +48,8 @@ export function buildRowOptions(
   membership: Record<string, unknown> = {},
   /** False while the queries these lists come from are still loading; the cells wait rather than offer nothing. */
   ready = true,
+  /** The digits an account with no card shows beside its name (a bank account's number, a wallet's phone), by account. */
+  numbers: Readonly<Record<string, string>> = {},
 ) {
   const money = moneyHolders(accounts);
   const toCombo = (option: PaymentOption): ComboOption => ({
@@ -85,6 +87,16 @@ export function buildRowOptions(
       return hit ? paymentKey(hit.accountId, hit.cardId) : null;
     },
     resolveCategory: (text: string) => matchCategory(text, categoryMatch),
+    /**
+     * A pasted Paid with cell (the wide table's paste, and a range of its cells): four digits — bare or after a mask —
+     * name the one card or account showing them (`matchLastFour`), else nothing; any other text reads as a typed one.
+     */
+    resolvePastedPaid: (text: string) => {
+      const four = lastFourOf(text);
+      if (four) return matchLastFour(four, payments, numbers);
+      const hit = matchPayment(text, payments);
+      return hit ? paymentKey(hit.accountId, hit.cardId) : null;
+    },
   };
 }
 
@@ -116,15 +128,15 @@ export function QuickRowEditor({
   /** Replaces the editing frame, for a row that sits among others in the table. */
   className?: string;
   onDescriptionBlur?: () => void;
-  /** Handed text pasted into the date or description cell; return true when it was taken as rows. */
-  onPaste?: (text: string) => boolean;
+  /** Handed text (and its HTML, when the clipboard has some) pasted into the date or description cell; true when taken as rows. */
+  onPaste?: (text: string, html: string) => boolean;
   /** `desk`: the wide Cashflow table's column order (`DESK_GRID`), with a Counts as cell before the amount. */
   layout?: 'row' | 'desk';
   /** What the chosen category counts as, read only: the desk layout's fifth cell. */
   countsAs?: ReactNode;
 }) {
   const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
-    if (onPaste?.(event.clipboardData.getData('text/plain'))) event.preventDefault();
+    if (onPaste?.(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'))) event.preventDefault();
   };
   const missing = (cell: string) => needs.includes(cell);
   const CELL_ = layout === 'desk' ? DESK_CELL : CELL;

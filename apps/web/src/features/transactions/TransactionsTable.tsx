@@ -10,7 +10,7 @@ import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
 import { ReceiptLink } from './ReceiptLink';
-import { groupedAmountCell, isQuickEditable, parsePastedRows, pastedCells, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
+import { groupedAmountCell, isNotionPageLinks, isQuickEditable, NOTION_ROWS_LINE, parsePastedRows, pastedCells, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
 
 export interface TableHandlers {
   busy: string | null;
@@ -105,6 +105,8 @@ export function TypingRow({
   const blank = (carry?: QuickValues): QuickValues => ({ date: carry?.date ?? shortDate(today, today), description: '', amount: '', accountId: carry?.accountId ?? '', cardId: carry?.cardId ?? '', categoryId: '' });
   const [values, setValues] = useState<QuickValues>(() => blank());
   const [guessed, setGuessed] = useState(false);
+  // A paste that could not be read as rows, and why (the desk's line under the row).
+  const [notice, setNotice] = useState<string | null>(null);
   const touched = values.description !== '' || values.amount !== '' || values.categoryId !== '';
   const { needs } = readQuick(values, accounts, today, baseCurrency);
   const busy = handlers.busy === 'typing';
@@ -143,12 +145,20 @@ export function TypingRow({
             setGuessed(true);
           });
         }}
-        onPaste={(text) => {
+        onPaste={(text, html) => {
+          // Notion's whole rows (their page links, no cells) would land as notes: the desk says how to copy cells instead.
+          if (desk && isNotionPageLinks(text, html)) {
+            setNotice(NOTION_ROWS_LINE);
+            return true;
+          }
           const rows = parsePastedRows(text);
           if (rows.length === 0) return false;
+          setNotice(null);
           // Read in the columns this table shows; a header row (taken, never kept) may name them in any order.
           const cells = pastedCells(rows, desk ? 'desk' : 'row');
-          if (cells.length > 0) void handlers.keepPasted(cells.map((each) => valuesFromCells(each, { paid: options.resolvePaid, category: options.resolveCategory }, today)));
+          // The desk reads a Paid with cell of four digits as the card or account showing them.
+          const paid = desk ? options.resolvePastedPaid : options.resolvePaid;
+          if (cells.length > 0) void handlers.keepPasted(cells.map((each) => valuesFromCells(each, { paid, category: options.resolveCategory }, today)));
           return true;
         }}
         actions={
@@ -172,6 +182,11 @@ export function TypingRow({
           <p data-testid="paste-hint" className="px-2.5 pb-1 text-[11px] text-[var(--ph-ink-3)]">
             Paste from a spreadsheet: Date · Note · Category · Paid with · Amount (or with a header row, any order)
           </p>
+          {notice && (
+            <p data-testid="paste-notice" role="status" className="px-2.5 pb-1.5 text-[11.5px] text-[var(--ph-warn)]">
+              {notice}
+            </p>
+          )}
           {desk.pasted}
         </>
       ) : (

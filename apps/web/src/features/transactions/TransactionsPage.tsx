@@ -801,7 +801,7 @@ export function TransactionsPage() {
     setTagging({ busy: false, error: failure });
   }
 
-  const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership, accountsQuery.isSuccess && cardsQuery.isSuccess && membershipQuery.isSuccess);
+  const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership, accountsQuery.isSuccess && cardsQuery.isSuccess && membershipQuery.isSuccess, walletLast4);
   // Only what can pay: the form's own rule, so a locked deposit or a house is not a choice here either.
   const paidKept = filters.paid.startsWith('acct:')
     ? filters.paid.slice('acct:'.length)

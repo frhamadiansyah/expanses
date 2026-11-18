@@ -16,6 +16,14 @@ describe('parseLooseDate', () => {
     expect(parseLooseDate('April 21', TODAY)).toBe('2026-04-21');
   });
 
+  it('reads the year first with slashes, as Notion copies a date', () => {
+    expect(parseLooseDate('2026/09/14', TODAY)).toBe('2026-09-14');
+    expect(parseLooseDate('2026/9/4', TODAY)).toBe('2026-09-04');
+    expect(parseLooseDate(' 2025/12/31 ', TODAY)).toBe('2025-12-31');
+    expect(parseLooseDate('2026/02/30', TODAY)).toBeNull();
+    expect(parseLooseDate('2026/13/01', TODAY)).toBeNull();
+  });
+
   it('puts the month first where people write it that way', () => {
     expect(parseLooseDate('9/12', TODAY, { dayFirst: false })).toBe('2026-09-12');
     expect(parseLooseDate('9/12', TODAY)).toBe('2026-12-09');

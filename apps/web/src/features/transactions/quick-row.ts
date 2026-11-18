@@ -208,8 +208,48 @@ export function parsePastedRows(text: string): string[][] {
   return text
     .replace(/\r\n?/g, '\n')
     .split('\n')
-    .map((line) => line.split('\t').map((cell) => cell.trim()))
+    .map((line) => line.split('\t').map(cleanPastedCell))
     .filter((cells) => cells.some(Boolean));
+}
+
+/**
+ * A cell as its words alone. Notion copies a relation or a link as "Name (https://www.notion.so/…)" or as
+ * "[Name](https://…)": the link is left out, so the name is what is matched — in every column.
+ */
+export function cleanPastedCell(cell: string): string {
+  return cell
+    .replace(/\[([^\]]*)\]\(\s*https?:\/\/[^)]*\)/gi, '$1')
+    .replace(/\s*\(\s*https?:\/\/[^)]*\)/gi, '')
+    .trim();
+}
+
+/**
+ * Whether a paste is Notion's whole rows rather than their cells: its text has no tab (as "# Title", then the titles)
+ * and its HTML is links to Notion pages. Read as cells it would land as notes; the table says how to copy cells instead.
+ */
+export function isNotionPageLinks(text: string, html: string): boolean {
+  if (text.includes('\t') || !html) return false;
+  return /<a\b[^>]*href=["']https?:\/\/(?:[a-z0-9-]+\.)?notion\.(?:so|com|site)\//i.test(html);
+}
+
+/** The line a Notion paste of whole rows gets, in place of rows made of its titles. */
+export const NOTION_ROWS_LINE = 'Copied Notion rows, not cells — select the cells (click one, Shift-click the last) and copy again';
+
+/**
+ * A Paid with cell that is a card's last four digits — "4417", or after a mask: "····4417", "xxxx 4417", "**** 4417".
+ * Null for anything else.
+ */
+export function lastFourOf(text: string): string | null {
+  return /^(?:[·•.*xX]+\s*)?(\d{4})$/.exec(text.trim())?.[1] ?? null;
+}
+
+/**
+ * The one way to pay whose last four are these digits: a card's own, else the account's number (the digits the app
+ * already shows beside it, `numbers`). Several, or none, is no answer — the cell is left for the owner, never guessed.
+ */
+export function matchLastFour(digits: string, options: readonly PaymentOption[], numbers: Readonly<Record<string, string>> = {}): string | null {
+  const hits = options.filter((option) => (option.last4 ?? numbers[option.accountId] ?? null) === digits);
+  return hits.length === 1 ? paymentKey(hits[0]!.accountId, hits[0]!.cardId) : null;
 }
 
 /** One pasted row's cells, named. */
@@ -244,11 +284,22 @@ const HEADER_NAMES: Record<string, PastedColumn> = {
   notes: 'description',
   description: 'description',
   keterangan: 'description',
+  // Notion's title column.
+  name: 'description',
+  title: 'description',
   category: 'category',
   kategori: 'category',
+  'sub categories': 'category',
+  'sub category': 'category',
+  subcategory: 'category',
+  subcategories: 'category',
+  'sub-category': 'category',
+  'sub-categories': 'category',
   'paid with': 'paid',
   account: 'paid',
   akun: 'paid',
+  card: 'paid',
+  bank: 'paid',
   amount: 'amount',
   jumlah: 'amount',
   nominal: 'amount',
