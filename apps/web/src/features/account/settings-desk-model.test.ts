@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchSections, readSection, SETTINGS_SECTIONS, settingsSearch, shownSection, writeSection } from './settings-desk-model';
+import { matchSections, readSection, SETTINGS_SECTIONS, settingsBack, settingsSearch, shownSection, writeSection } from './settings-desk-model';
 
 const store = () => {
   const map = new Map<string, string>();
@@ -71,5 +71,16 @@ describe('Search', () => {
 
   it('finds the device’s own rows too: a workspace by its name', () => {
     expect(matchSections('rumah', SETTINGS_SECTIONS, { workspaces: ['Personal', 'Rumah Tangga'] })).toEqual([{ key: 'workspaces', hits: ['Rumah Tangga'] }]);
+  });
+});
+
+describe('the way back from a page Settings opens', () => {
+  it('is the Account page on a phone, as it was', () => {
+    expect(settingsBack(false, 'workspaces')).toEqual({ back: 'Account', backTo: '/account' });
+  });
+
+  it('is Settings at the page’s own section on a wide screen', () => {
+    expect(settingsBack(true, 'workspaces')).toEqual({ back: 'Settings', backTo: '/account', backSearch: { section: 'workspaces' } });
+    expect(settingsBack(true, 'activity')).toEqual({ back: 'Settings', backTo: '/account', backSearch: { section: 'activity' } });
   });
 });

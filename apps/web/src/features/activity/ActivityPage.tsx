@@ -4,6 +4,7 @@ import { ArrowLeftRight, Check, Eraser, Pencil, Plus, Tag, Undo2 } from 'lucide-
 import { type CSSProperties, type ReactNode, useState } from 'react';
 import { ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, LargeTitle, ROW_PAD_X, ROW_PAD_Y, RowIcon, SCREEN, SegmentedControl, TAP, tapReach } from '../../ui/native';
+import { useSettingsBack } from '../account/settings-desk-model';
 import { groupByDay, stateWords, timeOf } from './group';
 import { useActivity, useUndoActivity } from './queries';
 
@@ -90,9 +91,10 @@ function ActivityRow({ line, busy, onUndo, position }: GroupChild & { line: Acti
  * Only what the app records is listed; a line it cannot reverse says so.
  */
 export function ActivityPage() {
+  const way = useSettingsBack('activity');
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Activity" back="Account" backTo="/account" />
+      <LargeTitle title="Activity" back={way.back} backTo={way.backTo} backSearch={way.backSearch} />
       <ActivityList />
     </div>
   );

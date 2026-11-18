@@ -1,3 +1,5 @@
+import { usePhone, useSideways } from '../../app/use-phone';
+
 /*
  * The Mac's Settings (Mac Settings and Tools, A, 2026-11-18), styled like the Mac's own System Settings: an inner column
  * of sections with a Search field, and the chosen section's rows beside it. The phone keeps its Account page; this is
@@ -46,6 +48,21 @@ export const isSection = (value: unknown): value is SettingsSection => typeof va
 /** The address's `?section=`: one of the sections, or nothing. */
 export function settingsSearch(search: Record<string, unknown>): { section?: SettingsSection } {
   return isSection(search.section) ? { section: search.section } : {};
+}
+
+/**
+ * The way back from a page Settings opens (a workspace, Activity, Capture, …), and where a page that is done returns
+ * to: on a phone the Account page, said as it is; on a wide screen Settings, at the section the page belongs to.
+ */
+export function settingsBack(wide: boolean, section: SettingsSection): { back: string; backTo: '/account'; backSearch?: { section: SettingsSection } } {
+  return wide ? { back: 'Settings', backTo: '/account', backSearch: { section } } : { back: 'Account', backTo: '/account' };
+}
+
+/** `settingsBack` for this screen: wide is the Mac layout (not a phone, not a phone held sideways). */
+export function useSettingsBack(section: SettingsSection) {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return settingsBack(!phone && !sideways, section);
 }
 
 const SECTION_KEY = 'cicis.settings.section';

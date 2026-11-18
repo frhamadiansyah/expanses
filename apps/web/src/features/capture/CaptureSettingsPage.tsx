@@ -10,6 +10,7 @@ import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow } from '../../ui/native';
 import { useCaptureSources } from '../review/queries';
 import { CAPTURE_GUIDES } from './guides';
+import { useSettingsBack } from '../account/settings-desk-model';
 
 /**
  * Settings → Capture: what it is allowed to keep, what it has learned, and where to start.
@@ -81,6 +82,7 @@ function HoldingArea() {
 }
 
 export function CaptureSettingsPage() {
+  const way = useSettingsBack('capture');
   const { database } = useApp();
   const accounts = useAccounts().data ?? [];
   const sources = useCaptureSources();
@@ -107,7 +109,7 @@ export function CaptureSettingsPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Capture" back="Account" backTo="/account" />
+      <LargeTitle title="Capture" back={way.back} backTo={way.backTo} backSearch={way.backSearch} />
       <ErrorBox error={error ?? sources.error} />
 
       <InsetGroup>

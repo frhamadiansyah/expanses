@@ -5,6 +5,7 @@ import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN, SwitchRow } from '../../ui/native';
+import { useSettingsBack } from '../account/settings-desk-model';
 import { setPreviewEntitlement, useEntitlement } from '../../lib/entitlements';
 import { useSharedBooks } from '../sharing/queries';
 import { useBooks } from './queries';
@@ -18,10 +19,11 @@ import { useBooks } from './queries';
  * none of it, an inspectable build included (A8 review I-6).
  */
 export function DeveloperSettingsPage() {
+  const way = useSettingsBack('about');
   const foreign = useEntitlement('foreign_securities');
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Developer" back="Account" backTo="/account" />
+      <LargeTitle title="Developer" back={way.back} backTo={way.backTo} backSearch={way.backSearch} />
       <InsetGroup
         header="Previews"
         footer="On this device only. Turning it off keeps every holding already added from the list; search just stops finding new US tickers."

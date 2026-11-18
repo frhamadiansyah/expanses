@@ -2,6 +2,7 @@ import { readReceiptLines } from '@expanses/core';
 import { useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { useAccounts } from '../../lib/queries';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SearchPill } from '../../ui/native';
 import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith } from '../account/default-paid-with';
@@ -31,6 +32,10 @@ export function ReceiptSplitStartPage() {
   const stored = useStoredDefaultPaidWith();
   const payable = usePayableOptions();
   const photoInput = useRef<HTMLInputElement>(null);
+  // Opened from the Account page on a phone, from Tools on a wide screen (where /account is Settings).
+  const phone = usePhone();
+  const sideways = useSideways();
+  const wide = !phone && !sideways;
 
   // Back from the pages after it: the people as they were left.
   const [back] = useState(() => {
@@ -95,7 +100,7 @@ export function ReceiptSplitStartPage() {
 
   return (
     <div className={SCREEN}>
-      <PushedTitle title="Split a receipt" back="Account" backTo="/account" actions={[]} />
+      <PushedTitle title="Split a receipt" back={wide ? 'Tools' : 'Account'} backTo={wide ? '/tools' : '/account'} actions={[]} />
       <div className="space-y-3 md:max-w-2xl">
         <section>
           <h2 className={HEADER}>Who is sharing</h2>

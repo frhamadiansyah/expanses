@@ -1,7 +1,7 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
 import { openAccount, walletCard } from './accounts';
 import { waitForSafetyCopy } from './recovery-fixture';
-import { openSharePage, openWorkspacePage, putOffShareList, renameWorkspace, shareWorkspace } from './workspace-page';
+import { openSharePage, openWorkspacePage, putOffShareList, renameWorkspace, shareWorkspace, workspaceLine } from './workspace-page';
 
 /*
  * Mac Settings and Tools (mockup 2026-11-18, step 13), on a wide screen with an invented household: Settings as System
@@ -286,4 +286,81 @@ test('Workspaces & sharing and Devices & sync read a shared workspace: members, 
   await devices.getByRole('button', { name: 'Link a device…' }).click();
   await expect(page.getByTestId('invite-code')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('On the other device, choose Add workspace › Join with a code and enter this code.')).toBeVisible();
+});
+
+test('a page Settings opens goes back to Settings at its own section, and a workspace put away or deleted lands on Workspaces & sharing', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Satu', balance: '2500000' });
+  // A section chosen here is the one remembered; the pages below still go back to their own.
+  await page.goto('/account');
+  await section(page, 'About').click();
+  await expect(page).toHaveURL(/\?section=about$/);
+
+  const back = page.getByRole('main').getByRole('link', { name: 'Settings', exact: true });
+  await page.goto('/account?section=workspaces');
+  await workspaceLine(page, 'Personal').getByTestId('workspace-open').click();
+  await expect(page.getByTestId('ws-name-row')).toBeVisible();
+  await expect(page.getByRole('main').getByRole('link', { name: 'Account', exact: true })).toHaveCount(0);
+  await back.click();
+  await expect(page).toHaveURL(/\/account\?section=workspaces$/);
+  await expect(section(page, 'Workspaces & sharing')).toHaveAttribute('aria-current', 'page');
+
+  await page.goto('/settings/activity');
+  await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible();
+  await back.click();
+  await expect(page).toHaveURL(/\/account\?section=activity$/);
+  await expect(page.getByTestId('settings-activity')).toBeVisible();
+
+  // Split a receipt is a tool: back is Tools.
+  await page.goto('/transactions/receipt-split/start');
+  await page.getByRole('main').getByRole('link', { name: 'Tools', exact: true }).click();
+  await expect(page).toHaveURL(/\/tools$/);
+
+  // Archive, then Restore and Delete from the archived one's page: each lands on Workspaces & sharing, not on About.
+  await page.goto('/account?section=workspaces');
+  await page.getByTestId('add-workspace').click();
+  await page.getByTestId('new-workspace').click();
+  const sheet = page.getByRole('dialog', { name: 'New workspace' });
+  await sheet.getByLabel('Name', { exact: true }).fill('Kiosk');
+  await sheet.getByRole('button', { name: 'Create workspace' }).click();
+  await expect(sheet).toHaveCount(0);
+  await page.goto('/account');
+  await expect(page.getByTestId('settings-about')).toBeVisible();
+  await page.goto('/account?section=workspaces');
+  await workspaceLine(page, 'Kiosk').getByTestId('workspace-open').click();
+  await page.getByRole('button', { name: 'Archive', exact: true }).click();
+  await page.getByRole('button', { name: 'Click again to archive' }).click();
+  await expect(page).toHaveURL(/\/account\?section=workspaces$/);
+  await expect(page.getByTestId('archived-workspace')).toHaveCount(1);
+  await page.getByTestId('archived-workspace').click();
+  await page.getByTestId('restore-workspace').click();
+  await expect(page).toHaveURL(/\/account\?section=workspaces$/);
+  await workspaceLine(page, 'Kiosk').getByTestId('workspace-open').click();
+  const del = page.getByTestId('delete-workspace');
+  await del.click();
+  await expect(del).toHaveText('Click again to delete');
+  await del.click();
+  await expect(page).toHaveURL(/\/account\?section=workspaces$/);
+  await expect(page.getByTestId('account-workspace')).toHaveCount(1);
+});
+
+test('no reminder to back up over Backup itself: ?section=backup and /backup leave it out, other sections keep it', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Satu', balance: '2500000' });
+  const reminder = page.getByTestId('desk-notices').getByRole('status').filter({ hasText: 'Not backed up' });
+  await page.goto('/account?section=workspaces');
+  await expect(reminder).toBeVisible();
+  await page.goto('/account?section=backup');
+  await expect(page.getByTestId('settings-backup')).toBeVisible();
+  await expect(reminder).toHaveCount(0);
+  // Chosen here, Backup is also what a plain /account shows: still no reminder over it.
+  await section(page, 'Devices & sync').click();
+  await expect(reminder).toBeVisible();
+  await section(page, 'Backup').click();
+  await expect(page.getByTestId('settings-backup')).toBeVisible();
+  await expect(reminder).toHaveCount(0);
+  await page.goto('/account');
+  await expect(page.getByTestId('settings-backup')).toBeVisible();
+  await expect(reminder).toHaveCount(0);
+  await page.goto('/backup');
+  await expect(page.getByTestId('settings-backup')).toBeVisible();
+  await expect(reminder).toHaveCount(0);
 });

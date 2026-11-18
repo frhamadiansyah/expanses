@@ -7,6 +7,7 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { useSettingsBack } from '../account/settings-desk-model';
 import { useSharedBooks } from '../sharing/queries';
 import { useBooks } from './queries';
 
@@ -61,6 +62,7 @@ function DayGrid({ value, disabled, onPick }: GroupChild & { value: MonthStartDa
  */
 export function MonthStartPage() {
   const { bookId } = useParams({ from: '/account/workspaces/$bookId/month-start' });
+  const way = useSettingsBack('workspaces');
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const books = useBooks();
@@ -74,7 +76,7 @@ export function MonthStartPage() {
   if (!book) {
     return (
       <div className={SCREEN}>
-        <PushedTitle title="Month starts on" back="Account" backTo="/account" />
+        <PushedTitle title="Month starts on" back={way.back} backTo={way.backTo} backSearch={way.backSearch} />
         {books.isSuccess && (
           <InsetGroup wide>
             <InsetRow title="That workspace is not here." chevron={false} />

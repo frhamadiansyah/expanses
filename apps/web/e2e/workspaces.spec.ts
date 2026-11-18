@@ -382,7 +382,7 @@ test('a workspace’s page renames it, archives it, keeps Personal, and restores
   // Archiving asks twice, and the app cannot stay in a workspace that has just been put away.
   await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await page.getByRole('button', { name: 'Click again to archive' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/account\?section=workspaces$/);
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
   await expect(page.getByTestId('archived-workspace')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
@@ -408,7 +408,7 @@ test('a workspace’s page renames it, archives it, keeps Personal, and restores
   await page.getByTestId('archived-workspace').click();
   await expect(page.getByRole('heading', { name: 'Consulting' })).toBeVisible();
   await page.getByTestId('restore-workspace').click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/account\?section=workspaces$/);
   await expect(page.getByTestId('archived-workspace')).toHaveCount(0);
   await expect(page.getByTestId('account-workspace')).toHaveCount(2);
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();

@@ -21,6 +21,15 @@ export async function makeWorkspace(page: Page, name: string, copyPersonal: bool
   await page.goto('/account');
 }
 
+/**
+ * Where a walk lands after an archive, restore or delete: the phone's Account page; on a wide screen Settings at
+ * Workspaces & sharing, whatever section was last chosen.
+ */
+export async function expectBackOnAccount(page: Page) {
+  const phone = (page.viewportSize()?.width ?? 1280) < 768;
+  await expect(page).toHaveURL(phone ? /\/account$/ : /\/account\?section=workspaces$/);
+}
+
 export async function openPage(page: Page, name: string) {
   await page.goto('/account');
   await workspaceLine(page, name).getByTestId('workspace-open').click();
@@ -37,7 +46,7 @@ export async function deleteEmpty(page: Page) {
   await del.click();
   await expect(del).toHaveText('Click again to delete');
   await del.click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expectBackOnAccount(page);
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
   await expect(page.getByTestId('archived-workspace')).toHaveCount(0);
   await expect(page.getByText('Warung')).toHaveCount(0);
@@ -67,7 +76,7 @@ export async function deleteWithTransactions(page: Page) {
   await expect(everything).toBeEnabled();
   await everything.click();
 
-  await expect(page).toHaveURL(/\/account$/);
+  await expectBackOnAccount(page);
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
   await expect(page.getByTestId('archived-workspace')).toHaveCount(0);
   await expect(page.getByText('Business')).toHaveCount(0);
@@ -91,12 +100,12 @@ export async function archiveAndRestore(page: Page) {
   await openPage(page, 'Kiosk');
   await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await page.getByRole('button', { name: 'Click again to archive' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expectBackOnAccount(page);
   await expect(page.getByTestId('archived-workspace')).toHaveCount(1);
   await page.getByTestId('archived-workspace').click();
   await expect(page.getByTestId('delete-workspace')).toBeVisible();
   await page.getByTestId('restore-workspace').click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expectBackOnAccount(page);
   await expect(page.getByTestId('archived-workspace')).toHaveCount(0);
   await expect(page.getByTestId('account-workspace')).toHaveCount(2);
 }

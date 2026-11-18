@@ -16,6 +16,7 @@ import { DeleteWorkspaceSheet, LeaveAndDeleteSheet } from './DeleteWorkspaceShee
 import { CurrencySheet } from '../currency/CurrencySheet';
 import { monthStartFooter } from './MonthStartPage';
 import { useArchivedBooks, useBooks } from './queries';
+import { useSettingsBack } from '../account/settings-desk-model';
 
 export const KIND_LABEL: Record<string, string> = { personal: 'Personal', business: 'Business', family: 'Family', shared: 'Shared' };
 const CHOOSABLE: readonly BookKind[] = ['personal', 'business', 'family'];
@@ -75,13 +76,14 @@ function NameSheet({ current, busy, onSave, onClose }: { current: string; busy: 
  */
 export function WorkspacePage() {
   const { bookId } = useParams({ from: '/account/workspaces/$bookId' });
+  const way = useSettingsBack('workspaces');
   const books = useBooks();
   const archived = useArchivedBooks();
   const book = [...(books.data ?? []), ...(archived.data ?? [])].find((each) => each.id === bookId);
   if (!book) {
     return (
       <div className={SCREEN}>
-        <PushedTitle title="Workspace" back="Account" backTo="/account" />
+        <PushedTitle title="Workspace" back={way.back} backTo={way.backTo} backSearch={way.backSearch} />
         {books.isSuccess && archived.isSuccess && (
           <InsetGroup wide>
             <InsetRow title="That workspace is not here." chevron={false} />
@@ -98,6 +100,8 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
   const { database, ws, switchBook, sync } = useApp();
   const books = useBooks();
   const navigate = useNavigate();
+  // Back, and where an archive, restore or delete lands: Settings › Workspaces & sharing on a wide screen.
+  const way = useSettingsBack('workspaces');
   const invalidate = useInvalidateAll();
   const [renaming, setRenaming] = useState(false);
   const [choosingCurrency, setChoosingCurrency] = useState(false);
@@ -194,14 +198,14 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
         const next = rest.find((other) => other.kind === 'personal') ?? rest[0];
         if (next) await switchBook(next.id);
       }
-      void navigate({ to: '/account' });
+      void navigate({ to: way.backTo, search: way.backSearch });
       return null;
     });
 
   const restore = () =>
     run(async () => {
       await restoreBook(database, ws, book.id);
-      void navigate({ to: '/account' });
+      void navigate({ to: way.backTo, search: way.backSearch });
       return null;
     });
 
@@ -214,7 +218,7 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
       if (next) await switchBook(next.id);
     }
     if (nextBookId) void navigate({ to: '/account/workspaces/$bookId', params: { bookId: nextBookId } });
-    else void navigate({ to: '/account' });
+    else void navigate({ to: way.backTo, search: way.backSearch });
   };
 
   const remove = () =>
@@ -242,7 +246,7 @@ function WorkspaceDetail({ book }: { book: BookRow }) {
 
   return (
     <div className={SCREEN}>
-      <PushedTitle title={book.name} back="Account" backTo="/account" />
+      <PushedTitle title={book.name} back={way.back} backTo={way.backTo} backSearch={way.backSearch} />
       <div className="pt-[2px]">
         <ErrorBox error={error} />
         {note && <p className="pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-tint)]">{note}</p>}

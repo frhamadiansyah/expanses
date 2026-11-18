@@ -212,7 +212,8 @@ export function DesktopSettings({ section: fixed }: { section?: SettingsSection 
         <span className="flex-1" />
         {isMacApp() && <span className="text-[12px] text-[var(--ph-ink-3)]">⌘,</span>}
       </header>
-      <DeskNotices />
+      {/* No reminder to back up over Backup itself (/backup and ?section=backup, as the phone's Backup page). */}
+      <DeskNotices backup={section !== 'backup'} />
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Settings sections" className="sticky top-[52px] h-[calc(100dvh-52px)] w-[230px] shrink-0 overflow-y-auto border-r border-[var(--ph-hair)] bg-[var(--mac-head)] px-[8px] py-[12px]">
           <label className="relative mb-[10px] flex h-[26px] items-center rounded-[7px] bg-[var(--ph-fill)] text-[12px]">

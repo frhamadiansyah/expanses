@@ -7,14 +7,17 @@ import { RepairNotice } from '../features/sharing/RepairNotice';
 import { NoticeStrip } from '../ui/native';
 import { usePhone, useSideways } from './use-phone';
 
-/** The app's own notices, in the order they are read: what just happened to the data before the standing reminder to back it up. */
-export function AppNotices() {
+/**
+ * The app's own notices, in the order they are read: what just happened to the data before the standing reminder to back it up.
+ * `backup: false` leaves the reminder out, on a page that is the backup itself (Settings › Backup).
+ */
+export function AppNotices({ backup = true }: { backup?: boolean } = {}) {
   return (
     <>
       <InstallHint />
       <AfterUpdateCard />
       <WithdrawalRateNotice />
-      <BackupBanner />
+      {backup && <BackupBanner />}
       {/* A share that ended here is read-only (§8.6), and every screen of it says so. */}
       <ReadOnlyNotice />
       {/* Once: Family purchases the shared-book repair put right (sync gaps R2). */}
@@ -28,14 +31,14 @@ export function AppNotices() {
  * bar is the window's top edge and nothing sits above it. Each keeps its own press, alert and ✕. The page draws this
  * under its header; Layout leaves its own copy out for those pages. A phone never draws it: its notices stay where they were.
  */
-export function DeskNotices() {
+export function DeskNotices({ backup = true }: { backup?: boolean } = {}) {
   const phone = usePhone();
   const sideways = useSideways();
   if (phone || sideways) return null;
   return (
     <div data-testid="desk-notices">
       <NoticeStrip.Provider value={true}>
-        <AppNotices />
+        <AppNotices backup={backup} />
       </NoticeStrip.Provider>
     </div>
   );

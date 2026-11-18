@@ -10,6 +10,7 @@ import { paymentKey } from '../transactions/quick-row';
 import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith, writeDefaultPaidWith } from './default-paid-with';
 import { HOLD_CHOICES, type HoldChoice, useHoldChoice, writeHoldChoice } from './hold-plus';
 import { ONE_LINE_LOOKS, type OneLineLook, useOneLineLook, writeOneLineLook } from './one-line-look';
+import { useSettingsBack } from './settings-desk-model';
 
 /**
  * Account → Settings → Default: the Paid with a plain, blank New transaction opens with, and what holding ＋ does on
@@ -19,6 +20,7 @@ import { ONE_LINE_LOOKS, type OneLineLook, useOneLineLook, writeOneLineLook } fr
  * page with nothing saved. The lists are the ones Paid with offers (`payableOptions`), named the way it names them.
  */
 export function DefaultPaidWithPage() {
+  const way = useSettingsBack('defaults');
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -70,7 +72,7 @@ export function DefaultPaidWithPage() {
         await writeOneLineLook(database, lookShown);
         await queryClient.invalidateQueries({ queryKey: ['one-line-look'] });
       }
-      await navigate({ to: '/account' });
+      await navigate({ to: way.backTo, search: way.backSearch });
     } catch (failure) {
       setError(failure);
     } finally {
@@ -88,8 +90,9 @@ export function DefaultPaidWithPage() {
     <div className={SCREEN}>
       <LargeTitle
         title="Default"
-        back="Account"
-        backTo="/account"
+        back={way.back}
+        backTo={way.backTo}
+        backSearch={way.backSearch}
         actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !changed || busy, run: () => void save() }]}
       />
       <ErrorBox error={error ?? stored.error ?? holdStored.error ?? lookStored.error} />
