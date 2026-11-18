@@ -91,7 +91,11 @@ function MonthLine({ bar, currency, first }: { bar: MonthBar; currency: string; 
   );
 }
 
-export function ReportPanel({ period, onPeriod }: { period: ReportPeriod; onPeriod: (period: ReportPeriod) => void }) {
+/**
+ * The Report's readings for a period: the figures (`reportFigures`) and paid against due by month (`monthBars`). The
+ * phone's Report and the Mac plan's Report view read through this one hook, so both say the same.
+ */
+export function useReport(period: ReportPeriod) {
   const { ws } = useApp();
   const today = isoDate();
   const { model, error } = useDebtPlan();
@@ -111,16 +115,21 @@ export function ReportPanel({ period, onPeriod }: { period: ReportPeriod; onPeri
   const currencyOf = Object.fromEntries(liabilities.map((a) => [a.id, a.currency ?? ws.baseCurrency]));
   const figures = model && movements.data ? reportFigures(movements.data, model.debts, months, ws.baseCurrency, model.ratesToBase, currencyOf) : null;
   const bars = byMonth ? monthBars(byMonth, barMonths, today) : null;
+  return { figures, bars, error: error ?? movements.error ?? monthError, currency: ws.baseCurrency };
+}
+
+export function ReportPanel({ period, onPeriod }: { period: ReportPeriod; onPeriod: (period: ReportPeriod) => void }) {
+  const { figures, bars, error, currency } = useReport(period);
   const figure = (minor: number | null, testId: string, tone = '') => (
     <span data-testid={testId} className={tone}>
-      {minor === null ? <span className="text-[var(--ph-warn)]">{`No ${figures?.missing.join(', ')} rate yet`}</span> : <Money minor={minor} currency={ws.baseCurrency} />}
+      {minor === null ? <span className="text-[var(--ph-warn)]">{`No ${figures?.missing.join(', ')} rate yet`}</span> : <Money minor={minor} currency={currency} />}
     </span>
   );
 
   return (
     <div data-testid="report-panel">
       <PeriodChips period={period} onPeriod={onPeriod} />
-      <ErrorBox error={error ?? movements.error ?? monthError} />
+      <ErrorBox error={error} />
       {figures && (
         <InsetGroup>
           <InsetRow title="Borrowed" valueTone="ink" value={figure(figures.borrowedMinor, 'report-borrowed')} />
@@ -134,14 +143,14 @@ export function ReportPanel({ period, onPeriod }: { period: ReportPeriod; onPeri
       )}
       {bars && bars.length > 0 && (
         <Panel header="Paid against due" testId="report-bars">
-          <Bars bars={bars} currency={ws.baseCurrency} />
+          <Bars bars={bars} currency={currency} />
         </Panel>
       )}
       {bars && bars.length > 0 && (
         <Panel pad={false}>
           <ul>
             {bars.map((bar, index) => (
-              <MonthLine key={bar.month} bar={bar} currency={ws.baseCurrency} first={index === 0} />
+              <MonthLine key={bar.month} bar={bar} currency={currency} first={index === 0} />
             ))}
           </ul>
         </Panel>

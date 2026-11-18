@@ -56,7 +56,7 @@ function Tag({ tone, children }: { tone: 'alarm' | 'warn' | 'up' | 'quiet'; chil
 }
 
 /** The row's tag: how late, how soon (Today / Tomorrow in amber, otherwise the day), or when it was paid. */
-function tagOf(item: PlanItem, today: string): { tone: 'alarm' | 'warn' | 'up' | 'quiet'; text: string } {
+export function tagOf(item: PlanItem, today: string): { tone: 'alarm' | 'warn' | 'up' | 'quiet'; text: string } {
   if (item.status === 'late') return { tone: 'alarm', text: whenWords(item, today) };
   if (item.status === 'paid') return { tone: 'up', text: item.paidOn ? `Paid ${dayMonth(item.paidOn)}` : 'Paid' };
   const when = whenWords(item, today);

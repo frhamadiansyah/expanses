@@ -13,13 +13,13 @@ import type { DebtPlanModel } from './queries';
  * By hand) with its lines and the suggestion, and Extra a month with the debt-free month and the interest it saves.
  */
 
-const METHODS = [
+export const METHODS = [
   { key: 'snowball', label: 'Snowball' },
   { key: 'avalanche', label: 'Avalanche' },
   { key: 'byHand', label: 'By hand' },
 ] as const;
 
-const LINES: { method: PayoffMethod; name: string; text: string }[] = [
+export const LINES: { method: PayoffMethod; name: string; text: string }[] = [
   { method: 'avalanche', name: 'Avalanche', text: 'highest interest first. Costs the least in total.' },
   { method: 'snowball', name: 'Snowball', text: 'smallest first, so debts close sooner and the list gets shorter.' },
   { method: 'byHand', name: 'By hand', text: 'the order set below.' },
@@ -33,6 +33,13 @@ export function settingsOf(saved: DebtPlanSettings | null | undefined): DebtPlan
 /** The debts in line now, late ones left out: what By hand starts from when nothing was moved yet. */
 export const handOrderOf = (model: DebtPlanModel) => model.effect.plan.order.filter((key) => !model.debts.find((d) => d.key === key)?.late);
 
+/** The settings with another order chosen: By hand, chosen first, starts from the order the debts are in now. */
+export const withMethod = (model: DebtPlanModel, saved: DebtPlanSettings, method: PayoffMethod): DebtPlanSettings => ({
+  ...saved,
+  method,
+  order: method === 'byHand' && saved.order.length === 0 ? handOrderOf(model) : saved.order,
+});
+
 export function MethodControl({ model, saved, save, width }: { model: DebtPlanModel; saved: DebtPlanSettings; save: (next: DebtPlanSettings) => void; width?: number }) {
   const suggestion = suggestionWords(model.suggestion, model.debts);
   return (
@@ -42,10 +49,7 @@ export function MethodControl({ model, saved, save, width }: { model: DebtPlanMo
         width={width}
         segments={METHODS}
         value={model.method}
-        onChange={(key) => {
-          const method = key as PayoffMethod;
-          save({ ...saved, method, order: method === 'byHand' && saved.order.length === 0 ? handOrderOf(model) : saved.order });
-        }}
+        onChange={(key) => save(withMethod(model, saved, key as PayoffMethod))}
       />
       <div className="mt-[10px] mb-[12px] px-[4px] text-[13px] leading-[18px]" data-testid="plan-method-lines">
         {LINES.map((line) => (
@@ -63,7 +67,12 @@ export function MethodControl({ model, saved, save, width }: { model: DebtPlanMo
   );
 }
 
-export function ExtraControls({ model, saved, save, baseCurrency }: { model: DebtPlanModel; saved: DebtPlanSettings; save: (next: DebtPlanSettings) => void; baseCurrency: string }) {
+/**
+ * Extra a month as typed: the field shows what was saved until typed in, and a commit (Return, or leaving the field)
+ * saves the figure in the base currency — refused, with words, when it is not a number. Shared by the phone's Pay first
+ * and the Mac plan's Pay first box, so both save the same way.
+ */
+export function useExtraField(model: DebtPlanModel, saved: DebtPlanSettings, save: (next: DebtPlanSettings) => void, baseCurrency: string) {
   // Untouched, the field shows what was saved; once typed in, what was typed.
   const [typed, setTyped] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +90,12 @@ export function ExtraControls({ model, saved, save, baseCurrency }: { model: Deb
     }
   };
 
+  return { shown, type: (text: string) => setTyped(groupTypedAmount(text, baseCurrency)), commit, error, reset: () => setTyped(null) };
+}
+
+export function ExtraControls({ model, saved, save, baseCurrency }: { model: DebtPlanModel; saved: DebtPlanSettings; save: (next: DebtPlanSettings) => void; baseCurrency: string }) {
+  const { shown, type, commit, error } = useExtraField(model, saved, save, baseCurrency);
+
   const { plan, baseline, interestSavedMinor } = model.effect;
   const differs = plan.debtFreeMonth !== null && baseline.debtFreeMonth !== null && plan.debtFreeMonth !== baseline.debtFreeMonth;
   const rolls = rollsWords(plan.order, model.debts);
@@ -92,7 +107,7 @@ export function ExtraControls({ model, saved, save, baseCurrency }: { model: Deb
         placeholder="Amount"
         inputMode="decimal"
         value={shown}
-        onChange={(event) => setTyped(groupTypedAmount(event.target.value, baseCurrency))}
+        onChange={(event) => type(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
