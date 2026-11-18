@@ -27,6 +27,8 @@ import {
   topUpsCategory,
   type TransactionView,
   uncategorisedTransactionIds,
+  reopenDraft,
+  voidTransaction,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
@@ -84,7 +86,7 @@ import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { SidewaysTable } from './SidewaysTable';
 import { DesktopCashflow, type DeskRowHelpers } from './DesktopCashflow';
-import { type Selection, type SelectionAction, selectionReducer } from './cashflow-desk-model';
+import { DESK_SORT, type Selection, type SelectionAction, selectionReducer, sortDesk, waitingOrder } from './cashflow-desk-model';
 import { afterDismiss, afterSideways, afterVisit, readTip, tipShown, writeTip } from './sideways-tip';
 import { TransactionCard } from './TransactionCard';
 import { deleteTransaction } from './member-transfer';
@@ -214,7 +216,9 @@ export function TransactionsPage() {
       return false;
     }
   });
-  const [sort, setSort] = useRemembered<Sort>('sort', () => ({ key: 'date', dir: 'desc' }));
+  const [phoneSort, setPhoneSort] = useRemembered<Sort>('sort', () => ({ key: 'date', dir: 'desc' }));
+  // A wide screen's table reads oldest at the top, the typing row last (Mac Cashflow option E): an order of its own.
+  const [deskSort, setDeskSort] = useRemembered<Sort>('desk-sort', () => DESK_SORT);
   // The ⋯ menu's Not monthly (`not-monthly.ts`): Hidden, a month's Cashflow lists those bills in grey and counts them nowhere.
   const [notMonthlyShown, setNotMonthlyShownState] = useState(readNotMonthlyShown);
   const setNotMonthlyShown = (shown: boolean) => {
@@ -236,6 +240,8 @@ export function TransactionsPage() {
    * does, ticks transfers onto a trip, and keeps the list it had.
    */
   const desk = !phone && !sideways && !search.account;
+  const sort = desk ? deskSort : phoneSort;
+  const setSort = desk ? setDeskSort : setPhoneSort;
   const uprightScroll = useRef(0);
   const sidewaysNow = useRef(sideways);
   useEffect(() => {
@@ -509,9 +515,16 @@ export function TransactionsPage() {
    */
   const yearOrLonger = periodCountsNotMonthly(period);
   const notMonthlyOut = !ownerWide && leavesOutNotMonthly(period, notMonthlyShown);
+  /*
+   * The desk's table is the editor too. A row typed or pasted there to finish later (a manual draft) waits just above
+   * its typing row, whatever month is shown (option E), and is not listed again in its own month; a capture or an
+   * import still waits among its month's rows, as in the old table.
+   */
+  const waitingDrafts = desk ? pending.filter((draft) => !inReviewQueue(draft)) : [];
+  const waitingRows = waitingOrder(buildRows([], waitingDrafts, accounts, everyCard, walletLast4, listWs.bookId));
+  const listedDrafts = desk ? pending.filter(inReviewQueue) : view === 'table' || sideways || filters.onlyDrafts ? pending : [];
   const built = [
-    // The desk's table is the editor too: a half-typed row waits there, among the rest, as in the old table.
-    ...markSpread(buildRows(recorded, desk || view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId), spreadOver),
+    ...markSpread(buildRows(recorded, listedDrafts, accounts, everyCard, walletLast4, listWs.bookId), spreadOver),
     ...instalmentList,
   ];
   const rows = notMonthlyOut ? leaveOutNotMonthly(built) : built;
@@ -546,7 +559,8 @@ export function TransactionsPage() {
    */
   const inCashflow = !search.account;
   const listed = { ...filters, month, monthStart, showOpening };
-  const shown = sortRows(filterRows(rows, listed, accounts, inCashflow), sort);
+  // A wide screen reads oldest at the top, the row typed last at the bottom (`sortDesk`); a phone newest first.
+  const shown = (desk ? sortDesk : sortRows)(filterRows(rows, listed, accounts, inCashflow), sort);
   // Nothing Cashflow could list in the period at all — only transfers, say — reads as an empty period, not as a filter.
   const listable = inCashflow ? rows.filter(countsInOrOut) : rows;
   const sum = totals(shown);
@@ -857,11 +871,13 @@ export function TransactionsPage() {
   const keptSentence = phone ? 'The original is kept' : 'The original stays under Show deleted';
   // The chart carries the month's total and its count, so the line that used to say them is left off.
   const chartShown = view === 'list' && !filters.onlyDrafts;  const sortValue = `${sort.key}:${sort.dir}`;
-  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account || search.need;
+  const defaultSort = desk ? `${DESK_SORT.key}:${DESK_SORT.dir}` : 'date:desc';
+  const narrowed = filters.q || filters.paid || filters.cat || filters.needsCategory || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== defaultSort || search.month || search.account || search.need;
 
   function clearAll() {
     setFilters(EMPTY_FILTERS);
-    setSort({ key: 'date', dir: 'desc' });
+    setPhoneSort({ key: 'date', dir: 'desc' });
+    setDeskSort(DESK_SORT);
     setSearch({ month: undefined, account: undefined, need: undefined });
   }
 
@@ -987,7 +1003,7 @@ export function TransactionsPage() {
     return ok || made.length > 0 ? made : null;
   };
 
-  async function saveDraft(id: string, values: QuickValues, record: boolean): Promise<boolean> {
+  async function saveDraft(id: string, values: QuickValues, record: boolean, onRecorded?: (transactionId: string) => void): Promise<boolean> {
     const fields = draftFields(values);
     if (!record) {
       // A cell that never showed the draft's figure (read in another currency than the account's) says nothing of it.
@@ -1010,10 +1026,20 @@ export function TransactionsPage() {
     }
     return guarded(id, spendingDoor(fields.accountId ?? '', Math.max(0, fields.amountMinor)), null, async (choice) => {
       await editDraft(database, ws, id, fields);
-      await confirmDraft(database, ws, id, { setAside: choice });
+      const { transactionId } = await confirmDraft(database, ws, id, { setAside: choice });
+      onRecorded?.(transactionId);
       close();
     });
   }
+
+  /** The desk toast's Undo: what each Record posted is voided, then its draft waits again (Review's own way back). */
+  const unrecord = (recorded: readonly { draftId: string; transactionId: string }[]) =>
+    run('unrecord', async () => {
+      for (const { draftId, transactionId } of [...recorded].reverse()) {
+        await voidTransaction(database, ws, transactionId);
+        await reopenDraft(database, ws, draftId);
+      }
+    });
 
   /** Deleting asks twice, in place: the first press arms the button, the second deletes. */
   function twoTap(id: string, label: string, armedLabel: string, work: () => Promise<unknown>) {
@@ -1334,6 +1360,7 @@ export function TransactionsPage() {
     guessCategory: (description) => guessCategoryFromHistory(database, ws, description),
     saveRecorded,
     saveDraft,
+    unrecord,
     dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
     deleteRecorded: (id) => run(id, () => deleteTransaction(database, ws, id)),
     canDuplicate: (tx) => duplicable(tx) && !readOnly && !elsewhereOf(tx.id),
@@ -1617,11 +1644,12 @@ export function TransactionsPage() {
         kind={deskKind}
         paidAccountId={paidAccountId}
         rows={shown}
-        emptyText={listable.length === 0 ? 'No transactions in this period. Type the first one above.' : 'Nothing matches the search and filters.'}
+        emptyText={listable.length === 0 ? 'No transactions in this period. Type the first one below.' : 'Nothing matches the search and filters.'}
         limitNote={month === 'all' && recorded.length >= ALL_TIME_LIMIT ? `The newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only` : undefined}
         pendingCount={pending.length}
         reviewCount={pending.filter(inReviewQueue).length}
         drafts={drafts.data ?? []}
+        waiting={waitingRows}
         accounts={accounts}
         rowOptions={rowOptions}
         handlers={tableHandlers}

@@ -1,5 +1,5 @@
 import { DeskNotices } from '../../app/DeskNotices';
-import { categoryTree, formatMinor, monthName, parsePeriod, periodLabel, stepPeriod } from '@expanses/core';
+import { categoryTree, formatMinor, monthName, parseLooseDate, parsePeriod, periodLabel, periodMonthOf, stepPeriod } from '@expanses/core';
 import { type AccountRow, categoryTotalsIn, type DraftRow, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -12,8 +12,8 @@ import { CategoryIcon, useCategoryMarkColour } from '../categories/CategoryIcon'
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
-import { clickAction, deskAmount, monthFigures, pageShortcut, pasteLine, pasteSummary, peekKey, ringLegend, type Selection, type SelectionAction } from './cashflow-desk-model';
-import { type BulkActions, SelectionPeek } from './CashflowPeek';
+import { clickAction, deskAmount, monthFigures, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringLegend, type Selection, type SelectionAction, skippedLine, waitingOrder } from './cashflow-desk-model';
+import { type BulkActions, type RecordMany, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
@@ -21,7 +21,8 @@ import { DESK_COLUMNS, DESK_GRID, PICKED_CELL, type RowOptions } from './QuickRo
 import type { CellColumn } from './cell-range';
 import { useCashflowCells } from './cashflow-cells';
 import { forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, readMarks, unknownLinks, unknownLinksLine } from './paste-categories';
-import { quickFromDraft, shortDate } from './quick-row';
+import { quickFromDraft, type QuickValues, shortDate } from './quick-row';
+import { UndoToast } from '../../ui/UndoToast';
 import { ReceiptPeek } from './ReceiptPeek';
 import { useSpendingTrend } from './SpendingTrend';
 import { NOT_MONTHLY_LABEL, notMonthlyWord } from './not-monthly';
@@ -274,6 +275,7 @@ export function DesktopCashflow({
   pendingCount,
   reviewCount,
   drafts,
+  waiting: waitingIn,
   accounts,
   rowOptions,
   handlers,
@@ -315,6 +317,11 @@ export function DesktopCashflow({
   reviewCount: number;
   /** Every row waiting as not recorded: where a paste's rows are found again, whatever the table is narrowed to. */
   drafts: readonly DraftRow[];
+  /**
+   * The rows typed or pasted here to finish later (manual drafts), whatever month they are dated in: just above the
+   * typing row, in the order they came in, each with its Record and ✕ (option E). Not among `rows`.
+   */
+  waiting: readonly ListRow[];
   accounts: readonly AccountRow[];
   rowOptions: RowOptions;
   handlers: TableHandlers;
@@ -360,9 +367,14 @@ export function DesktopCashflow({
   const bar = useRef<HTMLElement>(null);
   const [peekTop, setPeekTop] = useState(52);
 
+  // The waiting rows in the order they came in; a paste heard here keeps its own order among rows made in one moment.
+  const [pasteOrder, setPasteOrder] = useState<string[]>([]);
+  const waiting = waitingOrder(waitingIn, pasteOrder);
   // The rows picked, in the table's own order: one shows its side peek, several what can be done to them all at once.
+  // A waiting row is picked too (⌘-click, ⇧-click from a picked row, ⌘A), for Record N; it has no peek of its own.
   const dispatch = onSelection;
-  const ids = rows.filter(peekable).map((row) => row.id);
+  const peekIds = rows.filter(peekable).map((row) => row.id);
+  const ids = [...peekIds, ...waiting.map((row) => row.id)];
   const idsKey = ids.join(',');
   useEffect(() => dispatch({ type: 'listed', ids }), [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const picked = new Set(selection.ids);
@@ -421,7 +433,7 @@ export function DesktopCashflow({
     if (action === 'edit' && target?.closest('button, a')) return;
     event.preventDefault();
     if (action === 'close') dispatch({ type: 'close' });
-    else if (action === 'up' || action === 'down') dispatch({ type: 'step', by: action === 'up' ? -1 : 1, ids });
+    else if (action === 'up' || action === 'down') dispatch({ type: 'step', by: action === 'up' ? -1 : 1, ids: peekIds });
     else if (selected) edit(selected);
   };
   useEffect(() => {
@@ -431,11 +443,17 @@ export function DesktopCashflow({
   }, []);
 
   const icon = (categoryId: string) => <CategoryIcon categoryId={categoryId} accounts={accounts} size="xs" />;
-  // The last paste into the typing row: its drafts, kept as rows to finish, and the line that says where they stand.
-  const [pasted, setPasted] = useState<{ ids: string[]; recorded: boolean } | null>(null);
-  const [pasteBusy, setPasteBusy] = useState(false);
   // What this device keeps of pasted rows (`paste-categories`): a guessed category's mark, an unmatched name to learn.
   const [marks, setMarks] = useState(readMarks);
+  // Rows recorded from the waiting rows: the toast says which month they went to, with Show › and Undo (option E).
+  const [recorded, setRecorded] = useState<{ items: { draftId: string; transactionId: string; month: string }[] } | null>(null);
+  // While Record N runs, each row recorded joins one toast rather than showing its own.
+  const batch = useRef<{ draftId: string; transactionId: string; month: string }[] | null>(null);
+  const [recordingMany, setRecordingMany] = useState(false);
+  const monthOf = (values: QuickValues) => {
+    const iso = parseLooseDate(values.date, today);
+    return iso ? periodMonthOf(iso, monthStart) : null;
+  };
   const deskHandlers: TableHandlers = {
     ...handlers,
     keepPasted: async (values, made) => {
@@ -443,19 +461,26 @@ export function DesktopCashflow({
       const keep = (ids: string[]) => {
         const byId = Object.fromEntries(ids.map((id, i) => [id, made?.[i] ?? {}]));
         setMarks(keepMarks(byId, new Set([...drafts.map((draft) => draft.id), ...ids])));
+        setPasteOrder((was) => [...was, ...ids]);
       };
-      const ids = await handlers.keepPasted(values, made, keep);
-      if (ids && ids.length > 0) setPasted({ ids, recorded: false });
-      return ids;
+      return handlers.keepPasted(values, made, keep);
     },
     // A pasted row saved or recorded teaches its unmatched name or Notion link the value picked for it, and the other
     // waiting rows naming it fill in (`learnFromSaved`); one discarded is let go.
     // Taught as the save starts, so a paste straight after already knows it; a save that fails puts the marks back.
-    saveDraft: async (id, values, record) => {
+    // A row recorded goes to its own month: the toast says where (`recordedToast`).
+    saveDraft: async (id, values, record, onRecorded) => {
       const mine = readMarks()[id];
-      const waiting = drafts.filter((draft) => draft.id !== id && marks[draft.id]).map((draft) => ({ id: draft.id, values: quickFromDraft(draft, today, accounts) }));
-      const { fills } = learnFromSaved(id, values, record, waiting);
-      const ok = await handlers.saveDraft(id, values, record);
+      const waitingNow = drafts.filter((draft) => draft.id !== id && marks[draft.id]).map((draft) => ({ id: draft.id, values: quickFromDraft(draft, today, accounts) }));
+      const { fills } = learnFromSaved(id, values, record, waitingNow);
+      const month = record ? monthOf(values) : null;
+      const ok = await handlers.saveDraft(id, values, record, (transactionId) => {
+        onRecorded?.(transactionId);
+        if (!month) return;
+        const item = { draftId: id, transactionId, month };
+        if (batch.current) batch.current.push(item);
+        else setRecorded({ items: [item] });
+      });
       // Read back from the device, not from before the save: a paste made meanwhile has marks of its own.
       const now = readMarks();
       setMarks(!ok && mine ? keepMarks({ [id]: mine }, new Set(Object.keys(now))) : now);
@@ -469,9 +494,10 @@ export function DesktopCashflow({
       return ok;
     },
   };
-  // The blue cells: a range down one column, across drafts and recorded rows (`cashflow-cells`). Starting one lets the
-  // picked rows and their peek go, so the two selections never show at once.
-  const cells = useCashflowCells({ rows, today, accounts, rowOptions, handlers, saveDraft: deskHandlers.saveDraft, readOnly, onStart: () => dispatch({ type: 'close' }) });
+  // The blue cells: a range down one column, across recorded rows and the waiting rows under them (`cashflow-cells`).
+  // Starting one lets the picked rows and their peek go, so the two selections never show at once.
+  const tableRows = [...rows, ...waiting];
+  const cells = useCashflowCells({ rows: tableRows, today, accounts, rowOptions, handlers, saveDraft: deskHandlers.saveDraft, readOnly, onStart: () => dispatch({ type: 'close' }) });
   const guessOf = (id: string) => {
     const mark = marks[id];
     const hint = guessHint(mark);
@@ -482,59 +508,38 @@ export function DesktopCashflow({
     const hint = paidHint(mark);
     return mark?.paidGuessed && hint ? { key: mark.paidGuessed, hint } : null;
   };
-  // Notion links among the waiting pasted rows this device does not know yet: said over the rows until each is picked once.
+  // Notion links among the waiting pasted rows this device does not know yet: a light grey count in the box header.
   const unknown = unknownLinks(marks, new Set(drafts.map((draft) => draft.id)));
-  const paste = pasted ? pasteSummary(pasted.ids, drafts, accounts, today, baseCurrency) : null;
-  const pasteWork = (work: () => Promise<void>) => {
-    setPasteBusy(true);
-    void work().finally(() => setPasteBusy(false));
+  // Record N: the complete ones of the waiting rows picked, one after another, each as its own Record records it.
+  const pickedWaiting = recordable(selection.ids, waiting, accounts, today, baseCurrency);
+  const waitingPicked = waiting.filter((row) => picked.has(row.id)).length;
+  const recordMany = async () => {
+    setRecordingMany(true);
+    batch.current = [];
+    try {
+      for (const row of pickedWaiting.ready) await deskHandlers.saveDraft(row.id, quickFromDraft(row.draft!, today, accounts), true);
+    } finally {
+      const items = batch.current ?? [];
+      batch.current = null;
+      setRecordingMany(false);
+      if (items.length > 0) setRecorded({ items });
+    }
   };
-  // Each ready row is recorded the way its own Record records a draft, one after another.
-  const recordReady = () =>
-    pasteWork(async () => {
-      for (const draft of paste?.ready ?? []) await deskHandlers.saveDraft(draft.id, quickFromDraft(draft, today, accounts), true);
-      setPasted((was) => (was ? { ...was, recorded: true } : was));
-    });
-  // Undo takes the whole paste away: every row of it still waiting is discarded.
-  const undoPaste = () =>
-    pasteWork(async () => {
-      const undone = pasted;
-      for (const draft of paste?.waiting ?? []) await deskHandlers.dismissDraft(draft.id);
-      // A paste made while the undo was still going is a new one, and keeps its line.
-      setPasted((now) => (now === undone ? null : now));
-    });
-  const linksLine =
-    unknown > 0 ? (
-      <p data-testid="paste-links" role="status" className="px-2.5 pb-1.5 text-[11.5px] text-[var(--ph-warn)]">
-        {unknownLinksLine(unknown)}
-      </p>
-    ) : null;
-  const summaryLine =
-    paste && paste.waiting.length > 0 ? (
-      <p data-testid="paste-summary" role="status" className="flex flex-wrap items-center gap-x-[10px] gap-y-[2px] px-2.5 pb-1.5 text-[11.5px] text-[var(--ph-ink-2)]">
-        <span>{pasteLine(paste)}</span>
-        {paste.ready.length > 0 && (
-          <button type="button" disabled={pasteBusy} onClick={recordReady} className="font-medium text-[var(--mac-accent)] hover:underline disabled:opacity-50">
-            Record {paste.ready.length} ready
-          </button>
-        )}
-        {!pasted?.recorded && (
-          <button type="button" disabled={pasteBusy} onClick={undoPaste} className="text-[var(--mac-accent)] hover:underline disabled:opacity-50">
-            Undo
-          </button>
-        )}
-      </p>
-    ) : null;
-  const pastedLine =
-    summaryLine || linksLine ? (
-      <>
-        {summaryLine}
-        {linksLine}
-      </>
-    ) : null;
-  // The typing row and the waiting drafts take the table's own columns (an empty layout: nothing more to say yet).
-  const desk = {};
-  const at = selected ? ids.indexOf(selected.id) : -1;
+  // What the waiting rows picked add up to, in the workspace's money (a row read in another currency is left out).
+  const waitingMinor = waiting.filter((row) => picked.has(row.id) && row.draft?.currency === baseCurrency).reduce((sum, row) => sum + Math.abs(row.draft!.amountMinor), 0);
+  const recordMore: RecordMany | undefined =
+    waitingPicked > 0 && !readOnly
+      ? {
+          count: waitingPicked,
+          ready: pickedWaiting.ready.length,
+          skipped: pickedWaiting.skipped > 0 ? skippedLine(pickedWaiting.skipped) : null,
+          total: waitingMinor > 0 ? formatMinor(waitingMinor, baseCurrency) : null,
+          busy: recordingMany,
+          onRecord: () => void recordMany(),
+        }
+      : undefined;
+  const toast = recorded ? recordedToast(recorded.items.map((item) => item.month)) : null;
+  const at = selected ? peekIds.indexOf(selected.id) : -1;
   const sortBy = (key: Sort['key']) => onSort({ key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' });
   const sortMark = (key: Sort['key']) => (sort.key === key ? (sort.dir === 'desc' ? ' ↓' : ' ↑') : '');
   const ariaSort = (key: Sort['key']) => (sort.key === key ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none');
@@ -678,8 +683,16 @@ export function DesktopCashflow({
         >
           <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
             Transactions
-            <span className={NOTE} data-testid="table-note">
-              {cells.hint ?? limitNote ?? 'Type in the top row · Tab moves along · Return saves · ⌘V pastes a list'}
+            <span className="flex items-baseline gap-[10px]">
+              {/* Notion links of the waiting rows not known yet: a count, no colour (option E). */}
+              {unknown > 0 && !cells.hint && (
+                <span className={NOTE} data-testid="links-to-pick">
+                  {unknownLinksLine(unknown)}
+                </span>
+              )}
+              <span className={NOTE} data-testid="table-note">
+                {cells.hint ?? limitNote ?? orderNote(sort)}
+              </span>
             </span>
           </h2>
           {cells.line}
@@ -697,7 +710,6 @@ export function DesktopCashflow({
                 </button>
                 <span />
               </div>
-              {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ ...desk, pasted: pastedLine }} />}
               {rows.length === 0 && (
                 <div className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
                   {emptyText}
@@ -711,36 +723,61 @@ export function DesktopCashflow({
                   )}
                 </div>
               )}
-              {/* The month's rows as a list, each an item: a draft is finished in its own cells, the rest open the peek. */}
+              {/* The month's rows as a list, each an item: a draft is finished in its own cells, the rest open the peek;
+                  then the waiting rows (option E), oldest first by when they came in, just above the typing row. */}
               <ul aria-label="Transactions" {...cells.containerProps}>
-              {rows.map((row, index) =>
-                row.kind === 'draft' ? (
-                  <li key={`d:${row.id}`} className="list-none">
-                    <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={desk} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} pickedCell={cells.pickedColumn(row.id)} />
+                {rows.map((row, index) =>
+                  row.kind === 'draft' ? (
+                    <li key={`d:${row.id}`} className="list-none">
+                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: index % 2 === 1 }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} pickedCell={cells.pickedColumn(row.id)} />
+                    </li>
+                  ) : (
+                    <DeskRow
+                      key={`t:${row.id}`}
+                      row={row}
+                      striped={index % 2 === 1}
+                      selected={picked.has(row.id)}
+                      pickedCell={cells.pickedColumn(row.id)}
+                      today={today}
+                      accounts={accounts}
+                      helpers={helpers}
+                      onOpen={(keys) => (peekable(row) ? dispatch(keys ? clickAction(row.id, keys, ids) : { type: 'open', id: row.id }) : !keys?.metaKey && !keys?.shiftKey && row.instalment ? helpers.openInstalment(row) : undefined)}
+                      onEdit={() => (peekable(row) ? edit(row) : undefined)}
+                    />
+                  ),
+                )}
+                {waiting.map((row, index) => (
+                  <li key={`w:${row.id}`} className="list-none" data-testid="waiting-row">
+                    <EditableRow
+                      row={row}
+                      options={rowOptions}
+                      accounts={accounts}
+                      today={today}
+                      baseCurrency={baseCurrency}
+                      handlers={deskHandlers}
+                      desk={{
+                        waiting: true,
+                        striped: (rows.length + index) % 2 === 1,
+                        selected: picked.has(row.id),
+                        onPick: (keys) => dispatch(clickAction(row.id, { ...keys, shiftKey: false }, ids)),
+                        onPress: () => (selection.ids.length > 0 ? dispatch({ type: 'close' }) : undefined),
+                      }}
+                      guess={guessOf(row.id)}
+                      paidGuess={paidGuessOf(row.id)}
+                      pickedCell={cells.pickedColumn(row.id)}
+                    />
                   </li>
-                ) : (
-                  <DeskRow
-                    key={`t:${row.id}`}
-                    row={row}
-                    striped={index % 2 === 1}
-                    selected={picked.has(row.id)}
-                    pickedCell={cells.pickedColumn(row.id)}
-                    today={today}
-                    accounts={accounts}
-                    helpers={helpers}
-                    onOpen={(keys) => (peekable(row) ? dispatch(keys ? clickAction(row.id, keys, ids) : { type: 'open', id: row.id }) : !keys?.metaKey && !keys?.shiftKey && row.instalment ? helpers.openInstalment(row) : undefined)}
-                    onEdit={() => (peekable(row) ? edit(row) : undefined)}
-                  />
-                ),
-              )}
+                ))}
               </ul>
+              {/* The typing row is the table's last row (option E): today's date, Tab across, Return or Record saves it. */}
+              {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{}} />}
             </div>
           </div>
         </section>
       </div>
 
       {many && (
-        <SelectionPeek top={peekTop} picked={selection.ids.length} spent={bulk.spent} received={bulk.received} actions={bulk} onClose={() => dispatch({ type: 'close' })} />
+        <SelectionPeek top={peekTop} picked={selection.ids.length} spent={bulk.spent} received={bulk.received} actions={bulk} record={recordMore} onClose={() => dispatch({ type: 'close' })} />
       )}
       {selected && (
         <ReceiptPeek
@@ -748,12 +785,41 @@ export function DesktopCashflow({
           transactionId={selected.tx!.id}
           notMonthlyOut={!!selected.notMonthlyOut}
           first={at <= 0}
-          last={at === ids.length - 1}
-          onStep={(by) => dispatch({ type: 'step', by, ids })}
+          last={at === peekIds.length - 1}
+          onStep={(by) => dispatch({ type: 'step', by, ids: peekIds })}
           onClose={() => dispatch({ type: 'close' })}
         />
       )}
       {cells.picker}
+      {/* Rows recorded from the waiting rows went to their own month: where, with Show › there, and Undo (option E). */}
+      {recorded && toast && (
+        <UndoToast
+          key={recorded.items.map((item) => item.draftId).join(',')}
+          icon="recorded"
+          testId="recorded-toast"
+          text={toast.text}
+          extra={
+            toast.show !== month ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onMonth(toast.show);
+                  setRecorded(null);
+                }}
+                className="shrink-0 rounded-full px-[8px] py-[5px] text-[14px] leading-[18px] font-medium text-[var(--mac-accent)] hover:underline"
+              >
+                Show ›
+              </button>
+            ) : null
+          }
+          onUndo={() => {
+            const items = recorded.items;
+            setRecorded(null);
+            void handlers.unrecord?.(items);
+          }}
+          onDone={() => setRecorded(null)}
+        />
+      )}
       {children}
     </div>
   );

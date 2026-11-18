@@ -21,6 +21,20 @@ export interface BulkActions {
   onDelete: () => void;
 }
 
+/** Record N, with waiting rows (typed or pasted, not recorded yet) among the rows picked (Mac Cashflow option E). */
+export interface RecordMany {
+  /** Waiting rows picked. */
+  count: number;
+  /** Of those, the complete ones: what Record N records. */
+  ready: number;
+  /** "1 with a blank cell is skipped", when some are. */
+  skipped: string | null;
+  /** What the waiting rows picked add up to (formatted), said while no recorded row is picked. */
+  total: string | null;
+  busy: boolean;
+  onRecord: () => void;
+}
+
 /** Delete for several: asks twice, in place, saying how many go. */
 function DeleteMany({ count, busy, onConfirm }: { count: number; busy: boolean; onConfirm: () => void }) {
   const { armed, onBlur, onClick } = useTwoTap(onConfirm);
@@ -49,6 +63,7 @@ export function SelectionPeek({
   spent,
   received,
   actions,
+  record,
   onClose,
 }: {
   top?: number;
@@ -58,17 +73,22 @@ export function SelectionPeek({
   spent: string | null;
   received: string | null;
   actions: BulkActions;
+  /** Waiting rows among them: Record N, before the recorded rows' actions. */
+  record?: RecordMany | undefined;
   onClose: () => void;
 }) {
-  const left = picked - actions.count;
+  const waiting = record?.count ?? 0;
+  // Rows the actions do not reach, waiting rows aside: those have Record N.
+  const left = picked - waiting - actions.count;
+  const onlyWaiting = waiting > 0 && waiting === picked;
   const item = cx(BUTTON, PLAIN, 'w-full text-left');
   return (
     <SidePeek top={top} label="Selected transactions" testId="cashflow-selection" title={`${picked} selected`} titleTestId="peek-title" noun="transaction" onClose={onClose}>
       <div className="px-[14px] pb-[10px]">
         <div data-testid="selection-total" className="text-[22px] font-semibold text-[var(--ph-ink)] tabular-nums">
-          {spent ?? received ?? '–'}
+          {spent ?? received ?? (onlyWaiting ? record?.total : null) ?? '–'}
         </div>
-        <div className="mt-[2px] text-[13px] text-[var(--ph-ink-3)]">{spent ? 'Spent' : received ? 'Received' : 'Nothing counted'}</div>
+        <div className="mt-[2px] text-[13px] text-[var(--ph-ink-3)]">{spent ? 'Spent' : received ? 'Received' : onlyWaiting && record?.total ? 'Not recorded yet' : 'Nothing counted'}</div>
         {spent && received && (
           <div className="mt-[6px] flex justify-between text-[13px]">
             <span className="text-[var(--ph-ink-3)]">Received</span>
@@ -76,7 +96,25 @@ export function SelectionPeek({
           </div>
         )}
       </div>
-      {left > 0 && (
+      {record && (
+        <div className="flex flex-col gap-[6px] border-t border-[var(--ph-hair)] px-[14px] pt-[12px]">
+          <button
+            type="button"
+            data-testid="record-many"
+            disabled={record.busy || record.ready === 0}
+            onClick={record.onRecord}
+            className={cx(BUTTON, 'w-full border-[var(--ph-ink)] bg-[var(--ph-ink)] text-left font-medium text-[var(--ph-surface)]')}
+          >
+            Record {record.ready}
+          </button>
+          {record.skipped && (
+            <p data-testid="record-skipped" className="text-[12px] text-[var(--ph-ink-3)]">
+              {record.skipped}
+            </p>
+          )}
+        </div>
+      )}
+      {left > 0 && !onlyWaiting && (
         <p className="border-t border-[var(--ph-hair)] px-[14px] pt-[10px] text-[12px] text-[var(--ph-ink-3)]">
           {actions.count === 0 ? 'None of them can be changed here.' : `${left} of them can’t be changed here; the actions below reach the other ${actions.count}.`}
         </p>
@@ -86,6 +124,7 @@ export function SelectionPeek({
           <ErrorBox error={actions.error} />
         </div>
       ) : null}
+      {!onlyWaiting && (
       <div role="group" aria-label="Actions" className="flex flex-col gap-2 px-[14px] pt-[14px] pb-3">
         <button type="button" className={item} disabled={actions.busy || actions.count === 0} onClick={actions.onAdd}>
           Add to event
@@ -107,6 +146,7 @@ export function SelectionPeek({
         )}
         <DeleteMany key={actions.count} count={actions.count} busy={actions.busy} onConfirm={actions.onDelete} />
       </div>
+      )}
     </SidePeek>
   );
 }

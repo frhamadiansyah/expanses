@@ -1,6 +1,6 @@
-import { categoryPath, matchCategory, matchPayment, type PaymentOption } from '@expanses/core';
+import { categoryPath, formatMinor, matchCategory, matchPayment, parseLooseAmount, type PaymentOption } from '@expanses/core';
 import type { AccountRow, CardRow } from '@expanses/db';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { moneyHolders } from '../../lib/queries';
 import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
@@ -25,16 +25,25 @@ export const DESK_GRID = 'grid grid-cols-[var(--desk-cols)] items-center gap-px'
  * whole.
  */
 export const DESK_COLUMNS = {
-  wide: '5.5rem minmax(0,2fr) minmax(0,1.7fr) minmax(0,1.2fr) 8rem 6rem',
-  peek: '4.75rem minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,1fr) 7.25rem 5.75rem',
+  // Date holds a waiting row's whole "13 Sep 2026".
+  wide: '6.5rem minmax(0,2fr) minmax(0,1.7fr) minmax(0,1.2fr) 8rem 6rem',
+  peek: '6.25rem minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,1fr) 7.25rem 5.75rem',
 } as const;
 
 const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
 const MISSING = 'bg-amber-50 ring-1 ring-amber-400 ring-inset';
-/** A cell in a range of blue cells (`useCellRange`): the Mac accent's wash, edged in the accent. */
+/**
+ * A cell in a range of blue cells (`useCellRange`): the Mac accent's wash, edged in the accent — only while it is picked
+ * (a drag or ⇧-click); a cell at rest, blank or not, is the row's own plain ground.
+ */
 export const PICKED_CELL = 'bg-[var(--mac-accent-wash)] outline outline-1 -outline-offset-1 outline-[var(--mac-accent)]';
 /** The desk table's cell: 13 px, as tall as the rows under it, the Mac accent around the one being typed in. */
-const DESK_CELL = 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] placeholder:text-[var(--ph-ink-3)] focus:bg-white focus:outline-2 focus:outline-[var(--mac-accent)]';
+const DESK_CELL = 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] placeholder:text-[var(--ph-ink-3)] focus:bg-[var(--ph-surface)] focus:outline-2 focus:outline-[var(--mac-accent)]';
+/**
+ * A waiting row's cells read in the recorded rows' own colours (Mac Cashflow option E): the date grey, Paid with in the
+ * second ink, the rest in ink. Set on the cell, which its field takes (`color: inherit`), so a picked row can turn it white.
+ */
+const DESK_TONE: Partial<Record<CellColumn, string>> = { date: 'text-[var(--ph-ink-3)]', paid: 'text-[var(--ph-ink-2)]' };
 
 export type RowOptions = ReturnType<typeof buildRowOptions>;
 
@@ -159,15 +168,23 @@ export function QuickRowEditor({
   const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
     if (onPaste?.(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'))) event.preventDefault();
   };
-  const missing = (cell: string) => needs.includes(cell);
+  // The desk marks no cell as missing (option E): a blank cell is just blank, and Record stays grey until none is.
+  const missing = (cell: string) => layout !== 'desk' && needs.includes(cell);
   const CELL_ = layout === 'desk' ? DESK_CELL : CELL;
   const dense = layout === 'desk';
+  // A row of the table (not the typing row): no word in a blank cell, and its figure read as the recorded rows print it
+  // ("Rp 320.000") until the cell is typed in.
+  const inTable = layout === 'desk' && !!cellRow;
+  const hint = (word: string) => (inTable ? undefined : word);
+  const [amountFocused, setAmountFocused] = useState(false);
+  const amountMinor = inTable && !amountFocused ? parseLooseAmount(values.amount, currency) : null;
+  const amountShown = amountMinor !== null && values.amount.trim() !== '' ? formatMinor(amountMinor, currency) : values.amount;
   const date = (
     <input
       key="date"
       aria-label="Row date"
       autoComplete="off"
-      placeholder="Date"
+      placeholder={hint('Date')}
       value={values.date}
       onPaste={paste}
       onChange={(event) => onChange({ date: event.target.value })}
@@ -180,7 +197,7 @@ export function QuickRowEditor({
       aria-label="Row description"
       autoComplete="off"
       autoFocus={autoFocus}
-      placeholder={layout === 'desk' ? 'Note' : 'Description'}
+      placeholder={layout === 'desk' ? hint('Note') : 'Description'}
       value={values.description}
       onPaste={paste}
       onBlur={onDescriptionBlur}
@@ -194,8 +211,10 @@ export function QuickRowEditor({
       aria-label={`Row amount (${currency})`}
       autoComplete="off"
       inputMode="decimal"
-      placeholder="Amount"
-      value={values.amount}
+      placeholder={hint('Amount')}
+      value={amountShown}
+      onFocus={() => setAmountFocused(true)}
+      onBlur={() => setAmountFocused(false)}
       onChange={(event) => onChange({ amount: event.target.value })}
       className={cx(CELL_, 'tabular text-right', missing('amount') && MISSING)}
     />
@@ -205,7 +224,7 @@ export function QuickRowEditor({
       key="paid"
       label="Row paid with"
       dense={dense}
-      placeholder={layout === 'desk' ? 'Paid with' : 'Name or last digits'}
+      placeholder={layout === 'desk' ? hint('Paid with') : 'Name or last digits'}
       value={paymentKey(values.accountId, values.cardId)}
       options={options.paidFor(paymentKey(values.accountId, values.cardId))}
       resolve={options.resolvePaid}
@@ -223,7 +242,7 @@ export function QuickRowEditor({
       key="category"
       label="Row category"
       dense={dense}
-      placeholder={layout === 'desk' ? 'Category' : 'Search categories'}
+      placeholder={layout === 'desk' ? hint('Category') : 'Search categories'}
       value={values.categoryId}
       options={options.categories}
       resolve={options.resolveCategory}
@@ -234,14 +253,14 @@ export function QuickRowEditor({
     />
   );
   const ends = (
-    <div key="actions" className="flex items-center justify-end gap-1 pl-1">
+    <div key="actions" className={cx('flex items-center gap-1 pl-1', layout === 'desk' ? 'justify-start' : 'justify-end')}>
       {actions}
     </div>
   );
   // A desk row's cells are marked for a range of blue cells, and drawn blue while in one.
   const cell = (column: CellColumn, node: ReactNode) =>
     layout === 'desk' && cellRow ? (
-      <div key={column} data-cell={column} data-cell-row={cellRow} data-picked={pickedCell === column || undefined} className={cx('min-w-0 rounded-[5px]', pickedCell === column && PICKED_CELL)}>
+      <div key={column} data-cell={column} data-cell-row={cellRow} data-picked={pickedCell === column || undefined} className={cx('min-w-0 rounded-[5px]', DESK_TONE[column], pickedCell === column && PICKED_CELL)}>
         {node}
       </div>
     ) : (

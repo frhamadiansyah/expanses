@@ -68,11 +68,12 @@ export function quickFromTransaction(tx: TransactionView, today: string): QuickV
  * another one (a purchase abroad, in the merchant's figure) is left out of it: shown there it would be recorded as
  * the account's own money. Review is where that figure is kept and its charge asked.
  */
-export function quickFromDraft(draft: DraftRow, today: string, accounts: readonly AccountRow[]): QuickValues {
+export function quickFromDraft(draft: DraftRow, today: string, accounts: readonly AccountRow[], opts: { withYear?: boolean } = {}): QuickValues {
   const settled = accounts.find((a) => a.id === draft.accountId)?.currency;
   const own = !settled || settled === draft.currency;
   return {
-    date: ISO.test(draft.occurredOn) ? shortDate(draft.occurredOn, today) : draft.occurredOn,
+    // A desk's waiting row, whatever month is shown, says its year ("14 Sep 2026"): it is not of the month on show.
+    date: ISO.test(draft.occurredOn) ? shortDate(draft.occurredOn, opts.withYear ? '' : today) : draft.occurredOn,
     description: draft.description,
     amount: own && draft.amountMinor > 0 ? minorToMajorString(draft.amountMinor, draft.currency) : '',
     accountId: draft.accountId ?? '',

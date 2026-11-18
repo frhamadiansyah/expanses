@@ -198,9 +198,8 @@ export function unknownLinks(marks: Readonly<Record<string, PasteMark>>, waiting
   return categories.size + paid.size;
 }
 
-/** The line over a paste's rows while some of its Notion links are not known yet. */
-export const unknownLinksLine = (count: number) =>
-  count === 1 ? '1 Notion link not known yet — pick once, it is remembered' : `${count} Notion links not known yet — pick once, they are remembered`;
+/** The box header's light grey count while some of the waiting rows' Notion links are not known yet: "2 Notion links to pick". */
+export const unknownLinksLine = (count: number) => (count === 1 ? '1 Notion link to pick' : `${count} Notion links to pick`);
 
 /** A pasted row discarded (or recorded): its mark goes. */
 export function forgetMark(draftId: string, store: NameStore | null = deviceStore()): Record<string, PasteMark> {

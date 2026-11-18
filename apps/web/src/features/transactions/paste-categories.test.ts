@@ -202,12 +202,12 @@ describe('Notion links remembered on this device', () => {
     const waiting = new Set(['r1', 'r2', 'r3', 'r4']);
     // Plain names are not links; one link named twice is one.
     expect(unknownLinks(readMarks(store), waiting, store)).toBe(3);
-    expect(unknownLinksLine(3)).toBe('3 Notion links not known yet — pick once, they are remembered');
+    expect(unknownLinksLine(3)).toBe('3 Notion links to pick');
     learnFromSaved('r1', blank({ categoryId: 'groceries' }), false, [], store);
     expect(unknownLinks(readMarks(store), waiting, store)).toBe(2);
     learnFromSaved('r1', blank({ categoryId: 'groceries', accountId: 'bca' }), false, [], store);
     expect(unknownLinks(readMarks(store), waiting, store)).toBe(1);
-    expect(unknownLinksLine(1)).toBe('1 Notion link not known yet — pick once, it is remembered');
+    expect(unknownLinksLine(1)).toBe('1 Notion link to pick');
     // A row no longer waiting is not counted.
     expect(unknownLinks(readMarks(store), new Set(['r1', 'r3']), store)).toBe(0);
   });

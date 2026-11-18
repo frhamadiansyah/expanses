@@ -268,39 +268,6 @@ export function recordedToast(months: readonly string[]): { text: string; show: 
   return { text: `Recorded in ${listed}${years.size === 1 ? ` ${sorted[0]!.slice(0, 4)}` : ''}`, show: sorted.at(-1)! };
 }
 
-// ── A paste into the typing row ─────────────────────────────────────────────────────────────────────────────────────
-
-export interface PasteSummary {
-  /** How many rows the paste made. */
-  pasted: number;
-  /** The pasted rows still waiting, as drafts, in the order pasted. */
-  waiting: DraftRow[];
-  /** Of those, the ones every cell of which reads: what Record ready records. */
-  ready: DraftRow[];
-  /** The waiting ones with a cell still to fix (shown orange on its row). */
-  toFix: number;
-}
-
-/**
- * Where a paste stands, read from the drafts as they are now — a row fixed in its cells since counts as ready, one
- * recorded or discarded has left. A row is ready by the very reading its Record button uses (`readQuick`).
- */
-export function pasteSummary(ids: readonly string[], drafts: readonly DraftRow[], accounts: readonly AccountRow[], today: string, baseCurrency: string): PasteSummary {
-  const byId = new Map(drafts.map((draft) => [draft.id, draft]));
-  const waiting = ids.flatMap((id) => {
-    const draft = byId.get(id);
-    return draft ? [draft] : [];
-  });
-  const ready = waiting.filter((draft) => readQuick(quickFromDraft(draft, today, accounts), accounts, today, baseCurrency).needs.length === 0);
-  return { pasted: ids.length, waiting, ready, toFix: waiting.length - ready.length };
-}
-
-/** "Pasted 3 rows · 2 ready to record · 1 needs a fix". */
-export function pasteLine(summary: Pick<PasteSummary, 'pasted' | 'ready' | 'toFix'>): string {
-  const rows = `Pasted ${summary.pasted} ${summary.pasted === 1 ? 'row' : 'rows'}`;
-  return `${rows} · ${summary.ready.length} ready to record · ${summary.toFix} ${summary.toFix === 1 ? 'needs' : 'need'} a fix`;
-}
-
 /**
  * How a table row's Amount reads (Mac Cashflow D). Wholly left out of the report, Rp 0 in grey (its ⊘ figure says what
  * was left out); money in, green with a plus; a not-monthly bill a month leaves out (`leaveOutNotMonthly`), its whole

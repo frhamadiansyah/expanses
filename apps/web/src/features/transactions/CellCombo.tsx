@@ -42,7 +42,7 @@ export function CellCombo({
   dense?: boolean;
   /** Not yet usable, such as while its choices are still loading. */
   disabled?: boolean;
-  /** Filled in by a guess rather than chosen: said in light italic, with why on hover and to a reader. */
+  /** Filled in by a guess rather than chosen: said in italic (the desk: in its own ink, no colour), with why on hover and to a reader. */
   guessed?: string | null;
   className?: string;
 }) {
@@ -124,15 +124,18 @@ export function CellCombo({
         aria-description={guessed && query === null ? guessed : undefined}
         data-guessed={guessed && query === null ? 'true' : undefined}
         className={cx(
-          dense ? 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] focus:bg-white focus:outline-2 focus:outline-[var(--mac-accent)]' : 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900',
+          dense
+            ? 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] placeholder:text-[var(--ph-ink-3)] focus:bg-[var(--ph-surface)] focus:outline-2 focus:outline-[var(--mac-accent)]'
+            : 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900',
           Boolean(selected?.icon) && query === null && 'pl-9',
           Boolean(selected?.meta) && query === null && 'pr-12',
-          invalid && 'bg-amber-50 ring-1 ring-amber-400 ring-inset',
-          guessed && query === null && 'text-[var(--ph-ink-2)] italic',
+          // The desk's table draws no missing cell (option E): blank is just blank.
+          invalid && !dense && 'bg-amber-50 ring-1 ring-amber-400 ring-inset',
+          guessed && query === null && (dense ? 'italic' : 'text-[var(--ph-ink-2)] italic'),
         )}
       />
       {selected?.meta && query === null && (
-        <span className="tabular pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs font-semibold text-slate-600">{selected.meta}</span>
+        <span className={cx('tabular pointer-events-none absolute top-1/2 right-2 -translate-y-1/2', dense ? 'text-[11px]' : 'text-xs font-semibold text-slate-600')}>{selected.meta}</span>
       )}
       {open && (
         <ul id={listId} role="listbox" className="absolute left-0 z-30 mt-1 max-h-64 w-full min-w-64 overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200">

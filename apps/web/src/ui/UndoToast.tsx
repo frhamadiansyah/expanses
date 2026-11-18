@@ -75,6 +75,7 @@ export function UndoToast({
   detail,
   icon,
   testId,
+  extra,
   onUndo,
   onDone,
 }: {
@@ -82,6 +83,8 @@ export function UndoToast({
   detail?: string | undefined;
   icon?: ToastIcon;
   testId?: string;
+  /** A second way on, before Undo: the Mac Cashflow's Show › to the month a row was recorded in. */
+  extra?: ReactNode;
   onUndo: () => void;
   onDone: () => void;
 }) {
@@ -106,14 +109,17 @@ export function UndoToast({
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
       }}
       action={
-        <button
-          type="button"
-          onClick={onUndo}
-          className="ph-focus ph-tap shrink-0 rounded-full bg-[var(--ph-fill)] px-[12px] py-[5px] text-[14px] leading-[18px] font-semibold text-[var(--ph-ink)]"
-          style={{ '--ph-tap-y': `${tapReach(28)}px` } as CSSProperties}
-        >
-          Undo
-        </button>
+        <>
+          {extra}
+          <button
+            type="button"
+            onClick={onUndo}
+            className="ph-focus ph-tap shrink-0 rounded-full bg-[var(--ph-fill)] px-[12px] py-[5px] text-[14px] leading-[18px] font-semibold text-[var(--ph-ink)]"
+            style={{ '--ph-tap-y': `${tapReach(28)}px` } as CSSProperties}
+          >
+            Undo
+          </button>
+        </>
       }
     />
   );

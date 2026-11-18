@@ -28,7 +28,10 @@ export interface TableHandlers {
   guessCategory: (description: string) => Promise<string | null>;
   /** Saves a recorded row's cells. An edit replaces the row: `onSaved` hears the new row's id. */
   saveRecorded: (id: string, values: QuickValues, onSaved?: (replacement: string) => void) => Promise<boolean>;
-  saveDraft: (id: string, values: QuickValues, record: boolean) => Promise<boolean>;
+  /** `onRecorded` hears the transaction a Record posted (the desk's toast takes it back with Undo). */
+  saveDraft: (id: string, values: QuickValues, record: boolean, onRecorded?: (transactionId: string) => void) => Promise<boolean>;
+  /** Takes recorded drafts back to waiting: each one's transaction voided, the draft reopened (the desk toast's Undo). */
+  unrecord?: (recorded: readonly { draftId: string; transactionId: string }[]) => Promise<boolean>;
   dismissDraft: (id: string) => Promise<boolean>;
   deleteRecorded: (id: string) => Promise<boolean>;
   /** Whether this row may be copied into a new one: the one rule the swipe, the receipt and the route share. */
@@ -56,8 +59,12 @@ export interface TableHandlers {
   paidByOther?: (tx: TransactionView) => boolean;
 }
 
-/** The desk table's Record: small, so it and the discard ✕ fit the last column beside a 13 px row. */
-const DESK_BUTTON = 'shrink-0 px-2 py-[3px] text-[12px]';
+/**
+ * A waiting row's Record on the desk (option E): black while the row is complete, grey while a cell is blank — the one
+ * thing, with its ✕, that tells a waiting row from a recorded one.
+ */
+const DESK_RECORD =
+  'inline-flex shrink-0 items-center rounded-[6px] bg-[var(--ph-ink)] px-[9px] py-[2px] text-[11.5px] font-medium text-[var(--ph-surface)] disabled:bg-[var(--ph-chevron)] disabled:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mac-accent)]';
 
 const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof QuickValues)[]).every((key) => a[key] === b[key]);
 const currencyOf = (values: QuickValues, accounts: readonly AccountRow[], base: string) => accounts.find((a) => a.id === values.accountId)?.currency ?? base;
@@ -85,10 +92,18 @@ function TwoTap({ busy, label, onConfirm, compact = false }: { busy: boolean; la
   );
 }
 
-/** The wide Cashflow's table (Mac Cashflow D) draws the typing row and a waiting draft in its own columns. */
+/** The wide Cashflow's table (Mac Cashflow D, option E) draws the typing row and a waiting draft in its own columns. */
 interface DeskLayout {
-  /** The line under the typing row after a paste: how many rows came in, and what can be done with them. */
-  pasted?: ReactNode;
+  /** The zebra's second shade, as the recorded row in its place would wear it. */
+  striped?: boolean;
+  /** Picked with ⌘-click (Record N): the accent, as a picked recorded row. */
+  selected?: boolean;
+  /** A waiting row (typed or pasted, any month): its date says its year. */
+  waiting?: boolean;
+  /** A press on the row with ⌘ (Ctrl off a Mac) held: picks it rather than typing in it. */
+  onPick?: (keys: { metaKey: boolean; ctrlKey: boolean }) => void;
+  /** A plain press on the row: the rows picked step aside while it is typed in. */
+  onPress?: () => void;
 }
 
 export function TypingRow({
@@ -125,7 +140,11 @@ export function TypingRow({
   };
 
   return (
-    <div data-testid="typing-row" className={desk ? 'border-b border-dashed border-[var(--ph-chevron)]' : 'border-b border-slate-200 bg-slate-50/60'}>
+    <div
+      data-testid="typing-row"
+      title={desk ? 'Type a row: Tab moves along, Return records it. Or paste from a spreadsheet: Date · Note · Category · Paid with · Amount (or with a header row, any order)' : undefined}
+      className={desk ? 'border-t border-dashed border-[var(--ph-chevron)]' : 'border-b border-slate-200 bg-slate-50/60'}
+    >
       <QuickRowEditor
         layout={desk ? 'desk' : 'row'}
         values={values}
@@ -184,9 +203,15 @@ export function TypingRow({
         }}
         actions={
           <>
-            <Button className={desk ? DESK_BUTTON : 'px-2.5 py-1.5'} disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
-              Record
-            </Button>
+            {desk ? (
+              <button type="button" className={DESK_RECORD} disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
+                Record
+              </button>
+            ) : (
+              <Button className="px-2.5 py-1.5" disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
+                Record
+              </Button>
+            )}
             {/* The desk's row keeps an unfinished row with Return alone, as its header says: no second button. */}
             {!desk && (
               <Button variant="ghost" className="px-2 py-1.5 text-xs" disabled={!touched || busy} title="Keep it as not recorded, to finish later" onClick={() => void handlers.keepTyped(values).then((ok) => ok && reset())}>
@@ -196,19 +221,16 @@ export function TypingRow({
           </>
         }
       />
-      {/* The desk's box header carries the how-to; only the guess is said under the row. */}
+      {/* The desk's typing row is the table's last row and says nothing under it (option E) but the guess, or why a
+          paste was not taken; how to type and paste is said on its hover. */}
       {desk ? (
         <>
           {guessed && <p className="px-2.5 pb-1 text-[11px] text-[var(--ph-ink-3)]">Category guessed from the last time this was bought here</p>}
-          <p data-testid="paste-hint" className="px-2.5 pb-1 text-[11px] text-[var(--ph-ink-3)]">
-            Paste from a spreadsheet: Date · Note · Category · Paid with · Amount (or with a header row, any order)
-          </p>
           {notice && (
-            <p data-testid="paste-notice" role="status" className="px-2.5 pb-1.5 text-[11.5px] text-[var(--ph-warn)]">
+            <p data-testid="paste-notice" role="status" className="px-2.5 pb-1.5 text-[11.5px] text-[var(--ph-ink-2)]">
               {notice}
             </p>
           )}
-          {desk.pasted}
         </>
       ) : (
         <p className="px-2.5 pb-1.5 text-xs text-slate-500">
@@ -246,7 +268,7 @@ export function EditableRow({
   pickedCell?: CellColumn | null;
 }) {
   const isDraft = row.kind === 'draft';
-  const read = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);
+  const read = isDraft ? quickFromDraft(row.draft!, today, accounts, { withYear: !!desk?.waiting }) : quickFromTransaction(row.tx!, today);
   // The desk's table prints a waiting row's figure grouped, as every row beside it is ("320.000", not "320000").
   const initial = desk ? groupedAmountCell(read, currencyOf(read, accounts, baseCurrency)) : read;
   const [values, setValuesState] = useState(initial);
@@ -275,11 +297,31 @@ export function EditableRow({
   return (
     <div
       data-testid={isDraft ? 'not-recorded-row' : 'table-row'}
+      data-row-id={desk ? row.id : undefined}
+      data-selected={desk?.selected || undefined}
       className={cx(
-        'border-b border-slate-100',
-        isDraft && 'bg-amber-50/70 shadow-[inset_3px_0_0_#f59e0b]',
-        !isDraft && dirty && 'bg-indigo-50/60 shadow-[inset_3px_0_0_#6366f1]',
+        desk
+          ? // The desk draws a waiting row as a recorded one (option E): no amber, the zebra, the accent once picked.
+            cx(
+              desk.selected
+                ? // White on the accent, as a picked recorded row; the category's mark on white, or it sinks into the blue.
+                  'bg-[var(--mac-accent)] text-white [&_[aria-label=Discard]]:text-white [&_[data-cell]]:text-white [&_[data-testid=category-mark]]:bg-white! [&_input:focus]:text-[var(--ph-ink)]'
+                : cx('text-[var(--ph-ink)]', desk.striped && 'bg-[var(--mac-zebra)]'),
+            )
+          : cx('border-b border-slate-100', isDraft && 'bg-amber-50/70 shadow-[inset_3px_0_0_#f59e0b]', !isDraft && dirty && 'bg-indigo-50/60 shadow-[inset_3px_0_0_#6366f1]'),
       )}
+      onMouseDown={
+        desk
+          ? (event) => {
+              if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+              if (event.metaKey || event.ctrlKey) {
+                // ⌘-click picks the row (Record N), as on a recorded row: the cell is not typed in.
+                event.preventDefault();
+                desk.onPick?.({ metaKey: event.metaKey, ctrlKey: event.ctrlKey });
+              } else if (!event.shiftKey) desk.onPress?.();
+            }
+          : undefined
+      }
       onBlur={(event) => {
         // A draft keeps what was typed as soon as the row is left, the way a sheet does.
         if (!isDraft || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
@@ -297,15 +339,21 @@ export function EditableRow({
         needs={isDraft || dirty ? needs : []}
         options={options}
         currency={currencyOf(values, accounts, baseCurrency)}
-        className="p-0.5"
+        className={desk ? 'px-0.5' : 'p-0.5'}
         onSubmit={save}
         onCancel={() => setValues(initial)}
         actions={
           isDraft ? (
             <>
-              <Button className={desk ? DESK_BUTTON : 'px-2.5 py-1.5'} disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
-                Record
-              </Button>
+              {desk ? (
+                <button type="button" className={cx(DESK_RECORD, desk.selected && 'outline outline-1 outline-white/70')} disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
+                  Record
+                </button>
+              ) : (
+                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
+                  Record
+                </Button>
+              )}
               <TwoTap busy={busy} label="Discard" compact={!!desk} onConfirm={() => void handlers.dismissDraft(row.id)} />
             </>
           ) : dirty ? (

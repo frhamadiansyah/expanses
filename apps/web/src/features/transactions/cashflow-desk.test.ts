@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
-import { clickAction, countsAs, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, pasteLine, pasteSummary, peekKey, recordable, recordedToast, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, waitingOrder } from './cashflow-desk-model';
+import { clickAction, countsAs, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, waitingOrder } from './cashflow-desk-model';
 import type { ListRow } from './list-model';
 import { PeekRow } from './ReceiptPeek';
 import { kindWord, peekFigure, receiptPeekLines } from './receipt-peek-model';
@@ -266,19 +266,6 @@ describe('the waiting rows, the typing row and Record', () => {
     id, source: 'manual', kind: 'expense', status: 'pending', rawPayload: null, occurredOn: '2026-11-17', description: 'Pasar', amountMinor: 50_000, currency: 'IDR',
     accountId: 'bca', toAccountId: null, categoryAccountId: 'groceries', cardId: null, sourceId: null, captureIds: [], imageFile: null, reading: null, mergedInto: null,
     confidence: null, externalRef: null, transactionId: null, ...extra,
-  });
-
-  it('counts the rows pasted, the ones ready to record and the ones with a cell to fix, from the drafts as they are now', () => {
-    const drafts = [draft('a', {}), draft('b', { categoryAccountId: null }), draft('c', { amountMinor: 0 }), draft('other', {})];
-    const summary = pasteSummary(['a', 'b', 'c'], drafts, accounts, '2026-11-18', 'IDR');
-    expect(summary.ready.map((d) => d.id)).toEqual(['a']);
-    expect([summary.pasted, summary.waiting.length, summary.toFix]).toEqual([3, 3, 2]);
-    expect(pasteLine(summary)).toBe('Pasted 3 rows · 1 ready to record · 2 need a fix');
-    // One recorded (or discarded) has left the drafts: it is no longer waiting.
-    const after = pasteSummary(['a', 'b', 'c'], drafts.slice(1), accounts, '2026-11-18', 'IDR');
-    expect(pasteLine(after)).toBe('Pasted 3 rows · 0 ready to record · 2 need a fix');
-    expect(pasteLine(pasteSummary(['a'], drafts, accounts, '2026-11-18', 'IDR'))).toBe('Pasted 1 row · 1 ready to record · 0 need a fix');
-    expect(pasteLine(pasteSummary(['a', 'b'], drafts, accounts, '2026-11-18', 'IDR'))).toBe('Pasted 2 rows · 1 ready to record · 1 needs a fix');
   });
 
   it('lists the waiting rows in the order they came in, whatever month they are dated in, a paste breaking its own ties', () => {
