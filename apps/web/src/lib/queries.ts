@@ -1,6 +1,6 @@
 import { isoDate } from '@expanses/core';
 import { type AccountRow, categoryIdsOfBook, isBookShared, listAccounts, listCategoryColours, memberPayerAccounts, nativeBalances, pocketParentIds, resolveRates } from '@expanses/db';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useApp } from '../app/context';
 import { shownAccounts } from './account-name';
@@ -101,13 +101,24 @@ export function useBalances(asOf?: string, enabled = true) {
   });
 }
 
+/**
+ * After a write, every read again. A read still on its first fetch is cancelled first: it may have started before the
+ * write, and a refetch of a query with no data yet joins that fetch rather than starting a new one, so its answer — from
+ * before the write — would be kept as fresh (a goal saved while the Goals list was still loading stayed off the list).
+ * Only reads that something is waiting on are cancelled; a one-off `fetchQuery` is left to finish.
+ */
+export async function refreshAfterWrite(queryClient: QueryClient): Promise<void> {
+  await queryClient.cancelQueries({ predicate: (query) => query.state.fetchStatus === 'fetching' && query.state.data === undefined && query.getObserversCount() > 0 });
+  await queryClient.invalidateQueries();
+}
+
 export function useInvalidateAll() {
   const queryClient = useQueryClient();
   const { sync } = useApp();
   // Every write in the app ends here, so this is also where a shared book hears that it has something to send.
   return useCallback(() => {
     sync.nudge();
-    return queryClient.invalidateQueries();
+    return refreshAfterWrite(queryClient);
   }, [queryClient, sync]);
 }
 
