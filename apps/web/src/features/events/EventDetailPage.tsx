@@ -4,6 +4,9 @@ import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Plus, Settings } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { DesktopLocalEvent } from './DesktopEvent';
+import { DesktopSharedEvent } from './DesktopSharedEvent';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
@@ -53,14 +56,26 @@ export function EventDetailPage() {
   const shared = useSharedEventView(eventId);
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
+  // A wide screen (not a phone, not a phone held sideways) draws the Mac event page; the phone's pages are unchanged.
+  const phone = usePhone();
+  const sideways = useSideways();
+  const wide = !phone && !sideways;
   if (summaries.isPending) return null;
   const isShared = summaries.data?.[eventId] !== undefined || Boolean(shared.data);
   return (
     <>
       {!isShared ? (
-        <LocalEventPage />
+        wide ? (
+          <DesktopLocalEvent />
+        ) : (
+          <LocalEventPage />
+        )
       ) : shared.data ? (
-        <SharedEventScreen view={shared.data} />
+        wide ? (
+          <DesktopSharedEvent view={shared.data} />
+        ) : (
+          <SharedEventScreen view={shared.data} />
+        )
       ) : (
         <SharedEventWaiting name={event?.name ?? 'Event'} loading={shared.isPending || (shared.isFetching && !shared.error)} error={shared.error} />
       )}
