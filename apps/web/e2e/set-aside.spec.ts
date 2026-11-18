@@ -83,7 +83,7 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   // The tile's first line is what the rows below already show: money that can be moved, less what goals claimed it.
   // Nothing under it says so in words any more — the account's own page takes a promise apart goal by goal — and the
   // line carries no caption either: an estimate says so with the kit's ≈ on the figure itself.
-  await expect(page.getByText('Spending money')).toBeVisible();
+  await expect(page.getByText('Spending money', { exact: true })).toBeVisible();
   await expect(page.getByText('free of what goals claimed')).toHaveCount(0);
 });
 
