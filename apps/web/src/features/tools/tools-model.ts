@@ -71,7 +71,7 @@ export const TOOL_GROUPS: readonly ToolGroup[] = [
       { key: 'tax-report', label: 'Tax report', line: 'Assets and debts for the yearly SPT.', icon: FileSpreadsheet, tint: '#8e8e93', to: '/tax-report' },
       { key: 'import', label: 'Import', line: 'Bring in a bank statement or a spreadsheet.', icon: ArrowUpFromLine, tint: '#8e8e93', to: '/import' },
       // Beyond the mockup: the sidebar's old Tools menu held it, so it stays a tool. It asks which account first.
-      { key: 'statement-check', label: 'Statement check', line: "An account's statement, line by line, against what is recorded.", icon: ListChecks, tint: '#34c759', to: null },
+      { key: 'statement-check', label: 'Statement check', line: 'A statement, line by line, against what is recorded.', icon: ListChecks, tint: '#34c759', to: null },
     ],
   },
 ];

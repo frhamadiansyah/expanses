@@ -75,9 +75,10 @@ function Tile({ tile, accounts }: { tile: ToolTile; accounts: readonly SidebarAc
 
 function Group({ group, accounts, columns }: { group: ToolGroup; accounts: readonly SidebarAccount[]; columns: number }) {
   return (
-    <section aria-label={group.title} className="min-w-0">
+    <section aria-label={group.title} className="flex min-w-0 flex-col">
       <h2 className={GROUP_TITLE}>{group.title}</h2>
-      <div className="grid gap-[12px]" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+      {/* Every tile in a row as tall as the tallest, across the groups side by side too. */}
+      <div className="grid flex-1 gap-[12px]" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
         {group.tiles.map((tile) => (
           <Tile key={tile.key} tile={tile} accounts={accounts} />
         ))}
