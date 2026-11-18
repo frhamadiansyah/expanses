@@ -849,9 +849,9 @@ function BillTableRow({
         <button type="button" onClick={(event) => (event.stopPropagation(), onPeek())} title={bill.name} className="block max-w-full truncate text-left hover:underline">
           {bill.name}
         </button>
-        {/* Under the name, so neither cuts the other: why a bill due next month is counted in this one. */}
+        {/* Under the name, wrapping rather than cut: why a bill due next month is counted in this one. */}
         {note && (
-          <span data-testid="bill-counted-note" title={note} className="block truncate text-[11px] leading-[14px] text-[var(--ph-ink-3)]">
+          <span data-testid="bill-counted-note" className="block text-[11px] leading-[14px] whitespace-normal text-[var(--ph-ink-3)]">
             {note}
           </span>
         )}
