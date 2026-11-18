@@ -86,6 +86,9 @@ describe('late payments, per debt', () => {
     const next = nextPayments(ontime.debts.find((d) => d.key === 'L1')!, { today: TODAY, loanFacts: fresh.loanFacts, baseCurrency: 'IDR', ratesToBase: {} });
     expect(next[0]!.late).toBe('3 days late');
     expect(next[1]!.late).toBeNull();
+    // The late month is never listed again as one to come.
+    expect(next.filter((row) => row.when.includes('Nov'))).toHaveLength(1);
+    expect(next[1]!.when).toBe('1 Dec · 5/6');
   });
 });
 

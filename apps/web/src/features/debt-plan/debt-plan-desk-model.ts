@@ -139,7 +139,8 @@ export function upcomingOf(debt: PlanDebt, ctx: DeskContext, count: number): Nex
   if (debt.kind === 'loan') {
     const fact = ctx.loanFacts.find((f) => f.accountId === debt.accountId);
     if (!fact || debt.instalmentOf === null) return [];
-    return fact.schedule.slice(0, count).map((row) => {
+    // A schedule row already past is this month's instalment still unpaid: late, and listed with the late ones.
+    return fact.schedule.filter((row) => row.onDate >= ctx.today).slice(0, count).map((row) => {
       const number = fact.instalments.find((i) => i.dueOn === row.onDate)?.number ?? instalmentNumberFrom(debt, fact, row.onDate);
       return { dueOn: row.onDate, minor: row.paymentMinor, currency: debt.currency, number: `${number}/${debt.instalmentOf}` };
     });
