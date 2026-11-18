@@ -1,7 +1,7 @@
 import { categoryTree, formatMinor, monthName, parsePeriod, periodLabel, stepPeriod } from '@expanses/core';
 import { type AccountRow, categoryTotalsIn, type DraftRow, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search, X } from 'lucide-react';
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -13,13 +13,13 @@ import { useResolvedNeeds } from '../essential-split/queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
 import { clickAction, countsAs, monthFigures, pageShortcut, pasteLine, pasteSummary, peekKey, ringLegend, type Selection, type SelectionAction } from './cashflow-desk-model';
-import { type BulkActions, CashflowPeek, type PeekView, SelectionPeek } from './CashflowPeek';
+import { type BulkActions, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { amountExtraParts, categoryButtonLabel, type ListFilters, type ListRow, type Sort, wholeLeftOut } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
 import { quickFromDraft, shortDate } from './quick-row';
-import { ReceiptLink } from './ReceiptLink';
+import { ReceiptPeek } from './ReceiptPeek';
 import { useSpendingTrend } from './SpendingTrend';
 import { EditableRow, type TableHandlers, TypingRow } from './TransactionsTable';
 
@@ -193,16 +193,6 @@ export interface DeskRowHelpers {
   paidWith: (row: ListRow) => ReactNode;
   /** Whether the row opens in the full edit screen from here: the same refusals the list's click had. */
   editable: (row: ListRow) => boolean;
-  /** Whether Delete is offered: an editable row, or a balance correction. */
-  deletable: (row: ListRow) => boolean;
-  /** The workspace the row is filed in. */
-  workspaceOf: (row: ListRow) => string;
-  /** The event the row is in, by name. */
-  eventOf: (row: ListRow) => string | null;
-  /** "+11 pts", for a card purchase that earns. */
-  pointsOf: (row: ListRow) => string | null;
-  /** Why it is not changed here, and the way to where it is (another workspace's row). */
-  noticeOf: (row: ListRow) => ReactNode;
   /** An instalment month's row opens its plan instead of a peek. */
   openInstalment: (row: ListRow) => void;
   /** The label of a row that is not spending or income (a loan with a fee, say): "Lend & borrow". */
@@ -249,7 +239,6 @@ export function DesktopCashflow({
   scan,
   onAdd,
   onEdit,
-  onSplit,
   chips,
   needsCategory,
   helpers,
@@ -288,7 +277,6 @@ export function DesktopCashflow({
   scan: { busy: boolean; scan: () => void };
   onAdd: () => void;
   onEdit: (row: ListRow) => void;
-  onSplit: (row: ListRow) => void;
   /** What narrows the page beyond the filters: the account or category it was opened for, Essential or Lifestyle. */
   chips: { key: string; label: ReactNode; clearLabel: string; onClear: () => void }[];
   needsCategory: { count: number; active: boolean; onShow: () => void; onClear: () => void };
@@ -303,7 +291,6 @@ export function DesktopCashflow({
   children?: ReactNode;
 }) {
   const { database, ws } = useApp();
-  const navigate = useNavigate();
   const colourFor = useCategoryMarkColour();
   const ring = useRing(kind, month, paidAccountId);
   const spent = useRing('expense', month, paidAccountId);
@@ -348,10 +335,10 @@ export function DesktopCashflow({
     };
   }, [peeking]);
 
-  // A row this page may not change (a trade, another workspace's, a share that ended) opens its receipt instead.
+  // A row this page may not change (a trade, another workspace's, a share that ended) has no edit screen: its peek, read
+  // only, is all there is of it here.
   const edit = (row: ListRow) => {
     if (helpers.editable(row)) onEdit(row);
-    else if (row.tx) void navigate({ to: '/transactions/$transactionId', params: { transactionId: row.tx.id } });
   };
   // Keys for the whole page: ⌘N, ⌘F and ⌘A, and — while rows are picked — Esc, and with one ↑ ↓ and Return.
   const keys = useRef<(event: KeyboardEvent) => void>(() => undefined);
@@ -643,21 +630,13 @@ export function DesktopCashflow({
         <SelectionPeek top={peekTop} picked={selection.ids.length} spent={bulk.spent} received={bulk.received} actions={bulk} onClose={() => dispatch({ type: 'close' })} />
       )}
       {selected && (
-        <CashflowPeek
+        <ReceiptPeek
           top={peekTop}
-          view={peekView(selected, { accounts, countsAs: countsAs(selected, needs), helpers })}
+          transactionId={selected.tx!.id}
           first={at <= 0}
           last={at === ids.length - 1}
-          busy={handlers.busy === selected.id}
           onStep={(by) => dispatch({ type: 'step', by, ids })}
           onClose={() => dispatch({ type: 'close' })}
-          onEdit={() => edit(selected)}
-          onSplit={() => onSplit(selected)}
-          onDelete={() =>
-            void handlers.deleteRecorded(selected.id).then((ok) => {
-              if (ok) dispatch({ type: 'close' });
-            })
-          }
         />
       )}
       {children}
@@ -782,66 +761,8 @@ function DeskRow({
           {formatMinor(out ? 0 : Math.abs(row.amountMinor), row.currency)}
         </span>
       </span>
-      <span className="flex items-center justify-end pr-1">{row.tx && <ReceiptLink transactionId={row.tx.id} description={row.description} />}</span>
+      {/* The last column is the waiting rows' (Record, ✕): a recorded row opens its peek on a click instead. */}
+      <span />
     </li>
   );
-}
-
-/** The peek's figures and lines for one row. */
-export function peekView(row: ListRow, ctx: { accounts: readonly AccountRow[]; countsAs: string; helpers: DeskRowHelpers }): PeekView {
-  const { helpers } = ctx;
-  const tx = row.tx!;
-  const income = row.type === 'income' || !!row.refund;
-  const kindLabel = helpers.kindLabel(row);
-  const category = row.categoryName ? `${row.categoryName}${row.moreCounted ? ` +${row.moreCounted}` : ''}` : 'Uncategorised';
-  const editable = helpers.editable(row);
-  const photos = tx.photoCount ?? 0;
-  const event = helpers.eventOf(row);
-  const points = helpers.pointsOf(row);
-  return {
-    id: row.id,
-    title: row.description || kindLabel || category,
-    amount: `${income ? '+' : ''}${formatMinor(Math.abs(row.amountMinor), row.currency)}`,
-    income,
-    date: longDate(row.date),
-    rows: [
-      {
-        label: 'Category',
-        value: kindLabel ?? (
-          <span className="inline-flex items-center gap-[6px]">
-            <CategoryIcon categoryId={row.categoryId} accounts={ctx.accounts} size="xs" />
-            {category}
-          </span>
-        ),
-      },
-      { label: 'Paid with', value: helpers.paidWith(row) || '—' },
-      { label: 'Counts as', value: ctx.countsAs || '—', tone: 'muted' as const },
-      { label: 'Workspace', value: helpers.workspaceOf(row) },
-      { label: 'Event', value: event ?? 'None', ...(event ? {} : { tone: 'muted' as const }) },
-      {
-        label: 'Receipt',
-        value:
-          photos > 0 ? (
-            <Link to="/transactions/$transactionId" params={{ transactionId: tx.id }} className="text-[var(--mac-accent)] hover:underline">
-              {photos === 1 ? '1 photo' : `${photos} photos`} · View
-            </Link>
-          ) : editable ? (
-            <>
-              No photo ·{' '}
-              <Link to="/transactions/$transactionId/edit" params={{ transactionId: tx.id }} className="text-[var(--mac-accent)] hover:underline">
-                Add
-              </Link>
-            </>
-          ) : (
-            'No photo'
-          ),
-        tone: 'muted' as const,
-      },
-      ...(points ? [{ label: 'Points', value: points, tone: points.startsWith('−') ? ('muted' as const) : ('up' as const) }] : []),
-    ],
-    notice: helpers.noticeOf(row),
-    canEdit: editable,
-    canSplit: editable && row.type === 'expense' && !tx.originalCurrency,
-    canDelete: helpers.deletable(row),
-  };
 }

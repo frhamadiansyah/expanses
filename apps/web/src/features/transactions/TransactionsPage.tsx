@@ -1544,21 +1544,6 @@ export function TransactionsPage() {
         );
       },
       editable,
-      deletable: (row) => editable(row) || (!!row.tx && !row.deleted && !tradeByTransaction.has(row.tx.id) && isCorrection(row.tx) && !readOnly && filingKnown),
-      workspaceOf: (row) => (row.tx ? badgeOf(row.tx.id)?.name : undefined) ?? openBook?.name ?? workspaceName,
-      eventOf: (row) => (row.tx?.eventId ? (eventName(row.tx.eventId) ?? 'An event') : null),
-      pointsOf: (row) => {
-        const points = row.tx ? purchasePoints.data?.[row.tx.id] : undefined;
-        return points ? (amountExtraParts({ originalCurrency: null, originalAmountMinor: null }, points).at(-1)?.text ?? null) : null;
-      },
-      noticeOf: (row) => {
-        const tx = row.tx;
-        if (!tx) return null;
-        if (tradeByTransaction.has(tx.id)) return 'A trade is changed on its holding’s page.';
-        if (readOnly) return 'This share has ended: nothing here is changed.';
-        const elsewhere = reachable(tx) ? elsewhereOf(tx.id) : null;
-        return elsewhere ? <SwitchToEdit book={elsewhere} /> : null;
-      },
       openInstalment: (row) => {
         const plan = row.instalment;
         if (plan && !plan.received) void navigate({ to: '/cards/$cardId/settings/instalments/$planId', params: { cardId: plan.cardAccountId, planId: plan.planId } });
@@ -1624,7 +1609,6 @@ export function TransactionsPage() {
         scan={{ busy: scan.busy, scan: () => void scan.scan() }}
         onAdd={startAdding}
         onEdit={(row) => row.tx && void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId: row.tx.id } })}
-        onSplit={(row) => row.tx && void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId: row.tx.id }, search: { split: true } })}
         chips={chips}
         needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
         helpers={helpers}

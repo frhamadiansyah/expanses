@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronUp, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cx } from '../index';
 
@@ -24,6 +24,7 @@ export function SidePeek({
   last,
   onStep,
   onClose,
+  back,
   children,
 }: {
   /** Where the title bar ends on screen: the peek hangs from it. */
@@ -40,6 +41,8 @@ export function SidePeek({
   /** ⌃ ⌄ are drawn only for a peek on one row; several rows at once have no row before or after. */
   onStep?: (by: -1 | 1) => void;
   onClose: () => void;
+  /** Opened from another peek (a bill's history, a category's rows): the way back to it, named after it. */
+  back?: { label: string; onBack: () => void };
   children: ReactNode;
 }) {
   return (
@@ -49,6 +52,17 @@ export function SidePeek({
       style={{ top }}
       className="ph-peek fixed right-0 bottom-0 z-20 flex w-[330px] max-w-full flex-col overflow-y-auto border-l border-[var(--ph-chevron)] bg-[var(--ph-surface)] pt-[6px] shadow-[-12px_0_30px_rgba(0,0,0,0.12)]"
     >
+      {back && (
+        <button
+          type="button"
+          onClick={back.onBack}
+          aria-label={`Back to ${back.label}`}
+          className="mx-[8px] mt-[2px] flex max-w-[calc(100%-16px)] items-center gap-[2px] self-start rounded-[5px] px-[4px] py-[2px] text-[12px] text-[var(--mac-accent)] hover:bg-[var(--ph-fill)]"
+        >
+          <ChevronLeft size={14} aria-hidden className="shrink-0" />
+          <span className="truncate">{back.label}</span>
+        </button>
+      )}
       <h2 className="flex items-start justify-between gap-2 px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
         <span className="min-w-0 break-words" data-testid={titleTestId}>
           {title}

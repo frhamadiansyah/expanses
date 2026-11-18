@@ -5,7 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
 import { clickAction, countsAs, dayBarsShape, monthFigures, NO_SELECTION, pageShortcut, pasteLine, pasteSummary, peekKey, ringArcs, ringLegend, type Selection, selectionReducer } from './cashflow-desk-model';
-import { CashflowPeek, type PeekView } from './CashflowPeek';
+import { PeekRow } from './ReceiptPeek';
+import { kindWord, peekFigure, receiptPeekLines } from './receipt-peek-model';
 
 const colour = (id: string) => `#${id.padStart(6, '0').slice(-6)}`;
 const node = (id: string, name: string, totalMinor: number) => ({ id, name, totalMinor });
@@ -154,44 +155,57 @@ describe('the side peek', () => {
     expect(key('a')).toBeNull();
   });
 
-  it('draws the title, amount, date, its lines and Edit · Split · Delete, with ⌃ ⌄ off at the ends', () => {
-    const view: PeekView = {
-      id: 't2',
-      title: 'Superindo',
-      amount: 'Rp 112.300',
-      income: false,
-      date: 'Wed 11 Nov 2026',
-      rows: [
-        { label: 'Category', value: 'Groceries' },
-        { label: 'Paid with', value: 'Cash' },
-        { label: 'Counts as', value: 'Essential', tone: 'muted' },
-        { label: 'Workspace', value: 'Household' },
-        { label: 'Event', value: 'None', tone: 'muted' },
-        { label: 'Receipt', value: 'No photo · Add', tone: 'muted' },
-        { label: 'Points', value: '+11 pts', tone: 'up' },
-      ],
-      canEdit: true,
-      canSplit: true,
-      canDelete: true,
-    };
+  it('the Mac receipt: Category, then every receipt line in the receipt’s order, then its Bill, Paid off, Instalments and Past purchase', () => {
+    const lines = [
+      { label: 'Paid with', value: 'Kartu Biru ···· 4417' },
+      { label: 'Total', value: 'Rp 1.200.000' },
+      { label: 'Rate', value: 'Rp 16.050 per US$1', detail: 'Market Rp 16.000' },
+      { label: 'Points earned', value: '≈ 120 pts', tone: 'points' as const },
+      { label: 'Event', value: 'Trip to Bandung' },
+      { label: 'For goal', value: 'New laptop' },
+    ];
+    const rows = receiptPeekLines({
+      category: 'Electronics',
+      lines,
+      countsAs: 'Lifestyle',
+      workspace: 'Household',
+      bill: 'None',
+      paidOff: { label: 'Paid off', on: false },
+      instalments: 'None',
+      past: false,
+    });
+    expect(rows.map((row) => row.label)).toEqual(['Category', 'Paid with', 'Total', 'Rate', 'Points earned', 'Event', 'For goal', 'Counts as', 'Workspace', 'Bill', 'Paid off', 'Instalments']);
+    expect(rows.find((row) => row.label === 'Rate')).toMatchObject({ value: 'Rp 16.050 per US$1', detail: 'Market Rp 16.000' });
+    expect(rows.find((row) => row.label === 'Points earned')?.tone).toBe('points');
+    expect(rows.find((row) => row.label === 'Instalments')).toMatchObject({ action: 'instalments', testId: 'receipt-instalments', tone: 'muted' });
+    expect(rows.find((row) => row.label === 'Bill')).toMatchObject({ action: 'bill', testId: 'receipt-bill' });
+    // Nothing to say, no row: a receipt with no bill, no switch, no plan and no workspace is its lines alone.
+    const bare = receiptPeekLines({ category: 'Transfer', lines: lines.slice(0, 2), countsAs: null, workspace: null, bill: null, paidOff: null, instalments: null, past: true });
+    expect(bare.map((row) => row.label)).toEqual(['Category', 'Paid with', 'Total', 'Past purchase']);
+    // A plan already made reads as the receipt's Instalments value, not None.
+    expect(receiptPeekLines({ category: 'Electronics', lines: [], countsAs: null, workspace: null, bill: null, paidOff: null, instalments: '6 × Rp 200.000', past: false }).at(-1)).toMatchObject({ value: '6 × Rp 200.000' });
+  });
+
+  it('the peek’s figure: + and green on money in, a refund included; a transfer unsigned', () => {
+    expect(peekFigure({ type: 'expense', amountMinor: 112300, currency: 'IDR' })).toEqual({ text: 'Rp\u00a0112.300', income: false });
+    expect(peekFigure({ type: 'expense', amountMinor: -50000, currency: 'IDR' })).toEqual({ text: '+Rp\u00a050.000', income: true });
+    expect(peekFigure({ type: 'income', amountMinor: 9000000, currency: 'IDR' }).income).toBe(true);
+    expect(peekFigure({ type: 'transfer', amountMinor: 1000000, currency: 'IDR' })).toEqual({ text: 'Rp\u00a01.000.000', income: false });
+    expect(kindWord('transfer')).toBe('Transfer');
+    expect(kindWord('expense')).toBeNull();
+  });
+
+  it('a row the receipt can act on is a button; Paid off a switch; a plain line plain', () => {
     const noop = () => {};
-    const html = renderToStaticMarkup(createElement(CashflowPeek, { view, first: true, last: false, busy: false, onStep: noop, onClose: noop, onEdit: noop, onSplit: noop, onDelete: noop }));
-    expect(html).toContain('aria-label="Transaction details"');
-    expect(html).toContain('Superindo');
-    expect(html).toContain('Rp 112.300');
-    expect(html).toContain('Wed 11 Nov 2026');
-    for (const label of ['Category', 'Paid with', 'Counts as', 'Workspace', 'Event', 'Receipt', 'Points']) expect(html).toContain(`>${label}</dt>`);
-    expect(html).toMatch(/aria-label="Previous transaction"[^>]*disabled=""/);
-    expect(html).not.toMatch(/aria-label="Next transaction"[^>]*disabled=""/);
-    expect(html).toContain('aria-label="Close"');
-    expect(html).toContain('>Edit</button>');
-    expect(html).toContain('>Split</button>');
-    expect(html).toContain('aria-label="Delete this transaction"');
-    // A row that cannot be changed here offers neither Edit nor Split, and no Delete at all.
-    const locked = renderToStaticMarkup(createElement(CashflowPeek, { view: { ...view, canEdit: false, canSplit: false, canDelete: false }, first: false, last: true, busy: false, onStep: noop, onClose: noop, onEdit: noop, onSplit: noop, onDelete: noop }));
-    expect(locked).toMatch(/disabled=""[^>]*>Edit</);
-    expect(locked).not.toContain('Delete this transaction');
-    expect(locked).toMatch(/aria-label="Next transaction"[^>]*disabled=""/);
+    const instalments = renderToStaticMarkup(createElement(PeekRow, { line: { key: 'i', label: 'Instalments', value: 'None', action: 'instalments', testId: 'receipt-instalments' }, onAction: noop }));
+    expect(instalments).toContain('data-testid="receipt-instalments"');
+    expect(instalments).toContain('aria-label="Instalments, None"');
+    const switchRow = renderToStaticMarkup(createElement(PeekRow, { line: { key: 'p', label: 'Paid off', value: 'On', action: 'paid-off', on: true }, onAction: noop }));
+    expect(switchRow).toMatch(/role="switch"[^>]*checked=""/);
+    const rate = renderToStaticMarkup(createElement(PeekRow, { line: { key: 'r', label: 'Rate', value: 'Rp 16.050 per US$1', detail: 'Market Rp 16.000' } }));
+    expect(rate).toContain('>Rate</dt>');
+    expect(rate).toContain('Market Rp 16.000');
+    expect(rate).not.toContain('<button');
   });
 });
 
