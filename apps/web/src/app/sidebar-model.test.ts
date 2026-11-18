@@ -222,6 +222,12 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/budget', false)).toBe(true);
     expect(edgeToEdge('/budget', true)).toBe(false);
     expect(edgeToEdge('/budget/edit', false)).toBe(false);
+    // The Debt-free plan's views (Mac Debt-free plan); All debts keeps its column.
+    for (const path of ['/net-worth/plan', '/net-worth/plan/schedule', '/net-worth/plan/report', '/net-worth/plan/pay-first']) {
+      expect(edgeToEdge(path, false)).toBe(true);
+      expect(edgeToEdge(path, true)).toBe(false);
+    }
+    expect(edgeToEdge('/net-worth/plan/debts', false)).toBe(false);
     expect(edgeToEdge('/bills', false)).toBe(true);
     expect(edgeToEdge('/bills', true)).toBe(false);
     expect(edgeToEdge('/bills/yearly', false)).toBe(false);

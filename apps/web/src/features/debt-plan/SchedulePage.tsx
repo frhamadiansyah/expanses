@@ -4,6 +4,8 @@ import { SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { InsetGroup, PushedTitle, SCREEN, SwitchRow } from '../../ui/native';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { DesktopDebtPlan } from './DesktopDebtPlan';
 import { SchedulePanel } from './SchedulePanel';
 import type { MonthInput } from './schedule-view';
 
@@ -20,8 +22,17 @@ export function ShowSheet({ show, onShow, onClose }: { show: MonthInput['show'];
   );
 }
 
-/** The Schedule (spec §4.2): one month of instalments, statements and bills, `?month=YYYY-MM`. */
+/** The Schedule: the Mac plan's Schedule view on a wide screen, else the phone's page. `?debt=` narrows the Mac one to a debt. */
 export function SchedulePage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  const search = useSearch({ from: '/net-worth/plan/schedule' });
+  if (!phone && !sideways) return <DesktopDebtPlan view="schedule" month={search.month} debt={search.debt} />;
+  return <PhoneSchedulePage />;
+}
+
+/** The Schedule (spec §4.2): one month of instalments, statements and bills, `?month=YYYY-MM`. */
+function PhoneSchedulePage() {
   const today = isoDate();
   const navigate = useNavigate();
   const search = useSearch({ from: '/net-worth/plan/schedule' });

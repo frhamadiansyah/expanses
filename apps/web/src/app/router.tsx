@@ -558,8 +558,11 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: '/net-worth/plan/schedule',
     component: SchedulePage,
-    validateSearch: (search: Record<string, unknown>): { month?: string } =>
-      typeof search.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? { month: search.month } : {},
+    validateSearch: (search: Record<string, unknown>): { month?: string; debt?: string } => ({
+      ...(typeof search.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? { month: search.month } : {}),
+      // The Mac plan's Full schedule › for one debt.
+      ...(typeof search.debt === 'string' && search.debt !== '' ? { debt: search.debt } : {}),
+    }),
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({

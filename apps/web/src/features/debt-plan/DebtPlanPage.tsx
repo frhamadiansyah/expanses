@@ -4,7 +4,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { CalendarDays, ChartColumn, ListChecks, ListOrdered, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { usePhone } from '../../app/use-phone';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SegmentedControl } from '../../ui/native';
 import { PlanHeader } from './PlanHeader';
@@ -17,6 +17,7 @@ import { dueThisMonthCount } from './schedule-view';
 import { chipCounts } from './all-debts-view';
 import { ReportPanel } from './ReportPanel';
 import type { ReportPeriod } from './report-view';
+import { DesktopDebtPlan } from './DesktopDebtPlan';
 
 type PlanTab = 'plan' | 'schedule' | 'report';
 
@@ -35,10 +36,22 @@ function ScheduleValue() {
 }
 
 /**
+ * The Debt-free plan: on a wide screen (not a phone, not a phone held sideways) the Mac page (`DesktopDebtPlan`), else
+ * the phone's.
+ */
+export function DebtPlanPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  const search = useSearch({ from: '/net-worth/plan' });
+  if (!phone && !sideways) return <DesktopDebtPlan view={search.tab ?? 'plan'} />;
+  return <PhoneDebtPlanPage />;
+}
+
+/**
  * The Debt-free plan (spec §4.0): a page of its own, opened from Net worth, Liabilities, Account and the sidebar. It
  * reads every debt the Liabilities page reads and never posts; each Pay opens the debt's own existing sheet.
  */
-export function DebtPlanPage() {
+function PhoneDebtPlanPage() {
   const { ws } = useApp();
   const phone = usePhone();
   const { model, error } = useDebtPlan();

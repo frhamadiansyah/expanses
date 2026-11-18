@@ -1,6 +1,8 @@
 import type { DebtPlanSettings } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { DesktopDebtPlan } from './DesktopDebtPlan';
 import { ErrorBox } from '../../ui';
 import { Panel, PushedTitle, SCREEN } from '../../ui/native';
 import { ByHandList, Hair } from './ByHandList';
@@ -14,6 +16,14 @@ import { useDebtPlan, useDebtPlanSettings, useSaveDebtPlanSettings } from './que
  * brings forward and the interest it saves, and every active debt in that order — late ones on top — each with Pay.
  */
 export function PayFirstPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  // On a wide screen Pay first is the Plan view's own box and table.
+  if (!phone && !sideways) return <DesktopDebtPlan view="plan" />;
+  return <PhonePayFirstPage />;
+}
+
+function PhonePayFirstPage() {
   const { ws } = useApp();
   const { model, error } = useDebtPlan();
   const settings = useDebtPlanSettings();
