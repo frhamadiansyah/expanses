@@ -3,12 +3,14 @@ import { useNavigate } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 import { FigureRow, InfoButton, UseBar } from '../budget/budget-rows';
 import { bareFigure } from '../networth/debt-rows';
+import { DesktopGoals } from './DesktopGoals';
 import { InfoHeader } from './InfoHeader';
-import { type GoalCard, goalCard, GOAL_KIND_MARKS, goalsTotals, onTrackLine } from './goal-cards';
+import { type GoalCard, goalCard, GOAL_KIND_MARKS, goalsTotals, onTrackLine, shortfallWhy } from './goal-cards';
 import { initialsLine } from './goal-sharing';
 import { useGoalPlans, useGoalShares } from './queries';
 
@@ -86,7 +88,17 @@ function GoalListRow({ card, currency, members, position }: GroupChild & { card:
   );
 }
 
+/**
+ * Goals: on a wide screen (not a phone, not a phone held sideways) the Mac page (`DesktopGoals`), else the phone's.
+ * Both hooks are called on every render, whichever page is drawn.
+ */
 export function GoalsPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopGoals /> : <PhoneGoalsPage />;
+}
+
+function PhoneGoalsPage() {
   const { ws } = useApp();
   const today = isoDate();
   const summary = useGoalPlans(today);
@@ -127,7 +139,7 @@ export function GoalsPage() {
               <ShortChip
                 shortMinor={shortfall}
                 currency={currency}
-                why={`Goals ask for more each month than is saved. In funding order, ${fitting} of ${cards.length} fit in full and the rest wait. Move a date, lower a target, or reorder them.`}
+                why={shortfallWhy(fitting, cards.length)}
               />
             )}
           </Panel>

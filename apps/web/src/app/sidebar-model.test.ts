@@ -211,7 +211,7 @@ describe('the status line at the foot', () => {
 });
 
 describe('which pages run edge to edge', () => {
-  it('Overview always; Cashflow, Budget, Bills, Review, Wallet, Net worth and Points on a wide screen only, never in the phone shell or for one account', () => {
+  it('Overview always; Cashflow, Budget, Bills, Review, Wallet, Net worth, Points and Goals on a wide screen only, never in the phone shell or for one account', () => {
     expect(edgeToEdge('/overview', false)).toBe(true);
     expect(edgeToEdge('/overview', true)).toBe(true);
     expect(edgeToEdge('/transactions', false)).toBe(true);
@@ -241,5 +241,10 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/cards/points', true)).toBe(false);
     // A programme's own page (history, expiry) keeps the column.
     expect(edgeToEdge('/cards/points/p1', false)).toBe(false);
+    expect(edgeToEdge('/goals', false)).toBe(true);
+    expect(edgeToEdge('/goals', true)).toBe(false);
+    // A goal's own page, its history and its form keep the column.
+    expect(edgeToEdge('/goals/g1', false)).toBe(false);
+    expect(edgeToEdge('/goals/new', false)).toBe(false);
   });
 });

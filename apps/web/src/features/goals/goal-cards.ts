@@ -124,6 +124,10 @@ export function goalsTotals(
   return { savedMinor, onTrack, count: cards.length };
 }
 
+/** Behind the Short chip's ⓘ: why the goals are short, in funding order. */
+export const shortfallWhy = (fitting: number, count: number) =>
+  `Goals ask for more each month than is saved. In funding order, ${fitting} of ${count} fit in full and the rest wait. Move a date, lower a target, or reorder them.`;
+
 /** "1 of 3 goals on track"; one goal reads "1 of 1 goal on track". */
 export const onTrackLine = ({ onTrack, count }: { onTrack: number; count: number }) => `${onTrack} of ${count} ${count === 1 ? 'goal' : 'goals'} on track`;
 
