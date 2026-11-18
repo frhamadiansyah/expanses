@@ -36,7 +36,9 @@ test('one ⋯ in the header selects, sorts, filters by Paid with and resets, wit
   const menu = page.getByTestId('sort-filter-menu');
   await historyMenu(page).click();
   await expect(menu.getByRole('menuitem', { name: 'Select', exact: true })).toBeVisible();
-  await expect(menu.getByRole('menuitemcheckbox')).toHaveCount(0);
+  // One switch, Yearly bills (owner 2026-11-18), off; no Transfers.
+  await expect(menu.getByRole('menuitemcheckbox')).toHaveCount(1);
+  await expect(menu.getByTestId('yearly-bills-filter')).toHaveAttribute('aria-checked', 'false');
   await expect(menu).not.toContainText('Transfers');
   const sort = menu.getByTestId('sort-cycle');
   await expect(sort).toHaveText(/^Sort\s*Newest$/);
