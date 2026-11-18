@@ -1,4 +1,4 @@
-import { expenseLines, statementCycleFor } from '@expanses/core';
+import { type Cycle, expenseLines, statementCycleFor, uuidv7 } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   createAccount,
@@ -9,9 +9,12 @@ import {
   listAccounts,
   listPointEntries,
   PointsError,
+  pointsSchema,
   postTransaction,
+  recordCycleActual,
   programBalance,
   recordPointSnapshot,
+  recordRedemption,
   saveCardTerms,
   saveEarnRule,
   setProgramExpiry,
@@ -198,5 +201,128 @@ describe('points typed in from the issuer app', () => {
     const balance = await programBalance(database, ws, program.id, TODAY);
     expect(balance.expiringSoon).toBe(500);
     expect(balance.nextExpiryOn).toBe('2026-10-01');
+  });
+});
+
+describe('working a cycle out again after its points died or were spent', () => {
+  /** What the card page does each time it opens: work the cycle out, then write off what has died. */
+  const refresh = async (database: Database, ws: WorkspaceContext, programId: string, cycle: Cycle, today: string) => {
+    await deriveCycleEntries(database, ws, programId, cycle);
+    await expireDueEntries(database, ws, programId, today);
+  };
+
+  it('keeps a written-off batch written off once, however often the cycle is worked out again', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending(LONG_AGO);
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+    await refresh(database, ws, program.id, cycle, TODAY);
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(0);
+
+    for (let run = 0; run < 3; run += 1) await refresh(database, ws, program.id, cycle, TODAY);
+
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(0);
+    const entries = await listPointEntries(database, ws, program.id);
+    expect(entries.filter((entry) => entry.kind === 'expire')).toHaveLength(1);
+    expect(entries.filter((entry) => entry.kind === 'earn')).toHaveLength(1);
+  });
+
+  it('keeps a redemption drawn from its batch, so only what is left dies', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending('2024-10-01');
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+    await deriveCycleEntries(database, ws, program.id, cycle);
+    await recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 60, occurredOn: TODAY, note: null, valueMinor: null });
+
+    await deriveCycleEntries(database, ws, program.id, cycle);
+    await deriveCycleEntries(database, ws, program.id, cycle);
+
+    expect((await programBalance(database, ws, program.id, TODAY)).expiringSoon).toBe(40);
+    const afterDeath = '2026-10-02';
+    await refresh(database, ws, program.id, cycle, afterDeath);
+    await refresh(database, ws, program.id, cycle, afterDeath);
+    expect((await programBalance(database, ws, program.id, afterDeath)).total).toBe(0);
+    const expiries = (await listPointEntries(database, ws, program.id)).filter((entry) => entry.kind === 'expire');
+    expect(expiries.map((entry) => entry.quantity)).toEqual([-40]);
+  });
+
+  it('moves a redemption onto the batch that replaced its own when the statement figure is typed in', async () => {
+    const { database, ws, program } = await cardWithSpending('2024-09-25');
+    const all = await listAccounts(database, ws);
+    const card = all.find((account) => account.name === 'CIMB Octo')!;
+    const groceries = all.find((account) => account.name === 'Groceries')!;
+    await postTransaction(database, ws, {
+      occurredOn: '2024-10-05',
+      description: 'Hero',
+      lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: card.id, amountMinor: 500_000, currency: 'IDR' }),
+    });
+    const cycle = statementCycleFor('2024-09-25', 20);
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+    await deriveCycleEntries(database, ws, program.id, cycle);
+    await recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 100, occurredOn: TODAY, note: null, valueMinor: null });
+
+    await recordCycleActual(database, ws, { programId: program.id, cycleStart: cycle.start, actualPoints: 150 });
+    await deriveCycleEntries(database, ws, program.id, cycle);
+
+    const entries = await listPointEntries(database, ws, program.id);
+    const earn = entries.filter((entry) => entry.kind === 'earn');
+    expect(earn).toHaveLength(1);
+    const redeemed = entries.filter((entry) => entry.kind === 'redeem');
+    expect(redeemed.reduce((total, entry) => total + entry.quantity, 0)).toBe(-100);
+    expect(redeemed.every((entry) => entry.batchId === earn[0]!.id)).toBe(true);
+    const afterDeath = '2026-10-21';
+    await expireDueEntries(database, ws, program.id, afterDeath);
+    expect((await programBalance(database, ws, program.id, afterDeath)).total).toBe(0);
+  });
+});
+
+describe('mending a ledger an earlier build wrote twice', () => {
+  const insertRaw = async (database: Database, ws: WorkspaceContext, programId: string, row: { kind: 'expire' | 'redeem'; quantity: number; occurredOn: string; source: 'system' | 'manual'; batchId: string | null }) =>
+    database.db.insert(pointsSchema.pointEntries).values({
+      id: uuidv7(), workspaceId: ws.workspaceId, programId, transactionId: null, kind: row.kind, quantity: row.quantity, occurredOn: row.occurredOn,
+      status: 'posted', source: row.source, batchId: row.batchId, expiresOn: null, note: null, createdAt: new Date().toISOString(),
+    });
+
+  it('drops write-offs of batches that no longer exist and writes the one that is due', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending(LONG_AGO);
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+    await deriveCycleEntries(database, ws, program.id, cycle);
+    // Two write-offs of batches an older build replaced: the balance had fallen to -200.
+    await insertRaw(database, ws, program.id, { kind: 'expire', quantity: -100, occurredOn: '2025-05-10', source: 'system', batchId: uuidv7() });
+    await insertRaw(database, ws, program.id, { kind: 'expire', quantity: -100, occurredOn: '2025-05-10', source: 'system', batchId: uuidv7() });
+
+    await expireDueEntries(database, ws, program.id, TODAY);
+
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(0);
+    expect((await listPointEntries(database, ws, program.id)).filter((entry) => entry.kind === 'expire')).toHaveLength(1);
+  });
+
+  it('puts a redemption left pointing at a replaced batch back on a live one, so its points are not written off too', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending('2024-10-01');
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+    await deriveCycleEntries(database, ws, program.id, cycle);
+    const earn = (await listPointEntries(database, ws, program.id)).find((entry) => entry.kind === 'earn')!;
+    await insertRaw(database, ws, program.id, { kind: 'redeem', quantity: -60, occurredOn: TODAY, source: 'manual', batchId: uuidv7() });
+    // An older build then wrote the whole batch off, as if nothing had been spent from it.
+    const afterDeath = '2026-10-02';
+    await insertRaw(database, ws, program.id, { kind: 'expire', quantity: -100, occurredOn: '2026-10-01', source: 'system', batchId: earn.id });
+    expect((await programBalance(database, ws, program.id, afterDeath)).total).toBe(-60);
+
+    await expireDueEntries(database, ws, program.id, afterDeath);
+
+    expect((await programBalance(database, ws, program.id, afterDeath)).total).toBe(0);
+    const entries = await listPointEntries(database, ws, program.id);
+    expect(entries.find((entry) => entry.kind === 'redeem')).toMatchObject({ quantity: -60, batchId: earn.id });
+    expect(entries.filter((entry) => entry.kind === 'expire').map((entry) => entry.quantity)).toEqual([-40]);
+  });
+
+  it('leaves alone owner entries with no batch and write-offs of batches that exist', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending(LONG_AGO);
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+    await deriveCycleEntries(database, ws, program.id, cycle);
+    await expireDueEntries(database, ws, program.id, TODAY);
+    await insertRaw(database, ws, program.id, { kind: 'redeem', quantity: -5, occurredOn: TODAY, source: 'manual', batchId: null });
+    const before = await listPointEntries(database, ws, program.id);
+
+    await expireDueEntries(database, ws, program.id, TODAY);
+
+    expect(await listPointEntries(database, ws, program.id)).toEqual(before);
   });
 });
