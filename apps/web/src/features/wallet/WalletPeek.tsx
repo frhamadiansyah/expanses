@@ -182,7 +182,7 @@ export function WalletPeek({
 }
 
 /** The account's last few rows, as its page's Recent reads them (opening balances left out); a click opens the receipt. */
-function PeekRecent({ name, accountId, ids }: { name: string; accountId: string; ids: readonly string[] }) {
+export function PeekRecent({ name, accountId, ids }: { name: string; accountId: string; ids: readonly string[] }) {
   const navigate = useNavigate();
   // A row opens its Mac receipt in this peek's place, with ‹ back to the card.
   const openReceipt = useOpenReceipt();

@@ -4,6 +4,8 @@ import { Link } from '@tanstack/react-router';
 import { ChartCandlestick, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { DesktopNetWorth } from './DesktopNetWorth';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
 import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl, useDrawers, iconCentre, type TreePlace } from '../../ui/native';
 import { assetKindTile, assetSectionTile, debtKindTile } from '../ownables/catalogue-view';
@@ -342,7 +344,18 @@ function fold(
   });
 }
 
+/**
+ * Net worth: on a wide screen (not a phone, not a phone held sideways) the Mac page (`DesktopNetWorth`), else the phone's.
+ * Both hooks are called on every render, whichever page is drawn.
+ */
 export function OverviewPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopNetWorth /> : <PhoneNetWorth />;
+}
+
+/** Net worth as the phone draws it: the figure and its line, the two totals, the sheet folded by kind. */
+function PhoneNetWorth() {
   const { ws } = useApp();
   const today = isoDate();
   // What there is to buy or sell, for the corner's Trade: the same list the Add form's trade rows offer.

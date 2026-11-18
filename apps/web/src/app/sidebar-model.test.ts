@@ -211,7 +211,7 @@ describe('the status line at the foot', () => {
 });
 
 describe('which pages run edge to edge', () => {
-  it('Overview always; Cashflow, Budget, Bills, Review and Wallet on a wide screen only, never in the phone shell or for one account', () => {
+  it('Overview always; Cashflow, Budget, Bills, Review, Wallet and Net worth on a wide screen only, never in the phone shell or for one account', () => {
     expect(edgeToEdge('/overview', false)).toBe(true);
     expect(edgeToEdge('/overview', true)).toBe(true);
     expect(edgeToEdge('/transactions', false)).toBe(true);
@@ -231,6 +231,11 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/wallet', true)).toBe(false);
     // A card opened from Wallet is the raised card over its page, in the column.
     expect(edgeToEdge('/wallet/reorder', false)).toBe(false);
+    expect(edgeToEdge('/net-worth', false)).toBe(true);
+    expect(edgeToEdge('/net-worth', true)).toBe(false);
+    // Its sub pages (Assets, Liabilities, an asset, Prices) keep the column.
+    expect(edgeToEdge('/net-worth/assets', false)).toBe(false);
+    expect(edgeToEdge('/net-worth/prices', false)).toBe(false);
     expect(edgeToEdge('/accounts/a1', false)).toBe(false);
   });
 });
