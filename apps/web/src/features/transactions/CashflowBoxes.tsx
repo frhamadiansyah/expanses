@@ -40,9 +40,12 @@ export function RingBox({
   icon,
   ready,
   period,
+  footnote,
 }: {
   /** The period, named: "November 2026". */
   period: string;
+  /** A grey line under the ring: "1 yearly bill not in the ring". */
+  footnote?: string | null;
   kind: 'expense' | 'income';
   items: readonly LegendItem[];
   /** The middle's figure: the period's whole total, as the phone's ring writes it. */
@@ -124,6 +127,11 @@ export function RingBox({
           })}
         </div>
       </div>
+      {footnote && (
+        <p data-testid="yearly-bills-note" className="-mt-[6px] px-[14px] pb-[10px] text-right text-[11.5px] text-[var(--ph-ink-3)]">
+          {footnote}
+        </p>
+      )}
     </section>
   );
 }

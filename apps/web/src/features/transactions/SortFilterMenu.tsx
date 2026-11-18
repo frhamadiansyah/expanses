@@ -42,7 +42,7 @@ const BAR_ROOM = 96;
 /** The phone's list look: 15px ink rows, 44 tall, a hairline between each. No hover fill, so a touch leaves nothing lit. */
 const ROW = 'flex min-h-11 w-full items-center gap-2 border-t-[0.5px] border-[var(--ph-hair)] px-3.5 py-3 text-left text-[15px] text-[var(--ph-ink)] first:border-t-0 disabled:text-[var(--ph-ink-3)]';
 /** The kit's switch track (`SwitchRow`), drawn only: the row it sits in is the menu item that says on or off. */
-function SwitchLook({ on }: { on: boolean }) {
+export function SwitchLook({ on }: { on: boolean }) {
   return (
     <span aria-hidden className={cx('flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[2px] transition-colors', on ? 'bg-[var(--ph-switch-on)]' : 'bg-[var(--ph-track)]')}>
       <span className={cx('h-[22px] w-[22px] rounded-full bg-[var(--ph-selected)] shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-transform', on && 'translate-x-[18px]')} />

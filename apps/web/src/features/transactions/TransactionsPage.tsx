@@ -1629,6 +1629,7 @@ export function TransactionsPage() {
         onEdit={(row) => row.tx && void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId: row.tx.id } })}
         chips={chips}
         needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
+        yearly={{ out: yearlyOut, shown: yearlyShown, yearOrLonger, onShown: setYearlyShown, note: yearlyNote }}
         helpers={helpers}
         selection={selection}
         onSelection={onSelection}

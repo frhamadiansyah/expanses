@@ -1,7 +1,8 @@
 import type { CategoryNeed, TrendBar } from '@expanses/core';
 import type { AccountRow, DraftRow } from '@expanses/db';
 import { OTHER_COLOUR, ringSlices } from './category-colours';
-import type { ListRow } from './list-model';
+import { type AmountExtraPart, amountExtraParts, type ListRow, wholeLeftOut } from './list-model';
+import { YEARLY_BILL_LINE } from './yearly-bills';
 import { quickFromDraft, readQuick } from './quick-row';
 
 /**
@@ -233,4 +234,22 @@ export function pasteSummary(ids: readonly string[], drafts: readonly DraftRow[]
 export function pasteLine(summary: Pick<PasteSummary, 'pasted' | 'ready' | 'toFix'>): string {
   const rows = `Pasted ${summary.pasted} ${summary.pasted === 1 ? 'row' : 'rows'}`;
   return `${rows} · ${summary.ready.length} ready to record · ${summary.toFix} ${summary.toFix === 1 ? 'needs' : 'need'} a fix`;
+}
+
+/**
+ * How a table row's Amount reads (Mac Cashflow D). Wholly left out of the report, Rp 0 in grey (its ⊘ figure says what
+ * was left out); money in, green with a plus; a yearly bill a month leaves out (`leaveOutYearlyBills`), its whole figure
+ * in grey with "Yearly bill · in the year" first under it — the phone's list row, said in a table's cells.
+ */
+export function deskAmount(row: ListRow): { minor: number; sign: '+' | ''; tone: 'up' | 'grey' | 'ink'; yearlyOut: boolean; extra: AmountExtraPart[] } {
+  const out = wholeLeftOut(row, 'report');
+  const income = !out && (row.type === 'income' || !!row.refund);
+  const yearlyOut = !!row.yearlyOut;
+  return {
+    minor: out ? 0 : Math.abs(row.amountMinor),
+    sign: income ? '+' : '',
+    tone: out || yearlyOut ? 'grey' : income ? 'up' : 'ink',
+    yearlyOut,
+    extra: [...(yearlyOut ? [{ text: YEARLY_BILL_LINE, tone: 'foreign' as const }] : []), ...(row.tx ? amountExtraParts(row.tx, undefined, row) : [])],
+  };
 }

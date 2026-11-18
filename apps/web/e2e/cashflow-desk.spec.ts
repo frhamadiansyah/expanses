@@ -1,5 +1,8 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { addTransaction } from './add-transaction';
+import { pickBillCategory, pickBillPaidFrom } from './bill-form';
+import { peekBill, peekButton } from './bills-desk';
 
 /*
  * The wide screen's Cashflow (Mac Cashflow D, 2026-11-17): three boxes, the typing table across the full width, and a
@@ -176,4 +179,81 @@ test('⇧-click picks a range, Esc lets it go, ⌘A picks every row, and Delete 
   await picked.getByRole('button', { name: 'Click again to delete 3 transactions' }).click();
   await expect(picked).toHaveCount(0);
   await expect(rows).toHaveCount(0);
+});
+
+test('a yearly bill is listed greyed and left out of a month’s ring, boxes and bars; the Filter’s switch counts it, and a year does', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept());
+  await page.clock.setSystemTime(new Date('2027-03-05T12:00:00'));
+  await openAccount(page, { subtype: 'bank', name: 'Contoh Tabungan', balance: '50000000' });
+
+  // A yearly bill out on 5 March, paid from its peek on Mac Bills.
+  await page.goto('/bills/new');
+  await page.getByLabel('Name', { exact: true }).fill('Life cover premium');
+  await page.getByLabel('Amount', { exact: true }).fill('12000000');
+  await pickBillCategory(page, 'Life insurance');
+  await pickBillPaidFrom(page, 'Contoh Tabungan');
+  await page.getByLabel('Repeats').selectOption('yearly');
+  await page.getByLabel('Month', { exact: true }).selectOption('3');
+  await page.getByLabel('Due by').selectOption('5');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(/\/bills$/);
+  await peekBill(page, 'Life cover premium');
+  await peekButton(page, 'Pay').click();
+  await page.getByRole('dialog', { name: 'Pay Life cover premium' }).getByRole('button', { name: 'Record payment' }).click();
+  await expect(page.getByRole('dialog', { name: 'Pay Life cover premium' })).toHaveCount(0);
+
+  // Everyday spending the day before.
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Sate Contoh', paidWith: 'Contoh Tabungan', category: 'Restaurants', amount: '286000', date: '2027-03-04' });
+
+  // March: the ring, Spent and the bars are the dinner alone; the bill is still listed, whole, greyed, with its tag.
+  await expect(page.getByTestId('chart-month')).toHaveText(/March 2027/);
+  const total = page.getByTestId('period-total');
+  await expect(total).toHaveText(/^Rp\s286\.000$/);
+  await expect(page.getByTestId('month-spent')).toHaveText(/^Rp\s286\.000$/);
+  const premium = page.getByTestId('transaction-row').filter({ hasText: 'Life cover premium' });
+  await expect(premium).toHaveAttribute('data-yearly-out', 'true');
+  await expect(premium).toContainText('12.000.000');
+  await expect(premium.getByTestId('amount-extra')).toHaveText('Yearly bill · in the year');
+  await expect(page.getByTestId('yearly-bills-note')).toHaveText('1 yearly bill not in the ring');
+  const bars = page.getByTestId('cashflow-days');
+  await expect(bars.locator('[title*="12.000.000"]')).toHaveCount(0);
+  await expect(bars.locator('[title*="286.000"]')).toHaveCount(1);
+
+  // Its peek says which bill, and that the year counts it.
+  await premium.click();
+  await expect(page.getByTestId('cashflow-peek').getByTestId('yearly-note')).toHaveText('Life cover premium · Yearly bill · in the year');
+  await page.keyboard.press('Escape');
+
+  // Filter: Yearly bills off, saying what that means; on, the month counts it like any spending.
+  const filter = page.getByRole('button', { name: /^Filter/ });
+  await filter.click();
+  const yearly = page.getByTestId('yearly-bills-filter');
+  await expect(yearly).toHaveAttribute('aria-checked', 'false');
+  await expect(yearly).toContainText('Off: listed, not in the ring or total');
+  await yearly.click();
+  await expect(yearly).toHaveAttribute('aria-checked', 'true');
+  await expect(total).toHaveText(/^Rp\s12\.286\.000$/);
+  await expect(page.getByTestId('month-spent')).toHaveText(/^Rp\s12\.286\.000$/);
+  await expect(bars.locator('[title*="12.000.000"]')).toHaveCount(1);
+  await expect(page.getByTestId('yearly-bills-note')).toHaveCount(0);
+  await expect(premium).not.toHaveAttribute('data-yearly-out', /.*/);
+  await expect(premium.getByTestId('amount-extra')).toHaveCount(0);
+  await expect(filter).toHaveText(/Filter · 1/);
+  // Clear filters puts it back off.
+  await page.getByRole('dialog', { name: 'Filter' }).getByRole('button', { name: 'Clear filters' }).click();
+  await expect(total).toHaveText(/^Rp\s286\.000$/);
+
+  // The year counts it, switch off; the switch says a year always counts them.
+  await page.keyboard.press('Escape');
+  await page.getByTestId('chart-month').click();
+  const picker = page.getByTestId('period-picker');
+  await picker.getByRole('tab', { name: 'Year' }).click();
+  await picker.getByRole('button', { name: '2027', exact: true }).click();
+  await expect(page.getByTestId('chart-month')).toHaveText(/2027/);
+  await expect(total).toHaveText(/^Rp\s12\.286\.000$/);
+  await expect(premium.getByTestId('amount-extra')).toHaveCount(0);
+  await filter.click();
+  await expect(page.getByTestId('yearly-bills-filter')).toBeDisabled();
+  await expect(page.getByTestId('yearly-bills-filter')).toContainText('A year always counts them');
 });

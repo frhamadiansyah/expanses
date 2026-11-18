@@ -18,6 +18,7 @@ import { kindWord, type PeekLine, peekFigure, receiptPeekLines } from './receipt
 import { instalmentRowValue } from './turn-into';
 import { TurnIntoSheet } from './TurnIntoSheet';
 import { type Receipt, useReceipt } from './use-receipt';
+import { YEARLY_BILL_LINE } from './yearly-bills';
 
 /** "Wed 11 Nov 2026". */
 const peekDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -101,8 +102,11 @@ export function ReceiptPeek({
   onClose,
   back,
   onReplaced,
+  yearlyOut = false,
 }: {
   transactionId: string;
+  /** Cashflow's month leaves this yearly bill's payment out of its figures (`leaveOutYearlyBills`): the peek says so, with the bill. */
+  yearlyOut?: boolean;
   top?: number;
   testId?: string;
   first?: boolean;
@@ -123,7 +127,7 @@ export function ReceiptPeek({
       {receipt.receipt.isSuccess && !tx ? (
         <p className="px-[14px] py-2 text-[13px] text-[var(--ph-ink-3)]">That transaction is not on this device.</p>
       ) : tx && view ? (
-        <PeekBody key={transactionId} receipt={receipt} />
+        <PeekBody key={transactionId} receipt={receipt} yearlyOut={yearlyOut} />
       ) : (
         <ErrorBox error={receipt.receipt.error} />
       )}
@@ -131,7 +135,7 @@ export function ReceiptPeek({
   );
 }
 
-function PeekBody({ receipt }: { receipt: Receipt }) {
+function PeekBody({ receipt, yearlyOut }: { receipt: Receipt; yearlyOut: boolean }) {
   const navigate = useNavigate();
   const needs = useResolvedNeeds().data;
   const openBook = useOpenBook();
@@ -203,6 +207,13 @@ function PeekBody({ receipt }: { receipt: Receipt }) {
           </div>
         )}
         <div className="mt-[2px] text-[13px] text-[var(--ph-ink-3)]">{peekDate(tx.occurredOn)}</div>
+        {/* Left out of the month's figures, as its row says: which bill, and that the year counts it. */}
+        {yearlyOut && (
+          <div data-testid="yearly-note" className="mt-[2px] text-[12px] text-[var(--ph-ink-3)]">
+            {bill ? `${bill.name} · ` : ''}
+            {YEARLY_BILL_LINE}
+          </div>
+        )}
         {jointNote && (
           <div data-testid="joint-note" className="mt-[2px] text-[12px] text-[var(--ph-ink-3)]">
             {rowByLine({ recordedBy: jointNote.recordedBy, editedBy: jointNote.editedBy, deleted: false, deletedBy: null }, jointNote.me, jointNote.names)}
