@@ -1,0 +1,117 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Record many pasted rows</title><style>
+:root{--ink:#1d1d1f;--ink2:#3c3c43;--ink3:#86868b;--hair:#e5e5ea;--side:#ececef;--accent:#0a7cff;--up:#248a3d;--down:#d70015}
+*{box-sizing:border-box}
+body{margin:0;padding:28px;background:#d9d9de;font:13px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+h1{font-size:22px;margin:0 0 4px}.sub{color:#555;margin:0 0 22px;max-width:1180px;line-height:1.45;font-size:14px}
+h2{font-size:18px;margin:34px 0 4px}.lead{color:#555;margin:0 0 14px;max-width:1180px;line-height:1.45;font-size:14px}
+.win{width:1180px;height:640px;background:#fff;border-radius:11px;box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 22px 60px rgba(0,0,0,.25);display:flex;overflow:hidden;position:relative}
+.side{width:200px;background:var(--side);border-right:.5px solid #d6d6db;padding:14px 10px;display:flex;flex-direction:column}
+.ws{display:flex;align-items:center;gap:8px;padding:4px 8px 12px}.ws b{font-size:13px;display:block}.ws span{color:var(--ink3);font-size:11px}
+.av{width:22px;height:22px;border-radius:50%;background:#1d1d1f;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sh{font-size:11px;font-weight:600;color:var(--ink3);padding:10px 8px 4px}
+.it{padding:4px 8px;border-radius:6px;height:26px;display:flex;align-items:center;gap:8px}.it i{width:13px;height:13px;border:1.5px solid var(--accent);border-radius:3px;display:block}
+.it.on{background:rgba(0,0,0,.08)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:#f5f5f7}
+.tb{height:52px;display:flex;align-items:center;gap:10px;padding:0 14px 0 18px;border-bottom:.5px solid var(--hair);background:#fff}
+.tb .t{font-size:16px;font-weight:600}.sp{flex:1}
+.seg{display:flex;background:#e9e9ec;border-radius:7px;padding:2px;font-size:12px}.seg span{padding:3px 11px;border-radius:5px;color:var(--ink2)}.seg .on{background:#fff;box-shadow:0 .5px 1.5px rgba(0,0,0,.18);color:var(--ink);font-weight:500}
+.ob{border:.5px solid #c7c7cc;border-radius:6px;padding:3px 10px;font-size:12px;background:#fff}
+.blk{background:#1d1d1f;color:#fff;border-radius:6px;padding:4px 11px;font-size:12px;font-weight:500}
+.content{flex:1;display:flex;min-height:0}
+.pad{flex:1;padding:16px 20px;min-width:0}
+.box{background:#fff;border-radius:10px;border:.5px solid #e2e2e7;overflow:hidden}
+.bh{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;font-weight:600;font-size:13px}
+.bh .r{display:flex;align-items:center;gap:10px;font-weight:400;font-size:11.5px;color:var(--ink3)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;font-weight:600;color:var(--ink3);text-align:left;padding:7px 10px;border-top:.5px solid var(--hair);border-bottom:.5px solid var(--hair);background:#fafafa}
+td{padding:6px 10px;white-space:nowrap;height:30px}
+tbody tr:nth-child(even) td{background:#f7f7f9}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.d{color:var(--ink3)}
+.cat{display:inline-flex;align-items:center;gap:7px}.cat i{width:18px;height:18px;border-radius:50%;display:inline-block}
+.gr i{background:#d8f0dc}.cf i{background:#fde3d3}.rs i{background:#fde3d3}.tr i{background:#dde8fb}
+.rec{display:inline-block;background:#1d1d1f;color:#fff;border-radius:5px;padding:2px 9px;font-size:11.5px;font-weight:500}
+.rec.off{background:#c7c7cc}
+.x{color:var(--ink3);padding-left:10px}
+tr.new td{border-top:.5px dashed #c7c7cc;background:#fff!important;color:var(--ink3)}
+tr.new td.d{color:var(--ink)}
+tr.pick td{background:#dceafe!important}
+tr.pick td.first{box-shadow:inset 3px 0 0 var(--accent)}
+.more td{color:var(--ink3);font-size:11.5px;text-align:center;background:#fff!important;height:24px;padding:2px}
+#B td{padding:6px 7px}#B .x{padding-left:6px}.peek{width:270px;background:#fff;border-left:.5px solid var(--hair);padding:18px}
+.peek .h{font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:6px}
+.peek .big{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+.peek .c{color:var(--ink3);font-size:12px;margin-top:3px}
+.peek .bb{margin-top:16px;display:inline-block}
+.peek .skip{margin-top:10px;font-size:12px;color:var(--ink3)}
+.toast{position:absolute;left:50%;bottom:22px;transform:translateX(-30%);background:#fff;border-radius:12px;box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 8px 28px rgba(0,0,0,.18);display:flex;align-items:center;gap:14px;padding:10px 12px 10px 14px;font-size:14px}
+.toast .ok{width:22px;height:22px;border-radius:50%;background:var(--up);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px}
+.toast a{color:var(--accent)}.toast .u{background:#efeff2;border-radius:14px;padding:3px 12px;font-weight:600}
+.callout{position:absolute;background:#fff4c2;border:1px solid #e6c84a;color:#5c4a00;font-size:12px;padding:5px 9px;border-radius:7px;max-width:250px;line-height:1.35;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.note{font-size:12.5px;color:#555;margin:10px 0 0;max-width:1180px;line-height:1.45}
+</style></head><body>
+<h1>Record many pasted rows at once</h1>
+<p class="sub">30 rows pasted from Notion, Paid with and categories already filled from what the app learned. Today each row needs its own Record. Two ways to record them together. Invented data. The yellow notes are for this mockup only, not part of the app.</p>
+
+<h2>A · One "Record all" button</h2>
+<p class="lead">A button sits in the box header while rows are waiting. It records every complete row. A row with a blank cell stays waiting, with its grey Record, to finish later.</p>
+<div class="win" id="A">
+<div class="side"><div class="ws"><div class="av">P</div><div><b>Personal</b><span>IDR · on this device</span></div></div>
+<div class="it"><i></i>Overview</div><div class="it on"><i></i>Cashflow</div><div class="it"><i></i>Budget</div><div class="it"><i></i>Bills</div><div class="it"><i></i>Review</div><div class="sh">Money</div><div class="it"><i></i>Wallet</div><div class="it"><i></i>Net worth</div><div class="it"><i></i>Points</div><div class="sh">Plans</div><div class="it"><i></i>Goals</div><div class="it"><i></i>Events</div><div class="it"><i></i>Debt-free plan</div></div>
+<div class="main">
+ <div class="tb"><span class="t">Cashflow</span><span class="sp"></span><div class="seg"><span class="on">All</span><span>Spending</span><span>Income</span></div><span class="ob">Filter ⌄</span><span>‹ &nbsp;November 2026&nbsp; ›</span><span class="ob">Scan receipt</span><span class="blk">＋ Add</span></div>
+ <div class="content"><div class="pad"><div class="box">
+  <div class="bh">Transactions<span class="r"><span class="rec" style="font-size:12px;padding:4px 11px">Record all 29</span></span></div>
+  <table><thead><tr><th style="width:120px">Date ↑</th><th>Note</th><th>Category</th><th>Paid with</th><th class="num">Amount</th><th style="width:96px"></th></tr></thead><tbody>
+   <tr><td class="d">17 Nov</td><td>Kedai Kopi Contoh</td><td><span class="cat cf"><i></i>Cafe &amp; dessert</span></td><td>Bank Contoh</td><td class="num">Rp 53.000</td><td></td></tr>
+   <tr class="more"><td colspan="6">· · · 23 more waiting rows · · ·</td></tr>
+   <tr><td class="d">8 Sep 2026</td><td>Toko Buah Contoh</td><td><span class="cat gr"><i></i>Groceries</span></td><td>Kartu Contoh</td><td class="num">Rp 412.300</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">9 Sep 2026</td><td>Kedai Teh Contoh</td><td><span class="cat cf"><i></i>Cafe &amp; dessert</span></td><td>Kartu Contoh</td><td class="num">Rp 58.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">10 Sep 2026</td><td>Bakmi Contoh</td><td><span class="cat rs"><i></i>Restaurants</span></td><td>Kartu Contoh</td><td class="num">Rp 76.500</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">11 Sep 2026</td><td>Parkir Contoh</td><td><span class="cat tr"><i></i>Parking</span></td><td>Kartu Contoh</td><td class="num">Rp 15.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">12 Sep 2026</td><td>Kopi Senja Contoh</td><td><span class="cat cf"><i></i>Cafe &amp; dessert</span></td><td>Kartu Contoh</td><td class="num">Rp 89.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">29 Sep 2026</td><td>Bioskop Contoh</td><td></td><td>Kartu Contoh</td><td class="num">Rp 120.000</td><td><span class="rec off">Record</span><span class="x">✕</span></td></tr>
+  <tr class="new"><td class="d">18 Nov</td><td>Note</td><td>Category</td><td>Paid with</td><td class="num">Amount</td><td><span class="rec off">Record</span></td></tr>
+  </tbody></table>
+ </div></div></div>
+ <div class="callout" style="right:150px;top:78px">One click: records the 29 complete rows</div>
+ <div class="callout" style="left:12px;top:368px;max-width:190px">Blank category: skipped, stays waiting →</div>
+</div></div>
+
+<h2>A · After clicking it</h2>
+<p class="lead">The 29 rows go to their own months. One message, with Undo for all of them. The skipped row stays above the typing row.</p>
+<div class="win" id="A2">
+<div class="side"><div class="ws"><div class="av">P</div><div><b>Personal</b><span>IDR · on this device</span></div></div>
+<div class="it"><i></i>Overview</div><div class="it on"><i></i>Cashflow</div><div class="it"><i></i>Budget</div><div class="it"><i></i>Bills</div><div class="it"><i></i>Review</div><div class="sh">Money</div><div class="it"><i></i>Wallet</div><div class="it"><i></i>Net worth</div><div class="it"><i></i>Points</div><div class="sh">Plans</div><div class="it"><i></i>Goals</div><div class="it"><i></i>Events</div><div class="it"><i></i>Debt-free plan</div></div>
+<div class="main">
+ <div class="tb"><span class="t">Cashflow</span><span class="sp"></span><div class="seg"><span class="on">All</span><span>Spending</span><span>Income</span></div><span class="ob">Filter ⌄</span><span>‹ &nbsp;November 2026&nbsp; ›</span><span class="ob">Scan receipt</span><span class="blk">＋ Add</span></div>
+ <div class="content"><div class="pad"><div class="box">
+  <div class="bh">Transactions<span class="r"></span></div>
+  <table><thead><tr><th style="width:120px">Date ↑</th><th>Note</th><th>Category</th><th>Paid with</th><th class="num">Amount</th><th style="width:96px"></th></tr></thead><tbody>
+   <tr><td class="d">3 Nov</td><td>Warung Contoh</td><td><span class="cat rs"><i></i>Restaurants</span></td><td>Bank Contoh</td><td class="num">Rp 85.000</td><td></td></tr>
+   <tr><td class="d">15 Nov</td><td>Pasar Contoh</td><td><span class="cat gr"><i></i>Groceries</span></td><td>Bank Contoh</td><td class="num">Rp 377.000</td><td></td></tr>
+   <tr><td class="d">17 Nov</td><td>Kedai Kopi Contoh</td><td><span class="cat cf"><i></i>Cafe &amp; dessert</span></td><td>Bank Contoh</td><td class="num">Rp 53.000</td><td></td></tr>
+   <tr><td class="d">29 Sep 2026</td><td>Bioskop Contoh</td><td></td><td>Kartu Contoh</td><td class="num">Rp 120.000</td><td><span class="rec off">Record</span><span class="x">✕</span></td></tr>
+   <tr class="new"><td class="d">18 Nov</td><td>Note</td><td>Category</td><td>Paid with</td><td class="num">Amount</td><td><span class="rec off">Record</span></td></tr>
+  </tbody></table>
+ </div></div></div>
+ <div class="toast"><span class="ok">✓</span>Recorded 29 in August and September 2026<a>Show ›</a><span class="u">Undo</span></div>
+</div></div>
+
+<h2>B · Pick a range: click the first, ⇧-click the last</h2>
+<p class="lead">Like Notion and Sheets. Every row between the two clicks is picked. The side panel shows the total and Record 10. ⌘-click still adds or removes single rows.</p>
+<div class="win" id="B">
+<div class="side"><div class="ws"><div class="av">P</div><div><b>Personal</b><span>IDR · on this device</span></div></div>
+<div class="it"><i></i>Overview</div><div class="it on"><i></i>Cashflow</div><div class="it"><i></i>Budget</div><div class="it"><i></i>Bills</div><div class="it"><i></i>Review</div><div class="sh">Money</div><div class="it"><i></i>Wallet</div><div class="it"><i></i>Net worth</div><div class="it"><i></i>Points</div><div class="sh">Plans</div><div class="it"><i></i>Goals</div><div class="it"><i></i>Events</div><div class="it"><i></i>Debt-free plan</div></div>
+<div class="main">
+ <div class="tb"><span class="t">Cashflow</span><span class="sp"></span><div class="seg"><span class="on">All</span><span>Spending</span><span>Income</span></div><span class="ob">Filter ⌄</span><span>‹ &nbsp;November 2026&nbsp; ›</span><span class="ob">Scan receipt</span><span class="blk">＋ Add</span></div>
+ <div class="content"><div class="pad"><div class="box">
+  <div class="bh">Transactions<span class="r"></span></div>
+  <table><thead><tr><th style="width:120px">Date ↑</th><th>Note</th><th>Category</th><th>Paid with</th><th class="num">Amount</th><th style="width:96px"></th></tr></thead><tbody>
+   <tr class="more"><td colspan="6">· · · 20 more waiting rows · · ·</td></tr>
+   <tr class="pick"><td class="d first">1 Aug 2026</td><td>Laundry Contoh</td><td><span class="cat tr"><i></i>Laundry</span></td><td>Kartu Contoh</td><td class="num">Rp 64.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d">8 Sep 2026</td><td>Toko Buah Contoh</td><td><span class="cat gr"><i></i>Groceries</span></td><td>Kartu Contoh</td><td class="num">Rp 412.300</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d">9 Sep 2026</td><td>Kedai Teh Contoh</td><td><span class="cat cf"><i></i>Cafe &amp; dessert</span></td><td>Kartu Contoh</td><td class="num">Rp 58.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d">10 Sep 2026</td><td>Bakmi Contoh</td><td><span class="cat rs"><i></i>Restaurants</span></td><td>Kartu Contoh</td><td class="num">Rp 76.500</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d">11 Sep 2026</td><td>Parkir Contoh</td><td><span class="cat tr"><i></i>Parking</span></td><td>Kartu Contoh</td><td class="num">Rp 15.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d">12 Sep 2026</td><td>Kopi Senja Contoh</td><td><span class="cat cf"><i></i>Cafe &amp; dessert</span></td><td>Kartu Contoh</td><td class="num">Rp 89.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d">12 Sep 2026</td><td>Apotek Contoh</td><td><span class="cat gr"><i></i>Pharmacy</span></td><td>Kartu Contoh</td><td class="num">Rp 47.200</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d">12 Sep 2026</td><td>Bioskop Contoh</td><td></td><td>Kartu Contoh</td><td class="num">Rp 120.000</td><td><span class="rec off">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d">12 Sep 2026</td><td>Roti Contoh</td><td><span class="cat cf"><i></i>Cafe &amp; dessert</span></td><td>Kartu Contoh</td><td class="num">Rp 32.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr class="pick"><td class="d first">12 Sep 2026</td><td>Bensin Contoh</td><td><span class="cat tr"><i></i>Fuel</span></td><td>Kartu Contoh</td><td class="num">Rp 300.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">20 Sep 2026</td><td>Salon Contoh</td><td><span class="cat cf"><i></i>Personal care</span></td><td>Kartu Contoh</td><td class="num">Rp 150.000</td><td><span class="rec">Record</span><span class="x">✕</span></td></tr>
+  <tr class="new"><td class="d">18 Nov</td><td>Note</td><td>Category</td><td>Paid with</td><td class="num">Amount</td><td><span class="rec off">Record</span></td></tr>
+  </tbody></table>
+ </div></div>
+ <div class="peek"><div class="h">10 selected</div><div class="big">Rp 1.284.500</div><div class="c">10 waiting rows · 1 Aug – 12 Sep 2026</div><span class="rec bb" style="font-size:13px;padding:5px 14px">Record 9</span><div class="skip">1 with a blank cell is skipped</div></div>
+ </div>
+ <div class="callout" style="left:12px;top:150px;max-width:190px">1 · click the first row →</div>
+ <div class="callout" style="left:12px;top:452px;max-width:190px">2 · ⇧-click the last row →</div>
+</div></div>
+<p class="note">A and B can both be built: A for "record everything I pasted", B for "record only these". Recording teaches the Notion links either way.</p>
+</body></html>
