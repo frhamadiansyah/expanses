@@ -84,6 +84,30 @@ test('a budget typed into its cell saves at once, and Left, the total and the ga
   await expect(page.getByTestId('edit-budgets')).toBeVisible();
 });
 
+test('the gauge reads the Total budgeted row: a group’s whole Spent, its Budget, Left = Budget − Spent; Not budgeted is the rest', async ({ page }) => {
+  // Supplies spends with no budget of its own inside Household, whose Groceries has one: the group's Spent is all of it.
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Toko Sabun', paidWith: 'Bank Sample', category: 'Supplies', amount: '120000' });
+  await page.goto('/budget');
+  await typeBudget(page, 'Groceries', '400000');
+  await expect(budgetCells(page, 'Household').spent).toHaveText('460.000');
+  await expect(page.getByTestId('total-budget')).toHaveText('400.000');
+  await expect(page.getByTestId('total-spent')).toHaveText('460.000');
+  await expect(page.getByTestId('total-left')).toHaveText('−60.000');
+  // The gauge and its lines say the Total row's figures, and over by the same 60.000.
+  const box = page.getByTestId('left-to-spend');
+  await expect(box.getByTestId('spent-of-budget')).toHaveText(/^Rp\s460\.000$/);
+  await expect(box.getByTestId('budgeted-total')).toHaveText(/^Rp\s400\.000$/);
+  await expect(box.getByRole('img')).toHaveAccessibleName(/^Rp\s60\.000 over budget by$/);
+  // Not budgeted: Food and beverage alone (Restaurants), a top-level category with no budget anywhere in it.
+  await expect(box.getByTestId('not-budgeted')).toHaveText(/^Rp\s500\.000$/);
+  // Needs a look names the group by its row's figure, and the one category without a budget.
+  const look = page.getByTestId('needs-a-look');
+  await expect(look).toContainText('Household over');
+  await expect(look).toContainText(/−Rp\s60\.000/);
+  await expect(look).toContainText('1 category without a budget');
+});
+
 test('Edit budgets still sets any budget, and the table shows it', async ({ page }) => {
   const screen = await openEditBudgets(page);
   await (await capField(screen, 'Restaurants')).field.fill('700000');

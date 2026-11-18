@@ -6,9 +6,8 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { SPLIT_COLOURS, SPLIT_TITLE } from '../essential-split/split-view';
 import { BOX, BoxHead } from '../transactions/CashflowBoxes';
 import { BudgetGauge } from '../transactions/BudgetGauge';
-import { budgetProgress } from '../transactions/budget-progress';
-import type { LookLine } from './budget-desk-model';
-import { planSplit, type SplitSheetKey, splitSheetView, type SpendingView } from './budget-view';
+import type { DeskGauge, LookLine } from './budget-desk-model';
+import { planSplit, type SplitSheetKey, splitSheetView } from './budget-view';
 
 /*
  * The boxes along the top of the wide screen's Budget (Mac Budget, the list version): the month's gauge, the
@@ -38,11 +37,13 @@ function Line({ label, value, tone, testId, onClick }: { label: ReactNode; value
   );
 }
 
-/** This month's budget: the phone's gauge, with what was spent under the budgets, what they add up to, and what no budget covers. */
-export function MonthBudgetBox({ title, sheet, view, currency, month, today, monthStart, daysNote }: {
+/**
+ * This month's budget: the phone's gauge drawn plain, on the table's Total budgeted row (`gaugeOf`) — its Spent, its
+ * Budget and Left = Budget − Spent — and what the categories with no budget spent.
+ */
+export function MonthBudgetBox({ title, gauge, currency, month, today, monthStart, daysNote }: {
   title: string;
-  sheet: BudgetSheetResult;
-  view: SpendingView;
+  gauge: DeskGauge;
   currency: string;
   month: string;
   today: string;
@@ -55,13 +56,13 @@ export function MonthBudgetBox({ title, sheet, view, currency, month, today, mon
       {/* Too narrow for both side by side, the figures go under the gauge rather than be cut. */}
       <div className="flex flex-wrap items-center gap-[12px] px-[14px] pb-[10px]">
         <div className="w-[184px] shrink-0">
-          <BudgetGauge progress={budgetProgress(sheet.lines)} currency={currency} month={month} today={today} monthStart={monthStart} plain />
+          <BudgetGauge progress={{ capsMinor: gauge.budgetedMinor, spentMinor: gauge.spentMinor, overCount: 0, any: gauge.budgetedMinor > 0 }} currency={currency} month={month} today={today} monthStart={monthStart} plain />
         </div>
         <div className="min-w-[180px] flex-1 text-[12.5px]">
           {[
-            ['Spent', view.spentMinor, 'spent-of-budget'],
-            ['Budgeted', view.budgetedMinor, 'budgeted-total'],
-            ['Not budgeted', view.noBudgetMinor, 'not-budgeted'],
+            ['Spent', gauge.spentMinor, 'spent-of-budget'],
+            ['Budgeted', gauge.budgetedMinor, 'budgeted-total'],
+            ['Not budgeted', gauge.notBudgetedMinor, 'not-budgeted'],
           ].map(([label, minor, testId]) => (
             <div key={label as string} className="flex justify-between gap-3 border-t border-[var(--ph-hair)] py-[5px] first:border-t-0">
               <span className="whitespace-nowrap text-[var(--ph-ink-3)]">{label}</span>

@@ -15,8 +15,8 @@ import { countsAs as countsAsOf } from '../transactions/cashflow-desk-model';
 import { useBooks, useMonthStart, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { GoalsBox, LookBox, MonthBudgetBox, MonthSoFarBox, SplitBox, TakeHomeBox } from './BudgetBoxes';
-import { cellText, type DeskRow, type DeskView, deskTable, needsALook, planCell, shownRows } from './budget-desk-model';
-import { daysLeft, findLine, spendingView } from './budget-view';
+import { cellText, type DeskRow, type DeskView, deskTable, gaugeOf, needsALook, planCell, shownRows } from './budget-desk-model';
+import { daysLeft, findLine } from './budget-view';
 import { TakeHomeSheet } from './BudgetSheets';
 import { CapSheet } from './CapSheet';
 import { CategoryPeek, TONE_COLOUR } from './CategoryPeek';
@@ -98,7 +98,6 @@ export function DesktopBudget() {
   const history = useSpendingHistory(month, currency);
   const needs = useResolvedNeeds().data;
 
-  const view = sheet ? spendingView(sheet.lines) : null;
   const table = sheet ? deskTable(sheet.lines, budgets ?? []) : null;
   const [folded, setFolded] = useState<Set<string>>(readFolds);
   const rows = table ? shownRows(table.rows, folded) : [];
@@ -237,7 +236,7 @@ export function DesktopBudget() {
     if (first) focusCell(first.key);
   };
   const counts = (categoryId: string) => countsAsOf({ type: 'expense', categoryId }, needs);
-  const look = sheet && table ? needsALook(sheet.lines, table.noBudgetCount) : [];
+  const look = table ? needsALook(table) : [];
   const peekStored = peekLine ? storedOf(peekLine.id) : undefined;
   const peekParent = peekLine && sheet ? parentNameOf(sheet.lines, peekLine.id) : null;
   const compact = peekLine !== undefined;
@@ -291,11 +290,11 @@ export function DesktopBudget() {
       <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peekLine && 'mr-[322px]')}>
         <ErrorBox error={sheetQuery.error} />
         <Unconverted missing={sheet?.unconverted ?? []} currency={currency} />
-        {sheet && view && (
+        {sheet && table && (
           <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[478px]:grid-cols-2 @min-[478px]:[&>:first-child]:col-span-2 @min-[990px]:grid-cols-[1.45fr_1fr_0.95fr] @min-[990px]:[&>:first-child]:col-span-1">
             {tab === 'spending' ? (
               <>
-                <MonthBudgetBox title={thisMonth ? 'This month’s budget' : `${monthLabel(month)} budget`} sheet={sheet} view={view} currency={currency} month={month} today={today} monthStart={monthStart} daysNote={daysNote} />
+                <MonthBudgetBox title={thisMonth ? 'This month’s budget' : `${monthLabel(month)} budget`} gauge={gaugeOf(table)} currency={currency} month={month} today={today} monthStart={monthStart} daysNote={daysNote} />
                 <SplitBox sheet={sheet} currency={currency} />
                 <LookBox lines={look} currency={currency} daysNote={daysNote} accounts={accounts} onOpen={setPeekId} onSet={setFirst} />
               </>

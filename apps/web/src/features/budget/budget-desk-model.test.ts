@@ -1,7 +1,7 @@
 import type { BudgetLine } from '@expanses/core';
 import type { BudgetRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cellText, deskTable, needsALook, planCell, shownRows, toneOf, typedRow } from './budget-desk-model';
+import { cellText, deskTable, gaugeOf, needsALook, planCell, shownRows, toneOf, typedRow } from './budget-desk-model';
 
 /** A line of the month's sheet: what it spent itself, its cap, and the lines under it. Invented figures. */
 function line(id: string, ownMinor: number, capMinor: number | null, children: BudgetLine[] = []): BudgetLine {
@@ -163,22 +163,52 @@ describe('the Categories table', () => {
   });
 });
 
+describe('the gauge', () => {
+  it('reads the Total budgeted row: its Spent, its Budget and Left = Budget − Spent; Not budgeted is No budget yet’s spending', () => {
+    const table = deskTable(lines, budgets);
+    const gauge = gaugeOf(table);
+    expect(gauge.spentMinor).toBe(table.total.spentMinor);
+    expect(gauge.budgetedMinor).toBe(table.total.budgetMinor);
+    expect(gauge.leftMinor).toBe(table.total.leftMinor);
+    expect(gauge.leftMinor).toBe(gauge.budgetedMinor - gauge.spentMinor);
+    // Food 2.000.000 (Restaurants and Takeaways) + Health 500.000 + Household 300.000; each root's whole Spent.
+    expect(gauge).toEqual({ spentMinor: 6_715_500, budgetedMinor: 2_800_000, leftMinor: -3_915_500, notBudgetedMinor: 750_000 });
+    // Not budgeted is the No budget yet rows' roots, and the gauge's Spent and it make the month's whole spending.
+    const noneRoots = table.rows.filter((row) => row.section === 'none' && row.depth === 0);
+    expect(gauge.notBudgetedMinor).toBe(noneRoots.reduce((sum, row) => sum + row.spentMinor, 0));
+    expect(gauge.spentMinor + gauge.notBudgetedMinor).toBe(lines.reduce((sum, root) => sum + root.totalMinor, 0));
+  });
+
+  it('is under budget with Left above nought, and Spent never counts a sub-category twice', () => {
+    const gauge = gaugeOf(deskTable([line('Home', 0, 1_000_000, [line('Rent', 600_000, 800_000)]), line('Fun', 50_000, null)], []));
+    expect(gauge).toEqual({ spentMinor: 600_000, budgetedMinor: 1_000_000, leftMinor: 400_000, notBudgetedMinor: 50_000 });
+  });
+});
+
 describe('Needs a look', () => {
-  it('names the over ones first, then those at 85% or more, and always ends on the count without a budget', () => {
-    expect(needsALook(lines, 2)).toEqual([
+  it('names the rows over first, each by its row’s own figure (a group’s whole Spent), then always the count without a budget', () => {
+    const table = deskTable(lines, budgets);
+    expect(needsALook(table)).toEqual([
       { kind: 'over', categoryId: 'Household', name: 'Household', overMinor: 3_461_000 },
-      { kind: 'over', categoryId: 'Restaurants', name: 'Restaurants', overMinor: 460_000 },
+      // Food's row: 2.860.000 spent against its budgets' 2.000.000.
+      { kind: 'over', categoryId: 'Food', name: 'Food', overMinor: 860_000 },
       { kind: 'unbudgeted', count: 2 },
     ]);
+    // Each figure is its row's Left; Groceries (85%) is near.
+    for (const look of needsALook(table, 10)) {
+      if (look.kind !== 'over') continue;
+      expect(-table.rows.find((row) => row.categoryId === look.categoryId)!.leftMinor!).toBe(look.overMinor);
+    }
+    expect(needsALook(table, 10).map((look) => (look.kind === 'unbudgeted' ? 'none' : look.name))).toEqual(['Household', 'Food', 'Restaurants', 'Takeaways', 'Groceries', 'none']);
   });
 
   it('floors a share near the whole, so a category not over never reads 100%', () => {
-    const near = needsALook([line('Bills', 999_000, 1_000_000), line('Fuel', 860_000, 1_000_000), line('Gym', 100_000, 1_000_000)], 0);
+    const near = needsALook(deskTable([line('Bills', 999_000, 1_000_000), line('Fuel', 860_000, 1_000_000), line('Gym', 100_000, 1_000_000)], []));
     expect(near).toEqual([
       { kind: 'near', categoryId: 'Bills', name: 'Bills', percent: 99 },
       { kind: 'near', categoryId: 'Fuel', name: 'Fuel', percent: 86 },
     ]);
-    expect(needsALook([line('Gym', 100_000, 1_000_000)], 0)).toEqual([]);
+    expect(needsALook(deskTable([line('Gym', 100_000, 1_000_000)], []))).toEqual([]);
   });
 });
 

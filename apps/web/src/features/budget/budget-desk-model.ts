@@ -1,7 +1,7 @@
 import { type BudgetFrequency, type BudgetLine, formatBp } from '@expanses/core';
 import type { BudgetChanges, BudgetRow } from '@expanses/db';
 import { bareFigure } from '../networth/debt-rows';
-import { flatten, usedShare } from './budget-view';
+import { flatten } from './budget-view';
 import { basisOfRow, changesOf, editGroups, type EditState, initialState, keptOf, type RowState, rowStateOf, typedCaps } from './edit-budgets-model';
 
 /*
@@ -68,10 +68,11 @@ export interface DeskTable {
   total: { budgetMinor: number; spentMinor: number; leftMinor: number };
   /** How many categories sit under No budget yet. */
   noBudgetCount: number;
+  /** What they spent: the top-level categories with no budget anywhere in them (No budget yet's roots). */
+  notBudgetedMinor: number;
 }
 
 const byName = (a: BudgetLine, b: BudgetLine) => a.name.localeCompare(b.name);
-const capped = (line: BudgetLine) => line.capMinor !== null;
 
 /** The outermost budgets under a line (itself, when it has one) and what they saw spent: counted once, as the sheet does. */
 export function coveredOf(line: BudgetLine): { budgetMinor: number; spentMinor: number; any: boolean } {
@@ -187,7 +188,28 @@ export function deskTable(lines: readonly BudgetLine[], budgets: readonly Budget
       .sort((a, b) => b.totalMinor - a.totalMinor || a.name.localeCompare(b.name));
     for (const child of spending) rows.push(lineRow(child, { key: `line:${child.id}`, label: child.name, depth: 1, groupId: null, section: 'none' }, storedOf.get(child.id)));
   }
-  return { rows, total, noBudgetCount: unbudgeted.length };
+  return { rows, total, noBudgetCount: unbudgeted.length, notBudgetedMinor: unbudgeted.reduce((sum, root) => sum + root.totalMinor, 0) };
+}
+
+/** The month's box beside the table: its gauge and the lines under it. */
+export interface DeskGauge {
+  /** The Total budgeted row's Spent: each budgeted root's whole Spent. */
+  spentMinor: number;
+  /** The Total budgeted row's Budget. */
+  budgetedMinor: number;
+  /** Budgeted − Spent, below nought when over (the gauge's red). */
+  leftMinor: number;
+  /** Spent in top-level categories with no budget anywhere in them. */
+  notBudgetedMinor: number;
+}
+
+/**
+ * One rule for the whole Mac Budget page (owner, 18 Nov 2026): the gauge reads the table's Total budgeted row — its
+ * Spent, its Budget and Left = Budget − Spent — and Not budgeted is what No budget yet's categories spent. So the box
+ * and the table always say the same figures. The phone's gauge keeps its own (`budgetProgress`).
+ */
+export function gaugeOf(table: Pick<DeskTable, 'total' | 'notBudgetedMinor'>): DeskGauge {
+  return { spentMinor: table.total.spentMinor, budgetedMinor: table.total.budgetMinor, leftMinor: table.total.leftMinor, notBudgetedMinor: table.notBudgetedMinor };
 }
 
 /** The rows on show: a folded group keeps its own row and hides the rows under it. */
@@ -205,22 +227,31 @@ export type LookLine =
   | { kind: 'unbudgeted'; count: number };
 
 /**
- * Up to three lines, from figures the page already has: the categories over their budget (furthest over first), those
- * at 85% or more (fullest first), and — always last when there are any — how many categories spent with no budget.
+ * Up to three lines, read off the table's own rows so each says the figure its row says (owner, 18 Nov 2026): the rows
+ * over their budget (furthest over first, a group's whole Spent against its Budget as its row reads), those at 85% or
+ * more (fullest first), and — always last when there are any — how many categories spent with no budget (No budget
+ * yet's count, the categories Not budgeted adds up). A category is named once, by its first row (a group before its
+ * "All <parent>").
  */
-export function needsALook(lines: readonly BudgetLine[], noBudgetCount: number, limit = 3): LookLine[] {
-  const all = flatten(lines);
-  const over: LookLine[] = all
-    .filter((line) => line.overMinor > 0)
-    .sort((a, b) => b.overMinor - a.overMinor || a.name.localeCompare(b.name))
-    .map((line) => ({ kind: 'over', categoryId: line.id, name: line.name, overMinor: line.overMinor }));
-  const near: LookLine[] = all
-    .filter((line) => capped(line) && line.overMinor === 0 && usedShare(line) >= NEAR_SHARE)
-    .sort((a, b) => usedShare(b) - usedShare(a) || a.name.localeCompare(b.name))
+export function needsALook(table: Pick<DeskTable, 'rows' | 'noBudgetCount'>, limit = 3): LookLine[] {
+  const seen = new Set<string>();
+  const rows = table.rows.filter((row) => {
+    if (row.section !== 'budgeted' || row.budgetMinor === null || row.leftMinor === null || seen.has(row.categoryId)) return false;
+    seen.add(row.categoryId);
+    return true;
+  });
+  const used = (row: DeskRow) => (row.budgetMinor! > 0 ? row.spentMinor / row.budgetMinor! : row.spentMinor > 0 ? 2 : 0);
+  const over: LookLine[] = rows
+    .filter((row) => row.leftMinor! < 0)
+    .sort((a, b) => a.leftMinor! - b.leftMinor! || a.name.localeCompare(b.name))
+    .map((row) => ({ kind: 'over', categoryId: row.categoryId, name: row.name, overMinor: -row.leftMinor! }));
+  const near: LookLine[] = rows
+    .filter((row) => row.tone === 'near')
+    .sort((a, b) => used(b) - used(a) || a.name.localeCompare(b.name))
     // Floored, so a category not yet over never reads 100%.
-    .map((line) => ({ kind: 'near', categoryId: line.id, name: line.name, percent: Math.min(100, Math.floor(usedShare(line) * 100)) }));
-  const room = noBudgetCount > 0 ? limit - 1 : limit;
-  return [...[...over, ...near].slice(0, Math.max(0, room)), ...(noBudgetCount > 0 ? [{ kind: 'unbudgeted' as const, count: noBudgetCount }] : [])];
+    .map((row) => ({ kind: 'near', categoryId: row.categoryId, name: row.name, percent: Math.min(100, Math.floor(used(row) * 100)) }));
+  const room = table.noBudgetCount > 0 ? limit - 1 : limit;
+  return [...[...over, ...near].slice(0, Math.max(0, room)), ...(table.noBudgetCount > 0 ? [{ kind: 'unbudgeted' as const, count: table.noBudgetCount }] : [])];
 }
 
 /** What a Budget cell holds when it opens for typing: the plan as it was typed — "20%" for a share — or nothing. */
