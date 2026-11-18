@@ -81,6 +81,24 @@ describe('extra a month', () => {
     expect(effect.plan.interestMinor).toBe(120_000 + 40_977);
     expect(effect.interestSavedMinor).toBeGreaterThan(0);
   });
+  it('what is left at the end of each month, with and without the extra, falls to nothing in the debt-free month', () => {
+    const effect = extraEffect([one], { ...opts, extraMinor: 100_000 });
+    // Without: 100.000 a month for 12 months. With: 200.000 a month for 6.
+    expect(effect.baseline.leftByMonth).toEqual([1_100_000, 1_000_000, 900_000, 800_000, 700_000, 600_000, 500_000, 400_000, 300_000, 200_000, 100_000, 0]);
+    expect(effect.plan.leftByMonth).toEqual([1_000_000, 800_000, 600_000, 400_000, 200_000, 0]);
+    // One figure a month up to the debt-free month: its length is `months`.
+    expect(effect.plan.leftByMonth).toHaveLength(effect.plan.months!);
+    expect(effect.baseline.leftByMonth).toHaveLength(effect.baseline.months!);
+  });
+  it('the months left add up every debt, and interest added before a payment is in them', () => {
+    const loan = debt('K', { balanceMinor: 6_000_000, ratesBps: [2_400], interest: { kind: 'balance' }, minimumsMinor: Array(6).fill(1_071_155), regularMinor: 1_071_155 });
+    const small = debt('S', { balanceMinor: 300_000, minimumsMinor: [100_000, 100_000, 100_000], regularMinor: 100_000 });
+    const plan = simulatePayoff([loan, small], { ...opts, method: 'avalanche', extraMinor: 0 });
+    // Month 0: 6.000.000 + 120.000 interest − 1.071.155, and 300.000 − 100.000.
+    expect(plan.leftByMonth[0]).toBe(6_000_000 + 120_000 - 1_071_155 + 200_000);
+    expect(plan.leftByMonth.at(-1)).toBe(0);
+    expect(simulatePayoff([], opts).leftByMonth).toEqual([]);
+  });
   it('more extra never ends later and never costs more interest (property)', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 5_000_000 }), fc.integer({ min: 0, max: 5_000_000 }), (x, y) => {

@@ -47,6 +47,11 @@ export interface PayoffPlan {
   unknown: null | { reason: 'noRate' | 'neverCleared'; keys: string[] };
   interestMinor: number;
   debts: PayoffDebtResult[];
+  /**
+   * What is left in all at the end of month 0, 1, … (the same balances the months are worked on, added up), up to the
+   * month the last debt clears — or the cap when one never does. Empty when nothing is owed.
+   */
+  leftByMonth: number[];
 }
 
 export interface ExtraEffect {
@@ -156,6 +161,7 @@ export function simulatePayoff(debts: readonly PayoffDebt[], options: PayoffOpti
   const extra = Math.max(0, options.extraMinor);
 
   const owed = () => running.some((r) => r.balance > 0);
+  const leftByMonth: number[] = [];
   for (let m = 0; m < cap && owed(); m += 1) {
     for (const r of running) {
       if (r.balance <= 0 || m < (r.debt.firstMonth ?? 0)) continue;
@@ -187,6 +193,7 @@ export function simulatePayoff(debts: readonly PayoffDebt[], options: PayoffOpti
       left -= pay;
       if (r.balance === 0) r.endIndex = m;
     }
+    leftByMonth.push(running.reduce((sum, r) => sum + Math.max(0, r.balance), 0));
   }
 
   const noRate = running.filter((r) => r.debt.ratesBps === null).map((r) => r.debt.key);
@@ -205,6 +212,7 @@ export function simulatePayoff(debts: readonly PayoffDebt[], options: PayoffOpti
       interestMinor: r.interest,
       paidMinor: r.paid,
     })),
+    leftByMonth,
   };
 }
 
