@@ -1,6 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow, CaptureSource, CardRow, DraftEdit, DraftRow } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
+import { useOpenReceipt } from '../transactions/ReceiptPeekHost';
 import { Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
@@ -139,6 +140,8 @@ export function DesktopReview({
   children?: ReactNode;
 }) {
   const navigate = useNavigate();
+  // A recorded capture's Open transaction: its Mac receipt in the peek's place, with ‹ back to the capture.
+  const openReceipt = useOpenReceipt();
   const [tab, setTab] = useState<Tab>('pending');
   const recorded = useDrafts('confirmed', tab === 'confirmed');
   const discarded = useDrafts('dismissed', tab === 'dismissed');
@@ -367,7 +370,10 @@ export function DesktopReview({
           onPick={(pick) => setPicking({ draftId: peeked.id, pick })}
           onOpenTransaction={
             tab === 'confirmed' && peeked.transactionId
-              ? () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: peeked.transactionId! } })
+              ? () =>
+                  openReceipt
+                    ? openReceipt(peeked.transactionId!, { back: peeked.description || 'Capture' })
+                    : void navigate({ to: '/transactions/$transactionId', params: { transactionId: peeked.transactionId! } })
               : undefined
           }
         />

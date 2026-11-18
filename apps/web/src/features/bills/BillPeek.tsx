@@ -1,6 +1,7 @@
 import { dayMonth, formatMinor, isoDate, monthName, ordinal, periodicRepeat, thisBillMonth, yearlyRepeat } from '@expanses/core';
 import { RecurringError, resumeBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
+import { useOpenReceipt } from '../transactions/ReceiptPeekHost';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { moneyHolders, useAccounts, useInvalidateAll, useMemberPayers } from '../../lib/queries';
@@ -49,6 +50,8 @@ export function BillPeek({
 }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
+  // A paid month opens its payment's Mac receipt in this peek's place, with ‹ back to the bill.
+  const openReceipt = useOpenReceipt();
   const invalidate = useInvalidateAll();
   const today = isoDate();
   const accounts = useAccounts().data ?? [];
@@ -222,10 +225,12 @@ export function BillPeek({
                 disabled={!payment}
                 onClick={() =>
                   payment &&
-                  void navigate({
-                    to: '/transactions/$transactionId',
-                    params: { transactionId: payment.id },
-                  })
+                  (openReceipt
+                    ? openReceipt(payment.id, { back: bill.name })
+                    : void navigate({
+                        to: '/transactions/$transactionId',
+                        params: { transactionId: payment.id },
+                      }))
                 }
                 className="flex w-full items-baseline gap-2 px-[14px] py-[5px] text-left text-[13px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)] disabled:hover:bg-transparent"
               >

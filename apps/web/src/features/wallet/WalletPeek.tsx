@@ -1,6 +1,7 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { useOpenReceipt } from '../transactions/ReceiptPeekHost';
 import { ChevronRight } from 'lucide-react';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts } from '../../lib/queries';
@@ -175,14 +176,16 @@ export function WalletPeek({
           Open
         </button>
       </div>
-      {id && <PeekRecent accountId={id} ids={pockets.length > 0 ? pockets.map((pocket) => pocket.id) : [id]} />}
+      {id && <PeekRecent name={card.name} accountId={id} ids={pockets.length > 0 ? pockets.map((pocket) => pocket.id) : [id]} />}
     </SidePeek>
   );
 }
 
 /** The account's last few rows, as its page's Recent reads them (opening balances left out); a click opens the receipt. */
-function PeekRecent({ accountId, ids }: { accountId: string; ids: readonly string[] }) {
+function PeekRecent({ name, accountId, ids }: { name: string; accountId: string; ids: readonly string[] }) {
   const navigate = useNavigate();
+  // A row opens its Mac receipt in this peek's place, with ‹ back to the card.
+  const openReceipt = useOpenReceipt();
   const accounts = useAccounts().data ?? [];
   const recent = useRecentTransactions(ids);
   const rows = buildRows(recent.data ?? [], [], accounts, [])
@@ -207,10 +210,12 @@ function PeekRecent({ accountId, ids }: { accountId: string; ids: readonly strin
                 type="button"
                 data-testid="peek-recent-row"
                 onClick={() =>
-                  void navigate({
-                    to: '/transactions/$transactionId',
-                    params: { transactionId: row.id },
-                  })
+                  openReceipt
+                    ? openReceipt(row.id, { back: name })
+                    : void navigate({
+                        to: '/transactions/$transactionId',
+                        params: { transactionId: row.id },
+                      })
                 }
                 className="flex w-full items-center gap-[8px] px-[14px] py-[5px] text-left text-[13px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]"
               >

@@ -21,6 +21,7 @@ import { useWidgetSummaryWriter } from '../features/account/use-widget-writer';
 import { useICloudBackupAtStart } from '../features/backup/icloud/runner';
 import { useForeignRecalcAtStart } from '../features/accounts/withdrawal-rate-start';
 import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
+import { useReceiptPeekHost } from '../features/transactions/ReceiptPeekHost';
 
 export function Layout() {
   const { database } = useApp();
@@ -38,6 +39,8 @@ export function Layout() {
   useCashflowRotation(pathname);
   const phoneShell = phone || sideways;
   const tableOnly = sideways && rotationFor(pathname) === 'free';
+  // The Mac receipt a transaction opens on a wide screen, wherever it is opened from but Cashflow's own table.
+  const receiptPeek = useReceiptPeekHost(!phoneShell);
 
   /*
    * A form abandoned halfway leaves a picture in OPFS that no row names. Tidying them at start is the only
@@ -82,7 +85,7 @@ export function Layout() {
     return () => observer.disconnect();
   }, []);
 
-  return (
+  return receiptPeek.provide(
     <div
       className="min-h-dvh md:flex"
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
@@ -99,7 +102,8 @@ export function Layout() {
         />
       )}
       {/* The phone draws under the status bar and the home indicator, so the shell gives both back. */}
-      <main className={cx('relative flex-1', phoneShell ? 'pb-32' : 'pb-8')} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      {/* While a receipt peek stands on its own (an account's history), the page keeps clear of it rather than under it. */}
+      <main className={cx('relative flex-1', phoneShell ? 'pb-32' : 'pb-8', receiptPeek.room && 'pr-[330px]')} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         {/* Out of view the moment anything has scrolled under the status bar; watched, not listened to. */}
         <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
         {/* The Mac pages draw their own title bar and grey page edge to edge (`edgeToEdge`); every other page sits in the column. */}
@@ -132,6 +136,6 @@ export function Layout() {
       )}
       <ToastHost />
       <EventModeHost />
-    </div>
+    </div>,
   );
 }

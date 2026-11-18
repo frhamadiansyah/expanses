@@ -1,6 +1,7 @@
 import { type BudgetLine, formatBp, formatMinor, monthName } from '@expanses/core';
 import type { AccountRow, BudgetRow } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
+import { useOpenReceipt } from '../transactions/ReceiptPeekHost';
 import { cx } from '../../ui';
 import { PEEK_BUTTON, SidePeek } from '../../ui/native/SidePeek';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -57,6 +58,8 @@ export function CategoryPeek({
   onEditBudget: () => void;
 }) {
   const navigate = useNavigate();
+  // A row opens its Mac receipt in this peek's place, with ‹ back to the category.
+  const openReceipt = useOpenReceipt();
   const ids = flatten([line]).map((each) => each.id);
   const items = useCategoryItems(ids, month);
   const tone = toneOf(line.capMinor, line.totalMinor);
@@ -126,7 +129,7 @@ export function CategoryPeek({
               type="button"
               data-testid="peek-item"
               disabled={!item.transactionId}
-              onClick={() => item.transactionId && void navigate({ to: '/transactions/$transactionId', params: { transactionId: item.transactionId } })}
+              onClick={() => item.transactionId && (openReceipt ? openReceipt(item.transactionId, { back: line.name }) : void navigate({ to: '/transactions/$transactionId', params: { transactionId: item.transactionId } }))}
               className="flex w-full items-baseline gap-2 px-[14px] py-[5px] text-left text-[13px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)] disabled:hover:bg-transparent"
             >
               <span className="w-[44px] shrink-0 text-[12px] text-[var(--ph-ink-3)] tabular-nums">{dayMonth(item.onDate)}</span>
