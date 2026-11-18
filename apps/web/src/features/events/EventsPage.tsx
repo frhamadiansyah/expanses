@@ -1,15 +1,12 @@
 import { isoDate } from '@expanses/core';
-import { type EventRow, saveEvent, type SharedEventSummary } from '@expanses/db';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { type EventRow, type SharedEventSummary } from '@expanses/db';
+import { Link } from '@tanstack/react-router';
 import { CalendarRange, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { usePhone } from '../../app/use-phone';
-import { AddWorkspaceSheet } from '../account/AddWorkspaceSheet';
-import { JoinSheet } from '../sharing/JoinSheet';
-import { useInvalidateAll } from '../../lib/queries';
-import { cx, Empty, ErrorBox, Money } from '../../ui';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { Empty, ErrorBox, Money } from '../../ui';
 import {
   type GroupChild,
   InsetGroup,
@@ -20,18 +17,15 @@ import {
   ROW_PAD_Y,
   rowHeight,
   SCREEN,
-  SelectRow,
-  TextRow,
 } from '../../ui/native';
-import { useCategorySets } from '../categories/set-queries';
-import { CurrencySheet } from '../transactions/CurrencySheet';
-import { EventCurrencyRow } from './EventCurrencyRow';
 import { EventModeGroup } from './EventMode';
 import { takesEventMode } from './event-mode';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
 import { useOpenBookReadOnly } from '../sharing/queries';
+import { DesktopEvents } from './DesktopEvents';
+import { useNewEvent } from './NewEventFlow';
 import { eventDates, eventStatus } from './event-dates';
 
 /** How long a press on an event is held before it opens the event's Event mode. */
@@ -163,55 +157,33 @@ function EventListRow({ event, today, position, shared, ready }: GroupChild & { 
 }
 
 /**
+ * Events: on a wide screen (not a phone, not a phone held sideways) the Mac cards page (`DesktopEvents`), else the phone's
+ * list below.
+ */
+export function EventsPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopEvents /> : <PhoneEventsPage />;
+}
+
+/**
  * Events: a birth, a wedding, a renovation, a trip, Lebaran.
  *
  * Spending on an event lands across many categories and a few weeks, so no monthly line ever sees the whole of it.
  * Each event is read on its own screen, built like Cashflow; this one lists them, the running ones first.
  */
-export function EventsPage() {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const navigate = useNavigate();
+function PhoneEventsPage() {
   const events = useEvents();
   const summaryRead = useSharedEventSummaries();
   const summaries = summaryRead.data ?? {};
-  const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const today = isoDate();
   const phone = usePhone();
-  const [error, setError] = useState<unknown>(null);
-
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-  const [startsOn, setStartsOn] = useState(today);
-  const [endsOn, setEndsOn] = useState(today);
-  const [setId, setSetId] = useState('');
-  const [currency, setCurrency] = useState(ws.baseCurrency);
-  const [picking, setPicking] = useState(false);
-  const [choosing, setChoosing] = useState(false);
-  const [joining, setJoining] = useState(false);
+  const create = useNewEvent();
 
   const all = events.data ?? [];
   const current = all.filter((event) => eventStatus(event, today) !== 'Done');
   // The most recent first: last month's trip is what is looked back on, not the one from years ago.
   const past = all.filter((event) => eventStatus(event, today) === 'Done').reverse();
-
-  async function addEvent() {
-    setError(null);
-    try {
-      const id = await saveEvent(database, ws, {
-        name,
-        startsOn,
-        endsOn,
-        setId: setId === '' ? null : setId,
-        currency,
-      });
-      await invalidate();
-      // A new event is planned next, and that happens on its own screen.
-      await navigate({ to: '/events/$eventId', params: { eventId: id } });
-    } catch (e) {
-      setError(e);
-    }
-  }
 
   return (
     <div className={SCREEN}>
@@ -219,55 +191,11 @@ export function EventsPage() {
         title="Events"
         // The same glyph at every width, under the name each width has always announced: a phone's "New event",
         // a desktop's "Add an event".
-        actions={[{ key: 'new', label: phone ? 'New event' : 'Add an event', glyph: <Plus size={22} aria-hidden />, run: () => setChoosing(true) }]}
+        actions={[{ key: 'new', label: phone ? 'New event' : 'Add an event', glyph: <Plus size={22} aria-hidden />, run: create.start }]}
       />
-      <ErrorBox error={error ?? events.error} />
+      <ErrorBox error={create.error ?? events.error} />
 
-      {choosing && (
-        <AddWorkspaceSheet
-          title="Events"
-          newLabel="New event"
-          testIds={{ sheet: 'add-event-sheet', news: 'new-event', join: 'join-event-choice' }}
-          onNew={() => {
-            setChoosing(false);
-            setAdding(true);
-          }}
-          onJoin={() => {
-            setChoosing(false);
-            setJoining(true);
-          }}
-          onClose={() => setChoosing(false)}
-        />
-      )}
-      {joining && <JoinSheet onClose={() => setJoining(false)} />}
-
-      {/* A sheet over the list, as every other thing made from a list is: ✕ and ✓ in its header, the page behind it untouched. */}
-      {adding && (
-        <Sheet
-          grouped
-          tall
-          title="New event"
-          onClose={() => setAdding(false)}
-          confirm={{ label: 'Save event', disabled: name.trim() === '', run: () => void addEvent() }}
-        >
-          <InsetGroup>
-            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} />
-            <SelectRow label="Categories" value={setId} onChange={(e) => setSetId(e.target.value)}>
-              <option value="">The monthly categories</option>
-              {sets.map((set) => (
-                <option key={set.id} value={set.id}>
-                  {set.name}
-                </option>
-              ))}
-            </SelectRow>
-            <EventCurrencyRow value={currency} onOpen={() => setPicking(true)} />
-            <TextRow label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
-            <TextRow label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
-          </InsetGroup>
-          {picking && <CurrencySheet value={currency} accountCurrency={currency} baseCurrency={ws.baseCurrency} onPick={setCurrency} onClose={() => setPicking(false)} />}
-          <ErrorBox error={error} />
-        </Sheet>
-      )}
+      {create.overlay}
 
       {events.isSuccess && all.length === 0 && (
         <Empty>No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</Empty>
