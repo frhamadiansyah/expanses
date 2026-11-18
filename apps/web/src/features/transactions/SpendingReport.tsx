@@ -264,6 +264,7 @@ export function SpendingReport({
   onMonth,
   alsoMissing = [],
   paidAccountId,
+  leaveOutYearlyBills = false,
   need,
   onNeed,
 }: {
@@ -281,6 +282,12 @@ export function SpendingReport({
   alsoMissing?: readonly UnconvertedRow[];
   /** The list's Paid with filter: the ring, the total and the categories read only what this account paid. */
   paidAccountId?: string;
+  /**
+   * A month (or less) with the ⋯ menu's Yearly bills off (`yearly-bills.ts`): the ring, its total, the bars and the
+   * income split leave out every payment of a yearly bill, as the list's own totals do. The budget gauge is the
+   * Budget page's and keeps them.
+   */
+  leaveOutYearlyBills?: boolean;
   /** Essential or Lifestyle, when the list is filtered to one from Income page 2. */
   need?: 'essential' | 'lifestyle';
   onNeed?: (need: 'essential' | 'lifestyle' | undefined) => void;
@@ -311,8 +318,8 @@ export function SpendingReport({
   // swallow the shape of an ordinary month.
   const eventsInCaps = useOpenBook()?.countEventsInBudget ?? false;
   const totals = useQuery({
-    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, monthStart, eventsInCaps ? 'with-events' : 'without-events', paidAccountId ?? null],
-    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true, paidAccountId }),
+    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, monthStart, eventsInCaps ? 'with-events' : 'without-events', paidAccountId ?? null, leaveOutYearlyBills ? 'yearly-out' : 'yearly-in'],
+    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true, paidAccountId, leaveOutYearlyBills }),
   });
   const budgets = useQuery({
     queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month],
@@ -330,13 +337,13 @@ export function SpendingReport({
   const pageNames: readonly ('ring' | 'budget' | 'trend')[] = hasBudgets ? ['ring', 'budget', 'trend'] : ['ring', 'trend'];
   const page = Math.max(0, pageNames.indexOf(pageName));
   const onBudgets = pageNames[page] === 'budget';
-  const trend = useSpendingTrend(month, kind, !eventsInCaps);
+  const trend = useSpendingTrend(month, kind, !eventsInCaps, leaveOutYearlyBills);
   /*
    * Income's last page is where the income went (Essential · Lifestyle · Debts & savings), not income over time: read
    * through the same totals as the two rings, over the same period and Paid with filter.
    */
   const guide = useSpendingGuide();
-  const split = useEssentialSplit({ from, to }, { paidAccountId, enabled: kind === 'income' });
+  const split = useEssentialSplit({ from, to }, { paidAccountId, enabled: kind === 'income', leaveOutYearlyBills });
   const incomeSplit = split.data ? splitView(split.data.split, guide) : null;
   const caps: Record<string, number> = {};
   /** A category's budget, or what its children were budgeted between them: a parent row measures the lot. */
