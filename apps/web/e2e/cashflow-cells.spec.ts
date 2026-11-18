@@ -87,6 +87,8 @@ test('⌘D fills down from the top cell, Delete clears drafts only, ⌘C copies 
   await page.goto('/transactions');
   await pasteInto(page, ['2026-10-16\tWarung Satu\tRestaurants\tBank Contoh\t21.000', '2026-10-15\tWarung Dua\t\tBank Contoh\t23.000', '2026-10-14\tWarung Tiga\t\tBank Contoh\t25.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  // The paste's line lands under the typing row a moment after its rows: the table settles before the drag.
+  await expect(page.getByTestId('paste-summary')).toContainText('Pasted 3 rows');
 
   // A drag down the Category column picks the three cells.
   await dragCells(page, cellOf(draftRow(page, 'Warung Satu'), 'category'), cellOf(draftRow(page, 'Warung Tiga'), 'category'));
@@ -121,6 +123,7 @@ test('a range of recorded rows changes them by their own edit, never clears them
   await pasteInto(page, ['2026-10-16\tToko A\tGroceries\tBank Contoh\t11.000', '2026-10-15\tToko B\tGroceries\tBank Contoh\t12.000'].join('\n'));
   await page.getByTestId('paste-summary').getByRole('button', { name: 'Record 2 ready' }).click();
   await expect(page.getByTestId('transaction-row')).toHaveCount(2);
+  await expect(page.getByTestId('paste-summary')).toHaveCount(0);
 
   const recorded = (note: string) => page.getByTestId('transaction-row').filter({ hasText: note });
   await dragCells(page, cellOf(recorded('Toko A'), 'category'), cellOf(recorded('Toko B'), 'category'));

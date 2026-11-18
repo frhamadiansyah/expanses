@@ -69,6 +69,7 @@ import { ReceiptLink } from './ReceiptLink';
 import { SelectBar } from './SelectBar';
 import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
+import type { PasteMark } from './paste-categories';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
 import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, leaveOutYearlyBills, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, sortRows, totals, yearlyBillsOut } from './list-model';
@@ -974,10 +975,12 @@ export function TransactionsPage() {
   }
 
   const keepTyped = (values: QuickValues) => run('typing', () => createDraft(database, ws, { source: 'manual', ...draftFields(values) }));
-  const keepPasted = async (pasted: QuickValues[]) => {
+  const keepPasted = async (pasted: QuickValues[], _marks?: PasteMark[], onMade?: (ids: string[]) => void) => {
     const made: string[] = [];
     const ok = await run('typing', async () => {
       for (const values of pasted) made.push(await createDraft(database, ws, { source: 'manual', ...draftFields(values) }));
+      // Told before the rows are read again, so nothing done to a row as it shows can come before what it was told.
+      onMade?.(made);
     });
     // Those made before a failure are kept, and named, so the paste can still be undone whole.
     return ok || made.length > 0 ? made : null;

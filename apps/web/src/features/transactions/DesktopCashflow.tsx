@@ -445,12 +445,13 @@ export function DesktopCashflow({
   const deskHandlers: TableHandlers = {
     ...handlers,
     keepPasted: async (values, made) => {
-      const ids = await handlers.keepPasted(values, made);
-      if (ids && ids.length > 0) {
-        setPasted({ ids, recorded: false });
+      // The marks are kept as soon as the drafts exist, before their rows show: a row recorded at once still teaches.
+      const keep = (ids: string[]) => {
         const byId = Object.fromEntries(ids.map((id, i) => [id, made?.[i] ?? {}]));
         setMarks(keepMarks(byId, new Set([...drafts.map((draft) => draft.id), ...ids])));
-      }
+      };
+      const ids = await handlers.keepPasted(values, made, keep);
+      if (ids && ids.length > 0) setPasted({ ids, recorded: false });
       return ids;
     },
     // A pasted row recorded teaches its unmatched name the category it was recorded with; one discarded is let go.

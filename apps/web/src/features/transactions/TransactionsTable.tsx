@@ -24,7 +24,7 @@ export interface TableHandlers {
    * Keeps pasted rows as not recorded. Resolves to the drafts made (in the order pasted), or null when none could be.
    * `marks` (the desk's) say, row by row, how a category was guessed and which unmatched name it had.
    */
-  keepPasted: (rows: QuickValues[], marks?: PasteMark[]) => Promise<string[] | null>;
+  keepPasted: (rows: QuickValues[], marks?: PasteMark[], onMade?: (ids: string[]) => void) => Promise<string[] | null>;
   guessCategory: (description: string) => Promise<string | null>;
   /** Saves a recorded row's cells. An edit replaces the row: `onSaved` hears the new row's id. */
   saveRecorded: (id: string, values: QuickValues, onSaved?: (replacement: string) => void) => Promise<boolean>;
