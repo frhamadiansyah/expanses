@@ -212,18 +212,76 @@ describe('Notion links remembered on this device', () => {
     expect(unknownLinks(readMarks(store), new Set(['r1', 'r3']), store)).toBe(0);
   });
 
-  it('a link not known yet still takes the place’s history, which teaches nothing until the owner picks', async () => {
+  it('a link not known yet still takes the place’s history, which a save as not recorded does not teach', async () => {
     const store = memory();
     const [row] = await pastedCategories([{ cells: linked(FOOD), values: blank() }], ctxOf(store, async () => 'restaurants'));
     expect(row).toEqual({ values: blank({ categoryId: 'restaurants' }), mark: { text: FOOD, guessed: { categoryId: 'restaurants', how: 'history' } } });
     keepMarks({ h1: row!.mark }, new Set(), store);
-    // Recorded with the guess as it was: nothing learnt.
-    learnFromSaved('h1', row!.values, true, [], store);
+    // Kept as not recorded with the guess as it was: nothing learnt, and the row still reads as guessed.
+    const kept = learnFromSaved('h1', row!.values, false, [], store);
     expect(rememberedCategory(FOOD, store)).toBeNull();
+    expect(kept.marks.h1).toEqual(row!.mark);
     // A remembered link wins over the history.
     store.setItem('paste-category-names', JSON.stringify({ [FOOD]: 'cafe' }));
     const [known] = await pastedCategories([{ cells: linked(FOOD), values: blank() }], ctxOf(store, async () => 'restaurants'));
     expect(known!.values.categoryId).toBe('cafe');
+  });
+
+  it('a row recorded with the place’s history guess teaches its unknown link, and the other waiting row naming it fills in', async () => {
+    const store = memory();
+    // Two places sharing one category link: the first has history, the second none.
+    const history = async (description: string) => (description === 'Warung Bu Tini' ? 'restaurants' : null);
+    const rows = await pastedCategories(
+      [
+        { cells: linked(FOOD), values: blank({ accountId: 'bca' }) },
+        { cells: linked(FOOD, undefined, { description: 'Kios Sore' }), values: blank({ description: 'Kios Sore', accountId: 'bca' }) },
+      ],
+      ctxOf(store, history),
+    );
+    expect(rows.map((row) => row.values.categoryId)).toEqual(['restaurants', '']);
+    keepMarks({ w1: rows[0]!.mark, w2: rows[1]!.mark }, new Set(), store);
+    expect(unknownLinks(readMarks(store), new Set(['w1', 'w2']), store)).toBe(1);
+
+    const learnt = learnFromSaved('w1', rows[0]!.values, true, [{ id: 'w2', values: rows[1]!.values }], store);
+    expect(rememberedCategory(FOOD, store)).toBe('restaurants');
+    expect(learnt.fills).toEqual([{ id: 'w2', values: blank({ description: 'Kios Sore', accountId: 'bca', categoryId: 'restaurants' }) }]);
+    expect(learnt.marks).toEqual({ w2: { text: FOOD, guessed: { categoryId: 'restaurants', how: 'remembered' } } });
+    expect(unknownLinks(learnt.marks, new Set(['w2']), store)).toBe(0);
+  });
+
+  it('a recorded row still showing its guess does not re-teach a link already remembered as something else', () => {
+    const store = memory();
+    // Remembered as Cafe since this row was pasted with Groceries (a remembered guess) and Restaurants (history).
+    store.setItem('paste-category-names', JSON.stringify({ [FOOD]: 'cafe' }));
+    keepMarks({ r: { text: FOOD, guessed: { categoryId: 'groceries', how: 'remembered' } }, h: { text: FOOD, guessed: { categoryId: 'restaurants', how: 'history' } }, o: { text: FOOD } }, new Set(), store);
+    const waiting = [{ id: 'o', values: blank() }];
+    expect(learnFromSaved('r', blank({ categoryId: 'groceries' }), true, waiting, store).fills).toEqual([]);
+    expect(learnFromSaved('h', blank({ categoryId: 'restaurants' }), true, waiting, store).fills).toEqual([]);
+    expect(rememberedCategory(FOOD, store)).toBe('cafe');
+    // One showing the remembered value itself teaches nothing new either.
+    keepMarks({ s: { text: FOOD, guessed: { categoryId: 'cafe', how: 'remembered' } } }, new Set(['o']), store);
+    expect(learnFromSaved('s', blank({ categoryId: 'cafe' }), true, waiting, store).fills).toEqual([]);
+    // Changed before Record: the owner's value teaches, as it always has.
+    keepMarks({ t: { text: FOOD, guessed: { categoryId: 'cafe', how: 'remembered' } } }, new Set(['o']), store);
+    expect(learnFromSaved('t', blank({ categoryId: 'groceries' }), true, waiting, store).fills).toEqual([{ id: 'o', values: blank({ categoryId: 'groceries' }) }]);
+    expect(rememberedCategory(FOOD, store)).toBe('groceries');
+  });
+
+  it('Paid with follows the same rule: recorded teaches, re-teaching an unchanged remembered value does not, and a save as not recorded is as before', () => {
+    const store = memory();
+    // A remembered Paid with whose memory has since gone (cleared storage): recording the row teaches it again.
+    keepMarks({ p1: { paid: CARD, paidGuessed: 'bonvoy:c2' }, p2: { paid: CARD } }, new Set(), store);
+    const kept = learnFromSaved('p1', blank({ categoryId: 'cafe', accountId: 'bonvoy', cardId: 'c2' }), false, [{ id: 'p2', values: blank({ categoryId: 'cafe' }) }], store);
+    expect(rememberedPaid(CARD, store)).toBeNull();
+    expect(kept.fills).toEqual([]);
+    const learnt = learnFromSaved('p1', blank({ categoryId: 'cafe', accountId: 'bonvoy', cardId: 'c2' }), true, [{ id: 'p2', values: blank({ categoryId: 'cafe' }) }], store);
+    expect(rememberedPaid(CARD, store)).toBe('bonvoy:c2');
+    expect(learnt.fills).toEqual([{ id: 'p2', values: blank({ categoryId: 'cafe', accountId: 'bonvoy', cardId: 'c2' }) }]);
+    // Remembered as BCA since; a row still showing the old remembered card does not put it back when recorded.
+    store.setItem('paste-paid-names', JSON.stringify({ [CARD]: 'bca' }));
+    keepMarks({ p3: { paid: CARD, paidGuessed: 'bonvoy:c2' } }, new Set(['p2']), store);
+    learnFromSaved('p3', blank({ categoryId: 'cafe', accountId: 'bonvoy', cardId: 'c2' }), true, [], store);
+    expect(rememberedPaid(CARD, store)).toBe('bca');
   });
 
   it('a later pick replaces what was remembered, and moves the rows still holding the old guess — not one the owner set', () => {

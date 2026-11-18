@@ -6,11 +6,12 @@ import { foldName, type PastedCells, paymentKey, type QuickValues } from './quic
  * leaves:
  *  - an empty Category cell takes the typing row's guess — the category the last purchase at that place was recorded in;
  *  - a name that matches nothing ("Makan"), or a Notion relation's page link (`notionKey`, the same page every time),
- *    stays orange until the owner picks a value for that row and the row is saved or recorded: this device then
- *    remembers the name or link as that value, every other waiting pasted row naming it fills in, and so does the next
- *    paste. A Notion link with no category remembered yet still takes the place's history, as an empty cell does.
+ *    stays blank until the owner picks a value for that row and the row is saved, or until the row is recorded with a
+ *    value (recording says yes to what the row shows, the place's history guess included): this device then remembers
+ *    the name or link as that value, every other waiting pasted row naming it fills in, and so does the next paste. A
+ *    Notion link with no category remembered yet still takes the place's history, as an empty cell does.
  * Either fill is marked as guessed on its row. Nothing is ever guessed from the amount, and a row with no history and
- * nothing remembered stays orange. Kept on this device alone (localStorage): no sync, nothing in the database.
+ * nothing remembered stays blank. Kept on this device alone (localStorage): no sync, nothing in the database.
  */
 
 /** How a pasted row's category came to be filled: from the place's history, or from a name remembered on this device. */
@@ -126,10 +127,12 @@ const tidy = (mark: PasteMark): PasteMark => Object.fromEntries(Object.entries(m
 
 /**
  * A pasted row saved (`record` false: kept as not recorded) or recorded with these cells. A name or link of its that
- * matched nothing is remembered as the value the owner picked for it — one that is not the guess the paste filled in
- * (a row recorded with the place's history as it was teaches nothing). Every other waiting pasted row (`waiting`) naming the same
- * name or link, its cell still empty or still the paste's guess, fills in: `fills` are those rows' new cells, to save
- * as drafts, already marked as guessed. A recorded row's mark goes.
+ * matched nothing is remembered as the row's value (`teaches`): when saved, only a value the owner picked (not the
+ * guess the paste filled in); when recorded, whatever the row shows — the place's history guess too, since recording is
+ * the owner's yes — unless it still shows the paste's guess and the name or link is already remembered (nothing new,
+ * and a remembered value is never put back by an unchanged row). Every other waiting pasted row (`waiting`) naming the
+ * same name or link, its cell still empty or still the paste's guess, fills in: `fills` are those rows' new cells, to
+ * save as drafts, already marked as guessed. A recorded row's mark goes.
  */
 export function learnFromSaved(
   draftId: string,
@@ -142,9 +145,11 @@ export function learnFromSaved(
   const mark = marks[draftId];
   if (!mark) return { marks, fills: [] };
   const paidNow = values.accountId ? paymentKey(values.accountId, values.cardId) : '';
-  // Only a value the owner gave teaches: the paste's own guess (the place's history, or what was remembered) does not.
-  const category = mark.text && values.categoryId && values.categoryId !== mark.guessed?.categoryId ? { key: nameKey(mark.text), id: values.categoryId } : null;
-  const paid = mark.paid && paidNow && paidNow !== mark.paidGuessed ? { key: nameKey(mark.paid), id: paidNow } : null;
+  // A value the owner changed always teaches; the paste's own guess teaches only when recorded and nothing is remembered yet.
+  const teaches = (map: string, text: string | undefined, now: string, guess: string | undefined) =>
+    !!text && !!now && (now !== guess || (record && !remembered(map, text, store)));
+  const category = teaches(NAMES_KEY, mark.text, values.categoryId, mark.guessed?.categoryId) ? { key: nameKey(mark.text!), id: values.categoryId } : null;
+  const paid = teaches(PAID_KEY, mark.paid, paidNow, mark.paidGuessed) ? { key: nameKey(mark.paid!), id: paidNow } : null;
   if (category) remember(NAMES_KEY, mark.text!, category.id, store);
   if (paid) remember(PAID_KEY, mark.paid!, paid.id, store);
 

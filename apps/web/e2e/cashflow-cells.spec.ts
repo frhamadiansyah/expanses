@@ -293,6 +293,34 @@ test('a Notion relation’s page links are picked once and remembered: the other
   await expect(recordOf(page, 'Toko Contoh')).toBeDisabled();
 });
 
+test('a row recorded with its place’s history guess teaches its Notion link, and the other waiting row with that link fills in', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  // History for the first place only: one purchase there recorded as Restaurants.
+  await pasteInto(page, '2026-10-08\tWarung Pak Darmo\tRestaurants\tBank Contoh\t27.000');
+  await recordOf(page, 'Warung Pak Darmo').click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
+
+  // Two places sharing one invented category link, not known on this device yet.
+  const meals = 'https://app.notion.com/5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b';
+  await pasteInto(page, [`2026/10/15\tWarung Pak Darmo\t${meals}\tBank Contoh\t31,500`, `2026/10/16\tGerobak Bakso Contoh\t${meals}\tBank Contoh\t16,000`].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+  const darmo = draftRow(page, 'Warung Pak Darmo').getByLabel('Row category');
+  await expect(darmo).toHaveValue('Restaurants');
+  await expect(darmo).toHaveAttribute('title', 'Category guessed from the last time this was bought here');
+  const bakso = draftRow(page, 'Gerobak Bakso Contoh');
+  await expect(bakso.getByLabel('Row category')).toHaveValue('');
+  await expect(page.getByTestId('links-to-pick')).toHaveText('1 Notion link to pick');
+
+  // Recorded as it shows: the guess is the owner's yes, so the link is learnt and the other row fills in at once.
+  await recordOf(page, 'Warung Pak Darmo').click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(bakso.getByLabel('Row category')).toHaveValue('Restaurants');
+  await expect(bakso.getByLabel('Row category')).toHaveAttribute('title', 'Category remembered for this Notion link');
+  await expect(page.getByTestId('links-to-pick')).toHaveCount(0);
+  await expect(recordOf(page, 'Gerobak Bakso Contoh')).toBeEnabled();
+});
+
 test('a pasted category is matched with accents left out and “&” as “and”, and nothing looser', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
