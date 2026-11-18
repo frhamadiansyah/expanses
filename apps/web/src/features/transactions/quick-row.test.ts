@@ -1,7 +1,7 @@
 import { matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cleanPastedCell, groupedAmountCell, isNotionPageLinks, isQuickEditable, keepsReadFigure, lastFourOf, matchLastFour, parsePastedRows, pastedCells, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutPlaceholders } from './quick-row';
+import { cleanPastedCell, groupedAmountCell, isNotionPageLinks, notionKey, isQuickEditable, keepsReadFigure, lastFourOf, matchLastFour, parsePastedRows, pastedCells, payerOptions, paymentOptions, placeholderLabel, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells, withoutNotionLinks, withoutPlaceholders } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -355,6 +355,39 @@ describe('pasting from Notion', () => {
     expect(cleanPastedCell('Kopi (oat)')).toBe('Kopi (oat)');
     const rows = parsePastedRows('2026/10/03\t[Toko Sumber Rejeki](https://www.notion.so/x1)\tGroceries (https://www.notion.so/x2)\t5521 (https://www.notion.so/x3)\t123,400');
     expect(valuesFromCells(pastedCells(rows, 'desk')[0]!, resolve, TODAY)).toMatchObject({ description: 'Toko Sumber Rejeki', categoryId: 'groceries', accountId: 'bonvoy', cardId: 'c2' });
+  });
+
+  describe('a relation’s cell as bare page links', () => {
+    // Invented page ids.
+    const FOOD = '0f1e2d3c4b5a69788796a5b4c3d2e1f0';
+    const CARD = '11112222333344445555666677778888';
+
+    it('reads as one key: the 32-hex page id, in lower case, without query or fragment, whatever the address’s host', () => {
+      expect(notionKey(`https://app.notion.com/${FOOD}`)).toBe(`notion:${FOOD}`);
+      expect(notionKey(`https://www.notion.so/Food-${FOOD.toUpperCase()}?pvs=21#top`)).toBe(`notion:${FOOD}`);
+      expect(notionKey(`https://app.notion.com/p/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0`)).toBe(`notion:${FOOD}`);
+      expect(notionKey('https://app.notion.com/someplace?x=1')).toBe('notion:app.notion.com/someplace');
+    });
+
+    it('several comma-separated links are one key, in any order', () => {
+      expect(notionKey(`https://app.notion.com/${CARD}, https://www.notion.so/${FOOD}`)).toBe(`notion:${FOOD},${CARD}`);
+      expect(notionKey(`https://app.notion.com/${FOOD},https://app.notion.com/${CARD}`)).toBe(`notion:${FOOD},${CARD}`);
+    });
+
+    it('a cell with words, or another site’s address, is no link', () => {
+      expect(notionKey(`Groceries https://app.notion.com/${FOOD}`)).toBeNull();
+      expect(notionKey('https://example.com/abc')).toBeNull();
+      expect(notionKey('')).toBeNull();
+      expect(withoutNotionLinks(`Kopi, https://app.notion.com/${FOOD}`)).toBe('Kopi');
+    });
+
+    it('never lands in a cell: Category and Paid with keep it as their link, other cells are left empty', () => {
+      const rows = parsePastedRows(`2026/09/14\tSome Place\thttps://app.notion.com/${FOOD}\thttps://app.notion.com/${CARD}\t600,700\n2026/09/15\thttps://app.notion.com/${FOOD}\t\t\t5.000`);
+      const [first, second] = pastedCells(rows, 'desk');
+      expect(first).toEqual({ date: '2026/09/14', description: 'Some Place', category: '', paid: '', amount: '600,700', links: { category: `notion:${FOOD}`, paid: `notion:${CARD}` } });
+      expect(second).toEqual({ date: '2026/09/15', description: '', category: '', paid: '', amount: '5.000' });
+      expect(valuesFromCells(first!, { paid: () => null, category: () => null }, TODAY)).toEqual({ date: '14 Sep', description: 'Some Place', amount: '600,700', accountId: '', cardId: '', categoryId: '' });
+    });
   });
 
   it('tells Notion’s whole rows (page links, no cells) from cells', () => {

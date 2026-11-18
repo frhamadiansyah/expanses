@@ -222,3 +222,68 @@ test('a paste’s empty category is guessed from the place’s last purchase, an
   await expect(draftRow(page, 'Toko Baru Sekali').getByLabel('Row category')).toHaveValue('');
   await expect(draftRow(page, 'Toko Baru Sekali').getByLabel('Row category')).not.toHaveAttribute('data-guessed', 'true');
 });
+
+test('a Notion relation’s page links are picked once and remembered: the other rows naming them fill in, and so does the next paste', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  // Invented page ids: a category relation shared by two rows, another for the third, and an account relation.
+  const food = 'https://app.notion.com/0f1e2d3c4b5a69788796a5b4c3d2e1f0';
+  const other = 'https://www.notion.so/Other-aaaabbbbccccddddeeeeffff00001111?pvs=21';
+  const bank = 'https://app.notion.com/11112222333344445555666677778888';
+  const rows = [`2026/10/14\tPasar Contoh\t${food}\t${bank}\t41,500`, `2026/10/15\tKios Contoh\t${food}\t${bank}\t17,250`, `2026/10/16\tToko Contoh\t${other}\t\t9,000`].join('\n');
+  await pasteInto(page, rows);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  const links = page.getByTestId('paste-links');
+  await expect(links).toHaveText('3 Notion links not known yet — pick once, they are remembered');
+  // No address is put into a cell.
+  for (const note of ['Pasar Contoh', 'Kios Contoh', 'Toko Contoh']) {
+    await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('');
+    await expect(draftRow(page, note).getByLabel('Row paid with')).toHaveValue('');
+  }
+  await expect(page.locator('input[value*="notion"]')).toHaveCount(0);
+
+  // A category picked on one row, kept as not recorded (the row left): the other row with the same link fills in.
+  const pasar = draftRow(page, 'Pasar Contoh');
+  await pasar.getByLabel('Row category').fill('Groceries');
+  await pasar.getByLabel('Row category').press('Enter');
+  await page.getByRole('heading', { name: 'Cashflow' }).click();
+  const kios = draftRow(page, 'Kios Contoh');
+  await expect(kios.getByLabel('Row category')).toHaveValue('Groceries');
+  await expect(kios.getByLabel('Row category')).toHaveAttribute('data-guessed', 'true');
+  await expect(kios.getByLabel('Row category')).toHaveAttribute('title', 'Category remembered for this Notion link');
+  await expect(draftRow(page, 'Toko Contoh').getByLabel('Row category')).toHaveValue('');
+  await expect(links).toHaveText('2 Notion links not known yet — pick once, they are remembered');
+
+  // Paid with, the same way.
+  await pasar.getByLabel('Row paid with').fill('Bank Contoh');
+  await pasar.getByLabel('Row paid with').press('Enter');
+  await page.getByRole('heading', { name: 'Cashflow' }).click();
+  await expect(kios.getByLabel('Row paid with')).toHaveValue('Bank Contoh');
+  await expect(kios.getByLabel('Row paid with')).toHaveAttribute('title', 'Paid with remembered for this Notion link');
+  await expect(links).toHaveText('1 Notion link not known yet — pick once, it is remembered');
+
+  // The whole paste undone, then pasted again: the known links fill in on their own.
+  await page.getByTestId('paste-summary').getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
+  await expect(links).toHaveCount(0);
+  await pasteInto(page, rows);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  for (const note of ['Pasar Contoh', 'Kios Contoh']) {
+    await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('Groceries');
+    await expect(draftRow(page, note).getByLabel('Row paid with')).toHaveValue('Bank Contoh');
+  }
+  await expect(links).toHaveText('1 Notion link not known yet — pick once, it is remembered');
+  await expect(page.getByTestId('paste-summary')).toContainText('Pasted 3 rows · 2 ready to record · 1 needs a fix');
+});
+
+test('a pasted category is matched with accents left out and “&” as “and”, and nothing looser', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(page, ['2026-10-10\tWarung Contoh\tRESTAURANTS\tBank Contoh\t22.000', '2026-10-11\tKedai Contoh\tGroçeries\tBank Contoh\t19.000', '2026-10-12\tToko Contoh\tCafé and Dessert\tBank Contoh\t9.000', '2026-10-13\tKue Contoh\tDesert\tBank Contoh\t7.000'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(4);
+  await expect(draftRow(page, 'Toko Contoh').getByLabel('Row category')).toHaveValue('Cafe & dessert');
+  await expect(draftRow(page, 'Warung Contoh').getByLabel('Row category')).toHaveValue('Restaurants');
+  await expect(draftRow(page, 'Kedai Contoh').getByLabel('Row category')).toHaveValue('Groceries');
+  // A misspelling stays orange.
+  await expect(draftRow(page, 'Kue Contoh').getByLabel('Row category')).toHaveValue('');
+});

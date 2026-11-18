@@ -21,7 +21,7 @@ import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { DESK_COLUMNS, DESK_GRID, PICKED_CELL, type RowOptions } from './QuickRowEditor';
 import type { CellColumn } from './cell-range';
 import { useCashflowCells } from './cashflow-cells';
-import { forgetMark, guessHint, keepMarks, learnFromRecorded, readMarks } from './paste-categories';
+import { forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, readMarks, unknownLinks, unknownLinksLine } from './paste-categories';
 import { quickFromDraft, shortDate } from './quick-row';
 import { ReceiptPeek } from './ReceiptPeek';
 import { SwitchLook, yearlyBillsHint } from './SortFilterMenu';
@@ -454,10 +454,15 @@ export function DesktopCashflow({
       if (ids && ids.length > 0) setPasted({ ids, recorded: false });
       return ids;
     },
-    // A pasted row recorded teaches its unmatched name the category it was recorded with; one discarded is let go.
+    // A pasted row saved or recorded teaches its unmatched name or Notion link the value picked for it, and the other
+    // waiting rows naming it fill in (`learnFromSaved`); one discarded is let go.
     saveDraft: async (id, values, record) => {
       const ok = await handlers.saveDraft(id, values, record);
-      if (ok && record) setMarks(learnFromRecorded(id, values.categoryId));
+      if (!ok) return ok;
+      const waiting = drafts.filter((draft) => draft.id !== id && marks[draft.id]).map((draft) => ({ id: draft.id, values: quickFromDraft(draft, today, accounts) }));
+      const learnt = learnFromSaved(id, values, record, waiting);
+      setMarks(learnt.marks);
+      for (const fill of learnt.fills) await handlers.saveDraft(fill.id, fill.values, false);
       return ok;
     },
     dismissDraft: async (id) => {
@@ -474,6 +479,13 @@ export function DesktopCashflow({
     const hint = guessHint(mark);
     return mark?.guessed && hint ? { categoryId: mark.guessed.categoryId, hint } : null;
   };
+  const paidGuessOf = (id: string) => {
+    const mark = marks[id];
+    const hint = paidHint(mark);
+    return mark?.paidGuessed && hint ? { key: mark.paidGuessed, hint } : null;
+  };
+  // Notion links among the waiting pasted rows this device does not know yet: said over the rows until each is picked once.
+  const unknown = unknownLinks(marks, new Set(drafts.map((draft) => draft.id)));
   const paste = pasted ? pasteSummary(pasted.ids, drafts, accounts, today, baseCurrency) : null;
   const pasteWork = (work: () => Promise<void>) => {
     setPasteBusy(true);
@@ -491,7 +503,13 @@ export function DesktopCashflow({
       for (const draft of paste?.waiting ?? []) await deskHandlers.dismissDraft(draft.id);
       setPasted(null);
     });
-  const pastedLine =
+  const linksLine =
+    unknown > 0 ? (
+      <p data-testid="paste-links" role="status" className="px-2.5 pb-1.5 text-[11.5px] text-[var(--ph-warn)]">
+        {unknownLinksLine(unknown)}
+      </p>
+    ) : null;
+  const summaryLine =
     paste && paste.waiting.length > 0 ? (
       <p data-testid="paste-summary" role="status" className="flex flex-wrap items-center gap-x-[10px] gap-y-[2px] px-2.5 pb-1.5 text-[11.5px] text-[var(--ph-ink-2)]">
         <span>{pasteLine(paste)}</span>
@@ -506,6 +524,13 @@ export function DesktopCashflow({
           </button>
         )}
       </p>
+    ) : null;
+  const pastedLine =
+    summaryLine || linksLine ? (
+      <>
+        {summaryLine}
+        {linksLine}
+      </>
     ) : null;
   const desk = { countsAs: (categoryId: string) => countsAs({ type: 'expense', categoryId }, needs) };
   const at = selected ? ids.indexOf(selected.id) : -1;
@@ -693,7 +718,7 @@ export function DesktopCashflow({
               {rows.map((row, index) =>
                 row.kind === 'draft' ? (
                   <li key={`d:${row.id}`} className="list-none">
-                    <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={desk} guess={guessOf(row.id)} pickedCell={cells.pickedColumn(row.id)} />
+                    <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={desk} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} pickedCell={cells.pickedColumn(row.id)} />
                   </li>
                 ) : (
                   <DeskRow

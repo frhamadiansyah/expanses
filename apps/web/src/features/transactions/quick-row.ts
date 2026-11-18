@@ -259,9 +259,57 @@ export interface PastedCells {
   amount: string;
   paid: string;
   category: string;
+  /**
+   * A Category or Paid with cell that was Notion's page links alone (a relation's cell, `notionKey`): the link, as
+   * the key this device remembers it by. Its cell's words are left empty — an address is never put into a cell.
+   */
+  links?: Partial<Record<'category' | 'paid', string>>;
 }
 
-type PastedColumn = keyof PastedCells | 'countsAs';
+type PastedColumn = 'date' | 'description' | 'amount' | 'paid' | 'category' | 'countsAs';
+
+/**
+ * A name as matched: any case, accents left out ("Café" is "cafe"), "&" read as "and", spaces as one. Nothing looser:
+ * "Desert" is not "Dessert".
+ */
+export const foldName = (text: string) =>
+  text
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/\s*&\s*/g, ' and ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** A Notion page's address, bare, as Notion copies a relation's cell: app.notion.com, www.notion.so, notion.site. */
+const NOTION_URL = /https?:\/\/(?:[a-z0-9-]+\.)?notion\.(?:so|com|site)\/[^\s,]*/gi;
+
+/** A page address as one id: its 32-hex page id (dashed or not), else the address in lower case without query or fragment. */
+function notionPageId(url: string): string {
+  const bare = url.toLowerCase().replace(/[?#].*$/, '').replace(/^https?:\/\/(?:www\.)?/, '').replace(/\/+$/, '');
+  const last = bare.slice(bare.lastIndexOf('/') + 1);
+  const id = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})$/.exec(last)?.[1];
+  return id ? id.replace(/-/g, '') : bare;
+}
+
+/**
+ * A cell made of Notion page links and nothing else ("https://app.notion.com/…", several comma-separated): the key this
+ * device remembers what it stands for by — "notion:" and its page ids, sorted. Null for any other cell.
+ */
+export function notionKey(cell: string): string | null {
+  const text = cell.trim();
+  const urls = text.match(NOTION_URL);
+  if (!urls || text.replace(NOTION_URL, '').replace(/[\s,;]/g, '') !== '') return null;
+  return `notion:${[...new Set(urls.map(notionPageId))].sort().join(',')}`;
+}
+
+/** A cell's words with any bare Notion address taken out ("Kopi, https://app.notion.com/…" reads "Kopi"). */
+export function withoutNotionLinks(cell: string): string {
+  return cell
+    .replace(NOTION_URL, '')
+    .replace(/\s*,\s*(?:,\s*)+/g, ', ')
+    .replace(/^[\s,;]+|[\s,;]+$/g, '');
+}
 
 /**
  * The columns a paste with no header row is read in: the order the table shows them, so a sheet laid out as the
@@ -306,7 +354,7 @@ const HEADER_NAMES: Record<string, PastedColumn> = {
   'counts as': 'countsAs',
 };
 
-const headerOf = (cell: string): PastedColumn | null => HEADER_NAMES[cell.trim().toLowerCase().replace(/\s+/g, ' ')] ?? null;
+const headerOf = (cell: string): PastedColumn | null => HEADER_NAMES[foldName(cell)] ?? null;
 
 /**
  * A first row that names columns is a header — every cell in it a column's name, or at least two of them with others
@@ -334,7 +382,12 @@ export function pastedCells(rows: readonly (readonly string[])[], layout: 'row' 
     const named: PastedCells = { date: '', description: '', amount: '', paid: '', category: '' };
     columns.forEach((column, i) => {
       // The first column of a name wins, should a header name one twice.
-      if (column && column !== 'countsAs' && !named[column]) named[column] = cells[i] ?? '';
+      if (!column || column === 'countsAs' || named[column] || named.links?.[column as 'paid' | 'category']) return;
+      const cell = cells[i] ?? '';
+      // A relation's cell is Notion's page links alone: kept as a key to remember (Category, Paid with), never as words.
+      const link = notionKey(cell);
+      if (link && (column === 'category' || column === 'paid')) named.links = { ...named.links, [column]: link };
+      named[column] = link ? '' : withoutNotionLinks(cell);
     });
     return named;
   });

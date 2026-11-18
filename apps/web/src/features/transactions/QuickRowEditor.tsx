@@ -7,7 +7,7 @@ import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import type { CellColumn } from './cell-range';
 import { CellCombo, type ComboOption } from './CellCombo';
-import { lastFourOf, matchLastFour, payerOptions, paymentKey, type QuickValues } from './quick-row';
+import { foldName, lastFourOf, matchLastFour, payerOptions, paymentKey, type QuickValues } from './quick-row';
 
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
@@ -76,6 +76,7 @@ export function buildRowOptions(
     }))
     .sort((x, y) => (x.keywords ?? '').localeCompare(y.keywords ?? ''));
   const categoryMatch = categoryRows.map((a) => ({ id: a.id, name: a.name, parentName: a.parentId ? (byId.get(a.parentId)?.name ?? null) : null }));
+  const foldedMatch = categoryMatch.map((o) => ({ ...o, name: foldName(o.name), parentName: o.parentName === null ? null : foldName(o.parentName) }));
   return {
     ready,
     /**
@@ -90,6 +91,11 @@ export function buildRowOptions(
       return hit ? paymentKey(hit.accountId, hit.cardId) : null;
     },
     resolveCategory: (text: string) => matchCategory(text, categoryMatch),
+    /**
+     * A pasted Category cell (the wide table's paste, and a range of its cells): as typed, else with accents left out
+     * and "&" read as "and" on both sides (`foldName`) — "Cafe" names "Café", "Food and Drink" names "Food & Drink".
+     */
+    resolvePastedCategory: (text: string) => matchCategory(text, categoryMatch) ?? matchCategory(foldName(text), foldedMatch),
     /**
      * A pasted Paid with cell (the wide table's paste, and a range of its cells): four digits — bare or after a mask —
      * name the one card or account showing them (`matchLastFour`), else nothing; any other text reads as a typed one.
@@ -119,6 +125,7 @@ export function QuickRowEditor({
   layout = 'row',
   countsAs,
   categoryGuessed,
+  paidGuessed,
   cellRow,
   pickedCell,
 }: {
@@ -142,6 +149,8 @@ export function QuickRowEditor({
   countsAs?: ReactNode;
   /** The category was filled in by a guess (a paste's): why, said on the cell. */
   categoryGuessed?: string | null;
+  /** Paid with was filled in from what this device remembers of a paste's cell: why, said on the cell. */
+  paidGuessed?: string | null;
   /**
    * A desk row's id, which marks each of its cells for a range of blue cells (`useCellRange`): `data-cell` and
    * `data-cell-row` on the cell. Left out on the typing row, which is no part of a range.
@@ -205,6 +214,7 @@ export function QuickRowEditor({
       resolve={options.resolvePaid}
       disabled={!options.ready}
       invalid={missing('paid with')}
+      guessed={paidGuessed}
       onChange={(key) => {
         const [accountId = '', cardId = ''] = key.split(':');
         onChange({ accountId, cardId });

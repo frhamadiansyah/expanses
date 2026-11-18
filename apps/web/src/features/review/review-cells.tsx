@@ -124,7 +124,7 @@ export function useReviewCells({
         if (!typed) return { ...cells, categoryAccountId: null };
         const remembered = rememberedCategory(typed);
         const offered = (id: string) => options.categories.some((option) => option.value === id);
-        const id = options.resolveCategory(typed) ?? (remembered && offered(remembered) ? remembered : null);
+        const id = options.resolvePastedCategory(typed) ?? (remembered && offered(remembered) ? remembered : null);
         return id ? { ...cells, categoryAccountId: id } : null;
       }
       case 'paid': {

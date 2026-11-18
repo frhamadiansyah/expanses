@@ -7,10 +7,10 @@ import { useCards } from '../cards/card-queries';
 import { CategoryPicker } from './CategoryPicker';
 import { type CellChange, type CellColumn, type CellTarget, changeLine, planChange, type SkipReason } from './cell-range';
 import type { ListRow } from './list-model';
-import { rememberedCategory } from './paste-categories';
+import { rememberedCategory, rememberedPaid } from './paste-categories';
 import { PaymentSheet } from './PaymentSheet';
 import type { RowOptions } from './QuickRowEditor';
-import { isQuickEditable, paymentOptions, quickFromDraft, quickFromTransaction, type QuickValues, shortDate } from './quick-row';
+import { isQuickEditable, notionKey, paymentOptions, quickFromDraft, quickFromTransaction, type QuickValues, shortDate, withoutNotionLinks } from './quick-row';
 import type { TableHandlers } from './TransactionsTable';
 import { useCellRange } from './useCellRange';
 
@@ -105,7 +105,8 @@ export function useCashflowCells({
         return iso ? { ...values, date: shortDate(iso, today) } : null;
       }
       case 'description':
-        return { ...values, description: typed };
+        // An address is never put into a cell.
+        return { ...values, description: notionKey(typed) ? '' : withoutNotionLinks(typed) };
       case 'amount': {
         if (!typed) return { ...values, amount: '' };
         const currency = accounts.find((a) => a.id === values.accountId)?.currency ?? 'IDR';
@@ -114,13 +115,18 @@ export function useCashflowCells({
       case 'category': {
         if (!typed) return { ...values, categoryId: '' };
         const offered = (id: string) => rowOptions.categories.some((option) => option.value === id);
-        const remembered = rememberedCategory(typed);
-        const id = rowOptions.resolveCategory(typed) ?? (remembered && offered(remembered) ? remembered : null);
+        // A Notion link names only what this device remembers it as; words are matched first, then remembered.
+        const link = notionKey(typed);
+        const remembered = rememberedCategory(link ?? typed);
+        const id = (link ? null : rowOptions.resolvePastedCategory(typed)) ?? (remembered && offered(remembered) ? remembered : null);
         return id ? { ...values, categoryId: id } : null;
       }
       case 'paid': {
         if (!typed) return { ...values, accountId: '', cardId: '' };
-        const key = rowOptions.resolvePastedPaid(typed);
+        const link = notionKey(typed);
+        const remembered = rememberedPaid(link ?? typed);
+        const known = remembered && rowOptions.paidFor('').some((option) => option.value === remembered) ? remembered : null;
+        const key = (link ? null : rowOptions.resolvePastedPaid(typed)) ?? known;
         if (!key) return null;
         const [accountId = '', cardId = ''] = key.split(':');
         return { ...values, accountId, cardId };

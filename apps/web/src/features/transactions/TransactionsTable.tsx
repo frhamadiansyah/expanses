@@ -10,9 +10,9 @@ import type { CellColumn } from './cell-range';
 import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
-import { type PasteMark, pastedCategories, rememberedCategory } from './paste-categories';
+import { type PasteMark, pastedCategories, rememberedCategory, rememberedPaid } from './paste-categories';
 import { ReceiptLink } from './ReceiptLink';
-import { groupedAmountCell, isNotionPageLinks, isQuickEditable, NOTION_ROWS_LINE, parsePastedRows, pastedCells, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
+import { groupedAmountCell, isNotionPageLinks, isQuickEditable, NOTION_ROWS_LINE, parsePastedRows, pastedCells, paymentKey, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
 
 export interface TableHandlers {
   busy: string | null;
@@ -163,16 +163,21 @@ export function TypingRow({
           // Read in the columns this table shows; a header row (taken, never kept) may name them in any order.
           const cells = pastedCells(rows, desk ? 'desk' : 'row');
           // The desk reads a Paid with cell of four digits as the card or account showing them.
+          // and a Category cell with accents left out and "&" as "and" (`resolvePastedCategory`).
           const paid = desk ? options.resolvePastedPaid : options.resolvePaid;
-          const read = cells.map((each) => ({ cells: each, values: valuesFromCells(each, { paid, category: options.resolveCategory }, today) }));
+          const category = desk ? options.resolvePastedCategory : options.resolveCategory;
+          const read = cells.map((each) => ({ cells: each, values: valuesFromCells(each, { paid, category }, today) }));
           if (read.length === 0) return true;
           if (!desk) {
             void handlers.keepPasted(read.map((row) => row.values));
             return true;
           }
-          // The desk fills a category the paste left empty, or named in words no category has, as `pastedCategories` says.
+          // The desk fills a category the paste left empty, or named in words no category has, and a Paid with it remembers
+          // (a name or a Notion link), as `pastedCategories` says.
           const offered = (categoryId: string) => options.categories.some((option) => option.value === categoryId);
-          void pastedCategories(read, { remembered: (name) => rememberedCategory(name), history: handlers.guessCategory, offered }).then((rows) =>
+          const offeredPaid = (key: string) => options.paidFor('').some((option) => option.value === key);
+          const ctx = { remembered: (name: string) => rememberedCategory(name), history: handlers.guessCategory, offered, rememberedPaid: (name: string) => rememberedPaid(name), offeredPaid };
+          void pastedCategories(read, ctx).then((rows) =>
             handlers.keepPasted(
               rows.map((row) => row.values),
               rows.map((row) => row.mark),
@@ -226,6 +231,7 @@ export function EditableRow({
   handlers,
   desk,
   guess,
+  paidGuess,
   pickedCell,
 }: {
   row: ListRow;
@@ -237,6 +243,8 @@ export function EditableRow({
   desk?: DeskLayout;
   /** A pasted row's category filled in by a guess: marked as guessed while the row still names it. */
   guess?: { categoryId: string; hint: string } | null;
+  /** Its Paid with filled in from what this device remembers (a `paymentKey`): marked so while the row still names it. */
+  paidGuess?: { key: string; hint: string } | null;
   /** The column of this row's cell in the desk's range of blue cells, if one is. */
   pickedCell?: CellColumn | null;
 }) {
@@ -285,6 +293,7 @@ export function EditableRow({
         layout={desk ? 'desk' : 'row'}
         countsAs={desk && values.categoryId ? desk.countsAs(values.categoryId) : undefined}
         categoryGuessed={guess && values.categoryId === guess.categoryId ? guess.hint : null}
+        paidGuessed={paidGuess && paymentKey(values.accountId, values.cardId) === paidGuess.key ? paidGuess.hint : null}
         cellRow={desk ? row.id : undefined}
         pickedCell={pickedCell}
         values={values}
