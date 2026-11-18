@@ -1,20 +1,5 @@
 import { bestRedemption, formatMinor, isoDate, pointsWorth } from '@expanses/core';
-import {
-  deleteConversion,
-  getProgramme,
-  getProgrammeValuePerPoint,
-  listCards,
-  listProgrammes,
-  listProgrammeTiers,
-  listRedemptionOptions,
-  programBalance,
-  programmeEarners,
-  programmeHistory,
-  programmePartners,
-  refreshProgramme,
-  toRedemption,
-} from '@expanses/db';
-import { useQuery } from '@tanstack/react-query';
+import { deleteConversion, toRedemption } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { useBack } from '../../app/BackHeader';
 import { ArrowLeftRight, Hourglass, Settings, SlidersHorizontal, Trash2 } from 'lucide-react';
@@ -24,6 +9,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
 import { ActionButtons, InsetGroup, InsetRow, Panel, PushedTitle, type RoundAction, SCREEN } from '../../ui/native';
 import { formatPoints } from './format-points';
+import { statementPointsOf, useProgramme } from './programme-data';
 import { balanceText, expiryNote, historyLine } from './programme-text';
 import { BalanceSheet, ConvertSheet, ProgrammeSettingsSheet } from './ProgrammeSheets';
 import { RowWithActions } from './rows';
@@ -55,30 +41,7 @@ export function ProgrammePage() {
   const reopen = (useSearch({ strict: false }) as { settings?: true }).settings === true;
   const [sheet, setSheet] = useState<SheetName | null>(reopen ? 'settings' : null);
   const [error, setError] = useState<unknown>(null);
-  const data = useQuery({
-    queryKey: ['programme', ws.workspaceId, programmeId, today],
-    queryFn: async () => {
-      const programme = await getProgramme(database, ws, programmeId);
-      if (!programme) return null;
-      await refreshProgramme(database, ws, programmeId, today);
-      const earners = (await programmeEarners(database, ws)).get(programmeId) ?? [];
-      const options = (await Promise.all(earners.map((earner) => listRedemptionOptions(database, ws, earner.programId)))).flat();
-      return {
-        programme,
-        earners,
-        options,
-        valuePerPoint: await getProgrammeValuePerPoint(database, ws, programmeId),
-        balance: await programBalance(database, ws, programmeId, today),
-        history: await programmeHistory(database, ws, programmeId),
-        partners: await programmePartners(database, ws, programmeId),
-        others: (await listProgrammes(database, ws)).filter((other) => other.id !== programmeId),
-        // Which of its membership cards Points draws it as (0088), for its Settings.
-        tier: (await listProgrammeTiers(database, ws))[programmeId] ?? null,
-        // The last digits of each earning card, for the grey line under it in Settings.
-        digits: await cardDigits(database, ws),
-      };
-    },
-  });
+  const data = useProgramme(programmeId, today);
 
   if (data.isSuccess && data.data === null) return <Empty>Programme not found.</Empty>;
   if (!data.data) return <p className="text-sm text-slate-500">Loading…</p>;
@@ -115,13 +78,8 @@ export function ProgrammePage() {
     }
   };
 
-  // This statement's points for each card: its earning in the cycle still open today.
-  const thisStatement = (programId: string) =>
-    history
-      .filter((row) => row.kind === 'earn' && row.earnedById === programId && row.on >= today)
-      .sort((a, b) => a.on.localeCompare(b.on))[0];
-
-  const statementPoints = earners.reduce((sum, earner) => sum + (thisStatement(earner.programId)?.quantity ?? 0), 0);
+  // This statement's points across the cards: their earning in the cycle still open today.
+  const statementPoints = statementPointsOf(history, earners, today);
 
   return (
     <div className={SCREEN}>
@@ -204,11 +162,4 @@ export function ProgrammePage() {
       )}
     </div>
   );
-}
-
-/** The last four digits of each card account's first card that has them, by account. */
-async function cardDigits(database: Parameters<typeof listCards>[0], ws: Parameters<typeof listCards>[1]): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  for (const card of await listCards(database, ws)) if (card.last4 && !out[card.accountId]) out[card.accountId] = card.last4;
-  return out;
 }
