@@ -181,10 +181,10 @@ describe('splitCostsBox', () => {
     ({ people, expenses, myShareMinor: 9_072_500, myName: 'Andi', me: 'a' }) as Pick<SharedEventView, 'people' | 'expenses' | 'myShareMinor' | 'myName' | 'me'>;
   const half = { mode: 'equal' as const, people: ['a', 'r'] };
 
-  it('adds what each person paid (deleted and unreadable records left out) and says Half each for two sharing equally', () => {
+  it('adds what each person paid (deleted and unreadable records left out), this phone’s person first, and says Half each for two sharing equally', () => {
     const box = splitCostsBox(
       view(
-        [person('a', 'Andi', true), person('r', 'Rina')],
+        [person('r', 'Rina'), person('a', 'Andi', true)],
         [expense('1', 'a', 12_445_000, half), expense('2', 'r', 5_700_000, half), expense('3', 'r', 999, half, { voided: true }), expense('4', 'a', 1, half, { unreadable: 'bad rate' })],
       ),
     );

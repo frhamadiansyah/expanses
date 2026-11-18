@@ -177,6 +177,8 @@ export function splitCostsBox(view: Pick<SharedEventView, 'people' | 'expenses' 
     const person = view.people.find((one) => one.personId === personId);
     paidBy.push({ personId, name: person?.name ?? 'Someone', initials: person?.initials ?? '?', isMe: false, minor });
   }
+  // This phone's person first, as the box reads "Paid by" down from the one holding it.
+  paidBy.sort((a, b) => Number(b.isMe) - Number(a.isMe));
   const everyone = new Set(people.map((person) => person.personId));
   const equalAll =
     counted.length > 0 &&
