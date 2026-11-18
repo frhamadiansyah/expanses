@@ -17,7 +17,7 @@ export function DayHeader({
   date: string;
   net: number;
   currency: string;
-  /** A day holding a yearly bill a month leaves out says it came to Rp 0, rather than nothing, so the grey row reads as counted nowhere. */
+  /** A day holding a not-monthly bill a month leaves out says it came to Rp 0, rather than nothing, so the grey row reads as counted nowhere. */
   zeroShown?: boolean;
 }) {
   if (!date) {

@@ -98,6 +98,7 @@ export {
   type BillMonthsInput,
   type BillRepeat,
   firstYearlyMonth,
+  isNotMonthlyRepeat,
   isOwedMonth,
   nextOccurrenceMonth,
   nextOwedMonth,

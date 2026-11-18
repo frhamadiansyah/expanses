@@ -55,6 +55,17 @@ export function thisBillMonth(today: string, outDay: number, startDay: MonthStar
 
 export type BillRepeat = 'monthly' | 'yearly' | 'months';
 
+/**
+ * Whether a bill repeats less often than every month — "not monthly" (owner, 2026-11-18): once a year, or every 2 months
+ * or more. A month's Cashflow leaves its payments out of the ring and the totals and the year counts them. Every month,
+ * or 'months' without a gap of 2 or more, is monthly. Nothing is guessed from a category or an amount. The database reads
+ * the same rule in SQL (`notMonthlyBillPaymentIds`, packages/db/src/repos/bill-repeat.ts).
+ */
+export function isNotMonthlyRepeat(repeat: BillRepeat | string | null | undefined, every?: number | null): boolean {
+  if (repeat === 'yearly') return true;
+  return repeat === 'months' && every != null && Number(every) >= 2;
+}
+
 const monthIndex = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
 
 /**
