@@ -11,7 +11,7 @@ import { transactionPointActuals } from '../schema-points';
 import { captureCardChangingTx, captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom, splitRefusalTx } from '../sync/capture';
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
-import { yearlyBillPaymentsOf } from './bill-repeat';
+import { notMonthlyBillPaymentsOf } from './bill-repeat';
 import { dayOrderExists } from './day-order-column';
 import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigure } from './exact-column';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
@@ -1394,10 +1394,11 @@ export interface TransactionView {
    */
   billMonth?: string | null;
   /**
-   * A payment of a bill that repeats once a year (its `bill_payments` row names a yearly bill): what Cashflow leaves out
-   * of a month's ring and lists in grey. Absent on anything else, and on a database without the tables.
+   * A payment of a bill that is not monthly (its `bill_payments` row names a bill that repeats yearly, or every 2 months
+   * or more: `isNotMonthlyRepeat`): what Cashflow leaves out of a month's ring and lists in grey. Absent on anything
+   * else, and on a database without the tables.
    */
-  yearlyBill?: boolean;
+  notMonthlyBill?: boolean;
   /**
    * What the purchase was, beside what it cost. Null, false and 0 when nothing was chosen, and on a database
    * without transaction_flags. Optional in the same way billMonth is, so a view built by hand need not name them.
@@ -1548,8 +1549,8 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
       )
     : new Map<string, string>();
 
-  // Which of them paid a yearly bill: one small query, as bill months are.
-  const yearly = await yearlyBillPaymentsOf(database.db, txs.map((t) => t.id));
+  // Which of them paid a bill that is not monthly: one small query, as bill months are.
+  const notMonthly = await notMonthlyBillPaymentsOf(database.db, txs.map((t) => t.id));
 
   // The channel, the exclusion and how many pictures were kept: one pair of queries per page, as bill months are.
   const extras = (await extrasTablesExist(database.db)) ? await extrasFor(database.db, ws, txs.map((t) => t.id)) : undefined;
@@ -1604,7 +1605,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     goalId: t.goalId,
     eventId: t.eventId,
     billMonth: billMonths.get(t.id) ?? null,
-    ...(yearly.has(t.id) ? { yearlyBill: true } : {}),
+    ...(notMonthly.has(t.id) ? { notMonthlyBill: true } : {}),
     channel: extras?.get(t.id)?.channel ?? null,
     excluded: extras?.get(t.id)?.excluded ?? false,
     photoCount: extras?.get(t.id)?.photoCount ?? 0,

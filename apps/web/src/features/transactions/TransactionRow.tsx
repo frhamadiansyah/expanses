@@ -1,6 +1,6 @@
 import { formatMinor, isCardCashbackKey, isoDate } from '@expanses/core';
 import { type AccountRow, replaceTransaction, type TransactionView } from '@expanses/db';
-import { Copy, Pencil, Trash2, Undo2 } from 'lucide-react';
+import { Copy, Pencil, Repeat, Trash2, Undo2 } from 'lucide-react';
 import { type MouseEvent, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -15,6 +15,7 @@ import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, ca
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 import { RowEventBadge } from '../events/EventMode';
+import { NOT_MONTHLY_LABEL } from './not-monthly';
 import { useEvents } from '../events/queries';
 
 /** An event's name by its id, from the one owner-wide read of events; null for none, or one no longer here. */
@@ -140,7 +141,8 @@ export function TransactionRow({
 
   // Money back wears a small return arrow on its category's circle, where a shared row wears its workspace: the
   // category stays the category, and the green plus beside it says the rest. A workspace mark takes the corner first,
-  // then the refund's arrow, then an event's plane.
+  // then the refund's arrow, then a not-monthly bill's ↻ (left out of a month's Cashflow, its amount grey: option D,
+  // owner 2026-11-18), then an event's plane.
   // Cashback & Rewards into a card is money back too, but no refund of a purchase: its own badge says what it is.
   const cashback = !!row.refund && isCardCashbackKey(accounts.find((a) => a.id === row.categoryId)?.systemKey);
   const refundMark = !!row.refund && !cashback;
@@ -153,6 +155,16 @@ export function TransactionRow({
       >
         <Undo2 size={9} strokeWidth={3} aria-hidden />
         <span className="sr-only">Refund</span>
+      </span>
+    ) : row.notMonthlyOut ? (
+      <span
+        role="img"
+        aria-label={NOT_MONTHLY_LABEL}
+        data-testid="not-monthly-badge"
+        className="absolute -right-1 -bottom-1 flex h-[15px] w-[15px] items-center justify-center rounded-full bg-[var(--ph-ink-3)] text-[var(--ph-surface)] ring-2 ring-[var(--ph-surface)]"
+        title={NOT_MONTHLY_LABEL}
+      >
+        <Repeat size={9} strokeWidth={3} aria-hidden />
       </span>
     ) : eventName ? (
       <RowEventBadge name={eventName} />
@@ -218,7 +230,7 @@ export function TransactionRow({
           {refile ? (
             <button
               type="button"
-              aria-label={categoryButtonLabel(row.description, { workspace: iconMark ? iconMarkLabel : null, refund: refundMark, eventName })}
+              aria-label={categoryButtonLabel(row.description, { workspace: iconMark ? iconMarkLabel : null, refund: refundMark, notMonthly: !!row.notMonthlyOut, eventName })}
               title="Change the category"
               onClick={(event) => {
                 // The row around it may be clickable too; re-filing is not opening.

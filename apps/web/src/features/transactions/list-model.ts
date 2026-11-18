@@ -10,11 +10,12 @@ import { classify } from './classify';
  */
 
 /**
- * The category button's spoken name: the row, then what the marks on its icon say — its workspace, a refund, the event
- * it is in. Only one mark is drawn on the corner; all of them are said, since the button's name replaces what it holds.
+ * The category button's spoken name: the row, then what the marks on its icon say — its workspace, a refund, a
+ * not-monthly bill a month leaves out, the event it is in. Only one mark is drawn on the corner; all of them are said,
+ * since the button's name replaces what it holds.
  */
-export function categoryButtonLabel(description: string, marks: { workspace?: string | null; refund?: boolean; eventName?: string | null }): string {
-  const words = [marks.workspace, marks.refund ? 'refund' : null, marks.eventName].filter(Boolean);
+export function categoryButtonLabel(description: string, marks: { workspace?: string | null; refund?: boolean; notMonthly?: boolean; eventName?: string | null }): string {
+  const words = [marks.workspace, marks.refund ? 'refund' : null, marks.notMonthly ? 'not monthly' : null, marks.eventName].filter(Boolean);
   return [`Category for ${description}`, ...words].join(', ');
 }
 
@@ -141,13 +142,13 @@ export interface ListRow {
   };
   /** A purchase its plan spreads each month: listed on its day, counting nothing there; the months it is spread over. */
   spreadOver?: number;
-  /** A payment of a bill that repeats once a year (`TransactionView.yearlyBill`). */
-  yearlyBill?: true;
+  /** A payment of a bill that is not monthly: yearly, or every 2 months or more (`TransactionView.notMonthlyBill`). */
+  notMonthly?: true;
   /**
-   * A yearly bill's payment on a month's Cashflow (`leaveOutYearlyBills`): still listed, in grey, counting nothing in
-   * the month — its day, the list's totals and the ring. A year counts it like any spending.
+   * A not-monthly bill's payment on a month's Cashflow (`leaveOutNotMonthly`): still listed, its amount grey and a ↻ on
+   * its circle, counting nothing in the month — its day, the list's totals and the ring. A year counts it like any spending.
    */
-  yearlyOut?: true;
+  notMonthlyOut?: true;
 }
 
 /**
@@ -287,17 +288,18 @@ export function markSpread(rows: readonly ListRow[], spreadOver: ReadonlyMap<str
 }
 
 /**
- * Cashflow over a month or less (owner, 2026-11-18): each yearly bill's payment stays on its day, counting nothing there,
- * so paying a year's insurance makes no spike in one month. Listed in grey with "Yearly bill · in the year" under it.
- * A spread purchase already counts nothing on its day, and is left as it is.
+ * Cashflow over less than a year (owner, 2026-11-18): each not-monthly bill's payment (`not-monthly.ts`) stays on its
+ * day, counting nothing there, so paying a year's insurance or a 6-monthly car service makes no spike in one month.
+ * Listed with its amount grey and a small ↻ on its circle. A spread purchase already counts nothing on its day, and is
+ * left as it is.
  */
-export function leaveOutYearlyBills(rows: readonly ListRow[]): ListRow[] {
-  return rows.map((row) => (row.kind === 'tx' && row.yearlyBill && row.spreadOver === undefined ? { ...row, baseMinor: 0, spentMinor: 0, yearlyOut: true as const } : row));
+export function leaveOutNotMonthly(rows: readonly ListRow[]): ListRow[] {
+  return rows.map((row) => (row.kind === 'tx' && row.notMonthly && row.spreadOver === undefined ? { ...row, baseMinor: 0, spentMinor: 0, notMonthlyOut: true as const } : row));
 }
 
-/** How many yearly bills a list leaves out of the month: "1 yearly bill not in the ring". Deleted ones count nothing anyway. */
-export function yearlyBillsOut(rows: readonly ListRow[]): number {
-  return rows.filter((row) => row.yearlyOut && !row.deleted && !row.excluded).length;
+/** How many not-monthly costs a list leaves out of the month: "1 not in the ring". Deleted ones count nothing anyway. */
+export function notMonthlyOutCount(rows: readonly ListRow[]): number {
+  return rows.filter((row) => row.notMonthlyOut && !row.deleted && !row.excluded).length;
 }
 
 export interface ListFilters {
@@ -335,8 +337,8 @@ export const EMPTY_FILTERS: ListFilters = { q: '', paid: '', cat: '', type: 'all
 export function countsInOrOut(row: ListRow): boolean {
   if (row.kind === 'draft') return true;
   if (row.type === 'expense' || row.type === 'income') return true;
-  // A yearly bill left out of a month counts nothing there, and is still listed (in grey) whatever kind of row it is.
-  if (row.yearlyOut) return true;
+  // A not-monthly bill left out of a month counts nothing there, and is still listed (in grey) whatever kind of row it is.
+  if (row.notMonthlyOut) return true;
   return row.spentMinor !== 0 || row.earnedMinor !== 0 || !!row.feeMinor;
 }
 
@@ -503,7 +505,7 @@ export function buildRows(
       moneyIn: type === 'debt' && money.filter((e) => !isPerson(e.accountId)).reduce((sum, e) => sum + e.amountBaseMinor, 0) > 0,
       needsCategory: c.categoryIds.some((id) => isUncategorisedKey(byId.get(id)?.systemKey)),
       ...(splitPart ? { splitPart } : {}),
-      ...(whole.yearlyBill ? { yearlyBill: true as const } : {}),
+      ...(whole.notMonthlyBill ? { notMonthly: true as const } : {}),
       tx: whole,
     };
   });
@@ -649,8 +651,8 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
 export function amountLook(row: ListRow, view: AmountView = 'report'): { sign: -1 | 0 | 1; plus: boolean; muted: boolean } {
   // Wholly out of the report: what counts is nothing, in grey, with no colour for which way the money went.
   if (wholeLeftOut(row, view)) return { sign: 0, plus: false, muted: true };
-  // A yearly bill on a month's Cashflow: its whole figure, in grey, since the month does not count it.
-  if (row.yearlyOut && view === 'report') return { sign: 0, plus: false, muted: true };
+  // A not-monthly bill on a month's Cashflow: its whole figure, in grey, since the month does not count it.
+  if (row.notMonthlyOut && view === 'report') return { sign: 0, plus: false, muted: true };
   if (row.refund) return { sign: 1, plus: true, muted: false };
   if (row.type === 'expense') return { sign: -1, plus: false, muted: false };
   if (row.type === 'income') return { sign: 1, plus: false, muted: false };
