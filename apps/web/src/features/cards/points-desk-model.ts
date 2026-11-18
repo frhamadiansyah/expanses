@@ -125,7 +125,7 @@ export interface NextExpiry {
   remaining: number;
   /** Within the warning window the phone warns in (its "3.000 expire 31 Dec"): said in orange. */
   soon: boolean;
-  /** "6.000 expire 31 Dec" when soon (the phone's words), else "8.200 on 12 Mar 2027". */
+  /** "6.000 expire 31 Dec" when soon (the phone's words), else "8.200 miles on 12 Mar 2027". */
   text: string;
 }
 
@@ -133,12 +133,12 @@ export interface NextExpiry {
  * A programme's next expiry, as the table and the peek say it: the phone's own note when points die within its window
  * (`expiryNote`), else the earliest lot left to expire with its date. Null when nothing it holds has a date.
  */
-export function nextExpiry(lots: readonly { expiresOn: string; remaining: number }[], phoneNote: string | null): NextExpiry | null {
+export function nextExpiry(lots: readonly { expiresOn: string; remaining: number }[], phoneNote: string | null, unit: string): NextExpiry | null {
   const first = lots.find((lot) => lot.remaining > 0);
   if (!first) return null;
   return phoneNote
     ? { on: first.expiresOn, remaining: first.remaining, soon: true, text: phoneNote }
-    : { on: first.expiresOn, remaining: first.remaining, soon: false, text: `${formatPoints(first.remaining)} on ${dayMonthYear(first.expiresOn)}` };
+    : { on: first.expiresOn, remaining: first.remaining, soon: false, text: `${formatPoints(first.remaining)} ${unit} on ${dayMonthYear(first.expiresOn)}` };
 }
 
 /** The Expiring soon box: each programme's next expiry, soonest first, at most `limit`. */

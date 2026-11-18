@@ -19,14 +19,24 @@ import { useApp } from '../../app/context';
 
 /**
  * Everything a points programme's own page reads — and the Mac Points page's peek, which shows the same programme — in
- * one load, under one query key, so the two read the same figures from the same cache. Opening it brings the ledger up
- * to date first, as a card's page does: each earning card works out its open cycle and the one before, and points past
- * their date are written off. Null for a programme that is not there.
+ * one load, so the two read the same figures. Opening it brings the ledger up to date first, as a card's page does:
+ * each earning card works out its open cycle and the one before, and points past their date are written off. Null for
+ * a programme that is not there.
  */
 export async function loadProgramme(database: Database, ws: WorkspaceContext, programmeId: string, today: string) {
+  if (!(await getProgramme(database, ws, programmeId))) return null;
+  await refreshProgramme(database, ws, programmeId, today);
+  return readProgramme(database, ws, programmeId, today);
+}
+
+/**
+ * The same figures read as they stand, without bringing the ledger up to date: for the Mac peek, whose page has just
+ * brought every programme up to date itself — a second refresh running beside the page's would write the same
+ * cycles twice.
+ */
+export async function readProgramme(database: Database, ws: WorkspaceContext, programmeId: string, today: string) {
   const programme = await getProgramme(database, ws, programmeId);
   if (!programme) return null;
-  await refreshProgramme(database, ws, programmeId, today);
   const earners = (await programmeEarners(database, ws)).get(programmeId) ?? [];
   const options = (await Promise.all(earners.map((earner) => listRedemptionOptions(database, ws, earner.programId)))).flat();
   return {
@@ -47,12 +57,12 @@ export async function loadProgramme(database: Database, ws: WorkspaceContext, pr
 
 export type ProgrammeData = NonNullable<Awaited<ReturnType<typeof loadProgramme>>>;
 
-/** One programme's page data (`loadProgramme`) on `today`, shared by its page and the Mac peek. */
-export function useProgramme(programmeId: string, today: string) {
+/** One programme's page data on `today` (`loadProgramme`); `read` for the Mac peek's, as it stands (`readProgramme`). */
+export function useProgramme(programmeId: string, today: string, read = false) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['programme', ws.workspaceId, programmeId, today],
-    queryFn: () => loadProgramme(database, ws, programmeId, today),
+    queryKey: [read ? 'programme-read' : 'programme', ws.workspaceId, programmeId, today],
+    queryFn: () => (read ? readProgramme : loadProgramme)(database, ws, programmeId, today),
   });
 }
 

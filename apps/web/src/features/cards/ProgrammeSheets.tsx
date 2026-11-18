@@ -271,6 +271,7 @@ export function ConvertSheet({
   statementPoints,
   today,
   onClose,
+  redeemOnly = false,
 }: {
   programme: ProgrammeRow;
   others: ProgrammeRow[];
@@ -279,6 +280,8 @@ export function ConvertSheet({
   statementPoints: number;
   today: string;
   onClose: () => void;
+  /** Opened as Redeem (the Mac peek's): the first step lists the uses alone, the programmes being Convert's. */
+  redeemOnly?: boolean;
 }) {
   const { database, ws } = useApp();
   const { error, busy, save } = useSave(onClose);
@@ -302,17 +305,19 @@ export function ConvertSheet({
       setStep({ kind: 'programme', to });
     };
     return (
-      <Sheet grouped title="Convert" onClose={onClose}>
-        <InsetGroup header="To another programme">
-          {others.map((other) => (
-            <InsetRow key={other.id} plain title={other.name} onClick={() => choose(other.id)} chevron />
-          ))}
-          {fresh.map((partner) => (
-            <InsetRow key={partner.id} plain title={partner.program} onClick={() => choose(`partner:${partner.program}`)} chevron />
-          ))}
-          <InsetRow plain title="Another programme…" onClick={() => choose('new')} chevron />
-        </InsetGroup>
-        <InsetGroup header="Or use on">
+      <Sheet grouped title={redeemOnly ? 'Redeem' : 'Convert'} onClose={onClose}>
+        {!redeemOnly && (
+          <InsetGroup header="To another programme">
+            {others.map((other) => (
+              <InsetRow key={other.id} plain title={other.name} onClick={() => choose(other.id)} chevron />
+            ))}
+            {fresh.map((partner) => (
+              <InsetRow key={partner.id} plain title={partner.program} onClick={() => choose(`partner:${partner.program}`)} chevron />
+            ))}
+            <InsetRow plain title="Another programme…" onClick={() => choose('new')} chevron />
+          </InsetGroup>
+        )}
+        <InsetGroup header={redeemOnly ? 'Use on' : 'Or use on'}>
           {USES.map((use) => (
             <InsetRow key={use} plain title={use} onClick={() => setStep({ kind: 'use', name: use })} chevron />
           ))}

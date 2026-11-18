@@ -112,10 +112,10 @@ describe('shortCount', () => {
 
 describe('nextExpiry and the Expiring soon box', () => {
   it('says the phone’s note inside the window, else the first lot left with its date', () => {
-    expect(nextExpiry([{ expiresOn: '2026-12-31', remaining: 6000 }], '6.000 expire 31 Dec')).toEqual({ on: '2026-12-31', remaining: 6000, soon: true, text: '6.000 expire 31 Dec' });
-    expect(nextExpiry([{ expiresOn: '2027-03-12', remaining: 8200 }], null)).toEqual({ on: '2027-03-12', remaining: 8200, soon: false, text: '8.200 on 12 Mar 2027' });
-    expect(nextExpiry([], null)).toBeNull();
-    expect(nextExpiry([{ expiresOn: '2027-03-12', remaining: 0 }], null)).toBeNull();
+    expect(nextExpiry([{ expiresOn: '2026-12-31', remaining: 6000 }], '6.000 expire 31 Dec', 'points')).toEqual({ on: '2026-12-31', remaining: 6000, soon: true, text: '6.000 expire 31 Dec' });
+    expect(nextExpiry([{ expiresOn: '2027-03-12', remaining: 8200 }], null, 'miles')).toEqual({ on: '2027-03-12', remaining: 8200, soon: false, text: '8.200 miles on 12 Mar 2027' });
+    expect(nextExpiry([], null, 'points')).toBeNull();
+    expect(nextExpiry([{ expiresOn: '2027-03-12', remaining: 0 }], null, 'points')).toBeNull();
   });
 
   it('lists the soonest first and leaves out what expires never', () => {

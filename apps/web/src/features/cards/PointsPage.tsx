@@ -5,11 +5,23 @@ import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { CardStack, InsetGroup, InsetRow, PushedTitle, SCREEN, type WalletCard } from '../../ui/native';
 import { useProgrammeTiers } from './card-queries';
+import { DesktopPoints } from './DesktopPoints';
 import { programmeFaceRef } from './programme-art/programmes';
 import { balanceText, earnersLine, expiryNote } from './programme-text';
 import { AddProgrammeSheet } from './ProgrammeSheets';
+
+/**
+ * Points: on a wide screen (not a phone, not a phone held sideways) the Mac page (`DesktopPoints`), else the phone's.
+ * Both hooks are called on every render, whichever page is drawn.
+ */
+export function PointsPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopPoints /> : <PhonePointsPage />;
+}
 
 /**
  * The points programmes, a page of their own opened from Wallet's corner, laid out as Wallet lays out its cards: a
@@ -24,7 +36,7 @@ import { AddProgrammeSheet } from './ProgrammeSheets';
  * Each programme's ledger is brought up to date before it is shown, as opening it would, so the figure here is the
  * one its page shows.
  */
-export function PointsPage() {
+function PhonePointsPage() {
   const { database, ws } = useApp();
   const goBack = useBack('/wallet');
   const today = isoDate();
