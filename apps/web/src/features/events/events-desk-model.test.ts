@@ -10,6 +10,7 @@ import {
   paymentsLine,
   planItemStatus,
   planLine,
+  readPlanned,
   sharedChip,
   splitCostsBox,
   startsAhead,
@@ -137,6 +138,18 @@ describe('the Plan table and box', () => {
     expect(barPercent(150, 100)).toBe(100);
     expect(barPercent(-5, 100)).toBe(0);
     expect(barPercent(12_750_000, 49_890_000)).toBe(26);
+  });
+});
+
+describe('readPlanned', () => {
+  it('reads a typed figure in the cost’s currency, dots of thousands or none, a symbol left out; nought or nothing is refused', () => {
+    expect(readPlanned('4500000', 'IDR')).toEqual({ minor: 4_500_000 });
+    expect(readPlanned('4.500.000', 'IDR')).toEqual({ minor: 4_500_000 });
+    expect(readPlanned('Rp 4.500.000', 'IDR')).toEqual({ minor: 4_500_000 });
+    expect(readPlanned('48,60', 'SGD')).toEqual({ minor: 4_860 });
+    expect(readPlanned('0', 'IDR')).toEqual({ error: 'A planned figure is above nought' });
+    expect(readPlanned('', 'IDR')).toEqual({ error: 'Type a figure, or Esc to keep it' });
+    expect(readPlanned('lots', 'IDR')).toEqual({ error: 'Type a figure, such as 1.500.000' });
   });
 });
 

@@ -14,6 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Plane, X } from 'lucide-react';
 import { type CSSProperties, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { ToastCard, UndoToast } from '../../ui/UndoToast';
 import { InsetGroup, InsetRow, SwitchRow, tapReach, TextRow } from '../../ui/native';
 import { CurrencySheet } from '../transactions/CurrencySheet';
@@ -354,5 +355,83 @@ function EndedToast({ text, onKeepOn, onDone }: { text: string; onKeepOn: () => 
         </button>
       }
     />
+  );
+}
+
+/**
+ * Event mode in a Mac event page's title bar (Mac Events, owner 2026-11-18): the switch `EventModeGroup` draws, with the
+ * same writes and the same Undo; while it is on, "until 18 Sep · SGD" beside it opens today's group (Until, Add in) in a
+ * sheet. Nothing here on an owner's books read only here, where nothing is added.
+ */
+export function DeskEventModeSwitch({ event, disabled = false }: { event: Pick<EventRow, 'id' | 'name' | 'startsOn' | 'endsOn' | 'currency'>; disabled?: boolean }) {
+  const { ws } = useApp();
+  const stored = useStoredEventMode().data ?? null;
+  const { write, turnOn } = useEventModeWrites();
+  const readOnly = useOpenBookReadOnly();
+  const [undo, setUndo] = useState<EventMode | null>(null);
+  const [details, setDetails] = useState(false);
+  const today = isoDate();
+  const on = !!stored && stored.workspaceId === ws.workspaceId && stored.eventId === event.id && eventModeState(stored, today) === 'on';
+  const [flipped, setFlipped] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (flipped === on) setFlipped(null);
+  }, [on, flipped]);
+  if (readOnly) return null;
+  const checked = flipped ?? on;
+  return (
+    <span className="flex items-center gap-[8px]" data-testid="event-mode-group">
+      {on && stored && (
+        <button type="button" data-testid="event-mode-details" onClick={() => setDetails(true)} className="text-[11.5px] whitespace-nowrap text-[var(--ph-ink-3)] hover:text-[var(--ph-ink)]">
+          until {new Date(`${stored.until}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · {stored.currency}
+        </button>
+      )}
+      <label className="flex items-center gap-[7px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink-2)]" title={modeHint(event.name)}>
+        Event mode
+        <input
+          type="checkbox"
+          role="switch"
+          data-testid="event-mode-switch"
+          aria-label="Event mode"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setFlipped(next);
+            if (next) {
+              setUndo(null);
+              void turnOn(event);
+            } else if (stored) {
+              setUndo(stored);
+              void write(null);
+            }
+          }}
+          className="peer sr-only"
+        />
+        <span
+          aria-hidden
+          className={`relative h-[18px] w-[30px] rounded-full transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-[var(--mac-accent)] ${checked ? 'bg-[var(--ph-up)]' : 'bg-[var(--ph-track)]'} ${disabled ? 'opacity-40' : ''}`}
+        >
+          <span className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow transition-[left] ${checked ? 'left-[14px]' : 'left-[2px]'}`} />
+        </span>
+      </label>
+      {details && on && (
+        <Sheet grouped title={event.name} onClose={() => setDetails(false)}>
+          <EventModeGroup event={event} />
+        </Sheet>
+      )}
+      {undo && (
+        <UndoToast
+          testId="event-mode-undo"
+          icon="event"
+          text="Event mode off"
+          onUndo={() => {
+            const back = undo;
+            setUndo(null);
+            void write(back);
+          }}
+          onDone={() => setUndo(null)}
+        />
+      )}
+    </span>
   );
 }

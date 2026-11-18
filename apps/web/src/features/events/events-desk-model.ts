@@ -1,4 +1,4 @@
-import { dayMonth, type EventPlanItemView, exponentOf, isExchangeResultKey } from '@expanses/core';
+import { dayMonth, type EventPlanItemView, exponentOf, isExchangeResultKey, parseMajor } from '@expanses/core';
 import type { EventRow, SharedEventSummary, SharedEventView } from '@expanses/db';
 import { eventStatus } from './event-dates';
 import { possessive } from './shared-view';
@@ -97,6 +97,23 @@ export function paymentsLine(item: Pick<EventPlanItemView, 'purchaseCount' | 'de
   if (item.purchaseCount === 0) return '—';
   if (item.purchaseCount === 1 && item.description) return item.occurredOn ? `${item.description} · ${dayMonth(item.occurredOn)}` : item.description;
   return `${item.purchaseCount} payments`;
+}
+
+/**
+ * A Planned figure typed in its cell, in the cost's own currency: digits with or without the dots of thousands, a symbol
+ * before them left out. The price each of a cost of one is this figure; nothing at or below nought is a price.
+ */
+export function readPlanned(text: string, currency: string): { minor: number } | { error: string } {
+  const bare = text.trim().replace(/^[^\d-]+(?=[\d-])/, '');
+  if (bare === '') return { error: 'Type a figure, or Esc to keep it' };
+  let minor: number;
+  try {
+    minor = parseMajor(bare, currency);
+  } catch {
+    return { error: 'Type a figure, such as 1.500.000' };
+  }
+  if (minor <= 0) return { error: 'A planned figure is above nought' };
+  return { minor };
 }
 
 /** The share of a bar, 0 to 100, never past either end and never a division by nought. */

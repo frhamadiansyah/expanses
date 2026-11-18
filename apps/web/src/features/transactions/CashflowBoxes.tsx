@@ -41,7 +41,12 @@ export function RingBox({
   ready,
   period,
   footnote,
+  title,
+  testId = 'cashflow-ring',
 }: {
+  /** The box's own title, when it is not Cashflow's ("Spent by category" on an event). */
+  title?: string;
+  testId?: string;
   /** The period, named: "November 2026". */
   period: string;
   /** A grey line under the ring: "1 not in the ring" (`notMonthlyNote`). */
@@ -60,9 +65,10 @@ export function RingBox({
 }) {
   const arcs = ringArcs(items, CIRCUMFERENCE);
   const word = kind === 'expense' ? 'Spent' : 'Received';
+  const named = title ?? (kind === 'expense' ? 'Spending by category' : 'Income by category');
   return (
-    <section className={BOX} aria-label={kind === 'expense' ? 'Spending by category' : 'Income by category'} data-testid="cashflow-ring">
-      <BoxHead title={kind === 'expense' ? 'Spending by category' : 'Income by category'} note={items.some((item) => item.categoryId) ? 'click to filter' : undefined} />
+    <section className={BOX} aria-label={named} data-testid={testId}>
+      <BoxHead title={named} note={items.some((item) => item.categoryId) ? 'click to filter' : undefined} />
       {/* What the ring adds up to, read aloud and by the journeys, as the phone's chart keeps it. */}
       <div data-testid="period-total" className="sr-only">
         {formatMinor(totalMinor, currency)}
