@@ -14,6 +14,8 @@ import { bareFigure } from '../networth/debt-rows';
 import { BOX, NOTE } from '../transactions/CashflowBoxes';
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { PaymentSheet } from '../transactions/PaymentSheet';
+import type { CellColumn } from '../transactions/cell-range';
+import { PICKED_CELL } from '../transactions/QuickRowEditor';
 import { paymentOptions } from '../transactions/quick-row';
 import { CAPTURE_TYPES, type CaptureType, captureTypeOf } from './capture-type';
 import { captureRowView, effectiveCategory } from './capture-view';
@@ -33,6 +35,7 @@ import {
   queueKey,
   whenText,
 } from './review-desk-model';
+import { useReviewCells } from './review-cells';
 import { SkippedList } from './SkippedList';
 
 /** How long after a peek opens the page makes room for it: longer than a double-click's gap (Mac Bills). */
@@ -81,9 +84,10 @@ export interface ReviewDeskActions {
   onOpenForm: (draft: DraftRow) => void;
   /** The plain view of its picture. */
   onView: (draft: DraftRow) => void;
-  onEdit: (draft: DraftRow, patch: DraftEdit, learn: Correction[]) => void;
+  /** A field changed in place; resolves whether it was written (a refusal is the page's error to say). */
+  onEdit: (draft: DraftRow, patch: DraftEdit, learn: Correction[]) => Promise<boolean>;
   /** An account picked for a side: "Which account is this?" answered for its source too, as the draft sheet does. */
-  onPickAccount: (draft: DraftRow, side: 'money' | 'to', accountId: string, cardId: string | null) => void;
+  onPickAccount: (draft: DraftRow, side: 'money' | 'to', accountId: string, cardId: string | null) => Promise<boolean>;
 }
 
 /** A box's own width, followed as it changes (the peek opening, the window resized): the table lays out by it. */
@@ -237,6 +241,18 @@ export function DesktopReview({
     return () => document.removeEventListener('keydown', listen);
   }, []);
 
+  // The blue cells: a range down one column of the queue (`review-cells`); starting one puts the peek away.
+  const cells = useReviewCells({
+    rows,
+    pending: tab === 'pending',
+    accounts,
+    cards,
+    guesses,
+    onEdit: (draft, patch) => actions.onEdit(draft, patch, []),
+    onPickAccount: (draft, accountId, cardId) => actions.onPickAccount(draft, 'money', accountId, cardId),
+    onStart: () => setPeekId(null),
+  });
+
   const [tableRef, tableWidth] = useWidth<HTMLElement>();
   const cols = deskColumns(tableWidth);
   const eventNameOf = (draft: DraftRow) => (draft.eventId ? (events.find((event) => event.id === draft.eventId)?.name ?? null) : null);
@@ -282,14 +298,16 @@ export function DesktopReview({
         <section ref={tableRef} className={cx(BOX, 'overflow-clip')} aria-label={SEGMENTS.find((s) => s.value === tab)!.label} data-testid="review-table">
           <h2 className={H2}>
             {SEGMENTS.find((s) => s.value === tab)!.label}
-            <span className={NOTE}>
-              {tab === 'pending'
+            <span className={NOTE} data-testid="table-note">
+              {cells.hint ??
+                (tab === 'pending'
                 ? 'Fill the orange cells in place · Return records · ⌫ discards · click a row to see what was captured'
                 : resolvedAll.length > resolved.length
                   ? `latest ${resolved.length} of ${resolvedAll.length}`
-                  : 'kept so the same capture is not offered again'}
+                  : 'kept so the same capture is not offered again')}
             </span>
           </h2>
+          {cells.line}
           <div className="border-t border-[var(--ph-hair)]">
             <table className="w-full table-fixed border-collapse text-[13px]">
               <thead>
@@ -308,7 +326,7 @@ export function DesktopReview({
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody {...cells.containerProps}>
                 {loaded && rows.length === 0 && (
                   <tr>
                     <td colSpan={9} className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
@@ -332,6 +350,7 @@ export function DesktopReview({
                     cols={cols}
                     striped={index % 2 === 1}
                     peeked={peekId === draft.id}
+                    pickedCell={cells.pickedColumn(draft.id)}
                     busy={busy}
                     onPeek={() => peek(draft.id)}
                     onOpen={() => (tab === 'pending' ? actions.onOpenForm(draft) : undefined)}
@@ -379,6 +398,20 @@ export function DesktopReview({
                     : void navigate({ to: '/transactions/$transactionId', params: { transactionId: peeked.transactionId! } })
               : undefined
           }
+        />
+      )}
+
+      {cells.choose?.draft && (
+        <Picker
+          draft={cells.choose.draft}
+          pick={cells.choose.pick}
+          title={cells.choose.pick === 'category' ? `Category for ${cells.choose.count} captures` : undefined}
+          accounts={accounts}
+          cards={cards}
+          categoryId={null}
+          onClose={cells.choose.close}
+          onCategory={cells.choose.onCategory}
+          onAccount={(_side, accountId, cardId) => cells.choose?.onAccount(accountId, cardId)}
         />
       )}
 
@@ -498,6 +531,7 @@ function DraftTableRow({
   cols,
   striped,
   peeked,
+  pickedCell,
   busy,
   onPeek,
   onOpen,
@@ -506,6 +540,8 @@ function DraftTableRow({
   onDiscard,
 }: {
   draft: DraftRow;
+  /** The column of its cell in a range of blue cells, if one is. */
+  pickedCell: CellColumn | null;
   /** Where it stands in the queue; null for one recorded or discarded (read only). */
   state: DeskDraftState | null;
   type: CaptureType | null;
@@ -532,6 +568,9 @@ function DraftTableRow({
     event.stopPropagation();
     run();
   };
+  // Each cell a range may run down is marked for it, and drawn blue while in one.
+  const cell = (column: CellColumn) => ({ 'data-cell': column, 'data-cell-row': draft.id, 'data-picked': pickedCell === column || undefined });
+  const blue = (column: CellColumn) => pickedCell === column && PICKED_CELL;
   const pickCell = (label: string, pick: PeekPick, face: ReactNode) =>
     open ? (
       <button type="button" aria-label={label} onClick={stop(() => onPick(pick))} onDoubleClick={(event) => event.stopPropagation()} className={CELL_PICK}>
@@ -557,18 +596,22 @@ function DraftTableRow({
       )}
     >
       <td className="py-[5px] pl-[10px]">{open ? <TickCircle ready={state.ready} /> : null}</td>
-      {cols.when && <td className={cx(CELL, 'text-[var(--ph-ink-3)] tabular-nums')}>{whenText(draft, type !== null)}</td>}
+      {cols.when && (
+        <td {...cell('date')} className={cx(CELL, 'text-[var(--ph-ink-3)] tabular-nums', blue('date'))}>
+          {whenText(draft, type !== null)}
+        </td>
+      )}
       {cols.from && (
         <td className={cx(CELL, 'overflow-hidden')}>
           <FromTag draft={draft} type={type} />
         </td>
       )}
-      <td className={cx(CELL, 'overflow-hidden text-ellipsis')} title={merged ? `${draft.description} · ${merged}` : draft.description}>
+      <td {...cell('description')} className={cx(CELL, 'overflow-hidden text-ellipsis', blue('description'))} title={merged ? `${draft.description} · ${merged}` : draft.description}>
         {draft.description}
         {/* Several sightings of one payment folded into this row, as the phone's row says. */}
         {merged && <span className="ml-[6px] text-[11.5px] text-[var(--ph-ink-3)]">{merged}</span>}
       </td>
-      <td className={cx(CELL, 'text-right tabular-nums')} data-testid="draft-amount">
+      <td {...cell('amount')} className={cx(CELL, 'text-right tabular-nums', blue('amount'))} data-testid="draft-amount">
         {draft.amountMinor === 0 ? (
           <span className={WARN}>No amount</span>
         ) : (
@@ -577,7 +620,7 @@ function DraftTableRow({
           </span>
         )}
       </td>
-      <td className={cx(CELL, 'overflow-hidden')}>
+      <td {...cell('category')} className={cx(CELL, 'overflow-hidden', blue('category'))}>
         {transfer
           ? pickCell(`To account for ${draft.description}`, 'to', to ? <span className="truncate">→ {to.name}</span> : <span className={WARN}>To which account?</span>)
           : pickCell(
@@ -594,7 +637,7 @@ function DraftTableRow({
             )}
       </td>
       {cols.paidWith && (
-        <td className={cx(CELL, 'overflow-hidden')}>
+        <td {...cell('paid')} className={cx(CELL, 'overflow-hidden', blue('paid'))}>
           {pickCell(
             `Account for ${draft.description}`,
             'money',
@@ -645,6 +688,7 @@ function DraftTableRow({
 function Picker({
   draft,
   pick,
+  title,
   accounts,
   cards,
   categoryId,
@@ -654,6 +698,8 @@ function Picker({
 }: {
   draft: DraftRow;
   pick: PeekPick;
+  /** The category sheet's name, when it chooses for more than this one capture. */
+  title?: string;
   accounts: readonly AccountRow[];
   cards: readonly CardRow[];
   categoryId: string | null;
@@ -667,7 +713,7 @@ function Picker({
         kind={draft.kind === 'income' ? 'income' : 'expense'}
         // A capture's kind is the form's to change: in place, only its category is picked.
         lockKind
-        title={`Category for ${draft.description}`}
+        title={title ?? `Category for ${draft.description}`}
         value={categoryId ?? undefined}
         onPick={onCategory}
         onClose={onClose}

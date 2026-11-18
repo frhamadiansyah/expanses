@@ -129,14 +129,17 @@ export function ReviewPage() {
   const expiring = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => () => void expiring.current?.(), []);
 
-  async function run(id: string, work: () => Promise<unknown>) {
+  /** Does the work as this draft's, saying what went wrong; resolves whether it was done. */
+  async function run(id: string, work: () => Promise<unknown>): Promise<boolean> {
     setError(null);
     setBusy(id);
     try {
       await work();
       await invalidate();
+      return true;
     } catch (e) {
       setError(e);
+      return false;
     } finally {
       setBusy(null);
     }
@@ -295,8 +298,8 @@ export function ReviewPage() {
    * the form back before it records (`recordForm`) — each field corrected against what was read shown to the source
    * first, so the next capture from it is read right.
    */
-  function editInPlace(draft: DraftRow, patch: DraftEdit, learn: readonly Correction[]) {
-    void run(draft.id, async () => {
+  function editInPlace(draft: DraftRow, patch: DraftEdit, learn: readonly Correction[]): Promise<boolean> {
+    return run(draft.id, async () => {
       for (const { field, value } of learn) await learnFromCorrection(database, draft.id, field, value).catch(() => undefined);
       await editDraft(database, ws, draft.id, patch);
     });
@@ -306,8 +309,8 @@ export function ReviewPage() {
    * An account picked in place. On the side its source speaks for, while nobody has answered for that source, the pick
    * is the draft sheet's "Which account is this?" answer (`onAnswerSource`): remembered for every capture from it.
    */
-  function pickAccount(draft: DraftRow, side: 'money' | 'to', accountId: string, cardId: string | null) {
-    void run(draft.id, async () => {
+  function pickAccount(draft: DraftRow, side: 'money' | 'to', accountId: string, cardId: string | null): Promise<boolean> {
+    return run(draft.id, async () => {
       const source = sourceOf(draft);
       const field = side === 'to' ? 'toAccountId' : 'accountId';
       if (source && asksForSourceAccount(draft, source) && sourceSide(draft) === field) await setSourceAccount(database, source.id, accountId, ws.workspaceId);
