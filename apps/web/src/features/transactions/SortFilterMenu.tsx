@@ -22,12 +22,18 @@ export const nextSort = (value: string): string => SORTS[(SORTS.findIndex((sort)
 /** The grey word on the Sort row ("Newest"). */
 export const sortWord = (value: string): string => SORTS[sortAt(value)]!.word;
 
-/** What Reset puts back: Sort to Newest, Paid with to All. */
+/** What Reset puts back: Sort to Newest, Paid with to All (and, on Cashflow, Yearly bills off). */
 export const MENU_REST = { sortValue: DEFAULT_SORT, paid: '' } as const;
 
-/** How many of the menu's controls are off their rest: the sort and the paid-with filter. Zero means nothing to reset. */
-export function sortFilterCount(p: { sortValue: string; paid: string }): number {
-  return (p.sortValue !== DEFAULT_SORT ? 1 : 0) + (p.paid ? 1 : 0);
+/** How many of the menu's controls are off their rest: the sort, the paid-with filter and Yearly bills. Zero means nothing to reset. */
+export function sortFilterCount(p: { sortValue: string; paid: string; yearlyBills?: boolean }): number {
+  return (p.sortValue !== DEFAULT_SORT ? 1 : 0) + (p.paid ? 1 : 0) + (p.yearlyBills ? 1 : 0);
+}
+
+/** The grey line under Yearly bills: what the switch does now, or why it does nothing over a year. */
+export function yearlyBillsHint(on: boolean, yearOrLonger: boolean): string {
+  if (yearOrLonger) return 'A year always counts them';
+  return on ? 'On: in the ring and total' : 'Off: listed, not in the ring or total';
 }
 
 /** What a phone's tab bar and home indicator take off the foot of the screen. */
@@ -35,11 +41,21 @@ const BAR_ROOM = 96;
 
 /** The phone's list look: 15px ink rows, 44 tall, a hairline between each. No hover fill, so a touch leaves nothing lit. */
 const ROW = 'flex min-h-11 w-full items-center gap-2 border-t-[0.5px] border-[var(--ph-hair)] px-3.5 py-3 text-left text-[15px] text-[var(--ph-ink)] first:border-t-0 disabled:text-[var(--ph-ink-3)]';
+/** The kit's switch track (`SwitchRow`), drawn only: the row it sits in is the menu item that says on or off. */
+function SwitchLook({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className={cx('flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[2px] transition-colors', on ? 'bg-[var(--ph-switch-on)]' : 'bg-[var(--ph-track)]')}>
+      <span className={cx('h-[22px] w-[22px] rounded-full bg-[var(--ph-selected)] shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-transform', on && 'translate-x-[18px]')} />
+    </span>
+  );
+}
+
 /**
  * The history's one ⋯ square, in the grey capsule the other controls on the row wear (owner 2026-11-15). It opens one
  * fixed-width menu, one group with no headings (owner 2026-11-16): Select (where the list can be ticked), Sort — its order
- * a grey word, each tap the next order, the menu left open — Paid with (a searchable list here, the phone's sheet there)
- * and Reset. A small blue dot while either is off its rest.
+ * a grey word, each tap the next order, the menu left open — Paid with (a searchable list here, the phone's sheet there),
+ * Yearly bills on Cashflow (owner 2026-11-18: off, a month leaves them out of its ring; on, it counts them) and Reset.
+ * A small blue dot while any is off its rest.
  */
 export function SortFilterMenu({
   sortValue,
@@ -48,6 +64,9 @@ export function SortFilterMenu({
   paidOptions,
   onPaid,
   onOpenPaid,
+  yearlyBills,
+  yearOrLonger = false,
+  onYearlyBills,
   onReset,
   onSelect,
 }: {
@@ -58,6 +77,11 @@ export function SortFilterMenu({
   onPaid: (value: string) => void;
   /** A phone picks the account in its own sheet: the menu closes and this opens it. */
   onOpenPaid?: () => void;
+  /** Cashflow's Yearly bills switch (`yearly-bills.ts`). Absent — an account's own history — no row is drawn. */
+  yearlyBills?: boolean;
+  /** A year or longer is on show: yearly bills count whatever the switch says, so the row says so and is not offered. */
+  yearOrLonger?: boolean;
+  onYearlyBills?: (on: boolean) => void;
   onReset: () => void;
   /** Starts select mode. Absent (a read-only workspace, or no list to tick), no Select row is drawn. */
   onSelect?: () => void;
@@ -69,7 +93,7 @@ export function SortFilterMenu({
   const menu = useRef<HTMLDivElement>(null);
   const [above, setAbove] = useState(false);
   const listId = useId();
-  const count = sortFilterCount({ sortValue, paid });
+  const count = sortFilterCount({ sortValue, paid, yearlyBills: !!onYearlyBills && !!yearlyBills });
   const dot = count > 0;
   const paidName = paidOptions.find((option) => option.value === paid && option.value)?.label;
 
@@ -176,6 +200,27 @@ export function SortFilterMenu({
                   <ChevronRight size={14} aria-hidden />
                 </span>
               </button>
+              {onYearlyBills && (
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={!!yearlyBills}
+                  aria-label={`Yearly bills, ${yearlyBillsHint(!!yearlyBills, yearOrLonger)}`}
+                  data-testid="yearly-bills-filter"
+                  disabled={yearOrLonger}
+                  onClick={() => {
+                    onYearlyBills(!yearlyBills);
+                    setOpen(false);
+                  }}
+                  className={cx(ROW, 'justify-between gap-3')}
+                >
+                  <span className="min-w-0">
+                    <span className="block">Yearly bills</span>
+                    <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{yearlyBillsHint(!!yearlyBills, yearOrLonger)}</span>
+                  </span>
+                  <SwitchLook on={!!yearlyBills && !yearOrLonger} />
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"

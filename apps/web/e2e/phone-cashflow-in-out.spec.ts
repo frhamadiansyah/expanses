@@ -60,7 +60,9 @@ test('a card payment and a top-up are not in Cashflow, which has no Transfers sw
   // No switch brings them back: the menu is Select, Sort, Paid with and Reset.
   await historyMenu(page).click();
   const menu = page.getByTestId('sort-filter-menu');
-  await expect(menu.getByRole('menuitemcheckbox')).toHaveCount(0);
+  // Its one switch is Yearly bills (owner 2026-11-18); no Transfers.
+  await expect(menu.getByRole('menuitemcheckbox')).toHaveCount(1);
+  await expect(menu.getByTestId('yearly-bills-filter')).toBeVisible();
   await expect(menu).not.toContainText('Transfers');
   await historyMenu(page).click();
 

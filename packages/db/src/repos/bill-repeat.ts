@@ -70,3 +70,23 @@ export async function writeBillRepeat(db: Db, ws: WorkspaceContext, id: string, 
     await db.run(sql`UPDATE expense_templates SET repeat_every = ${facts?.every ?? null} WHERE id = ${id} AND workspace_id = ${ws.workspaceId}`);
   }
 }
+
+/**
+ * Whether this database can say which purchases paid a yearly bill: a payment is one when its `bill_payments` row
+ * (0044: a Pay, or a purchase linked to a bill's month afterwards) names a bill whose repeat is 'yearly' (0099). Both
+ * facts sync in a shared workspace, so a partner's payment reads the same here as on the phone that paid it.
+ */
+export async function yearlyBillsReadable(db: Db): Promise<boolean> {
+  const rows = await db.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_payments'`);
+  return rows.length > 0 && (await billRepeatExists(db));
+}
+
+/** The purchases that paid a yearly bill, as a subquery of transaction ids. Ask `yearlyBillsReadable` first. */
+export const yearlyBillPaymentIds = sql`SELECT bp.transaction_id FROM bill_payments bp JOIN expense_templates et ON et.id = bp.template_id WHERE et.repeat = 'yearly'`;
+
+/** Of these purchases, the ones that paid a yearly bill. Empty on a database that cannot say. */
+export async function yearlyBillPaymentsOf(db: Db, transactionIds: readonly string[]): Promise<Set<string>> {
+  if (transactionIds.length === 0 || !(await yearlyBillsReadable(db))) return new Set();
+  const rows = await db.values<[string]>(sql`${yearlyBillPaymentIds} AND bp.transaction_id IN ${transactionIds}`);
+  return new Set(rows.map((row) => row[0]));
+}

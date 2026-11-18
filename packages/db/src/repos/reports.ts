@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { attributedOn, billTablesExist } from './bill-months';
+import { yearlyBillPaymentIds, yearlyBillsReadable } from './bill-repeat';
 import { monthStartFor } from './month-start';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { partCountedWhere } from './book-splits';
@@ -21,6 +22,12 @@ export interface CategoryTotalsOptions {
    * A transaction counts when it has an entry on the account, and only by the account's share of what paid for it.
    */
   paidAccountId?: string;
+  /**
+   * Cashflow over a month or less (owner, 2026-11-18): a payment of a bill that repeats once a year is left out, so it
+   * makes no spike in the month it is paid. A year or longer counts it, as does every other reader. Only a purchase
+   * linked to a yearly bill (`yearlyBillPaymentIds`) is left out; nothing is guessed from a category or an amount.
+   */
+  leaveOutYearlyBills?: boolean;
 }
 
 export interface CategoryTotal {
@@ -84,6 +91,9 @@ async function categoryRows(
       ...((await eventOnlyExists(database.db)) ? [notEventOnly(transactions.id)] : []),
       ...(paid ? [sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id = ${paid})`] : []),
       ...(kind === 'expense' && spread && spread.length > 0 ? [notInArray(transactions.id, [...spread])] : []),
+      // A yearly bill's payment, on a month's Cashflow. Not when working out a spread purchase's parts (`spread` null):
+      // a plan's monthly instalments are already a month's share, and count as such.
+      ...(opts.leaveOutYearlyBills && spread !== null && (await yearlyBillsReadable(database.db)) ? [sql`${transactions.id} NOT IN (${yearlyBillPaymentIds})`] : []),
     )!,
     // The day an amount is converted on is the day it is counted on. Under billMonths that is the out day of the
     // month whose bill it settles, not the day the payment was made — so August's internet paid on 3 September is
@@ -385,7 +395,7 @@ export async function dailyTotalsIn(
   kind: 'expense' | 'income',
   from: string,
   to: string,
-  opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
+  opts: { excludeEvents?: boolean; billMonths?: boolean; leaveOutYearlyBills?: boolean } = {},
 ): Promise<{ days: DayTotal[]; currency: string; missing: Unconverted[] }> {
   const money = await bookMoneyFor(database, ws);
   const spread = await spreadPlans(database, ws, kind);
