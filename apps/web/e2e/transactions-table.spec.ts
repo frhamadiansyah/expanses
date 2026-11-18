@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openAccountHistory } from './accounts';
+import { openRowPeek } from './receipt-peek';
 
 /*
  * Cashflow on a wide screen is the table (Mac Cashflow D): the typing row on top, the month's rows under it, read only
@@ -167,7 +168,7 @@ test('rows pasted in the table’s own column order land in the right cells; Rec
  * pinned: deleting **both** `<ReceiptLink>` from `TransactionsTable.tsx` left the whole chromium project
  * green. Both slots are covered here: the editable row's, and the locked row's, which an opening balance is.
  */
-test('the ⓘ opens a receipt from the table, on an editable row and on a locked one', async ({ page }) => {
+test('a receipt opens from the table: Cashflow’s row by a click, an account’s table — editable or locked — by its ⓘ', async ({ page }) => {
   await setUp(page);
   const typing = page.getByTestId('typing-row');
   await typing.getByLabel('Row description').fill('Superindo');
@@ -177,10 +178,11 @@ test('the ⓘ opens a receipt from the table, on an editable row and on a locked
   await typing.getByRole('button', { name: 'Record' }).click();
   await expect(page.getByTestId('transaction-row')).toHaveCount(1);
 
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
-  await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
-  await expect(page.getByRole('heading', { name: 'Superindo' })).toBeVisible();
-  await expect(page.getByTestId('receipt-hero')).toContainText('450.000');
+  // Cashflow's recorded row has no ⓘ: a click opens its receipt, the side peek.
+  await expect(page.getByRole('link', { name: 'Receipt for Superindo' })).toHaveCount(0);
+  const peek = await openRowPeek(page, 'Superindo');
+  await expect(peek.getByTestId('peek-title')).toHaveText('Superindo');
+  await expect(peek.getByTestId('peek-amount')).toContainText('450.000');
 
   // The locked row — an opening balance has no "Open in form", and used to have no way to a receipt either.
   // The account's history has the table too. Opening balances are shown only when
@@ -189,7 +191,10 @@ test('the ⓘ opens a receipt from the table, on an editable row and on a locked
   await openAccountHistory(page, 'BCA Tahapan');
   await page.getByRole('button', { name: 'Table' }).click();
   await expect(page.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('link', { name: 'Receipt for Opening balance: BCA Tahapan' }).click();
-  await expect(page.getByRole('heading', { name: 'Opening balance: BCA Tahapan' })).toBeVisible();
-  await expect(page.getByTestId('receipt-hero')).toContainText('20.000.000');
+  // The table's editable row keeps its ⓘ, and the locked one too; both open the peek over the list.
+  await expect(page.getByRole('link', { name: 'Receipt for Superindo' })).toBeVisible();
+  const locked = await openRowPeek(page, 'Opening balance: BCA Tahapan', { history: true });
+  await expect(page).toHaveURL(/\/transactions\?account=/);
+  await expect(locked.getByTestId('peek-title')).toHaveText('Opening balance: BCA Tahapan');
+  await expect(locked.getByTestId('peek-amount')).toContainText('20.000.000');
 });

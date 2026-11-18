@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { walletCard, openFace } from './accounts';
 import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 import { mockRates, openWithPockets, pickPocket } from './pockets';
+import { openRowPeek } from './receipt-peek';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -65,9 +66,9 @@ test('lira withdrawn at 525 is spent at 525, the receipt names the withdrawal, a
   await saveAs(page, form, 'Fish by the harbour');
 
   // The receipt: the same figure, and the withdrawal it came from.
-  await page.getByRole('link', { name: 'Receipt for Fish by the harbour' }).click();
-  await expect(page.getByText('≈ Rp 236.250 at the withdrawal rate (525)')).toBeVisible();
-  await expect(page.getByText(/^From the \d{1,2} [A-Z][a-z]{2}( \d{4})? withdrawal$/)).toBeVisible();
+  const fish = await openRowPeek(page, 'Fish by the harbour');
+  await expect(fish.getByText('≈ Rp 236.250 at the withdrawal rate (525)')).toBeVisible();
+  await expect(fish.getByText(/^From the \d{1,2} [A-Z][a-z]{2}( \d{4})? withdrawal$/)).toBeVisible();
 
   // The pocket: what the ₺9.550 left cost, and the withdrawal it is what is left of.
   await openLiraPocket(page, TRAVEL.name);
@@ -104,9 +105,9 @@ test('lira spent before any withdrawal was recorded says so, on the Add screen, 
   await saveAs(page, form, 'Street snack');
 
   // Saved at the day's 512 (fetched on Save): the receipt values it there, and says no withdrawal covered it.
-  await page.getByRole('link', { name: 'Receipt for Street snack' }).click();
-  await expect(page.getByText('≈ Rp 230.400 · ₺ 450 at the day’s rate (no withdrawal recorded)')).toBeVisible();
-  await expect(page.getByText(/^From the .* withdrawal$/)).toHaveCount(0);
+  const snack = await openRowPeek(page, 'Street snack');
+  await expect(snack.getByText('≈ Rp 230.400 · ₺ 450 at the day’s rate (no withdrawal recorded)')).toBeVisible();
+  await expect(snack.getByText(/^From the .* withdrawal$/)).toHaveCount(0);
 
   await openLiraPocket(page, CASH.name);
   await expect(page.getByTestId('fx-shortfall')).toContainText('₺ 450 spent with no withdrawal recorded, valued at the day’s rate');

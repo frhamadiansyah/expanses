@@ -1,5 +1,6 @@
 import { closePurchase, openPurchase, purchaseRowOf } from './purchases';
 import { expect, type Page, test } from '@playwright/test';
+import { openRowPeek } from './receipt-peek';
 import { expectWalletFigure, openAccount, openSettings, openAccountHistory, openFace } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, chooseInvestment, chooseTradeMoney, openBuyOrSell, openTradeMore, saveButton } from './add-transaction';
@@ -265,16 +266,14 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   // reached by the ⓘ at the end of the row — clicking the row itself edits in place on a desktop and opens
   // nothing here, which would make every assertion below it pass without ever loading the page they are about.
   await openAccountHistory(page, 'BCA KrisFlyer');
-  await page.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' }).click();
-  await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
-  // The two assertions above are the anchor the three below need: a `toHaveCount(0)` run the instant after a
-  // navigation passes on a page that has not drawn yet, whatever the page would eventually have shown.
-  await expect(page.getByTestId('receipt-hero')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();
-  // The round button in the header is the receipt's one Edit; the footer's is gone, and must not come back for a trade.
-  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
+  // On a wide screen the ⓘ opens the Mac receipt over the list, read only for a trade.
+  const peek = await openRowPeek(page, 'Bought 2 Antam gold bars', { history: true });
+  // The two assertions are the anchor the three below need: a `toHaveCount(0)` run the instant after the peek opens
+  // passes on a peek that has not drawn yet, whatever it would eventually have shown.
+  await expect(peek.getByTestId('peek-amount')).toBeVisible();
+  await expect(peek.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();
+  await expect(peek.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  await expect(peek.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
 });
 
 test('a sale pays its proceeds into a bank account and takes the units back out', async ({ page }) => {
@@ -356,9 +355,8 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   // Trade goes back to Net worth, where it was opened; the bank's history lists it (not Cashflow, owner 2026-11-16).
   await openAccountHistory(page, 'BCA Tahapan');
 
-  await page.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' }).click();
-  await expect(page.getByTestId('receipt-hero')).toBeVisible();
+  const peek = await openRowPeek(page, 'Bought 2 Antam gold bars', { history: true });
   // The picture is on the transaction, and the exclusion was stored with it: neither was dropped on the way.
-  await expect(page.getByTestId('photo-strip').getByRole('img')).toHaveCount(1);
-  await expect(page.getByTestId('excluded-note')).toBeVisible();
+  await expect(peek.getByTestId('photo-strip').getByRole('img')).toHaveCount(1);
+  await expect(peek.getByTestId('excluded-note')).toBeVisible();
 });

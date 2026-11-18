@@ -74,6 +74,16 @@ test('a missing category is filled in place, the row turns ready, and Record rec
   // Recorded where it belongs, and listed under Recorded.
   await page.getByRole('radio', { name: 'Recorded' }).click();
   await expect(page.getByTestId('resolved-row').filter({ hasText: 'TOKO KOPI' })).toHaveCount(1);
+  // Its peek's Open transaction opens the transaction's receipt (the Mac receipt) over it; Esc goes back to the capture.
+  await page.getByTestId('resolved-row').filter({ hasText: 'TOKO KOPI' }).click();
+  await page.getByTestId('review-peek').getByRole('button', { name: 'Open transaction' }).click();
+  const receipt = page.getByTestId('receipt-peek');
+  await expect(receipt.getByTestId('peek-amount')).toHaveText(/^Rp\s38\.000$/);
+  await expect(receipt.getByRole('button', { name: 'Back to TOKO KOPI' })).toBeVisible();
+  await expect(page).toHaveURL(/\/review/);
+  await page.keyboard.press('Escape');
+  await expect(receipt).toHaveCount(0);
+  await expect(page.getByTestId('review-peek')).toBeVisible();
   await page.goto('/transactions');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'TOKO KOPI' })).toContainText('38.000');
 });

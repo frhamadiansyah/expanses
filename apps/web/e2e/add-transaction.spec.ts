@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openRowPeek, peekLine } from './receipt-peek';
 import { personRow } from './people';
 import { addPlastic, expectWalletFigure, openAccount, openAccountHistory, removePlastic, openFace } from './accounts';
 import { addCap, budgetCells } from './budget';
@@ -192,12 +193,12 @@ test('a purchase on the account’s only card keeps that card once it is removed
   await expect(page.getByTestId('card-on-account')).toHaveCount(1);
 
   await page.goto('/transactions');
-  await page.getByRole('link', { name: 'Receipt for Bakmi GM' }).click();
-  await expect(page.locator('div', { hasText: /^Paid with/ }).last()).toContainText('BCA KrisFlyer ···· 1467 · removed card');
+  const bakmi = await openRowPeek(page, 'Bakmi GM');
+  await expect(peekLine(bakmi, 'Paid with')).toContainText('BCA KrisFlyer ···· 1467 · removed card');
 
   // Edit shows it as the purchase's value, and never offers it for another.
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Edit transaction' });
+  await bakmi.getByRole('button', { name: 'Edit', exact: true }).click();
+  const form = page.getByRole('form', { name: 'Edit a transaction' });
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('···· 1467 · removed card');
   await form.getByRole('button', { name: 'Paid with' }).click();
   const sheet = page.getByRole('dialog', { name: 'Paid with' });
@@ -419,9 +420,9 @@ test('a transfer from a rupiah bank to a dollar account takes a fee in rupiah: t
   await expect(page.getByTestId('period-total')).toHaveText('Rp 25.000');
 
   // Reopened, the fee and both amounts are back in their rows.
-  await page.getByTestId('transaction-row').filter({ hasText: 'To Wise' }).getByRole('link').first().click();
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  const edit = page.getByRole('dialog', { name: 'Edit transaction' });
+  const wise = await openRowPeek(page, 'To Wise');
+  await wise.getByRole('button', { name: 'Edit', exact: true }).click();
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
   await expect(edit.getByLabel('Fee in IDR')).toHaveValue('25000');
   await expect(edit.getByLabel('Received amount (USD)')).toHaveValue('100.00');
 });
@@ -593,10 +594,10 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   await expect(row).not.toContainText('1467');
   await expect(row).toContainText('US$100,00');
 
-  await page.getByRole('link', { name: 'Receipt for Dinner with Andi' }).click();
-  await expect(page.locator('div', { hasText: /^Paid with/ }).last()).toContainText('BCA KF Signature ···· 8802');
-  await expect(page.locator('div', { hasText: /^Total/ }).last()).toContainText('1.600.000');
-  await expect(page.locator('div', { hasText: /^Original amount/ }).last()).toContainText('US$100,00');
+  const dinner = await openRowPeek(page, 'Dinner with Andi');
+  await expect(peekLine(dinner, 'Paid with')).toContainText('BCA KF Signature ···· 8802');
+  await expect(peekLine(dinner, 'Total')).toContainText('1.600.000');
+  await expect(peekLine(dinner, 'Original amount')).toContainText('US$100,00');
 
   // It is still a shared bill and not a plain purchase that happened to keep two more columns: Andi owes his half.
   await page.goto('/net-worth/lend-borrow');
@@ -725,7 +726,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await expect(form).toHaveCount(0);
 
   // Event spending is not in Cashflow's list: its receipt is reached from the event's own page.
-  await expect(page.getByRole('link', { name: 'Receipt for Superindo' })).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toHaveCount(0);
   await page.goto('/events');
   await page.getByTestId('event-row').filter({ hasText: 'Lebaran' }).click();
   // The receipt carries the event and the channel it was given, and says it is out of the chart.
@@ -1110,8 +1111,8 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
-  const picture = page.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Superindo' });
+  const peek = await openRowPeek(page, 'Superindo');
+  const picture = peek.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Superindo' });
   await expect(picture).toHaveCount(1);
   await expect(picture).toHaveAttribute('src', /^blob:/);
   // The bytes behind that URL are the ones chosen in the form, read back out of this device's own OPFS.
@@ -1127,8 +1128,8 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
    * picture was never lost (`movePhotosTx` carries it across a correction) but the one screen that can show or
    * remove it said there was nothing there, which from the user's side is indistinguishable from data loss.
    */
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  const edit = page.getByRole('dialog', { name: 'Edit transaction' });
+  await peek.getByRole('button', { name: 'Edit', exact: true }).click();
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
   await edit.getByRole('button', { name: 'Add more details' }).click();
   const reopened = page.getByRole('region', { name: 'More details' });
   await expect(edit.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos, 1');
@@ -1141,10 +1142,11 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   await photos.getByRole('button', { name: 'Remove photo 1' }).click();
   await expect(edit.getByTestId('amount-photos')).toHaveAttribute('aria-label', 'Photos');
   await closeDetails(reopened, photos);
-  await edit.getByRole('button', { name: 'Save' }).click();
+  await saveButton(edit).click();
   await expect(edit).toHaveCount(0);
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
-  await expect(page.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Superindo' })).toHaveCount(0);
+  const after = await openRowPeek(page, 'Superindo');
+  await expect(after.getByTestId('peek-amount')).toBeVisible();
+  await expect(after.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Superindo' })).toHaveCount(0);
 });
 
 /**
@@ -1360,8 +1362,8 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   // The other purchase's receipt names the other card, for the same reason the rows do: `receiptLines` has its
   // own card lookup, and one receipt in isolation cannot tell it from "this account's first card".
   await page.goto('/transactions');
-  await page.getByRole('link', { name: 'Receipt for Ranch Market' }).click();
-  await expect(page.locator('div', { hasText: /^Paid with/ }).last()).toContainText('BCA KF Signature ···· 1467');
+  const ranch = await openRowPeek(page, 'Ranch Market');
+  await expect(peekLine(ranch, 'Paid with')).toContainText('BCA KF Signature ···· 1467');
 
   // The MCC: remembered for the merchant rather than typed onto this purchase, which is what the checkbox
   // promised. The points engine reads it back through `resolveMcc`, and says where it came from.
@@ -1687,9 +1689,9 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   await expect(row.getByTestId('amount-extra')).toHaveText(/^\+ Rp\s10\.000$/);
 
   // Reopened, it is the transfer it was: the amount that landed, and its fee under Fees & charges.
-  await row.getByRole('link').first().click();
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  const edit = page.getByRole('dialog', { name: 'Edit transaction' });
+  const topUp = await openRowPeek(page, 'GoPay top-up');
+  await topUp.getByRole('button', { name: 'Edit', exact: true }).click();
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
   await expect(edit.getByRole('radio', { name: 'Transfer', exact: true })).toBeChecked();
   await expect(edit.getByLabel(/^Fee in /)).toHaveValue('10000');
   // The Amount row is the amount alone; the fee is its own row under it, its category on the left.
@@ -1708,7 +1710,7 @@ test('a transfer with a fee is one transfer, the account paying both and the fee
   await picker.getByRole('button', { name: 'Fees & charges', exact: true }).click();
   await expect(picker).toHaveCount(0);
   await expect(edit.getByRole('button', { name: 'Fee category' })).toContainText('Fees & charges');
-  await edit.getByRole('button', { name: 'Cancel' }).click();
+  // Left unsaved: the full edit screen is a page, and going elsewhere is its Cancel.
 
   await page.goto('/wallet');
   await expectWalletFigure(page, 'GoPay', '1.000.000');

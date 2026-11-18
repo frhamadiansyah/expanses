@@ -153,6 +153,15 @@ test('a row opens its bill in the side peek: arrows step, Esc closes, Pay and Sk
   // The peek stays on the bill, now paid, with the payment in its history.
   await expect(page.getByTestId('peek-status')).toContainText('Paid');
   await expect(page.getByTestId('peek-history')).toContainText('150.000');
+  // A paid month opens its payment's receipt (the Mac receipt) in the bill's peek's place, with ‹ back to the bill.
+  await page.getByTestId('peek-history-row').filter({ hasText: '150.000' }).click();
+  const receipt = page.getByTestId('receipt-peek');
+  await expect(receipt.getByTestId('peek-amount')).toHaveText(/^Rp\s150\.000$/);
+  await expect(receipt.getByTestId('receipt-bill')).toContainText('Linked');
+  await expect(page).toHaveURL(/\/bills/);
+  await receipt.getByRole('button', { name: 'Back to Phone' }).click();
+  await expect(receipt).toHaveCount(0);
+  await expect(page.getByTestId('bill-peek').getByTestId('peek-title')).toContainText('Phone');
 
   await peekBill(page, 'Internet');
   await peekButton(page, 'Skip').click();

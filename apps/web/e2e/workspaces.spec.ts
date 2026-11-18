@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openRowPeek } from './receipt-peek';
 import { openAccount, openCard, walletCard, openFace } from './accounts';
 import { addItem, chooseCategory, moneyIn, planFor, showPlanCard } from './event-plan';
 import { addTransaction, addTransfer, saveButton } from './add-transaction';
@@ -631,9 +632,10 @@ test('the card names its workspace; only the sidebar offers to change it', async
   await card.getByRole('button', { name: 'Cancel' }).click();
 
   // Correcting one: the same row still says where this is filed, and no longer offers to re-file it.
-  await page.getByRole('link', { name: 'Receipt for Supplier dinner' }).click();
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  const editing = page.getByRole('dialog', { name: 'Edit transaction' });
+  // From the row's peek (the Mac receipt), Edit is the full edit screen.
+  const peek = await openRowPeek(page, 'Supplier dinner');
+  await peek.getByRole('button', { name: 'Edit', exact: true }).click();
+  const editing = page.getByRole('form', { name: 'Edit a transaction' });
   const row = editing.getByRole('button', { name: 'Workspace for this transaction' });
   await expect(row).toContainText('Personal');
   await expect(row).toBeDisabled();
@@ -661,9 +663,9 @@ test('a transfer is filed in the workspace it was recorded in, and moves to anot
   await expect(row).toBeVisible();
 
   // Move it to Personal from its Edit screen.
-  await page.getByRole('link', { name: 'Receipt for Holiday top up' }).click();
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  const edit = page.getByRole('dialog', { name: 'Edit transaction' });
+  const peek = await openRowPeek(page, 'Holiday top up', { history: true });
+  await peek.getByRole('button', { name: 'Edit', exact: true }).click();
+  const edit = page.getByRole('form', { name: 'Edit a transaction' });
   await edit.getByRole('button', { name: 'Workspace for this transaction' }).click();
   await page.getByRole('dialog', { name: 'Move to workspace' }).getByRole('button', { name: 'Personal' }).click();
   await saveButton(edit).click();

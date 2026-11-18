@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openRowPeek, receiptPeek } from './receipt-peek';
 import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, settingsSaved, setUp, startReport, typeInto, walk } from './deposit-maturity';
 import { openAssets } from './drawers';
 
@@ -251,8 +252,7 @@ test('refuses on screen to void a payout from before a logged roll-over, and say
   await page.getByRole('button', { name: 'Earlier period' }).click();
   await page.getByRole('button', { name: 'Earlier period' }).click();
   await expect(page.getByRole('button', { name: /^August 2026/ })).toBeVisible();
-  await page.getByRole('link', { name: 'Receipt for Interest: BCA Deposito' }).click();
-  await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
+  await openRowPeek(page, 'Interest: BCA Deposito');
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();
   await expect(page.getByText('A later payout of this deposit is recorded. Void that one first, then this one.')).toBeVisible();
@@ -279,7 +279,7 @@ test('undoes a payout recorded by hand: nothing posts or is voided, it is propos
   // While it is logged, the October roll-over cannot be voided.
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Earlier period' }).click();
-  await page.getByRole('link', { name: 'Receipt for Interest: BCA Deposito' }).click();
+  await openRowPeek(page, 'Interest: BCA Deposito');
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();
   await expect(page.getByText('Void that one first, then this one.')).toBeVisible();
@@ -297,9 +297,11 @@ test('undoes a payout recorded by hand: nothing posts or is voided, it is propos
   // Now the roll-over voids, and its maturity is proposed again at its old terms.
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Earlier period' }).click();
-  await page.getByRole('link', { name: 'Receipt for Interest: BCA Deposito' }).click();
+  await openRowPeek(page, 'Interest: BCA Deposito');
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();
+  // Deleted: the peek closes once the write is done, on Cashflow still.
+  await expect(receiptPeek(page)).toHaveCount(0);
   await expect(page).toHaveURL(/\/transactions(\?|$)/);
   await openDeposit(page, s.depositName);
   await expect(card).toContainText('Matured 15 Oct 2026');

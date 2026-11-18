@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { type Browser, expect, type Locator, type Page, test, type TestInfo } from '@playwright/test';
+import { openRowPeek, receiptPeek } from './receipt-peek';
 import { currencyRow, setCurrency } from './currency-field';
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openAccountHistory, openCard, walletCard, openFace, wideScreen } from './accounts';
@@ -81,19 +82,25 @@ async function shot(page: Page, info: TestInfo, name: string) {
 /** The row of a purchase on Cashflow's list, by what it was called. */
 const rowOf = (page: Page, description: string) => page.getByTestId('transaction-row').filter({ hasText: description });
 
-/** A purchase's receipt: the row's tap on a phone, the ⓘ at its end on a wide screen. */
+/** A purchase's receipt: the row's tap on a phone (its page); a click on the row on a wide screen (the Mac receipt, its peek). */
 async function openReceipt(page: Page, phone: boolean, description: string) {
   await page.goto('/transactions');
+  if (!phone) {
+    await openRowPeek(page, description);
+    return;
+  }
   // The row's face, not the category circle beside it (whose name is "Category for …").
-  if (phone) await rowOf(page, description).getByRole('button', { name: new RegExp(`^(?!Category for).*${description}`) }).click();
-  else await page.getByRole('link', { name: `Receipt for ${description}` }).click();
+  await rowOf(page, description).getByRole('button', { name: new RegExp(`^(?!Category for).*${description}`) }).click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
 }
 
-/** Corrects what a purchase came to, from its receipt: the phone's Add screen on it, the desktop's card in a sheet. */
+/** The receipt's Edit: the round button on the phone's page, the peek's Edit on a wide screen. */
+const editOf = (page: Page, phone: boolean) => (phone ? page.getByRole('button', { name: 'Edit this transaction' }) : receiptPeek(page).getByRole('button', { name: 'Edit', exact: true }));
+
+/** Corrects what a purchase came to, from its receipt: the phone's Add screen on it, the wide screen's full edit screen. */
 async function correct(page: Page, phone: boolean, description: string, amount: string) {
   await openReceipt(page, phone, description);
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  await editOf(page, phone).click();
   if (phone) {
     const form = page.getByRole('form', { name: 'Edit a transaction' });
     await form.getByRole('button', { name: 'Amount', exact: true }).click();
@@ -104,7 +111,7 @@ async function correct(page: Page, phone: boolean, description: string, amount: 
     await saveButton(form).click();
     await expect(form).toHaveCount(0);
   } else {
-    const sheet = page.getByRole('dialog', { name: 'Edit transaction' });
+    const sheet = page.getByRole('form', { name: 'Edit a transaction' });
     await sheet.getByLabel('Amount', { exact: true }).fill(amount);
     await saveButton(sheet).click();
     await expect(sheet).toHaveCount(0);
@@ -969,15 +976,17 @@ test('a joint account: the partner pays from it, both list the same rows with wh
 
   // Equal rights: either person can change the other's row, on both phones.
   await openReceipt(page, phoneProject(info), 'Dewi groceries');
-  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toBeVisible();
+  await expect(editOf(page, phoneProject(info))).toBeVisible();
   await expect(page.getByTestId('joint-note')).toContainText('by Dewi');
   await openReceipt(dewi, phoneProject(info), 'Fandri water');
-  await expect(dewi.getByRole('button', { name: 'Edit this transaction' })).toBeVisible();
+  await expect(editOf(dewi, phoneProject(info))).toBeVisible();
 
   // Fandri deletes Dewi's row: it stays on both lists as deleted, with who deleted it, and either can restore it.
   await openReceipt(page, phoneProject(info), 'Dewi groceries');
   await page.getByRole('button', { name: 'Delete this transaction' }).click();
   await page.getByRole('button', { name: 'Click again to delete' }).click();
+  // A wide screen's peek closes once the delete is written, on Cashflow still; a phone's receipt goes back to the list.
+  if (!phoneProject(info)) await expect(receiptPeek(page)).toHaveCount(0);
   await expect(page).toHaveURL(/\/transactions$/);
   await page.goto('/wallet');
   await openFace(walletCard(page, 'Fandri Bank'));

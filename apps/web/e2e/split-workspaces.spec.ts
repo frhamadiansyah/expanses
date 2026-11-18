@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openRowPeek } from './receipt-peek';
 import { openAccount } from './accounts';
 import { choosePayment } from './add-transaction';
 import { addPart, fillPart, openSplit, pickPartCategory } from './split-row';
@@ -62,10 +63,10 @@ test('a purchase split across workspaces lists each part in its workspace, and t
   await expect(page.getByTestId('period-total')).toHaveText('Rp 900.000');
 
   // The receipt: the whole charge, and each part with its workspace.
-  await page.getByRole('link', { name: 'Receipt for Pasar Sentosa' }).click();
-  await expect(page.getByTestId('hero-amount')).toContainText('1.350.000');
-  await expect(page.getByText('Charged on BCA Tahapan')).toBeVisible();
-  const parts = page.getByTestId('split-part');
+  const peek = await openRowPeek(page, 'Pasar Sentosa');
+  await expect(peek.getByTestId('peek-amount')).toContainText('1.350.000');
+  await expect(peek.getByText('Charged on BCA Tahapan')).toBeVisible();
+  const parts = peek.getByTestId('split-part');
   await expect(parts).toHaveCount(2);
   await expect(parts.nth(0)).toContainText('Groceries');
   await expect(parts.nth(0)).toContainText('Personal');

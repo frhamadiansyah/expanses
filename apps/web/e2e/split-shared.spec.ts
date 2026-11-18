@@ -1,4 +1,5 @@
 import { type Browser, expect, type Page, test, type TestInfo } from '@playwright/test';
+import { openRowPeek } from './receipt-peek';
 import { openAccount } from './accounts';
 import { choosePayment, saveButton } from './add-transaction';
 import { addPart, fillPart, openSplit, pickPartCategory } from './split-row';
@@ -112,16 +113,16 @@ test('a purchase split between a shared workspace and a private one reaches the 
   await expect(theirs).not.toContainText('Restaurants');
   await expect(theirs).not.toContainText('⑂ split');
   await expect(dewi.getByTestId('period-total')).toHaveText('Rp 830.000');
-  await dewi.getByRole('link', { name: 'Receipt for Toko Sumber Rejeki' }).click();
-  await expect(dewi.getByTestId('hero-amount')).toContainText('830.000');
+  const hers = await openRowPeek(dewi, 'Toko Sumber Rejeki');
+  await expect(hers.getByTestId('peek-amount')).toContainText('830.000');
   await expect(dewi.locator('main')).not.toContainText('1.247.000');
   await expect(dewi.locator('main')).not.toContainText('417.000');
   await expect(dewi.locator('main')).not.toContainText('Business');
   await expect(dewi.getByTestId('split-part')).toHaveCount(0);
 
   // Dewi corrects the Home part: it comes back to Fandri's split, Business's part untouched, the charge their sum.
-  await dewi.getByRole('button', { name: 'Edit this transaction' }).click();
-  const sheet = dewi.getByRole('dialog', { name: 'Edit transaction' });
+  await hers.getByRole('button', { name: 'Edit', exact: true }).click();
+  const sheet = dewi.getByRole('form', { name: 'Edit a transaction' });
   await sheet.getByLabel('Amount', { exact: true }).fill('702000');
   await saveButton(sheet).click();
   await expect(sheet).toHaveCount(0);
@@ -129,9 +130,9 @@ test('a purchase split between a shared workspace and a private one reaches the 
   await page.goto('/transactions');
   await eventually(page, () => expect(rowOf(page, 'Toko Sumber Rejeki')).toContainText('702.000', { timeout: 1_000 }));
   await expect(page.getByTestId('period-total')).toHaveText('Rp 702.000');
-  await page.getByRole('link', { name: 'Receipt for Toko Sumber Rejeki' }).click();
-  await expect(page.getByTestId('hero-amount')).toContainText('1.119.000');
-  const parts = page.getByTestId('split-part');
+  const his = await openRowPeek(page, 'Toko Sumber Rejeki');
+  await expect(his.getByTestId('peek-amount')).toContainText('1.119.000');
+  const parts = his.getByTestId('split-part');
   await expect(parts).toHaveCount(2);
   await expect(parts.filter({ hasText: 'Business' })).toContainText('417.000');
   await expect(parts.filter({ hasText: 'Home' })).toContainText('702.000');

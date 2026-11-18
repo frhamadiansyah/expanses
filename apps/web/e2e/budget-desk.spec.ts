@@ -112,6 +112,15 @@ test('a category’s name opens its side peek: the month’s figures and transac
   await expect(peek.getByTestId('peek-left')).toHaveText(/Rp\s60\.000 left of Rp\s400\.000/);
   await expect(peek.getByTestId('peek-item')).toHaveCount(1);
   await expect(peek.getByTestId('peek-item')).toContainText('Pasar pagi');
+  // A row opens its receipt (the Mac receipt) in the category peek's place, with ‹ back to the category.
+  await peek.getByTestId('peek-item').click();
+  const receipt = page.getByTestId('receipt-peek');
+  await expect(receipt.getByTestId('peek-title')).toHaveText('Pasar pagi');
+  await expect(receipt.getByTestId('peek-amount')).toHaveText(/^Rp\s340\.000$/);
+  await expect(page).toHaveURL(/\/budget/);
+  await receipt.getByRole('button', { name: 'Back to Groceries' }).click();
+  await expect(receipt).toHaveCount(0);
+  await expect(peek.getByTestId('peek-title')).toHaveText('Groceries');
 
   // ↓ is the next category in the table's order (Food and beverage, under No budget yet).
   await page.keyboard.press('ArrowDown');

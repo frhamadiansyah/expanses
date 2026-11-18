@@ -7,6 +7,7 @@ import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { addTransaction, closeDetails, shareWith, choosePayment, chooseTradeMoney, openBuyOrSell, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { openAsset } from './asset-page';
+import { openRowPeek, peekLine } from './receipt-peek';
 
 /** A credit card, so there is something to charge a purchase to. */
 async function addCard(page: Page, name = 'BCA Visa') {
@@ -20,13 +21,14 @@ async function spend(page: Page, description: string, amount: string, card = 'BC
   await expect(page.getByText(description)).toBeVisible();
 }
 
-/** The receipt behind a row's ⓘ, which is the only way a desktop reaches one. */
-/** From Cashflow, or — a buy, an opening balance, which Cashflow does not list (owner 2026-11-16) — `from`'s history. */
+/**
+ * A row's receipt on a wide screen, the Mac receipt (the side peek): from Cashflow by a click on the row, or — a buy, an
+ * opening balance, which Cashflow does not list (owner 2026-11-16) — from `from`'s history by its ⓘ.
+ */
 async function openReceipt(page: Page, description: string, from?: string) {
   if (from) await openAccountHistory(page, from);
   else await page.goto('/transactions');
-  await page.getByRole('link', { name: `Receipt for ${description}` }).click();
-  await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
+  return openRowPeek(page, description, { history: !!from });
 }
 
 
@@ -37,37 +39,25 @@ async function showDeleted(page: Page) {
   await page.keyboard.press('Escape');
 }
 /**
- * The receipt, reached the way a desktop reaches it: the ⓘ at the end of the row.
- *
- * Task 17 grows this file into the full desktop pass. It exists from here so that task modifies a file that is
- * already there, rather than inventing one beside it.
+ * The receipt, reached the way a wide screen reaches it: a click on Cashflow's row opens it as the side peek (the Mac
+ * receipt), in place — never the phone's receipt page, and with no ⓘ on the row.
  */
-test('the ⓘ on a row opens the receipt, and the row itself still edits in place', async ({ page }) => {
+test('a click on a Cashflow row opens its receipt as the peek, in place', async ({ page }) => {
   await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Visa', category: 'Groceries', amount: '500000' });
   await expect(page.getByText('Superindo')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Receipt for Superindo' })).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
-
-  // Its own route, so it can be linked to, bookmarked and reached by URL — not a panel on the list.
-  await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
-  await expect(page.getByRole('heading', { name: 'Superindo' })).toBeVisible();
+  const peek = await openRowPeek(page, 'Superindo');
+  await expect(page).toHaveURL(/\/transactions(\?|$)/);
+  await expect(peek.getByTestId('peek-title')).toHaveText('Superindo');
 
   // The figure, not the word: what the card was charged, beside the account that was charged.
-  const paidWith = page.locator('div', { hasText: /^Paid with/ }).last();
-  await expect(paidWith).toContainText('BCA Visa');
-  const total = page.locator('div', { hasText: /^Total/ }).last();
-  await expect(total).toContainText('500.000');
-  await expect(page.getByTestId('receipt-hero')).toContainText('500.000');
-
-  // Back lands where it came from, and the row's own click still opens its side peek (Mac Cashflow D): the ⓘ is a way
-  // in beside it, never instead of it.
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page).toHaveURL(/\/transactions(\?|$)/);
-  await page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).click();
-  await expect(page.getByTestId('cashflow-peek').getByTestId('peek-title')).toHaveText('Superindo');
+  await expect(peekLine(peek, 'Paid with')).toContainText('BCA Visa');
+  await expect(peekLine(peek, 'Total')).toContainText('500.000');
+  await expect(peek.getByTestId('peek-amount')).toContainText('500.000');
 });
 
 /**
@@ -116,21 +106,31 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
-  await openReceipt(page, 'Bought 2 Antam gold bars', 'BCA Tahapan');
-  await expect(page.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
+  // Read only, the same receipt: its lines, why it is not changed here, and Open holding instead of the buttons.
+  const trade = await openReceipt(page, 'Bought 2 Antam gold bars', 'BCA Tahapan');
+  await expect(page).toHaveURL(/\/transactions\?account=/);
+  await expect(peekLine(trade, 'Paid with')).toContainText('BCA Tahapan');
+  await expect(peekLine(trade, 'Total')).toContainText('3.980.000');
+  await expect(trade.getByTestId('peek-notice')).toHaveText('A trade is changed on its holding’s page.');
+  await expect(trade.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();
+  await expect(trade.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
+  await expect(trade.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
+  await expect(trade.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  await expect(trade.getByRole('button', { name: 'Split', exact: true })).toHaveCount(0);
+  // The list keeps clear of it: the row's figure is not under the peek.
+  const amount = page.getByTestId('transaction-row').filter({ hasText: 'Bought 2 Antam gold bars' });
+  expect((await amount.boundingBox())!.x + (await amount.boundingBox())!.width).toBeLessThanOrEqual((await trade.boundingBox())!.x + 1);
+  await trade.getByRole('button', { name: 'Open holding', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/?]+$/);
 
   // And nothing about opening the receipt moved the money.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('68.600.000');
 
-  await openReceipt(page, 'Opening balance: BCA Tahapan', 'BCA Tahapan');
-  await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
+  const opening = await openReceipt(page, 'Opening balance: BCA Tahapan', 'BCA Tahapan');
+  await expect(opening.getByTestId('peek-amount')).toContainText('50.000.000');
+  await expect(opening.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
+  await expect(opening.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
 });
 
 /**
@@ -143,25 +143,23 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
 test('deleting from the receipt asks twice, and the deleted receipt says it is deleted', async ({ page }) => {
   await addCard(page);
   await spend(page, 'Superindo', '500000');
-  await openReceipt(page, 'Superindo');
-  const receiptUrl = page.url();
+  const peek = await openReceipt(page, 'Superindo');
 
-  await page.getByRole('button', { name: 'Delete this transaction' }).click();
+  await peek.getByRole('button', { name: 'Delete this transaction' }).click();
   // Armed, not gone: one press never deletes, and the receipt is still the receipt.
-  await expect(page).toHaveURL(receiptUrl);
-  await expect(page.getByTestId('receipt-hero')).toContainText('500.000');
+  await expect(peek.getByTestId('peek-amount')).toContainText('500.000');
 
-  await page.getByRole('button', { name: 'Click again to delete' }).click();
-  await expect(page).toHaveURL(/\/transactions(\?|$)/);
+  await peek.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(peek).toHaveCount(0);
   await expect(page.getByText('Superindo')).toHaveCount(0);
 
   // Deleted, not destroyed: it reads as deleted, and offers no second way to delete it again.
   await showDeleted(page);
-  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
-  await expect(page.getByText('Deleted', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('hero-amount')).toHaveClass(/line-through/);
-  await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  const deleted = await openRowPeek(page, 'Superindo');
+  await expect(deleted.getByText('Deleted', { exact: true })).toBeVisible();
+  await expect(deleted.getByTestId('peek-amount')).toHaveClass(/line-through/);
+  await expect(deleted.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
+  await expect(deleted.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
 });
 
 /**
@@ -172,10 +170,11 @@ test('deleting from the receipt asks twice, and the deleted receipt says it is d
 test('an edit from the receipt lands on the list, because the edit replaces the transaction', async ({ page }) => {
   await addCard(page);
   await spend(page, 'Superindo', '500000');
-  await openReceipt(page, 'Superindo');
+  const peek = await openReceipt(page, 'Superindo');
 
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
-  await expect(page.getByRole('dialog', { name: 'Edit transaction' })).toBeVisible();
+  // The peek's Edit is the full edit screen, as a double-click on the row opens it.
+  await peek.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByRole('form', { name: 'Edit a transaction' })).toBeVisible();
   await page.getByLabel('Amount', { exact: true }).fill('575000');
   await page.getByRole('button', { name: 'Save' }).click();
 
@@ -205,13 +204,12 @@ test('the receipt does not offer This was a purchase', async ({ page }) => {
   await addTransaction(page, { description: 'UBS Gold Store', paidWith: 'BCA Tahapan', category: 'Shopping', amount: '3980000' });
   await expect(page.getByText('UBS Gold Store')).toBeVisible();
 
-  await openReceipt(page, 'UBS Gold Store');
-  // Anchored on what the receipt does draw, so the counts below are read off a page that has finished drawing.
-  await expect(page.getByRole('button', { name: 'Delete this transaction' })).toBeVisible();
+  const peek = await openReceipt(page, 'UBS Gold Store');
+  // Anchored on what the receipt does draw, so the counts below are read off a peek that has finished drawing.
+  await expect(peek.getByRole('button', { name: 'Delete this transaction' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'This was a purchase' })).toHaveCount(0);
-  // Edit is the round button in the corner alone, no second one under the receipt.
-  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  // One Edit, the peek's.
+  await expect(peek.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(1);
 });
 
 /**
@@ -236,11 +234,10 @@ test('a split bill says which figure is the share and which is the bill', async 
   await expect(split).toHaveCount(0);
   await expect(page.getByText('Dinner at Plataran')).toBeVisible();
 
-  await openReceipt(page, 'Dinner at Plataran');
-  const hero = page.getByTestId('receipt-hero');
-  await expect(hero).toContainText('100.000');
-  await expect(hero).toContainText('My share');
-  await expect(page.locator('div', { hasText: /^Total/ }).last()).toContainText('400.000');
+  const peek = await openReceipt(page, 'Dinner at Plataran');
+  await expect(peek.getByTestId('peek-amount')).toContainText('100.000');
+  await expect(peek).toContainText('My share');
+  await expect(peekLine(peek, 'Total')).toContainText('400.000');
 });
 
 /**
@@ -280,10 +277,10 @@ test('a transaction left out of the chart says so on its receipt', async ({ page
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with/ }).click()]);
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
 
-  await openReceipt(page, 'Superindo');
-  await expect(page.getByTestId('excluded-note')).toContainText('Excluded from the chart and budgets. Still counted in balances, statements and points.');
+  const peek = await openReceipt(page, 'Superindo');
+  await expect(peek.getByTestId('excluded-note')).toContainText('Excluded from the chart and budgets. Still counted in balances, statements and points.');
   // The line the flag also writes, so the receipt is reading the restored row and not a constant.
-  await expect(page.locator('div', { hasText: /^Channel/ }).last()).toContainText('Offline');
+  await expect(peekLine(peek, 'Channel')).toContainText('Offline');
 });
 
 /**

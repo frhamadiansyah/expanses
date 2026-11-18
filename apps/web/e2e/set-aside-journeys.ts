@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAccountHistory } from './accounts';
+import { openRowPeek, receiptPeek } from './receipt-peek';
 import { openAmount, addForm, saveButton, chooseGoal, chooseTo } from './add-transaction';
 import { editGoal, expectArchiveNote, openGoalForm } from './goals';
 import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, openGoalHistory, setAside, transferOutBorrowingFromUmrah, typeAmount, typeSecondFigure } from './set-aside';
@@ -35,32 +36,36 @@ async function pickCategory(page: Page, form: Locator) {
 }
 
 /**
- * A transaction's receipt: the ⓘ link on a desktop, the row itself on a phone. Found on Cashflow, or — a transfer, which
- * Cashflow does not list (owner 2026-11-16) — on the history of the account `from` names.
+ * A transaction's receipt: the row itself on a phone (its receipt page); on a wide screen the Mac receipt, the side peek
+ * — Cashflow's row by a click, an account's history by its ⓘ. Found on Cashflow, or — a transfer, which Cashflow does
+ * not list (owner 2026-11-16) — on the history of the account `from` names. Returns where the receipt's buttons are.
  */
-async function openReceipt(page: Page, what: string, from?: string) {
+async function openReceipt(page: Page, what: string, from?: string): Promise<Locator | Page> {
   if (from) await openAccountHistory(page, from);
   else await page.goto('/transactions');
   const row = page.getByTestId('transaction-row').filter({ hasText: what }).first();
   await expect(row).toBeVisible();
-  if (isPhone(page)) await row.getByRole('button').filter({ hasNotText: /^$/ }).first().click();
-  else await page.getByRole('link', { name: `Receipt for ${what}` }).first().click();
+  if (!isPhone(page)) return openRowPeek(page, what, { history: !!from });
+  await row.getByRole('button').filter({ hasNotText: /^$/ }).first().click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+$/);
+  return page;
 }
 
-/** The edit from the receipt: the phone's Add screen on the transaction, or the desktop's card in a sheet. */
+/** The edit from the receipt: the phone's Add screen on the transaction, or the full edit screen from the peek's Edit. */
 async function openEdit(page: Page, what: string) {
-  await openReceipt(page, what);
-  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  const receipt = await openReceipt(page, what);
+  if (isPhone(page)) await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  else await receipt.getByRole('button', { name: 'Edit', exact: true }).click();
   const form = page.getByRole('dialog', { name: 'Edit transaction' }).or(page.getByRole('form', { name: 'Edit a transaction' }));
   await expect(form).toBeVisible();
   return form;
 }
 
 async function deleteFromReceipt(page: Page, what: string, from?: string) {
-  await openReceipt(page, what, from);
-  await page.getByRole('button', { name: 'Delete this transaction' }).click();
-  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  const receipt = await openReceipt(page, what, from);
+  await receipt.getByRole('button', { name: 'Delete this transaction' }).click();
+  await receipt.getByRole('button', { name: 'Click again to delete' }).click();
+  if (!isPhone(page)) await expect(receiptPeek(page)).toHaveCount(0);
   await expect(page).toHaveURL(/\/transactions(\?|$)/);
 }
 
