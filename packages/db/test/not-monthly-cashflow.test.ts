@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  budgetSheetFor,
   categoryTotalsIn,
   createAccount,
   dailyTotalsIn,
@@ -133,4 +134,21 @@ it('the bars and the income split leave them out alike, so the days add up to th
   const kept = await essentialSplitIn(h.database, h.ws, '2027-03-01', '2027-03-31', { excludeEvents: true });
   expect(out.split.spendingMinor).toBe(41_000);
   expect(kept.split.spendingMinor).toBe(13_341_000);
+});
+
+it("Overview's month (the Budget sheet asked to leave them out) reads what Cashflow's month spent; Budget's own sheet still counts them", async () => {
+  const h = await household();
+  await h.pay(h.cover, 7_300_000);
+  await h.pay(await h.every('Car service', 6), 6_000_000);
+  await h.pay(h.gym, 410_000, '2027-03-06');
+  await h.buy('2027-03-07', 63_000);
+  const overview = await budgetSheetFor(h.database, h.ws, '2027-03', { leaveOutNotMonthly: true });
+  const cashflow = spent((await categoryTotalsIn(h.database, h.ws, 'expense', '2027-03-01', '2027-03-31', { excludeEvents: true, billMonths: true, leaveOutNotMonthly: true })).rows);
+  expect(overview.spendingActualMinor).toBe(410_000 + 63_000);
+  expect(overview.spendingActualMinor).toBe(cashflow);
+  expect((await budgetSheetFor(h.database, h.ws, '2027-03')).spendingActualMinor).toBe(7_300_000 + 6_000_000 + 410_000 + 63_000);
+  // A month with none of them reads the same either way.
+  await h.buy('2027-04-02', 88_000);
+  expect((await budgetSheetFor(h.database, h.ws, '2027-04', { leaveOutNotMonthly: true })).spendingActualMinor).toBe(88_000);
+  expect((await budgetSheetFor(h.database, h.ws, '2027-04')).spendingActualMinor).toBe(88_000);
 });

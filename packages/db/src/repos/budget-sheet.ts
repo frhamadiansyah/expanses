@@ -45,7 +45,16 @@ function mergeMissing(...lists: readonly Unconverted[][]): Unconverted[] {
  * Debt payments are shown as plan and actual alike. What a loan contractually asks for lives in the
  * loan schedules, and reading it back belongs to its own slice; until then no variance is invented.
  */
-export async function budgetSheetFor(database: Database, ws: WorkspaceContext, month: string): Promise<BudgetSheetResult> {
+export async function budgetSheetFor(
+  database: Database,
+  ws: WorkspaceContext,
+  month: string,
+  /**
+   * `leaveOutNotMonthly`: the month's spending as Cashflow's month reads it (`categoryTotalsIn`), a bill paid yearly or
+   * every 2 months or more left out — Overview's month figures (owner, 2026-11-18). The Budget page never asks it.
+   */
+  opts: { leaveOutNotMonthly?: boolean } = {},
+): Promise<BudgetSheetResult> {
   // The workspace's month: the calendar month, or from its "Month starts on" day (0118), 25 Oct – 24 Nov for November.
   const { from, to } = monthPeriod(month, await monthStartFor(database, ws));
 
@@ -75,7 +84,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
   const [amounts, budgets, income, flows, goals, contributions, eventSpending, committed, needs] = await Promise.all([
     // Events are held out of the caps unless this workspace asked for them; either way they get their own line,
     // and budgetSheet subtracts them from what is left only when the caps have not already counted them.
-    categoryTotalsIn(database, ws, 'expense', from, to, { excludeEvents: !countEvents, billMonths: true }),
+    categoryTotalsIn(database, ws, 'expense', from, to, { excludeEvents: !countEvents, billMonths: true, leaveOutNotMonthly: opts.leaveOutNotMonthly }),
     listBudgets(database, ws, month),
     getBudgetIncome(database, ws, month),
     periodFlows(database, ws, { from, to }),

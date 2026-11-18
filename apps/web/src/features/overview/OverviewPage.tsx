@@ -16,6 +16,7 @@ import { useGoals } from '../goals/queries';
 import { usePendingDraftCount } from '../review/queries';
 import { useMoneyOnHand } from '../wallet/use-money-on-hand';
 import { walletMoney } from '../wallet/wallet-model';
+import { leavesOutNotMonthly, readNotMonthlyShown } from '../transactions/not-monthly';
 import { useMonthStart } from '../workspaces/queries';
 import {
   accountBars,
@@ -163,17 +164,31 @@ export function DesktopOverviewPage() {
   const onHand = useMoneyOnHand();
   const onHandMinor = onHand.ready ? onHand.box.balanceMinor : null;
 
-  // Each month's Budget sheet: what was spent and earned (the figures Budget shows), the budget total, what is over.
+  // Each month's Budget sheet: what was earned, the budget total, what is over (the figures Budget shows).
   const past = Array.from({ length: 12 }, (_, i) => addMonths(first, i)).filter((m) => m <= current);
   const lastThree = [1, 2, 3].map((back) => addMonths(current, -back));
   const wanted = [...new Set([...past, ...lastThree, current])];
   const sheets = useQueries({ queries: wanted.map((month) => ({ queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month], queryFn: () => budgetSheetFor(database, ws, month) })) });
   const sheetOf = (month: string) => sheets[wanted.indexOf(month)]?.data;
+  /*
+   * What each month spent follows Cashflow's not-monthly rule (owner, 2026-11-18): a bill paid yearly or every 2 months
+   * or more is left out of the month it is paid in, as Cashflow's month leaves it while its Not monthly is Hidden
+   * (`not-monthly.ts`), so no month spikes here either — the bars, Spent a month, Expected's average and How long it
+   * lasts. Budget's own figures (the budget total, what is over) stay Budget's.
+   */
+  const leaveOut = leavesOutNotMonthly({ kind: 'month', from: '', to: '' }, readNotMonthlyShown());
+  const spentSheets = useQueries({
+    queries: wanted.map((month) => ({
+      queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month, ...(leaveOut ? ['not-monthly-out'] : [])],
+      queryFn: () => budgetSheetFor(database, ws, month, { leaveOutNotMonthly: leaveOut }),
+    })),
+  });
+  const spentOf = (month: string) => spentSheets[wanted.indexOf(month)]?.data?.spendingActualMinor ?? null;
   const sheetCurrency = sheetOf(current)?.currency ?? ws.baseCurrency;
-  const spent = Object.fromEntries(wanted.map((month) => [month, sheetOf(month)?.spendingActualMinor ?? null]));
-  const avgSpent = averageOf(lastThree.map((month) => sheetOf(month)?.spendingActualMinor ?? null));
+  const spent = Object.fromEntries(wanted.map((month) => [month, spentOf(month)]));
+  const avgSpent = averageOf(lastThree.map(spentOf));
   const avgIncome = averageOf(lastThree.map((month) => sheetOf(month)?.incomeActualMinor ?? null));
-  const expected = expectedSpending(sheetOf(current)?.capsTotalMinor ?? null, lastThree.map((month) => sheetOf(month)?.spendingActualMinor ?? null));
+  const expected = expectedSpending(sheetOf(current)?.capsTotalMinor ?? null, lastThree.map(spentOf));
   // The line ahead adds income less spending to today's money on hand: only when both read in the same currency.
   const line = projectedBalance(sheetCurrency === ws.baseCurrency ? onHandMinor : null, avgIncome, avgSpent);
   const months = chartMonths({ first, current, spent, expected, balanceAhead: line });
