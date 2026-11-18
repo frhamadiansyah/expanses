@@ -2,15 +2,11 @@ import { useCouponsAtStart } from '../features/networth/coupons-at-start';
 import { Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { sweepPhotosAtStart } from '../photos/sweep-at-start';
-import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
-import { BackupBanner } from '../features/backup/BackupBanner';
-import { InstallHint } from '../features/pwa/InstallHint';
-import { ReadOnlyNotice } from '../features/sharing/ReadOnlyNotice';
-import { RepairNotice } from '../features/sharing/RepairNotice';
 import { cx } from '../ui';
 import { ToastHost } from '../ui/Toast';
 import { EventModeHost } from '../features/events/EventMode';
 import { useApp } from './context';
+import { AppNotices } from './DeskNotices';
 import { Sidebar } from './Sidebar';
 import { edgeToEdge, SETTINGS_TO } from './sidebar-model';
 import { TabBar } from './TabBar';
@@ -20,7 +16,6 @@ import { useYahooClosesAtStart } from '../features/prices/yahoo';
 import { useWidgetSummaryWriter } from '../features/account/use-widget-writer';
 import { useICloudBackupAtStart } from '../features/backup/icloud/runner';
 import { useForeignRecalcAtStart } from '../features/accounts/withdrawal-rate-start';
-import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
 import { useReceiptPeekHost } from '../features/transactions/ReceiptPeekHost';
 
 export function Layout() {
@@ -39,6 +34,9 @@ export function Layout() {
   useCashflowRotation(pathname);
   const phoneShell = phone || sideways;
   const tableOnly = sideways && rotationFor(pathname) === 'free';
+  // A Mac page that draws its own title bar: the bar is the window's top edge, and the notices sit under it (`DeskNotices`).
+  const ownBar = edgeToEdge(pathname, phoneShell, accountScoped);
+  const deskBar = ownBar && !phoneShell;
   // The Mac receipt a transaction opens on a wide screen, wherever it is opened from but Cashflow's own table.
   const receiptPeek = useReceiptPeekHost(!phoneShell);
 
@@ -77,6 +75,18 @@ export function Layout() {
   // Whether the page has scrolled under the status bar: the glass over it is clear until then, as on iOS.
   const top = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
+  /*
+   * A wide screen (the Mac app, a desktop browser) has no bounce to show: the page never pulls past its top or foot, so
+   * no other colour shows above the title bar (`html[data-desk]`, styles.css). A phone keeps its own bounce.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    if (phoneShell) delete root.dataset.desk;
+    else root.dataset.desk = ownBar ? 'bar' : '';
+    return () => {
+      delete root.dataset.desk;
+    };
+  }, [phoneShell, ownBar]);
   useEffect(() => {
     const sentinel = top.current;
     if (!sentinel || typeof IntersectionObserver === 'undefined') return;
@@ -103,20 +113,15 @@ export function Layout() {
       )}
       {/* The phone draws under the status bar and the home indicator, so the shell gives both back. */}
       {/* While a receipt peek stands on its own (an account's history), the page keeps clear of it rather than under it. */}
-      <main className={cx('relative flex-1', phoneShell ? 'pb-32' : 'pb-8', receiptPeek.room && 'pr-[330px]')} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      {/* A wide screen draws to the window's top: the Mac app's hidden title bar (SceneDelegate.swift) leaves its inset
+          to the page, and the page's own bar takes it — the window's buttons sit over the sidebar. */}
+      <main className={cx('relative flex-1', phoneShell ? 'pb-32' : deskBar ? undefined : 'pb-8', receiptPeek.room && 'pr-[330px]')} style={phoneShell ? { paddingTop: 'env(safe-area-inset-top)' } : undefined}>
         {/* Out of view the moment anything has scrolled under the status bar; watched, not listened to. */}
         <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
         {/* The Mac pages draw their own title bar and grey page edge to edge (`edgeToEdge`); every other page sits in the column. */}
-        <div className={edgeToEdge(pathname, phoneShell, accountScoped) ? 'w-full' : 'mx-auto max-w-4xl p-4 md:p-8'}>
-          <InstallHint />
-          {/* What just happened to their data comes before the standing reminder about backing it up. */}
-          <AfterUpdateCard />
-          <WithdrawalRateNotice />
-          <BackupBanner />
-          {/* A share that ended here is read-only (§8.6), and every screen of it says so. */}
-          <ReadOnlyNotice />
-          {/* Once: Family purchases the shared-book repair put right (sync gaps R2). */}
-          <RepairNotice />
+        <div className={ownBar ? 'w-full' : 'mx-auto max-w-4xl p-4 md:p-8'}>
+          {/* A Mac page with its own title bar draws the notices under it; every other page has them here, above it. */}
+          {!deskBar && <AppNotices />}
           <Outlet />
         </div>
       </main>

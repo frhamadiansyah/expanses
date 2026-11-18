@@ -1,3 +1,4 @@
+import { DeskNotices } from '../../app/DeskNotices';
 import { formatMinor, sumToBase } from '@expanses/core';
 import { type AccountRow, listTransactionsIn, setWalletOrder } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
@@ -405,6 +406,8 @@ export function DesktopWallet() {
           <span aria-hidden>＋</span>Add account
         </Link>
       </header>
+      {/* The app's notices, under the title bar rather than above it. */}
+      <DeskNotices />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
       <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', room && 'mr-[322px]')}>

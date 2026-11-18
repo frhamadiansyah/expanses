@@ -1,3 +1,4 @@
+import { DeskNotices } from '../../app/DeskNotices';
 import { addMonths, BILL_DUE_SOON_DAYS, dayMonth, daysFrom, formatMinor, isoDate, monthName, ordinal, periodMonthOf } from '@expanses/core';
 import { type MonthlyBill, undoBillPayments } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
@@ -272,6 +273,8 @@ export function DesktopBills() {
           ＋ New bill
         </button>
       </header>
+      {/* The app's notices, under the title bar rather than above it. */}
+      <DeskNotices />
 
       {/*
        * The peek makes room on the whole page, so it covers no figure. The page goes by the room it has (a container

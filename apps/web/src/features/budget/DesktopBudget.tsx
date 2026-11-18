@@ -1,3 +1,4 @@
+import { DeskNotices } from '../../app/DeskNotices';
 import { addMonths, type BudgetLine, isoDate, periodMonthOf } from '@expanses/core';
 import { BudgetError, type BudgetRow, saveBudgets } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
@@ -279,6 +280,8 @@ export function DesktopBudget() {
           Edit budgets
         </button>
       </header>
+      {/* The app's notices, under the title bar rather than above it. */}
+      <DeskNotices />
 
       {/*
        * While the peek is open the whole page makes room for it, boxes and table alike, so it covers no figure; the boxes

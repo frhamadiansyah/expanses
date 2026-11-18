@@ -1,3 +1,4 @@
+import { DeskNotices } from '../../app/DeskNotices';
 import { formatMinor } from '@expanses/core';
 import type { AccountRow, CaptureSource, CardRow, DraftEdit, DraftRow } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
@@ -271,6 +272,8 @@ export function DesktopReview({
           </button>
         )}
       </header>
+      {/* The app's notices, under the title bar rather than above it. */}
+      <DeskNotices />
 
       <div className={cx('space-y-[14px] px-[20px] py-[16px]', room && 'mr-[322px]')}>
         <ErrorBox error={error} />

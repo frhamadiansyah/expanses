@@ -1,3 +1,4 @@
+import { DeskNotices } from '../../app/DeskNotices';
 import { categoryTree, formatMinor, monthName, parsePeriod, periodLabel, stepPeriod } from '@expanses/core';
 import { type AccountRow, categoryTotalsIn, type DraftRow, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
@@ -520,6 +521,8 @@ export function DesktopCashflow({
           </button>
         )}
       </header>
+      {/* The app's notices, under the title bar rather than above it. */}
+      <DeskNotices />
       {picking && <PeriodPicker value={month} years={yearsSince(first.data ?? null)} onPick={onMonth} onClose={() => setPicking(false)} />}
 
       <div className="space-y-[14px] px-[20px] py-[16px]">

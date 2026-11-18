@@ -1,3 +1,4 @@
+import { DeskNotices } from '../../app/DeskNotices';
 import { addMonths, dayMonth, formatMinor, householdEmergencyMonths, isoDate, monthName, monthOf, periodMonthOf, sumToBase } from '@expanses/core';
 import { budgetSheetFor, pocketParentIds } from '@expanses/db';
 import { useQueries, useQuery } from '@tanstack/react-query';
@@ -238,6 +239,8 @@ export function DesktopOverviewPage() {
           <Plus size={13} aria-hidden /> Add
         </button>
       </header>
+      {/* The app's notices, under the title bar rather than above it. */}
+      <DeskNotices />
 
       <div className="grid grid-cols-1 gap-[14px] px-[22px] py-[18px] lg:grid-cols-[2fr_1fr]">
         <section className={BOX} aria-label="Money on hand">

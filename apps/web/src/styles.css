@@ -80,6 +80,23 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+/*
+ * A wide screen (Layout sets `data-desk`): the page never bounces past its top or its foot, so pulling at it shows no
+ * other colour above the title bar, and the document's own ground is the page's — the grey of a Mac page with its own
+ * title bar (`bar`), the app's ground on the rest. A phone keeps its bounce.
+ */
+html[data-desk],
+html[data-desk] body {
+  overscroll-behavior: none;
+}
+html[data-desk] {
+  background: var(--ph-ground);
+}
+html[data-desk='bar'],
+html[data-desk='bar'] body {
+  background: var(--ov-ground);
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
 }
