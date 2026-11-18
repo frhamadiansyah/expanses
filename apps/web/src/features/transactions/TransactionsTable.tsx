@@ -9,6 +9,7 @@ import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
+import { type PasteMark, pastedCategories, rememberedCategory } from './paste-categories';
 import { ReceiptLink } from './ReceiptLink';
 import { groupedAmountCell, isNotionPageLinks, isQuickEditable, NOTION_ROWS_LINE, parsePastedRows, pastedCells, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
 
@@ -18,8 +19,11 @@ export interface TableHandlers {
   recordTyped: (values: QuickValues) => Promise<boolean>;
   /** Keeps a typed row as not recorded, to finish later. */
   keepTyped: (values: QuickValues) => Promise<boolean>;
-  /** Keeps pasted rows as not recorded. Resolves to the drafts made (in the order pasted), or null when none could be. */
-  keepPasted: (rows: QuickValues[]) => Promise<string[] | null>;
+  /**
+   * Keeps pasted rows as not recorded. Resolves to the drafts made (in the order pasted), or null when none could be.
+   * `marks` (the desk's) say, row by row, how a category was guessed and which unmatched name it had.
+   */
+  keepPasted: (rows: QuickValues[], marks?: PasteMark[]) => Promise<string[] | null>;
   guessCategory: (description: string) => Promise<string | null>;
   saveRecorded: (id: string, values: QuickValues) => Promise<boolean>;
   saveDraft: (id: string, values: QuickValues, record: boolean) => Promise<boolean>;
@@ -158,7 +162,20 @@ export function TypingRow({
           const cells = pastedCells(rows, desk ? 'desk' : 'row');
           // The desk reads a Paid with cell of four digits as the card or account showing them.
           const paid = desk ? options.resolvePastedPaid : options.resolvePaid;
-          if (cells.length > 0) void handlers.keepPasted(cells.map((each) => valuesFromCells(each, { paid, category: options.resolveCategory }, today)));
+          const read = cells.map((each) => ({ cells: each, values: valuesFromCells(each, { paid, category: options.resolveCategory }, today) }));
+          if (read.length === 0) return true;
+          if (!desk) {
+            void handlers.keepPasted(read.map((row) => row.values));
+            return true;
+          }
+          // The desk fills a category the paste left empty, or named in words no category has, as `pastedCategories` says.
+          const offered = (categoryId: string) => options.categories.some((option) => option.value === categoryId);
+          void pastedCategories(read, { remembered: (name) => rememberedCategory(name), history: handlers.guessCategory, offered }).then((rows) =>
+            handlers.keepPasted(
+              rows.map((row) => row.values),
+              rows.map((row) => row.mark),
+            ),
+          );
           return true;
         }}
         actions={
@@ -206,6 +223,7 @@ export function EditableRow({
   baseCurrency,
   handlers,
   desk,
+  guess,
 }: {
   row: ListRow;
   options: RowOptions;
@@ -214,6 +232,8 @@ export function EditableRow({
   baseCurrency: string;
   handlers: TableHandlers;
   desk?: DeskLayout;
+  /** A pasted row's category filled in by a guess: marked as guessed while the row still names it. */
+  guess?: { categoryId: string; hint: string } | null;
 }) {
   const isDraft = row.kind === 'draft';
   const read = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);
@@ -259,6 +279,7 @@ export function EditableRow({
       <QuickRowEditor
         layout={desk ? 'desk' : 'row'}
         countsAs={desk && values.categoryId ? desk.countsAs(values.categoryId) : undefined}
+        categoryGuessed={guess && values.categoryId === guess.categoryId ? guess.hint : null}
         values={values}
         onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
         needs={isDraft || dirty ? needs : []}

@@ -115,6 +115,7 @@ export function QuickRowEditor({
   onPaste,
   layout = 'row',
   countsAs,
+  categoryGuessed,
 }: {
   values: QuickValues;
   onChange: (patch: Partial<QuickValues>) => void;
@@ -134,6 +135,8 @@ export function QuickRowEditor({
   layout?: 'row' | 'desk';
   /** What the chosen category counts as, read only: the desk layout's fifth cell. */
   countsAs?: ReactNode;
+  /** The category was filled in by a guess (a paste's): why, said on the cell. */
+  categoryGuessed?: string | null;
 }) {
   const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
     if (onPaste?.(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'))) event.preventDefault();
@@ -207,6 +210,7 @@ export function QuickRowEditor({
       resolve={options.resolveCategory}
       disabled={!options.ready}
       invalid={missing('category')}
+      guessed={categoryGuessed}
       onChange={(categoryId) => onChange({ categoryId })}
     />
   );

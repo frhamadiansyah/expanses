@@ -19,6 +19,7 @@ import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
+import { forgetMark, guessHint, keepMarks, learnFromRecorded, readMarks } from './paste-categories';
 import { quickFromDraft, shortDate } from './quick-row';
 import { ReceiptPeek } from './ReceiptPeek';
 import { SwitchLook, yearlyBillsHint } from './SortFilterMenu';
@@ -434,13 +435,35 @@ export function DesktopCashflow({
   // The last paste into the typing row: its drafts, kept as rows to finish, and the line that says where they stand.
   const [pasted, setPasted] = useState<{ ids: string[]; recorded: boolean } | null>(null);
   const [pasteBusy, setPasteBusy] = useState(false);
-  const typingHandlers: TableHandlers = {
+  // What this device keeps of pasted rows (`paste-categories`): a guessed category's mark, an unmatched name to learn.
+  const [marks, setMarks] = useState(readMarks);
+  const deskHandlers: TableHandlers = {
     ...handlers,
-    keepPasted: async (values) => {
-      const ids = await handlers.keepPasted(values);
-      if (ids && ids.length > 0) setPasted({ ids, recorded: false });
+    keepPasted: async (values, made) => {
+      const ids = await handlers.keepPasted(values, made);
+      if (ids && ids.length > 0) {
+        setPasted({ ids, recorded: false });
+        const byId = Object.fromEntries(ids.map((id, i) => [id, made?.[i] ?? {}]));
+        setMarks(keepMarks(byId, new Set([...drafts.map((draft) => draft.id), ...ids])));
+      }
       return ids;
     },
+    // A pasted row recorded teaches its unmatched name the category it was recorded with; one discarded is let go.
+    saveDraft: async (id, values, record) => {
+      const ok = await handlers.saveDraft(id, values, record);
+      if (ok && record) setMarks(learnFromRecorded(id, values.categoryId));
+      return ok;
+    },
+    dismissDraft: async (id) => {
+      const ok = await handlers.dismissDraft(id);
+      if (ok) setMarks(forgetMark(id));
+      return ok;
+    },
+  };
+  const guessOf = (id: string) => {
+    const mark = marks[id];
+    const hint = guessHint(mark);
+    return mark?.guessed && hint ? { categoryId: mark.guessed.categoryId, hint } : null;
   };
   const paste = pasted ? pasteSummary(pasted.ids, drafts, accounts, today, baseCurrency) : null;
   const pasteWork = (work: () => Promise<void>) => {
@@ -450,13 +473,13 @@ export function DesktopCashflow({
   // Each ready row is recorded the way its own Record records a draft, one after another.
   const recordReady = () =>
     pasteWork(async () => {
-      for (const draft of paste?.ready ?? []) await handlers.saveDraft(draft.id, quickFromDraft(draft, today, accounts), true);
+      for (const draft of paste?.ready ?? []) await deskHandlers.saveDraft(draft.id, quickFromDraft(draft, today, accounts), true);
       setPasted((was) => (was ? { ...was, recorded: true } : was));
     });
   // Undo takes the whole paste away: every row of it still waiting is discarded.
   const undoPaste = () =>
     pasteWork(async () => {
-      for (const draft of paste?.waiting ?? []) await handlers.dismissDraft(draft.id);
+      for (const draft of paste?.waiting ?? []) await deskHandlers.dismissDraft(draft.id);
       setPasted(null);
     });
   const pastedLine =
@@ -639,7 +662,7 @@ export function DesktopCashflow({
                 </button>
                 <span />
               </div>
-              {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={typingHandlers} desk={{ ...desk, pasted: pastedLine }} />}
+              {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ ...desk, pasted: pastedLine }} />}
               {rows.length === 0 && (
                 <div className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
                   {emptyText}
@@ -658,7 +681,7 @@ export function DesktopCashflow({
               {rows.map((row, index) =>
                 row.kind === 'draft' ? (
                   <li key={`d:${row.id}`} className="list-none">
-                    <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} desk={desk} />
+                    <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={desk} guess={guessOf(row.id)} />
                   </li>
                 ) : (
                   <DeskRow

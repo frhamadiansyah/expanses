@@ -27,6 +27,7 @@ export function CellCombo({
   invalid,
   dense = false,
   disabled,
+  guessed,
   className,
 }: {
   value: string;
@@ -41,6 +42,8 @@ export function CellCombo({
   dense?: boolean;
   /** Not yet usable, such as while its choices are still loading. */
   disabled?: boolean;
+  /** Filled in by a guess rather than chosen: said in light italic, with why on hover and to a reader. */
+  guessed?: string | null;
   className?: string;
 }) {
   const [query, setQuery] = useState<string | null>(null);
@@ -117,11 +120,15 @@ export function CellCombo({
         }}
         onKeyDown={onKeyDown}
         onBlur={settle}
+        title={guessed && query === null ? guessed : undefined}
+        aria-description={guessed && query === null ? guessed : undefined}
+        data-guessed={guessed && query === null ? 'true' : undefined}
         className={cx(
           dense ? 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] focus:bg-white focus:outline-2 focus:outline-[var(--mac-accent)]' : 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900',
           Boolean(selected?.icon) && query === null && 'pl-9',
           Boolean(selected?.meta) && query === null && 'pr-12',
           invalid && 'bg-amber-50 ring-1 ring-amber-400 ring-inset',
+          guessed && query === null && 'text-[var(--ph-ink-2)] italic',
         )}
       />
       {selected?.meta && query === null && (
