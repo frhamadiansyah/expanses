@@ -10,6 +10,7 @@ import { useEscape } from '../../app/use-escape';
 import { useAccounts } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { RowIcon } from '../../ui/native';
+import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { accountDestination } from '../accounts/destination';
 import { useBaseCosts } from '../investments/queries';
 import { useIncomeYear } from '../investments/use-income-year';
@@ -29,8 +30,6 @@ import { spanSlice } from './span';
 import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { useHealthInputs, useHealthRatios } from './use-health';
 
-/** How long after a peek opens the page makes room for it (and the peek takes clicks): longer than a double-click's gap. */
-const ROOM_DELAY_MS = 350;
 const CHART_HEIGHT = 190;
 const TREEMAP_HEIGHT = 150;
 
@@ -200,17 +199,13 @@ export function DesktopNetWorth() {
   };
   const bar = useRef<HTMLElement>(null);
   const [peekTop, setPeekTop] = useState(52);
-  const [room, setRoom] = useState(false);
+  // The page makes room for the peek as it opens, which can move the boxes under one another: the row picked is brought
+  // back into view. A double-click whose second click lands off the moved row or box still opens its page
+  // (`usePeekDoubleClick`).
   useEffect(() => {
-    if (!peeking) return setRoom(false);
-    const timer = window.setTimeout(() => setRoom(true), ROOM_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [peeking]);
-  // Making room can move the boxes under one another: the row picked is brought back into view, where it was clicked.
-  useEffect(() => {
-    if (!room || !peekKey) return;
+    if (!peekKey) return;
     document.querySelector('[data-networth-row][aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
-  }, [room, peekKey]);
+  }, [peekKey]);
   useEffect(() => {
     if (!peeking) return;
     const place = () => setPeekTop(Math.max(0, bar.current?.getBoundingClientRect().bottom ?? 52));
@@ -282,6 +277,7 @@ export function DesktopNetWorth() {
     const to = destinationOf(key.slice(key.indexOf(':') + 1));
     if (to) void navigate(to as Parameters<typeof navigate>[0]);
   };
+  const doubleClick = usePeekDoubleClick((key) => openPage(key as PeekKey));
 
   // ── Health, investments, trade ─────────────────────────────────────────────────────────────────────────────────────
   const health = useHealthInputs({ key: 'ttm' });
@@ -314,7 +310,7 @@ export function DesktopNetWorth() {
   };
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="networth-page" data-desk="true">
+    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="networth-page" data-desk="true" {...doubleClick}>
       <header ref={bar} className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Net worth</h1>
         <span className="flex-1" />
@@ -336,7 +332,7 @@ export function DesktopNetWorth() {
       </header>
       <DeskNotices />
 
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', room && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={series.error ?? sheetInputs.error ?? household.error ?? health.error} />
         <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[900px]:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
           <section className={BOX} aria-label="Net worth" data-testid="networth-box">
@@ -515,20 +511,18 @@ export function DesktopNetWorth() {
       </div>
 
       {subject && peekKey && (
-        <div className={room ? undefined : 'pointer-events-none'}>
-          <NetWorthPeek
-            key={peekKey}
-            subject={subject}
-            currency={base}
-            top={peekTop}
-            first={order.indexOf(peekKey) <= 0}
-            last={order.indexOf(peekKey) === -1 || order.indexOf(peekKey) === order.length - 1}
-            onStep={step}
-            onClose={() => setPeekKey(null)}
-            onPick={(accountId) => setPeekKey(`${subject.side === 'asset' ? 'asset' : 'debt'}:${accountId}`)}
-            onOpen={() => openPage(peekKey)}
-          />
-        </div>
+        <NetWorthPeek
+          key={peekKey}
+          subject={subject}
+          currency={base}
+          top={peekTop}
+          first={order.indexOf(peekKey) <= 0}
+          last={order.indexOf(peekKey) === -1 || order.indexOf(peekKey) === order.length - 1}
+          onStep={step}
+          onClose={() => setPeekKey(null)}
+          onPick={(accountId) => setPeekKey(`${subject.side === 'asset' ? 'asset' : 'debt'}:${accountId}`)}
+          onOpen={() => openPage(peekKey)}
+        />
       )}
     </div>
   );
@@ -698,6 +692,7 @@ function SideBox({
               <tbody key={kind.key}>
                 <tr
                   data-networth-row
+                  data-peek-row={key}
                   data-testid={debt ? `type-drawer-debts:${kind.key}` : `type-drawer-section-${kind.key}`}
                   aria-expanded={open}
                   aria-selected={selected}
@@ -746,6 +741,7 @@ function SideBox({
                       <tr
                         key={item.accountId}
                         data-networth-row
+                        data-peek-row={rowKey}
                         data-testid={`sheet-row-${item.accountId}`}
                         aria-selected={on}
                         onClick={onRow(rowKey)}
@@ -846,6 +842,7 @@ function Treemap({
               key={box.key}
               type="button"
               data-testid={`treemap-box-${box.key}`}
+              data-peek-row={side === 'debt' ? `debt-kind:${box.key}` : `asset-kind:${box.key}`}
               aria-label={`${box.label}, ${formatMinor(box.minor, currency)}, ${box.share}%`}
               title={`${box.label} · ${box.share}% · ${formatMinor(box.minor, currency)}`}
               onClick={onPick(box.key)}

@@ -3,6 +3,7 @@ import { openAccount, openCard, openLoan } from './accounts';
 import { addTransaction } from './add-transaction';
 import { addPriced } from './asset-page';
 import { receiptPeek } from './receipt-peek';
+import { doubleClickInPlace } from './desk-double-click';
 
 /*
  * Net worth on a wide screen (Mac redesign step 8): the figure and its months beside Financial health, then Assets and
@@ -112,9 +113,14 @@ test('a click opens a row’s side peek, ⌃ ⌄ step, Esc closes; a box opens i
   await expect(peek(page).getByTestId('peek-title')).toHaveText('Dompet');
   await page.keyboard.press('Escape');
 
-  // A double-click opens the row's own page.
-  await row(page, 'Dompet').getByRole('link').dblclick();
-  await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+  // A double-click opens a box's kind page and a row's own page, though the peek the first click opens moves them from
+  // under the pointer (a 1280 window making room for it).
+  expect((await doubleClickInPlace(page, page.getByTestId('treemap-box-liquid'))).moved).toBe(true);
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+  await page.goto('/net-worth');
+  const dompet = await row(page, 'Dompet').getByRole('link').getAttribute('href');
+  expect((await doubleClickInPlace(page, row(page, 'Dompet').getByRole('link'))).moved).toBe(true);
+  await expect(page).toHaveURL(new RegExp(`${dompet}$`));
 });
 
 test('Prices, Trade and ＋ Add open their screens; Trade waits for something to trade', async ({ page }) => {

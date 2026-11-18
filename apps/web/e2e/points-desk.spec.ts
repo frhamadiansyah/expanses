@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openCard, openFace } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, saveCardTerms, setUpRewardsByHand, walletCard } from './card-section';
+import { doubleClickInPlace } from './desk-double-click';
 
 /*
  * Points on a wide screen (Mac redesign step 9, option A): every programme in one table with a small card before its
@@ -79,8 +80,9 @@ test('each programme wears its card — its membership card, its bank’s card, 
   await expect(page.getByTestId('points-worth-total')).toHaveText('Rp 2.900.000');
   await expect(page.getByTestId('points-worth-unvalued')).toContainText('1 programme with no value per point');
 
-  // The programme's own page reads the same balance and worth.
-  await row(page, 'KrisFlyer').getByRole('link').dblclick();
+  // The programme's own page reads the same balance and worth. A double-click at a 1280 window: its first click opens the
+  // peek and the page makes room, moving the row from under the pointer; the second is still KrisFlyer's.
+  expect((await doubleClickInPlace(page, row(page, 'KrisFlyer').getByRole('link'))).moved).toBe(true);
   await expect(page).toHaveURL(/\/cards\/points\/[^/]+$/);
   await expect(page.getByTestId('programme-balance')).toHaveText('12.500 miles');
   await expect(page.getByTestId('programme-provenance')).toContainText('Rp 2.500.000');
@@ -167,8 +169,8 @@ test('a click opens the peek — the card big, balance, Earned with, Recent, Exp
   await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
   await page.goBack();
 
-  // A double-click on a row is its page too.
-  await row(page, 'KrisFlyer').dblclick();
+  // A double-click on a row is its page too, though the peek its first click opened moved the row from under the pointer.
+  expect((await doubleClickInPlace(page, row(page, 'KrisFlyer'))).moved).toBe(true);
   await expect(page).toHaveURL(/\/cards\/points\/[^/]+$/);
   await expect(page.getByTestId('programme-balance')).toHaveText('5.000 miles');
   await page.goBack();

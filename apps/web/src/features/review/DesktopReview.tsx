@@ -8,6 +8,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
 import { moneyHolders } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
+import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useEvents } from '../events/queries';
 import { bareFigure } from '../networth/debt-rows';
@@ -38,8 +39,6 @@ import {
 import { useReviewCells } from './review-cells';
 import { SkippedList } from './SkippedList';
 
-/** How long after a peek opens the page makes room for it: longer than a double-click's gap (Mac Bills). */
-const ROOM_DELAY_MS = 350;
 /** What the Recorded and Discarded lists show at most: the latest, newest first. */
 const RESOLVED_SHOWN = 200;
 
@@ -190,12 +189,12 @@ export function DesktopReview({
   const bar = useRef<HTMLElement>(null);
   const [peekTop, setPeekTop] = useState(52);
   const peeking = peekId !== null;
-  const [room, setRoom] = useState(false);
-  useEffect(() => {
-    if (!peeking) return setRoom(false);
-    const timer = window.setTimeout(() => setRoom(true), ROOM_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [peeking]);
+  // The page makes room for the peek as it opens, which can move a row from under the pointer: a double-click whose
+  // second click lands off the moved row still opens that row's draft form (`usePeekDoubleClick`).
+  const doubleClick = usePeekDoubleClick((id) => {
+    const draft = tab === 'pending' ? rows.find((one) => one.id === id) : undefined;
+    if (draft) actions.onOpenForm(draft);
+  });
   useEffect(() => {
     if (!peeking) return;
     const place = () => setPeekTop(Math.max(0, bar.current?.getBoundingClientRect().bottom ?? 52));
@@ -258,7 +257,7 @@ export function DesktopReview({
   const eventNameOf = (draft: DraftRow) => (draft.eventId ? (events.find((event) => event.id === draft.eventId)?.name ?? null) : null);
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="review-page" data-desk="true">
+    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="review-page" data-desk="true" {...doubleClick}>
       <header ref={bar} className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Review</h1>
         <span className="flex-1" />
@@ -291,7 +290,7 @@ export function DesktopReview({
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
 
-      <div className={cx('space-y-[14px] px-[20px] py-[16px]', room && 'mr-[322px]')}>
+      <div className={cx('space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={error} />
         <CountsBox counts={counts} loaded={loaded} />
 
@@ -584,6 +583,7 @@ function DraftTableRow({
     <tr
       data-testid={open ? 'draft-row' : 'resolved-row'}
       data-draft-id={draft.id}
+      data-peek-row={open ? draft.id : undefined}
       data-ready={state?.ready ?? undefined}
       aria-current={peeked ? 'true' : undefined}
       onClick={onPeek}

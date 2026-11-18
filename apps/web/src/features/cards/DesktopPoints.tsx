@@ -24,9 +24,7 @@ import { PointsPeek } from './PointsPeek';
 import { type DeskProgramme, ProgrammeFace, SMALL_FACE } from './programme-face';
 import { balanceText, earnersLine, expiryNote } from './programme-text';
 import { AddProgrammeSheet } from './ProgrammeSheets';
-
-/** How long after a peek opens the page makes room for it (and the peek takes clicks): longer than a double-click's gap. */
-const ROOM_DELAY_MS = 350;
+import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 
 const GBTN =
   'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
@@ -120,18 +118,12 @@ export function DesktopPoints() {
   };
   const bar = useRef<HTMLElement>(null);
   const [peekTop, setPeekTop] = useState(52);
-  // The page makes room for the peek a moment after it opens, and the peek takes clicks only then: a double-click on a
-  // row (its page) lands both clicks on the row, even one the peek is drawn over for that moment.
-  const [room, setRoom] = useState(false);
+  // The page makes room for the peek as it opens, which can move the boxes under one another: the row picked is brought
+  // back into view. A double-click whose second click lands off the moved row is still the row's (`usePeekDoubleClick`).
   useEffect(() => {
-    if (!peeking) return setRoom(false);
-    const timer = window.setTimeout(() => setRoom(true), ROOM_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [peeking]);
-  useEffect(() => {
-    if (!room || !peekId) return;
+    if (!peekId) return;
     document.querySelector('[data-points-row][aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
-  }, [room, peekId]);
+  }, [peekId]);
   useEffect(() => {
     if (!peeking) return;
     const place = () => setPeekTop(Math.max(0, bar.current?.getBoundingClientRect().bottom ?? 52));
@@ -170,6 +162,7 @@ export function DesktopPoints() {
     event.preventDefault();
     setPeekId(id);
   };
+  const doubleClick = usePeekDoubleClick(open);
 
   const worth = worthBox(
     rows.map((row) => ({ unit: row.programme.unit as PointsUnit, worth: row.worth })),
@@ -182,7 +175,7 @@ export function DesktopPoints() {
   const expiring = expiringRows(rows.map((row) => ({ id: row.id, name: row.programme.name, unit: row.programme.unit, expiry: row.expiry })));
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="points-page" data-desk="true">
+    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="points-page" data-desk="true" {...doubleClick}>
       <header ref={bar} className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Points</h1>
         <span className="flex-1" />
@@ -196,7 +189,7 @@ export function DesktopPoints() {
       <DeskNotices />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', room && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={data.error} />
         {rows.length > 0 && (
           <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[560px]:grid-cols-2 @min-[900px]:grid-cols-3">
@@ -260,19 +253,17 @@ export function DesktopPoints() {
       </div>
 
       {peeked && (
-        <div className={room ? undefined : 'pointer-events-none'}>
-          <PointsPeek
-            key={peeked.id}
-            row={peeked}
-            today={today}
-            top={peekTop}
-            first={order.indexOf(peeked.id) <= 0}
-            last={order.indexOf(peeked.id) === order.length - 1}
-            onStep={step}
-            onClose={() => setPeekId(null)}
-            onOpen={() => open(peeked.id)}
-          />
-        </div>
+        <PointsPeek
+          key={peeked.id}
+          row={peeked}
+          today={today}
+          top={peekTop}
+          first={order.indexOf(peeked.id) <= 0}
+          last={order.indexOf(peeked.id) === order.length - 1}
+          onStep={step}
+          onClose={() => setPeekId(null)}
+          onOpen={() => open(peeked.id)}
+        />
       )}
       {adding && <AddProgrammeSheet onClose={() => setAdding(false)} />}
     </div>
@@ -304,6 +295,7 @@ function ProgrammeTable({ rows, peekId, onRow, onOpen }: { rows: readonly DeskPr
             <tr
               key={row.id}
               data-points-row
+              data-peek-row={row.id}
               data-testid="points-row"
               data-face={row.card.face?.key}
               aria-selected={on}

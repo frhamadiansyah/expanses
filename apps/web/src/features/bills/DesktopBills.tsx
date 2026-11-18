@@ -9,6 +9,7 @@ import { compactMoney } from '../../app/sidebar-model';
 import { useAccounts, useInvalidateAll, useIsBookShared, useMemberPayers } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { toneClass } from '../../ui/native';
+import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { type ToastIcon, UndoToast } from '../../ui/UndoToast';
 import { feeDateText } from '../cards/fee-line';
 import { type DueFee, useUpcomingFees } from '../cards/fee-due';
@@ -45,9 +46,6 @@ import { MonthlyBuys } from './MonthlyBuys';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { useBillMoney, useBillsInMonths, useMonthlyBills, useSinkingFunds } from './queries';
 import { setAsideOf } from './set-aside';
-
-/** How long after a peek opens the page makes room for it: longer than a double-click's gap. */
-const ROOM_DELAY_MS = 350;
 
 const GBTN =
   'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
@@ -192,14 +190,10 @@ export function DesktopBills() {
   const bar = useRef<HTMLElement>(null);
   const [peekTop, setPeekTop] = useState(52);
   const peeking = peekId !== null;
-  // The page makes room for the peek a moment after it opens, not at once: a double-click on a row (its page) lands both
-  // clicks on the row before the table moves; a single click sees the peek straight away, over the page for that moment.
-  const [room, setRoom] = useState(false);
-  useEffect(() => {
-    if (!peeking) return setRoom(false);
-    const timer = window.setTimeout(() => setRoom(true), ROOM_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [peeking]);
+  // The page makes room for the peek as it opens, which can move a row from under the pointer: a double-click whose
+  // second click lands off the moved row still opens that row's bill (`usePeekDoubleClick`).
+  const openBill = (billId: string) => void navigate({ to: '/bills/$billId', params: { billId } });
+  const doubleClick = usePeekDoubleClick(openBill);
   useEffect(() => {
     if (!peeking) return;
     const place = () => setPeekTop(Math.max(0, bar.current?.getBoundingClientRect().bottom ?? 52));
@@ -251,7 +245,7 @@ export function DesktopBills() {
   const accountNameOf = (bill: MonthlyBill) => billAccountName(bill, accounts, bill.paymentId ? payerOf(bill.paymentId) : null, memberPayers);
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="bills-page" data-desk="true">
+    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="bills-page" data-desk="true" {...doubleClick}>
       <header ref={bar} className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Bills</h1>
         <span className="flex-1" />
@@ -281,7 +275,7 @@ export function DesktopBills() {
        * query): wide, the calendar and the bars in a column on the left; narrower (the peek open on a smaller window),
        * the two side by side on top and everything else under them.
        */}
-      <div className={cx('@container px-[20px] py-[16px]', room && 'mr-[322px]')}>
+      <div className={cx('@container px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={error ?? live.error ?? read.error} />
         <Unconverted missing={unconverted} currency={readCurrency} />
         <div className="grid grid-cols-1 items-start gap-[14px] @min-[900px]:grid-cols-[270px_minmax(0,1fr)]">
@@ -350,12 +344,7 @@ export function DesktopBills() {
                             peeked={peekId === bill.id}
                             onToggle={() => toggle(bill)}
                             onPeek={() => setPeekId(bill.id)}
-                            onOpen={() =>
-                              void navigate({
-                                to: '/bills/$billId',
-                                params: { billId: bill.id },
-                              })
-                            }
+                            onOpen={() => openBill(bill.id)}
                           />
                         ))}
                       </tbody>
@@ -820,6 +809,7 @@ function BillTableRow({
     <tr
       data-testid="bill-row"
       data-bill-id={bill.id}
+      data-peek-row={bill.id}
       data-on-day={onDay || undefined}
       aria-current={peeked ? 'true' : undefined}
       onClick={onPeek}

@@ -11,6 +11,7 @@ import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { CARD_W, cardHeightFor, leaveFrom, TwoPersonMark, type WalletCard, WalletFace } from '../../ui/native';
+import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { BalanceSpark } from '../accounts/BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from '../accounts/balance-series';
 import { parentTotal, pocketsOf } from '../accounts/pockets';
@@ -37,8 +38,6 @@ import {
 import { isJointKey, type JointCard, writeJointOrder } from './wallet-joint';
 import { type PeekSubject, WalletPeek } from './WalletPeek';
 
-/** How long after a peek opens the page makes room for it (and the peek takes clicks): longer than a double-click's gap. */
-const ROOM_DELAY_MS = 350;
 /** How many days the Balance's line is drawn over: the phone's. */
 const SPARK_DAYS = 30;
 /** A face's narrowest width, and the gap between two: about five to a row on a Mac window. */
@@ -277,14 +276,6 @@ export function DesktopWallet() {
   };
   const bar = useRef<HTMLElement>(null);
   const [peekTop, setPeekTop] = useState(52);
-  // The page makes room for the peek a moment after it opens, and the peek takes clicks only then: a double-click on a
-  // face (its page) lands both clicks on the face, even one the peek is drawn over for that moment.
-  const [room, setRoom] = useState(false);
-  useEffect(() => {
-    if (!peeking) return setRoom(false);
-    const timer = window.setTimeout(() => setRoom(true), ROOM_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [peeking]);
   useEffect(() => {
     if (!peeking) return;
     const place = () => setPeekTop(Math.max(0, bar.current?.getBoundingClientRect().bottom ?? 52));
@@ -321,6 +312,13 @@ export function DesktopWallet() {
     window.scrollTo(0, 0);
     void navigate({ to: card.to, params: card.params });
   };
+  // The page makes room for the peek as it opens, which can move a face or row from under the pointer: a double-click
+  // whose second click lands off the moved one still opens that card's page (`usePeekDoubleClick`), its face rising from
+  // where it is now.
+  const doubleClick = usePeekDoubleClick((key, from) => {
+    const card = deskByKey.get(key)?.card;
+    if (card) open(card, view === 'cards' ? from : undefined);
+  });
 
   // ── Drag a face onto another in its group: Wallet's order, kept as Reorder cards keeps it ─────────────────────────
   const [dragging, setDragging] = useState<string | null>(null);
@@ -372,7 +370,7 @@ export function DesktopWallet() {
   };
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="wallet-page" data-desk="true">
+    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="wallet-page" data-desk="true" {...doubleClick}>
       <header
         ref={bar}
         className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]"
@@ -410,7 +408,7 @@ export function DesktopWallet() {
       <DeskNotices />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', room && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={orderError ?? accounts.error} />
         {onHand.ready && box.accounts > 0 && (
           <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[720px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
@@ -509,18 +507,16 @@ export function DesktopWallet() {
       </div>
 
       {peeked && (
-        <div className={room ? undefined : 'pointer-events-none'}>
-          <WalletPeek
-            key={peeked.card.key}
-            subject={peeked satisfies PeekSubject}
-            top={peekTop}
-            first={order.indexOf(peeked.card.key) <= 0}
-            last={order.indexOf(peeked.card.key) === -1 || order.indexOf(peeked.card.key) === order.length - 1}
-            onStep={step}
-            onClose={() => setPeekKey(null)}
-            onOpen={() => open(peeked.card)}
-          />
-        </div>
+        <WalletPeek
+          key={peeked.card.key}
+          subject={peeked satisfies PeekSubject}
+          top={peekTop}
+          first={order.indexOf(peeked.card.key) <= 0}
+          last={order.indexOf(peeked.card.key) === -1 || order.indexOf(peeked.card.key) === order.length - 1}
+          onStep={step}
+          onClose={() => setPeekKey(null)}
+          onOpen={() => open(peeked.card)}
+        />
       )}
 
       {billsOpen && (
@@ -857,6 +853,7 @@ function FaceShelf({
                           draggable={false}
                           aria-label={named(card)}
                           aria-current={peekKey === key ? 'true' : undefined}
+                          data-peek-row={key}
                           className="ph-focus-inset absolute inset-0 block"
                           style={{ borderRadius: radiusFor(scale) }}
                           onClick={onFace(key)}
@@ -932,6 +929,7 @@ function ListTable({
                 <tr
                   key={key}
                   data-testid="wallet-list-row"
+                  data-peek-row={key}
                   aria-selected={selected}
                   onClick={() => onPeek(key)}
                   onDoubleClick={() => onOpen(card)}

@@ -1,8 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard, openFace, walletCard } from './accounts';
+import { openAccount, openCard, walletCard } from './accounts';
 import { addForm, addTransaction, saveButton } from './add-transaction';
 import { chooseCardPayFrom } from './card-section';
 import { mockRates } from './pockets';
+import { doubleClickInPlace } from './desk-double-click';
 
 /*
  * Wallet on a wide screen (Mac Wallet): the Balance box and where the money sits over every card Wallet holds, each its
@@ -123,8 +124,11 @@ test('a click opens a card’s side peek — its figure, what it is, Transfer an
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=transfer/);
 
   // A double-click opens its page, under the raised card; ✕ comes back to Mac Wallet.
+  // At a 1280 window the first click's peek moves the face from under the pointer; the second is still BCA Tahapan's.
   await page.goto('/wallet');
-  await openFace(walletCard(page, 'BCA Tahapan'));
+  const bcaPage = await walletCard(page, 'BCA Tahapan').getAttribute('href');
+  expect((await doubleClickInPlace(page, walletCard(page, 'BCA Tahapan'))).moved).toBe(true);
+  await expect(page).toHaveURL(new RegExp(`${bcaPage}$`));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]')).toBeVisible();
   await page.getByRole('button', { name: 'Close' }).click();
@@ -189,7 +193,8 @@ test('List shows the same cards as rows in the same groups, a row opens the peek
   await page.reload();
   await expect(page.getByRole('radio', { name: 'List' })).toHaveAttribute('aria-checked', 'true');
   await expect(rows).toHaveCount(3);
-  await rows.filter({ hasText: 'Blue Card' }).dblclick();
+  // The first click's peek moves the rows from under the pointer; the double-click is still Blue Card's (not the row now there).
+  expect((await doubleClickInPlace(page, rows.filter({ hasText: 'Blue Card' }))).moved).toBe(true);
   await expect(page).toHaveURL(/\/cards\/[^/]+$/);
   await page.goto('/wallet');
   await page.getByRole('radio', { name: 'Cards' }).click();

@@ -3,6 +3,7 @@ import { openAccount } from './accounts';
 import { choosePayment } from './add-transaction';
 import { inject, notice } from './capture';
 import { pickDraftCategory } from './review';
+import { doubleClickInPlace } from './desk-double-click';
 
 /*
  * Review on a wide screen (Mac Review): the counts, the queue as a table filled in place, Record / Record N ready /
@@ -179,6 +180,12 @@ test('a row’s peek shows what was captured, steps with the arrows, and Return 
   await page.keyboard.press('Backspace');
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
   await expect(peek).toHaveCount(0);
+
+  await inject(page, [notice({ id: 'note-b', body: 'Pembayaran Rp52.000 berhasil. Merchant: BAKSO MALANG', capturedAt: '2026-09-30T10:00:00+07:00' })]);
+  // A double-click opens the row's form, though the peek its first click opened (a 1280 window making room for it) moved
+  // the row from under the pointer.
+  expect((await doubleClickInPlace(page, row(page, 'BAKSO MALANG'))).moved).toBe(true);
+  await expect(page.getByRole('form', { name: 'Review BAKSO MALANG' })).toBeVisible();
 });
 
 test('the queue’s count is the sidebar’s and Cashflow’s To review', async ({ page }) => {

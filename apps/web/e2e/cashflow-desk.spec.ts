@@ -3,6 +3,7 @@ import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 import { peekBill, peekButton } from './bills-desk';
+import { doubleClickInPlace } from './desk-double-click';
 
 /*
  * The wide screen's Cashflow (Mac Cashflow D, 2026-11-17): three boxes, the typing table across the full width, and a
@@ -90,7 +91,9 @@ test('a double-click opens the full edit screen, and Delete in the peek asks twi
   await page.goto('/transactions');
   await typeRow(page, 'Superindo', '450000', 'groceries');
 
-  await page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).dblclick();
+  // At a 1280 window the first click's peek makes room and the table drops from under the pointer; the second click is
+  // still Superindo's double-click.
+  expect((await doubleClickInPlace(page, page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }))).moved).toBe(true);
   await expect(page).toHaveURL(/\/transactions\/[^/]+\/edit$/);
   await expect(page.getByRole('form', { name: 'Edit a transaction' })).toBeVisible();
 

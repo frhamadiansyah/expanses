@@ -3,6 +3,7 @@ import { openAccount } from './accounts';
 import { pickBillCategory, pickBillPaidFrom, showRepeating } from './bill-form';
 import { addFarYearlyBill, addMonthlyBill } from './recurring-slider';
 import { deskRow, paySeveral, peekBill, peekButton, toPayRow } from './bills-desk';
+import { doubleClickInPlace } from './desk-double-click';
 
 /*
  * Bills on a wide screen (Mac Bills, list + calendar together): the month's box, the calendar, the All bills table with
@@ -171,7 +172,11 @@ test('a row opens its bill in the side peek: arrows step, Esc closes, Pay and Sk
   await expect(toast(page)).toContainText('Skipped Internet this month');
   await expect(page.getByTestId('bills-paid').getByTestId('bill-row').filter({ hasText: 'Internet' }).getByTestId('bill-status')).toHaveText('Skipped');
 
-  await deskRow(page, 'Phone').dblclick();
+  // A double-click opens the bill's page, though the peek its first click opened (a 1280 window making room for it)
+  // moved the row from under the pointer.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('bill-peek')).toHaveCount(0);
+  expect((await doubleClickInPlace(page, deskRow(page, 'Phone'))).moved).toBe(true);
   await expect(page).toHaveURL(/\/bills\/[^/?]+$/);
   await expect(page.getByRole('heading', { name: 'Phone' })).toBeVisible();
 });
