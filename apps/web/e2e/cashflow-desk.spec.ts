@@ -185,6 +185,44 @@ test('⇧-click picks a range, Esc lets it go, ⌘A picks every row, and Delete 
   await expect(rows).toHaveCount(0);
 });
 
+/** Every box on the page, and the table, ends left of the open panel: none of them, nor any figure in them, is under it. */
+async function clearOfPanel(page: Page, panel: Locator) {
+  await expect(panel).toBeVisible();
+  const boxes = ['cashflow-ring', 'cashflow-days', 'cashflow-month', 'month-spent', 'month-received', 'month-left', 'month-review'].map((id) => page.getByTestId(id));
+  for (const box of [...boxes, page.getByRole('region', { name: 'Transactions' })]) {
+    // How far its right edge reaches past the panel's left one (the panel measured each time, in case it is still sliding in).
+    await expect
+      .poll(async () => {
+        const [mine, its] = [(await box.boundingBox())!, (await panel.boundingBox())!];
+        return mine.x + mine.width - its.x;
+      }, { message: `${box}` })
+      .toBeLessThanOrEqual(0);
+  }
+}
+
+test('at a 1280 window the boxes sit three across, and with the peek or N selected open the whole page makes room: no box under the panel', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/transactions');
+  await typeRow(page, 'Superindo', '450000', 'groceries');
+  await typeRow(page, 'Kopi Kenangan', '38000', 'cafe');
+
+  // Closed, the three boxes share one row, as before.
+  const tops = async () => Promise.all(['cashflow-ring', 'cashflow-days', 'cashflow-month'].map(async (id) => Math.round((await page.getByTestId(id).boundingBox())!.y)));
+  await expect.poll(async () => new Set(await tops()).size).toBe(1);
+
+  await tableRow(page, 'Superindo').click();
+  await clearOfPanel(page, page.getByTestId('cashflow-peek'));
+  await tableRow(page, 'Kopi Kenangan').click({ modifiers: ['ControlOrMeta'] });
+  await expect(page.getByTestId('cashflow-selection').getByTestId('peek-title')).toHaveText('2 selected');
+  await clearOfPanel(page, page.getByTestId('cashflow-selection'));
+
+  // Closed again, the page has its whole width back.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('cashflow-selection')).toHaveCount(0);
+  await expect.poll(async () => new Set(await tops()).size).toBe(1);
+});
+
 test('a not-monthly bill is listed with a ↻ and a grey amount, left out of a month’s ring, boxes and bars; Filter’s Not monthly Shown counts it, and a year does', async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
   await page.clock.setSystemTime(new Date('2027-03-05T12:00:00'));

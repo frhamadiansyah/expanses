@@ -639,9 +639,15 @@ export function DesktopCashflow({
       <DeskNotices />
       {picking && <PeriodPicker value={month} years={yearsSince(first.data ?? null)} onPick={onMonth} onClose={() => setPicking(false)} />}
 
-      <div className="space-y-[14px] px-[20px] py-[16px]">
+      {/*
+       * While the peek is open the whole page makes room for it, boxes and table alike, so it covers no figure; the boxes
+       * go by the room they have (a container query, not the window's width), so they wrap rather than squeeze. Two
+       * across, the ring's box takes the whole row and the bars and This month share the next. Three across from 960:
+       * a 1280 window's page (990, or a little less beside a scroll bar) keeps the row it always had.
+       */}
+      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
         {notices}
-        <div className="grid grid-cols-1 items-stretch gap-[14px] md:grid-cols-2 xl:grid-cols-[1.25fr_1fr_0.85fr]">
+        <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[478px]:grid-cols-2 @min-[478px]:[&>:first-child]:col-span-2 @min-[960px]:grid-cols-[1.25fr_1fr_0.85fr] @min-[960px]:[&>:first-child]:col-span-1">
           <RingBox
             kind={kind}
             items={legend.items}
@@ -672,12 +678,12 @@ export function DesktopCashflow({
         </div>
 
         {/*
-         * While the peek is open the table makes room for it, so no column — the amount least of all — is under it, and
-         * its columns narrow (`DESK_COLUMNS.peek`): Note and Category keep the room.
+         * While the peek is open (the page making room for it) the table's columns narrow (`DESK_COLUMNS.peek`): Note and
+         * Category keep the room, and no column — the amount least of all — is under the peek.
          * Contained inline, so the table's own minimum width scrolls inside the box rather than widening the page.
          */}
         <section
-          className={cx(BOX, 'overflow-hidden [contain:inline-size]', peeking && 'mr-[322px]')}
+          className={cx(BOX, 'overflow-hidden [contain:inline-size]')}
           style={{ '--desk-cols': peeking ? DESK_COLUMNS.peek : DESK_COLUMNS.wide } as CSSProperties}
           aria-label="Transactions"
         >
