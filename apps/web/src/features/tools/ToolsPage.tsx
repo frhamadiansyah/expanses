@@ -26,7 +26,7 @@ function TileBody({ tile }: { tile: ToolTile }) {
   );
 }
 
-/** Statement check asks which account first, as the sidebar's Tools menu did: a small menu under its tile. */
+/** Statement check asks which account first, as the sidebar's Tools menu did: a small menu under its tile, kept to its right edge (the tile is the row's last, at the window's edge). */
 function StatementCheckTile({ tile, accounts }: { tile: ToolTile; accounts: readonly SidebarAccount[] }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -49,7 +49,7 @@ function StatementCheckTile({ tile, accounts }: { tile: ToolTile; accounts: read
         <div
           role="menu"
           aria-label="Statement check · which account?"
-          className="absolute top-full left-0 z-30 mt-1 max-h-[320px] min-w-[220px] overflow-y-auto rounded-[9px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[6px] shadow-[0_8px_24px_rgb(0_0_0/0.18)]"
+          className="absolute top-full right-0 z-30 mt-1 max-h-[320px] min-w-[220px] overflow-y-auto rounded-[9px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[6px] shadow-[0_8px_24px_rgb(0_0_0/0.18)]"
         >
           <p className="px-[10px] pt-[2px] pb-[2px] text-[11px] font-semibold text-[var(--ph-ink-3)]">Which account?</p>
           {accounts.length === 0 && <p className="px-[10px] py-1 text-[12px] text-[var(--ph-ink-3)]">No accounts yet.</p>}
