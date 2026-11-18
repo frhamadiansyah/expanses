@@ -1,6 +1,9 @@
 #!/bin/zsh
 #
-# LOCAL / DEV ONLY. Builds the Mac app on this Mac with a DEVELOPMENT web bundle that carries the invented sample
+# LOCAL / DEV ONLY. REPLACES THE APP'S DATABASE WITH THE SAMPLE: once anyone is trying the app, rebuild with
+# run-local-keep-data.sh instead, which keeps what the database holds.
+#
+# (LOCAL / DEV ONLY.) Builds the Mac app on this Mac with a DEVELOPMENT web bundle that carries the invented sample
 # household (src/db/dev-sample.ts, dev-data/sample.sqlite3), opens it, and loads the sample into the Mac app's own
 # database (the app's container, ~/Library/Containers/com.cicis.app). Loading REPLACES whatever that database holds.
 #
