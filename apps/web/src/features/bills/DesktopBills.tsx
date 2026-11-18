@@ -36,6 +36,7 @@ import {
   monthBarOf,
   monthBoxOf,
   pickedTotal,
+  countedNote,
   trendCaption,
 } from './bills-desk-model';
 import { instalmentLines, type InstalmentLine } from './instalment-rows';
@@ -141,7 +142,7 @@ export function DesktopBills() {
   const instalments = isCurrent ? instalmentLines(plans.data ?? [], accounts, ws.baseCurrency, today, planStatuses.data ?? {}) : [];
   const shownFees = isCurrent ? fees : [];
 
-  const groups = deskGroups(rows, month, isCurrent);
+  const groups = deskGroups(rows, month, isCurrent, today);
   // The table's columns go by the room its box has: Paid with first, then Category, step aside rather than squeeze.
   const [tableRef, tableWidth] = useWidth<HTMLElement>();
   const cols: Columns = {
@@ -283,7 +284,7 @@ export function DesktopBills() {
         <div className="grid grid-cols-1 items-start gap-[14px] @min-[900px]:grid-cols-[270px_minmax(0,1fr)]">
           <div className="grid grid-cols-1 items-start gap-[14px] @min-[560px]:grid-cols-[270px_minmax(0,1fr)] @min-[900px]:grid-cols-1">
             <CalendarBox month={month} today={today} rows={rows} day={day} onDay={setDay} onMonth={setMonth} currencyOf={currencyOf} />
-            <BarsBox bars={monthBars} current={current} currency={readCurrency} />
+            <BarsBox bars={monthBars} currency={readCurrency} />
           </div>
           <div className="min-w-0 space-y-[14px]">
             <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[560px]:grid-cols-2">
@@ -325,18 +326,7 @@ export function DesktopBills() {
                   )}
                   {(() => {
                     let index = 0;
-                    const withFees =
-                      shownFees.length > 0 && !groups.some((g) => g.key === 'dueSoon')
-                        ? [
-                            {
-                              key: 'dueSoon' as const,
-                              title: 'Due soon',
-                              rows: [] as MonthlyBill[],
-                            },
-                            ...groups,
-                          ]
-                        : groups;
-                    return withFees.map((group) => (
+                    return groups.map((group) => (
                       <tbody key={group.key} data-testid={`bills-${group.key === 'dueSoon' ? 'due-soon' : group.key}`}>
                         <GroupHead title={group.title} span={span} />
                         {group.rows.map((bill) => (
@@ -348,6 +338,7 @@ export function DesktopBills() {
                             striped={index++ % 2 === 1}
                             accounts={accounts}
                             accountName={accountNameOf(bill)}
+                            note={countedNote(bill, month)}
                             currency={currencyOf(bill)}
                             readCurrency={readCurrency}
                             tickable={tickable(bill)}
@@ -364,22 +355,27 @@ export function DesktopBills() {
                             }
                           />
                         ))}
-                        {group.key === 'dueSoon' &&
-                          shownFees.map((fee) => (
-                            <FeeTableRow
-                              key={fee.card.cardId}
-                              cols={cols}
-                              fee={fee.card}
-                              on={fee.on}
-                              today={today}
-                              readCurrency={readCurrency}
-                              striped={index++ % 2 === 1}
-                              onOpen={() => openFee(fee.card)}
-                            />
-                          ))}
                       </tbody>
                     ));
                   })()}
+                  {/* A card's annual fee: read-only and in no total, so never under Due soon — a group of its own. */}
+                  {shownFees.length > 0 && (
+                    <tbody data-testid="bills-card-fees">
+                      <GroupHead title="Card fees" span={span} />
+                      {shownFees.map((fee, i) => (
+                        <FeeTableRow
+                          key={fee.card.cardId}
+                          cols={cols}
+                          fee={fee.card}
+                          on={fee.on}
+                          today={today}
+                          readCurrency={readCurrency}
+                          striped={i % 2 === 1}
+                          onOpen={() => openFee(fee.card)}
+                        />
+                      ))}
+                    </tbody>
+                  )}
                   {instalments.length > 0 && (
                     <tbody data-testid="monthly-instalments">
                       <GroupHead title="Instalments" span={span} />
@@ -499,7 +495,7 @@ function CalendarBox({
   onMonth: (month: string) => void;
   currencyOf: (bill: MonthlyBill) => string;
 }) {
-  const marks = dayMarks(rows);
+  const marks = dayMarks(rows, today);
   const onIt = day ? billsOn(rows, day) : [];
   return (
     <section className={BOX} aria-label="Calendar" data-testid="bills-calendar">
@@ -594,10 +590,10 @@ function CalendarBox({
 }
 
 /** Bills each month: five months paid, then the month shown, hatched while it is still to come (paid and to pay). */
-function BarsBox({ bars, current, currency }: { bars: readonly MonthBar[]; current: string; currency: string }) {
+function BarsBox({ bars, currency }: { bars: readonly MonthBar[]; currency: string }) {
   const max = Math.max(1, ...bars.map((b) => b.minor));
   const scale = barScale(max, currency);
-  const caption = trendCaption(bars, current);
+  const caption = trendCaption(bars, currency);
   const [ref, measured] = useWidth<HTMLDivElement>();
   // Drawn at the box's own width, so its words stay the size of the page's and the bars spread rather than grow.
   const W = Math.max(200, measured || 240);
@@ -784,6 +780,7 @@ function BillTableRow({
   striped,
   accounts,
   accountName,
+  note,
   currency,
   readCurrency,
   tickable,
@@ -800,6 +797,8 @@ function BillTableRow({
   striped: boolean;
   accounts: Parameters<typeof CategoryIcon>[0]['accounts'];
   accountName: string;
+  /** "due 5 Dec · counted in Nov" on a bill due after the month it counts in. */
+  note: string | null;
   currency: string;
   readCurrency: string;
   tickable: boolean;
@@ -847,9 +846,16 @@ function BillTableRow({
         )}
       </td>
       <td className={cx(CELL, 'overflow-hidden', done && 'opacity-55')}>
-        <button type="button" onClick={(event) => (event.stopPropagation(), onPeek())} title={bill.name} className="block max-w-full truncate text-left hover:underline">
-          {bill.name}
-        </button>
+        <span className="flex min-w-0 items-baseline gap-[6px]">
+          <button type="button" onClick={(event) => (event.stopPropagation(), onPeek())} title={bill.name} className="min-w-0 shrink truncate text-left hover:underline">
+            {bill.name}
+          </button>
+          {note && (
+            <span data-testid="bill-counted-note" title={note} className="min-w-0 shrink-[2] truncate text-[11.5px] text-[var(--ph-ink-3)]">
+              {note}
+            </span>
+          )}
+        </span>
       </td>
       {cols.category && (
         <td className={cx(CELL, 'overflow-hidden text-[var(--ph-ink-3)]', done && 'opacity-55')}>
@@ -887,7 +893,7 @@ function BillTableRow({
   );
 }
 
-/** A card's annual fee within the phone's 30 days, with Due soon as on the phone: read-only, in no total. */
+/** A card's annual fee within the phone's 30 days, under Card fees: read-only, in no total. */
 function FeeTableRow({
   cols,
   fee,

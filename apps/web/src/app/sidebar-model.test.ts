@@ -1,3 +1,4 @@
+import type { MonthlyBill } from '@expanses/db';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import {
@@ -74,10 +75,22 @@ describe('which row is selected', () => {
 });
 
 describe("Bills' count", () => {
-  it('counts the bills overdue or due soon, not the open, upcoming, paid or paused ones', () => {
-    const states = ['overdue', 'dueSoon', 'dueSoon', 'open', 'upcoming', 'paid', 'skipped', 'paused'] as const;
-    expect(billsDueCount(states.map((state) => ({ state })))).toBe(3);
-    expect(billsDueCount([])).toBe(0);
+  it('counts the bills late or due within 3 days, out yet or not — the Bills page’s Due soon — not the later, paid or paused ones', () => {
+    const today = '2026-11-17';
+    const due = (state: MonthlyBill['state'], payBy: string) => ({ state, window: { month: '2026-11', opensOn: payBy, payBy } });
+    const rows = [
+      due('overdue', '2026-11-10'),
+      due('dueSoon', '2026-11-19'),
+      // Due the day it comes out, in 3 days: not out yet, but due soon all the same.
+      due('upcoming', '2026-11-20'),
+      due('upcoming', '2026-11-21'),
+      due('open', '2026-11-28'),
+      due('paid', '2026-11-18'),
+      due('skipped', '2026-11-18'),
+      due('paused', '2026-11-18'),
+    ];
+    expect(billsDueCount(rows, today)).toBe(3);
+    expect(billsDueCount([], today)).toBe(0);
   });
 });
 

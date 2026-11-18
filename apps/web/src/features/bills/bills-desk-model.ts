@@ -1,7 +1,10 @@
-import { addMonths, currencyInfo, daysFrom, dayMonth, monthName, monthYear } from '@expanses/core';
+import { addMonths, BILL_DUE_SOON_DAYS, currencyInfo, daysFrom, dayMonth, monthName, monthYear } from '@expanses/core';
 import type { BillMonthRow, MonthlyBill } from '@expanses/db';
+import { compactMoney } from '../../app/sidebar-model';
 import type { Tone } from '../../ui/native/row';
-import { amountOf, isPaused, isToPay, summaryOf } from './bill-view';
+import { amountOf, isDueSoon, isPaused, isToPay, summaryOf } from './bill-view';
+
+export { isDueSoon };
 
 /*
  * Bills on a wide screen (Mac Bills, "List + calendar together", owner 2026-11-17): the month calendar's days and marks,
@@ -25,6 +28,16 @@ export function asMonthlyBill(row: BillMonthRow): MonthlyBill {
 
 /** The day a bill is due by: what the table's Due says and where the calendar marks it. */
 export const dueOf = (bill: Pick<MonthlyBill, 'window'>) => bill.window.payBy;
+
+/**
+ * The grey note on a row due after the month it is counted in — a yearly bill listed in the weeks before its date, or a
+ * bill paid by a day in the next month: "due 5 Dec · counted in Nov". The phone counts it in this month too.
+ */
+export function countedNote(bill: Pick<MonthlyBill, 'window' | 'state'>, month: string): string | null {
+  const due = dueOf(bill);
+  if (bill.state === 'paused' || due.slice(0, 7) <= month) return null;
+  return `due ${dayMonth(due)} · counted in ${monthName(month, 'short')}`;
+}
 
 // ── The calendar ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -57,16 +70,14 @@ export function calendarWeeks(month: string): CalendarDay[][] {
 }
 
 /**
- * A day's mark under its number: `soon` (orange) for a bill late or due soon — the table's Due soon, the sidebar's
- * count —, `later` (grey) for one still to come, `paid` (a hollow ring) for one already paid. Skipped and paused bills
- * come out for nothing and leave no mark. The most pressing bill of the day sets it.
+ * A day's mark under its number: `soon` (orange) for a bill late or due soon (`isDueSoon` — the table's Due soon, the
+ * sidebar's count), `later` (grey) for one still to come, `paid` (a hollow ring) for one already paid. Skipped and paused
+ * bills come out for nothing and leave no mark. The most pressing bill of the day sets it.
  */
 export type DayMark = 'soon' | 'later' | 'paid';
 
-const isSoon = (bill: Pick<MonthlyBill, 'state'>) => bill.state === 'overdue' || bill.state === 'dueSoon';
-
-function markOf(bill: Pick<MonthlyBill, 'state'>): DayMark | null {
-  if (isSoon(bill)) return 'soon';
+function markOf(bill: Pick<MonthlyBill, 'state' | 'window'>, today: string): DayMark | null {
+  if (isDueSoon(bill, today)) return 'soon';
   if (bill.state === 'open' || bill.state === 'upcoming') return 'later';
   if (bill.state === 'paid') return 'paid';
   return null;
@@ -74,10 +85,10 @@ function markOf(bill: Pick<MonthlyBill, 'state'>): DayMark | null {
 
 const RANK: Record<DayMark, number> = { soon: 3, later: 2, paid: 1 };
 
-export function dayMarks(rows: readonly Pick<MonthlyBill, 'state' | 'window'>[]): Map<string, DayMark> {
+export function dayMarks(rows: readonly Pick<MonthlyBill, 'state' | 'window'>[], today: string): Map<string, DayMark> {
   const marks = new Map<string, DayMark>();
   for (const bill of rows) {
-    const mark = markOf(bill);
+    const mark = markOf(bill, today);
     if (!mark) continue;
     const day = dueOf(bill);
     const was = marks.get(day);
@@ -102,17 +113,19 @@ export interface DeskGroup<T> {
 }
 
 /**
- * The table's groups, in the phone's rules: Due soon is what is late or due within the phone's few days (`dueSoon`),
- * Later is every other bill still to pay, Paid holds what is paid or skipped (the phone's Paid group), and Paused what
- * comes out for nothing. Left to pay in the month's box is exactly Due soon and Later added up.
+ * The table's groups: Due soon is what is late or due within the phone's few days (`isDueSoon`), Later is every other
+ * bill still to pay, Paid holds what is paid or skipped (the phone's Paid group), and Paused what comes out for nothing.
+ * Left to pay in the month's box is exactly Due soon and Later added up. A card's annual fee is none of these: it has a
+ * read-only Card fees group of its own, in no total.
  */
-export function deskGroups<T extends Pick<MonthlyBill, 'state' | 'window'>>(rows: readonly T[], month: string, current: boolean): DeskGroup<T>[] {
+export function deskGroups<T extends Pick<MonthlyBill, 'state' | 'window'>>(rows: readonly T[], month: string, current: boolean, today: string): DeskGroup<T>[] {
   const name = monthName(month, 'long');
-  const later = rows.filter((b) => b.state === 'open' || b.state === 'upcoming');
+  const soon = (b: T) => isDueSoon(b, today);
+  const later = rows.filter((b) => (b.state === 'open' || b.state === 'upcoming') && !soon(b));
   // A yearly bill is listed in the weeks before its date, which may be next month's: then the group is plain Later.
   const within = later.every((b) => dueOf(b).slice(0, 7) <= month);
   return [
-    { key: 'dueSoon' as const, title: 'Due soon', rows: rows.filter(isSoon) },
+    { key: 'dueSoon' as const, title: 'Due soon', rows: rows.filter(soon) },
     {
       key: 'later' as const,
       title: !within ? 'Later' : current ? 'Later this month' : `Later in ${name}`,
@@ -131,7 +144,8 @@ const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 
 /**
  * The Status column: "Due in 2 days" (warning) or "Due today", "3 days late" (alarm), "In 12 days" (quiet, counted to
- * the day it is due), "Paid 2 Dec" (green), "Skipped", "Paused until Jan 2027".
+ * the day it is due), "Paid 2 Dec" (green), "Skipped", "Paused until Jan 2027". A bill under Due soon (`isDueSoon`)
+ * always reads "Due in n days" in warning, out yet or not.
  */
 export function deskStatus(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn' | 'pausedUntil'>, today: string): { text: string; tone: Tone } {
   switch (bill.state) {
@@ -145,10 +159,8 @@ export function deskStatus(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' |
     case 'open':
     case 'upcoming': {
       const left = daysFrom(today, dueOf(bill));
-      return {
-        text: left <= 0 ? 'Due today' : `In ${days(left)}`,
-        tone: 'ink-3',
-      };
+      if (left <= BILL_DUE_SOON_DAYS) return { text: left <= 0 ? 'Due today' : `Due in ${days(left)}`, tone: 'warn' };
+      return { text: `In ${days(left)}`, tone: 'ink-3' };
     }
     case 'paid':
       return {
@@ -225,16 +237,23 @@ export function monthBarOf(month: string, rows: readonly MonthlyBill[], current:
   return { month, minor: expected ? box.totalMinor : box.paidMinor, expected };
 }
 
-/** "December so far +6% on November": the last bar against the one before. Null when there is nothing to compare with. */
-export function trendCaption(bars: readonly MonthBar[], current: string): string | null {
+/** A short figure with its money's symbol: compactMoney's "10,2 jt" as "Rp 10,2 jt"; one that has it already as it is. */
+export function compactWithSymbol(minor: number, currency: string): string {
+  const text = compactMoney(minor, currency);
+  return /^−?\d/.test(text) ? text.replace(/^(−?)/, `$1${currencyInfo(currency).symbol}\u00a0`) : text;
+}
+
+/**
+ * The plain line under the bars (owner, 18 Nov 2026), no percentage: "November: Rp 10,2 jt due · October paid
+ * Rp 3,4 jt". A month still to come (or this one) is what is due, paid and to pay; a month gone by what was paid. Null
+ * with fewer than two bars.
+ */
+export function trendCaption(bars: readonly MonthBar[], currency: string): string | null {
   const last = bars.at(-1);
   const before = bars.at(-2);
-  if (!last || !before || before.minor <= 0) return null;
-  const change = Math.round(((last.minor - before.minor) / before.minor) * 100);
-  const name = monthName(last.month, 'long');
-  const lead = last.month === current ? `${name} so far` : last.month > current ? `${name} expected` : name;
-  const by = change === 0 ? 'the same as' : `${change > 0 ? '+' : '−'}${Math.abs(change)}% on`;
-  return `${lead} ${by} ${monthName(before.month, 'long')}`;
+  if (!last || !before) return null;
+  const lead = `${monthName(last.month, 'long')}: ${compactWithSymbol(last.minor, currency)} ${last.expected ? 'due' : 'paid'}`;
+  return `${lead} · ${monthName(before.month, 'long')} ${before.expected ? 'due' : 'paid'} ${compactWithSymbol(before.minor, currency)}`;
 }
 
 /** The bars' scale: rupiah in millions ("jt") or thousands ("rb"), any other money in whole units of it. */

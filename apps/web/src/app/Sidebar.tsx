@@ -95,7 +95,7 @@ function Badge({ kind }: { kind: SidebarItem['badge'] }) {
     return note ? <span className={PILL}>{note}</span> : null;
   }
   if (kind === 'bills') {
-    const due = billsDueCount(bills);
+    const due = billsDueCount(bills, isoDate());
     return due > 0 ? <span className={GREY}>{due}</span> : null;
   }
   return null;

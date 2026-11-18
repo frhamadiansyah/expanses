@@ -2,7 +2,7 @@ import { billWindow } from '@expanses/core';
 import type { BillMonthRow, MonthlyBill } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { summaryOf } from './bill-view';
-import { asMonthlyBill, barMonths, barScale, billsOn, calendarWeeks, dayMarks, deskGroups, deskStatus, monthBarOf, monthBoxOf, pickedTotal, trendCaption } from './bills-desk-model';
+import { asMonthlyBill, barMonths, barScale, billsOn, calendarWeeks, compactWithSymbol, countedNote, dayMarks, deskGroups, deskStatus, isDueSoon, monthBarOf, monthBoxOf, pickedTotal, trendCaption } from './bills-desk-model';
 
 const bill = (over: Partial<MonthlyBill>): MonthlyBill => ({
   id: over.name ?? 'x',
@@ -136,7 +136,7 @@ describe('the month calendar', () => {
   });
 
   it('marks each day by its most pressing bill: soon over later over paid, nothing for skipped or paused', () => {
-    const marks = dayMarks(rows);
+    const marks = dayMarks(rows, today);
     expect(marks.get('2026-11-28')).toBe('soon');
     expect(marks.get('2026-12-02')).toBe('soon');
     expect(marks.get('2026-12-05')).toBe('later');
@@ -145,7 +145,10 @@ describe('the month calendar', () => {
     // Netflix skipped and Gym paused both fall on the 12th: no mark.
     expect(marks.has('2026-12-12')).toBe(false);
     // A paid bill and one still to come on the same day: the one to come sets it.
-    expect(dayMarks([rows[2]!, bill({ name: 'Paid too', state: 'paid', window: on(5) })]).get('2026-12-05')).toBe('later');
+    expect(dayMarks([rows[2]!, bill({ name: 'Paid too', state: 'paid', window: on(5) })], today).get('2026-12-05')).toBe('later');
+    // Not out yet but due in 3 days: orange, as the table's Due soon lists it.
+    expect(dayMarks([bill({ name: 'PLN', state: 'upcoming', window: on(3) })], today).get('2026-12-03')).toBe('soon');
+    expect(dayMarks([bill({ name: 'PLN', state: 'upcoming', window: on(4) })], today).get('2026-12-04')).toBe('later');
   });
 
   it('a selected day lists the bills due on it', () => {
@@ -156,7 +159,7 @@ describe('the month calendar', () => {
 
 describe('the All bills table', () => {
   it('groups as the phone counts: Due soon, Later, Paid (with skipped), Paused', () => {
-    const groups = deskGroups(rows, '2026-12', true);
+    const groups = deskGroups(rows, '2026-12', true, today);
     expect(groups.map((g) => [g.title, g.rows.map((r) => r.name)])).toEqual([
       ['Due soon', ['PLN token', 'BCA Visa bill']],
       ['Later this month', ['Indihome', 'BPJS', 'Home loan']],
@@ -176,14 +179,42 @@ describe('the All bills table', () => {
         ],
         '2026-12',
         true,
+        today,
       )[1]!.title,
     ).toBe('Later');
     // Another month names itself; empty groups are left out.
-    expect(deskGroups(rows.slice(5, 7), '2026-10', false).map((g) => g.title)).toEqual(['Paid in October']);
+    expect(deskGroups(rows.slice(5, 7), '2026-10', false, today).map((g) => g.title)).toEqual(['Paid in October']);
+  });
+
+  it('puts in Due soon what is late or due within 3 days ("In 3 days" included), out yet or not, and the rest in Later', () => {
+    // 17 Nov: PLN comes out and is due on the 20th, a yearly bill on 7 Dec. Invented.
+    const on17 = '2026-11-17';
+    const pln = bill({ name: 'PLN', state: 'upcoming', days: 3, billMonth: '2026-11', window: on(20, '2026-11') });
+    const internet = bill({ name: 'Internet', state: 'upcoming', days: 4, billMonth: '2026-11', window: on(21, '2026-11') });
+    const late = bill({ name: 'Water', state: 'overdue', days: 2, billMonth: '2026-11', window: on(15, '2026-11') });
+    const yearly = bill({ name: 'Licence', state: 'upcoming', days: 20, window: on(7) });
+    const groups = deskGroups([pln, internet, late, yearly], '2026-11', true, on17);
+    expect(groups.map((g) => [g.key, g.rows.map((r) => r.name)])).toEqual([
+      ['dueSoon', ['PLN', 'Water']],
+      ['later', ['Internet', 'Licence']],
+    ]);
+    // Every Due soon row is a due-soon row, and no Later row is: the group never says otherwise than its dates.
+    for (const group of groups) for (const each of group.rows) expect(isDueSoon(each, on17)).toBe(group.key === 'dueSoon');
+    expect(deskStatus(pln, on17)).toEqual({ text: 'Due in 3 days', tone: 'warn' });
+    expect(deskStatus(internet, on17)).toEqual({ text: 'In 4 days', tone: 'ink-3' });
+    // Paid, skipped and paused are never due soon.
+    for (const state of ['paid', 'skipped', 'paused'] as const) expect(isDueSoon({ ...pln, state }, on17)).toBe(false);
+  });
+
+  it('notes a bill due after the month it is counted in', () => {
+    const insurance = bill({ name: 'Car insurance', state: 'upcoming', window: on(5) });
+    expect(countedNote(insurance, '2026-11')).toBe('due 5 Dec · counted in Nov');
+    expect(countedNote(insurance, '2026-12')).toBeNull();
+    expect(countedNote(bill({ name: 'Rent', window: on(28, '2026-11') }), '2026-11')).toBeNull();
   });
 
   it('Due soon and Later add up to what is left to pay, and the paid group’s paid rows to Paid', () => {
-    const groups = deskGroups(rows, '2026-12', true);
+    const groups = deskGroups(rows, '2026-12', true, today);
     const box = monthBoxOf(rows, today);
     const sum = (list: MonthlyBill[]) => list.reduce((s, b) => s + (b.state === 'paid' ? b.paidMinor! : (b.amountMinor ?? b.estimateMinor ?? 0)), 0);
     const toPay = groups.filter((g) => g.key === 'dueSoon' || g.key === 'later').flatMap((g) => g.rows);
@@ -213,7 +244,7 @@ describe('the All bills table', () => {
       text: 'In 15 days',
       tone: 'ink-3',
     });
-    expect(deskStatus(bill({ state: 'open', window: on(1) }), '2026-11-30')).toEqual({ text: 'In 1 day', tone: 'ink-3' });
+    expect(deskStatus(bill({ state: 'open', window: on(1) }), '2026-11-30')).toEqual({ text: 'Due in 1 day', tone: 'warn' });
     expect(deskStatus(rows[5]!, today)).toEqual({
       text: 'Paid 30 Nov',
       tone: 'gain',
@@ -286,17 +317,17 @@ describe('bills each month', () => {
     expect(monthBarOf('2027-01', rows, '2026-12', today).expected).toBe(true);
   });
 
-  it('compares the last bar with the one before it', () => {
+  it('says in a plain line what the month has due and what the month before paid, with no percentage', () => {
     const bars = [
-      { month: '2026-11', minor: 15_600_000, expected: false },
-      { month: '2026-12', minor: 16_521_000, expected: true },
+      { month: '2026-10', minor: 3_412_000, expected: false },
+      { month: '2026-11', minor: 10_196_500, expected: true },
     ];
-    expect(trendCaption(bars, '2026-12')).toBe('December so far +6% on November');
-    expect(trendCaption(bars, '2027-01')).toBe('December +6% on November');
-    expect(trendCaption(bars, '2026-11')).toBe('December expected +6% on November');
-    expect(trendCaption([{ ...bars[0]!, minor: 17_000_000 }, bars[1]!], '2026-12')).toBe('December so far −3% on November');
-    expect(trendCaption([{ ...bars[0]!, minor: 16_521_000 }, bars[1]!], '2026-12')).toBe('December so far the same as November');
-    expect(trendCaption([{ ...bars[0]!, minor: 0 }, bars[1]!], '2026-12')).toBeNull();
+    expect(trendCaption(bars, 'IDR')).toBe('November: Rp\u00a010,2 jt due · October paid Rp\u00a03,4 jt');
+    // A month gone by says what it paid; below a million, whole rupiah; nothing paid reads Rp 0.
+    expect(trendCaption([{ ...bars[0]!, minor: 0 }, { ...bars[1]!, minor: 950_000, expected: false }], 'IDR')).toBe('November: Rp\u00a0950.000 paid · October paid Rp\u00a00');
+    expect(trendCaption(bars.slice(1), 'IDR')).toBeNull();
+    expect(compactWithSymbol(-8_400_000, 'IDR')).toBe('−Rp\u00a08,4 jt');
+    expect(compactWithSymbol(184_000, 'USD')).toBe('US$1.840');
   });
 
   it('labels the bars in jt, rb, or whole units of another money', () => {

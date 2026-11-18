@@ -1,4 +1,4 @@
-import { billPill, type BillTone, convertMinor, dayMonth, minorToMajorString, monthName, monthYear, periodMonthOf, thisBillMonth } from '@expanses/core';
+import { BILL_DUE_SOON_DAYS, billPill, type BillTone, convertMinor, daysFrom, dayMonth, minorToMajorString, monthName, monthYear, periodMonthOf, thisBillMonth } from '@expanses/core';
 import type { BookMoney, MemberPayer, MonthlyBill, PurchasePayer } from '@expanses/db';
 import type { Tone } from '../../ui/native/row';
 import { payerLine } from '../sharing/sharing-copy';
@@ -10,6 +10,18 @@ export const isPaused = (bill: Pick<MonthlyBill, 'state'>) => bill.state === 'pa
 /** A bill still to pay this month: not settled, not paused. */
 export const isToPay = (bill: MonthlyBill) => !isSettled(bill) && !isPaused(bill);
 const isOutAndUnpaid = (bill: MonthlyBill) => bill.state === 'overdue' || bill.state === 'dueSoon' || bill.state === 'open';
+
+/**
+ * Due soon, in one plain rule (owner, 18 Nov 2026): late, or still to pay and due within the phone's few days
+ * (`BILL_DUE_SOON_DAYS`, "In 3 days" included) — counted to the day it is due, out yet or not. The phone's own
+ * `dueSoon` state waits for a bill to come out, so a bill due the day it comes out read "In 3 days" under Later; here
+ * it is Due soon. The wide screen's table group, calendar mark, sidebar count and Overview line all use this; the
+ * phone's Recurring keeps its own two groups.
+ */
+export function isDueSoon(bill: Pick<MonthlyBill, 'state' | 'window'>, today: string): boolean {
+  if (bill.state === 'overdue' || bill.state === 'dueSoon') return true;
+  return (bill.state === 'open' || bill.state === 'upcoming') && daysFrom(today, bill.window.payBy) <= BILL_DUE_SOON_DAYS;
+}
 
 /** What a row is worth in a total: what it came to once paid, else its amount, else the estimate. */
 export const amountOf = (bill: MonthlyBill) => (bill.state === 'paid' ? (bill.paidMinor ?? 0) : (bill.amountMinor ?? bill.estimateMinor ?? 0));

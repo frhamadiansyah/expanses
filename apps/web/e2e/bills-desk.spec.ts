@@ -69,6 +69,33 @@ test('two bills ticked are paid together, and the month’s box, the groups and 
   await expect(page.getByTestId('bills-total')).toHaveText(/^Rp\s795\.000$/);
 });
 
+test('Due soon is what is late or due within 3 days, out yet or not; the calendar, the sidebar and the rest agree', async ({ page }) => {
+  const at = (days: number) => {
+    const day = new Date();
+    day.setDate(day.getDate() + days);
+    return day;
+  };
+  // Both bills must fall in this month for the walk to mean anything (not in the last four days of a month).
+  test.skip(at(4).getMonth() !== new Date().getMonth(), 'today + 4 is next month');
+  await addBill(page, { name: 'PLN', amount: '420000', out: at(3).getDate() });
+  await addBill(page, { name: 'Internet', amount: '395000', out: at(4).getDate() });
+
+  // Not out yet, due in 3 days: Due soon, in its words and colour, and orange on the calendar.
+  const soon = page.getByTestId('bills-due-soon');
+  await expect(soon.getByTestId('bill-row')).toHaveCount(1);
+  await expect(soon.getByTestId('bill-row').filter({ hasText: 'PLN' }).getByTestId('bill-status')).toHaveText('Due in 3 days');
+  const later = page.getByTestId('bills-later');
+  await expect(later.getByTestId('bill-row').filter({ hasText: 'Internet' }).getByTestId('bill-status')).toHaveText('In 4 days');
+  const date = (day: Date) => `${thisMonth()}-${pad(day.getDate())}`;
+  await expect(page.getByTestId('bills-calendar').locator(`[data-date="${date(at(3))}"]`)).toHaveAttribute('data-mark', 'soon');
+  await expect(page.getByTestId('bills-calendar').locator(`[data-date="${date(at(4))}"]`)).toHaveAttribute('data-mark', 'later');
+  // The sidebar's Bills count is Due soon's.
+  await expect(page.locator('aside').getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Bills/ })).toHaveText(/^Bills\s*1$/);
+  // The month's box still counts both, and the line under the bars says what the month has due.
+  await expect(page.getByTestId('bills-total')).toHaveText(/^Rp\s815\.000$/);
+  await expect(page.getByTestId('bills-trend')).toHaveText(/^\w+: Rp\s815\.000 due · \w+ paid Rp\s0$/);
+});
+
 test('a day picked on the calendar lists its bills and lights their rows', async ({ page }) => {
   await addBill(page, { name: 'Phone', amount: '150000', out: 1 });
   await addBill(page, { name: 'Rent', amount: '5000000', out: 28 });
@@ -138,7 +165,8 @@ test('a row opens its bill in the side peek: arrows step, Esc closes, Pay and Sk
 });
 
 test('the title bar’s month: next month’s bills are listed to come, with nothing to tick', async ({ page }) => {
-  await addBill(page, { name: 'Phone', amount: '150000' });
+  // Out on the 10th, so next month's is never within the 3 days of Due soon, whatever today is.
+  await addBill(page, { name: 'Phone', amount: '150000', out: 10 });
   const month = page.getByTestId('bills-month');
   const was = await month.textContent();
   await page.getByRole('button', { name: 'Next month', exact: true }).click();

@@ -203,7 +203,7 @@ export function DesktopOverviewPage() {
     review,
     late,
     over: sheetOf(current)?.overCount ?? 0,
-    billsSoon: billsDueCount(bills),
+    billsSoon: billsDueCount(bills, today),
     backupDays: lastBackup.data ? daysSince(lastBackup.data) : null,
     hasData: onHand.everything.length > 0,
   });

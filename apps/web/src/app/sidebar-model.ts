@@ -18,6 +18,7 @@ import {
   WalletCards,
   type LucideIcon,
 } from 'lucide-react';
+import { isDueSoon } from '../features/bills/bill-view';
 
 /*
  * The wide screen's sidebar (Mac app and a wide browser), option A of the Mac sidebar mockup (2026-11-17): three short
@@ -126,9 +127,9 @@ export function activeTo(pathname: string, destinations: readonly string[]): str
   return BELONGS.find(([prefix]) => under(path, prefix))?.[1] ?? null;
 }
 
-/** Bills' grey count: this month's bills overdue or due soon (the states the Bills page's "Due soon" pills mark). */
-export function billsDueCount(rows: readonly Pick<MonthlyBill, 'state'>[]): number {
-  return rows.filter((bill) => bill.state === 'overdue' || bill.state === 'dueSoon').length;
+/** Bills' grey count: this month's bills late or due within the few days (`isDueSoon`), the Bills page's Due soon. */
+export function billsDueCount(rows: readonly Pick<MonthlyBill, 'state' | 'window'>[], today: string): number {
+  return rows.filter((bill) => isDueSoon(bill, today)).length;
 }
 
 /**
