@@ -38,9 +38,15 @@ export async function cardForSpending(page: Page) {
   await expect(paidWith.getByText('Rare Card')).toHaveCount(0);
 
   // Still listed under Debts, and its page still opens.
+  // On a wide screen the Mac page lists it open, and a double-click opens its page (a click is its peek).
   await page.goto('/net-worth');
-  await page.getByTestId('type-drawer-debts:credit_card').click();
-  await page.getByRole('link', { name: /^Rare Card/ }).first().click();
+  await expect(page.getByTestId('type-drawer-debts:credit_card')).toBeVisible();
+  if ((await page.getByTestId('networth-page').count()) > 0) {
+    await page.getByRole('link', { name: /^Rare Card/ }).first().dblclick();
+  } else {
+    await page.getByTestId('type-drawer-debts:credit_card').click();
+    await page.getByRole('link', { name: /^Rare Card/ }).first().click();
+  }
   await expect(page).toHaveURL(cardUrl);
 
   // Switched back on, it is back in Wallet.

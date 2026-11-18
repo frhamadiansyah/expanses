@@ -25,318 +25,327 @@ async function addGold(page: Page) {
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 }
 
-/**
- * The Dashboard and this page were one subject drawn twice: the figure and the year behind it, what waits to be
- * refreshed, the balance sheet under it and the ratios beside it. They are one page now, and this is the list that
- * says nothing was dropped on the way — every heading that is still this page's to say.
- *
- * The month's own spending and income and what the cards owe are not on it any more, and this says so: the Cashflow
- * screen answers the first two questions and the Cards screen the third, and a figure drawn on two screens is a
- * figure that can disagree with itself.
+/*
+ * The phone's Net worth: a wide screen draws the Mac page instead (net-worth-desk.spec.ts), so these read the phone's
+ * own page at a phone's width.
  */
-test('the two pages are one, and what is left of them is all here', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
-  await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
 
-  // The home route hands over on a phone (a wide screen opens on Overview, overview.spec.ts), so an old link, a
-  // bookmark and the PWA's own start page land here; on this wide screen the address is opened directly.
-  await page.goto('/net-worth');
-  await expect(page).toHaveURL(/\/net-worth$/);
-
-  // What the Dashboard had.
-  await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
-  // Both of these are the Cashflow screen's and the Cards screen's subject now, and are on neither this page nor
-  // the figure that repeats them.
-  await expect(page.getByRole('heading', { name: 'This month' })).toHaveCount(0);
-  await expect(page.getByText('Credit cards owed')).toHaveCount(0);
-
-  // What waits is not this page's subject: no heading for it, and no corner glyph either since the bell left the
-  // corner (the attention screen keeps its own address).
-  await expect(page.getByRole('heading', { name: 'Needs attention' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: /^Needs attention/ })).toHaveCount(0);
-
-  // What the Overview had, with the ratios one tap away in the corner, and Assets and Liabilities on their total
-  // cards. Buy & sell is no longer a corner: a trade is recorded on its holding's page and read on Income.
-  await expect(page.getByRole('link', { name: 'Financial health' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Liabilities', exact: true })).toBeVisible();
-  // The sheet is headed by its two sides and nothing else: "Balance sheet" and the line under it saying how it was
-  // valued both said what "Assets" and "Liabilities" say with a figure beside them.
-  await expect(page.getByRole('heading', { name: 'Balance sheet' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Financial health' })).toHaveCount(0);
-  await page.getByRole('link', { name: 'Financial health' }).click();
-  await expect(page).toHaveURL(/\/net-worth\/health$/);
-  await expect(page.getByRole('heading', { name: 'Financial health' })).toBeVisible();
-});
-
-test('shows net worth, the balance sheet and both sides of it', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
-  await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
-
-  await page.goto('/net-worth');
-  await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
-  /*
-   * The two totals come first, before the detail: what you own and what you owe, side by side under the drawing, with
-   * the debts in the alarm ink money going out wears.
+  /**
+   * The Dashboard and this page were one subject drawn twice: the figure and the year behind it, what waits to be
+   * refreshed, the balance sheet under it and the ratios beside it. They are one page now, and this is the list that
+   * says nothing was dropped on the way — every heading that is still this page's to say.
+   *
+   * The month's own spending and income and what the cards owe are not on it any more, and this says so: the Cashflow
+   * screen answers the first two questions and the Cards screen the third, and a figure drawn on two screens is a
+   * figure that can disagree with itself.
    */
-  const totals = page.getByTestId('sheet-totals');
-  await expect(totals).toContainText('Assets');
-  await expect(totals).toContainText('Liabilities');
-  await expect(page.getByTestId('sheet-total-assets')).toContainText('50.000.000');
-  await expect(page.getByTestId('sheet-total-liabilities')).toContainText('10.000.000');
-  await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
-  // The debts are one group a side, drawn by kind rather than by when each one falls due — and the kind is the drawer
-  // the card sits in, so its name is one tap away rather than on the page. The side is headed once: the column says
-  // Liabilities and its total, and the group inside it repeats neither.
-  await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
-  const card = page.getByTestId('type-drawer-debts:credit_card');
-  await expect(card).toContainText('Credit card');
-  await expect(card).toContainText('10.000.000');
-  await card.click();
-  await expect(page.getByText('BCA KrisFlyer')).toBeVisible();
-});
+  test('the two pages are one, and what is left of them is all here', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
 
-/**
- * A list of everything you own is as long as the accounts you have opened, so the balance sheet folds it by what each
- * account *is*: current accounts with current accounts. The drawer carries what it holds and what it comes to, so a
- * type reads without being opened — and it is shut to begin with, because the point of folding a page of names away is
- * that what you have reads as a handful of types.
- */
-test('folds each side of the balance sheet by kind, shut to begin with', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
-  await addAccount(page, 'Jenius', 'bank', 'Current balance', '20000000');
-  await addAccount(page, 'BCA Dollar', 'savings', 'Current balance', '5000000');
+    // The home route hands over on a phone (a wide screen opens on Overview, overview.spec.ts), so an old link, a
+    // bookmark and the PWA's own start page land here; on this wide screen the address is opened directly.
+    await page.goto('/net-worth');
+    await expect(page).toHaveURL(/\/net-worth$/);
 
-  await page.goto('/net-worth');
-  /*
-   * Two levels, one box: Cash & equivalents is a drawer of the sheet's own, and the kinds of account it holds are
-   * drawers inside it. Both are shut to begin with — the point of folding a page of names away is that what you have
-   * reads as a handful of sections, and a section reads as a handful of kinds.
+    // What the Dashboard had.
+    await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
+    // Both of these are the Cashflow screen's and the Cards screen's subject now, and are on neither this page nor
+    // the figure that repeats them.
+    await expect(page.getByRole('heading', { name: 'This month' })).toHaveCount(0);
+    await expect(page.getByText('Credit cards owed')).toHaveCount(0);
+
+    // What waits is not this page's subject: no heading for it, and no corner glyph either since the bell left the
+    // corner (the attention screen keeps its own address).
+    await expect(page.getByRole('heading', { name: 'Needs attention' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /^Needs attention/ })).toHaveCount(0);
+
+    // What the Overview had, with the ratios one tap away in the corner, and Assets and Liabilities on their total
+    // cards. Buy & sell is no longer a corner: a trade is recorded on its holding's page and read on Income.
+    await expect(page.getByRole('link', { name: 'Financial health' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Liabilities', exact: true })).toBeVisible();
+    // The sheet is headed by its two sides and nothing else: "Balance sheet" and the line under it saying how it was
+    // valued both said what "Assets" and "Liabilities" say with a figure beside them.
+    await expect(page.getByRole('heading', { name: 'Balance sheet' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Financial health' })).toHaveCount(0);
+    await page.getByRole('link', { name: 'Financial health' }).click();
+    await expect(page).toHaveURL(/\/net-worth\/health$/);
+    await expect(page.getByRole('heading', { name: 'Financial health' })).toBeVisible();
+  });
+
+  test('shows net worth, the balance sheet and both sides of it', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
+
+    await page.goto('/net-worth');
+    await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
+    /*
+     * The two totals come first, before the detail: what you own and what you owe, side by side under the drawing, with
+     * the debts in the alarm ink money going out wears.
+     */
+    const totals = page.getByTestId('sheet-totals');
+    await expect(totals).toContainText('Assets');
+    await expect(totals).toContainText('Liabilities');
+    await expect(page.getByTestId('sheet-total-assets')).toContainText('50.000.000');
+    await expect(page.getByTestId('sheet-total-liabilities')).toContainText('10.000.000');
+    await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
+    // The debts are one group a side, drawn by kind rather than by when each one falls due — and the kind is the drawer
+    // the card sits in, so its name is one tap away rather than on the page. The side is headed once: the column says
+    // Liabilities and its total, and the group inside it repeats neither.
+    await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
+    const card = page.getByTestId('type-drawer-debts:credit_card');
+    await expect(card).toContainText('Credit card');
+    await expect(card).toContainText('10.000.000');
+    await card.click();
+    await expect(page.getByText('BCA KrisFlyer')).toBeVisible();
+  });
+
+  /**
+   * A list of everything you own is as long as the accounts you have opened, so the balance sheet folds it by what each
+   * account *is*: current accounts with current accounts. The drawer carries what it holds and what it comes to, so a
+   * type reads without being opened — and it is shut to begin with, because the point of folding a page of names away is
+   * that what you have reads as a handful of types.
    */
-  const section = page.getByTestId('type-drawer-section-liquid');
-  await expect(section).toContainText('Cash & equivalents');
-  // One line a drawer: its name and total, no count of accounts under it.
-  await expect(section).not.toContainText('accounts');
-  await expect(section).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByText('BCA Tahapan')).toHaveCount(0);
+  test('folds each side of the balance sheet by kind, shut to begin with', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    await addAccount(page, 'Jenius', 'bank', 'Current balance', '20000000');
+    await addAccount(page, 'BCA Dollar', 'savings', 'Current balance', '5000000');
 
-  await section.click();
-  const drawer = page.getByTestId('type-drawer-liquid:bank');
-  await expect(drawer).toContainText('Current account');
-  await expect(drawer).toContainText('70.000.000');
-  await expect(drawer).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByText('BCA Tahapan')).toHaveCount(0);
+    await page.goto('/net-worth');
+    /*
+     * Two levels, one box: Cash & equivalents is a drawer of the sheet's own, and the kinds of account it holds are
+     * drawers inside it. Both are shut to begin with — the point of folding a page of names away is that what you have
+     * reads as a handful of sections, and a section reads as a handful of kinds.
+     */
+    const section = page.getByTestId('type-drawer-section-liquid');
+    await expect(section).toContainText('Cash & equivalents');
+    // One line a drawer: its name and total, no count of accounts under it.
+    await expect(section).not.toContainText('accounts');
+    await expect(section).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByText('BCA Tahapan')).toHaveCount(0);
 
-  await drawer.click();
-  await expect(drawer).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByText('BCA Tahapan')).toBeVisible();
-  await expect(page.getByText('Jenius')).toBeVisible();
+    await section.click();
+    const drawer = page.getByTestId('type-drawer-liquid:bank');
+    await expect(drawer).toContainText('Current account');
+    await expect(drawer).toContainText('70.000.000');
+    await expect(drawer).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByText('BCA Tahapan')).toHaveCount(0);
 
-  // A saving account is a kind of its own, so it sits behind its own drawer rather than under the bank.
-  await expect(page.getByTestId('type-drawer-liquid:savings')).toContainText('Saving account');
-});
+    await drawer.click();
+    await expect(drawer).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText('BCA Tahapan')).toBeVisible();
+    await expect(page.getByText('Jenius')).toBeVisible();
 
-/**
- * A debt is read by what it *is* — a card, a loan, a person — and not by when it falls due: "due within a year" and
- * "long-term" are a schedule, and beside a column of asset kinds the two of them answer a different question. The bar
- * divides the same way the drawers do, so the side reads the same from either end.
- */
-test('reads what you owe by kind rather than by when it falls due', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
-  await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
-  // A mortgage with months left falls partly within the year and partly later: the sheet splits it into two groups,
-  // and the list of what is owed must still name it once.
-  await openLoan(page, { kind: 'Multi-purpose loan', name: 'KPR BCA', owed: '250000000', months: '60', lender: 'Bank' });
+    // A saving account is a kind of its own, so it sits behind its own drawer rather than under the bank.
+    await expect(page.getByTestId('type-drawer-liquid:savings')).toContainText('Saving account');
+  });
 
-  await page.goto('/net-worth');
-  await expect(page.getByText('Due within a year')).toHaveCount(0);
-  await expect(page.getByText('Long-term', { exact: true })).toHaveCount(0);
-
-  // One group for the side, with a drawer a kind under it, each carrying the whole of what that kind is owed. The kind
-  // is the item the picker opened the debt as — this loan was opened as a multi-purpose loan — so a mortgage, a lease
-  // and a paylater are three drawers rather than one.
-  await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
-  await expect(page.getByTestId('type-drawer-debts:credit_card')).toContainText('10.000.000');
-  await expect(page.getByTestId('type-drawer-debts:multi_purpose_loan')).toContainText('Multi-purpose loan');
-  await expect(page.getByTestId('type-drawer-debts:multi_purpose_loan')).toContainText('250.000.000');
-
-  // Opening the loan's drawer shows the debt itself: one row, not one row per part of its schedule.
-  await page.getByTestId('type-drawer-debts:multi_purpose_loan').click();
-  await expect(page.getByText('KPR BCA')).toHaveCount(1);
-
-  // And the boxes divide the same kinds into shares — read on the sub page, where the chart and the list it divides are
-  // drawn: the Overview draws a side's sections and its total, and the drawing of what makes it up is that page's.
-  // Each box says its share in its name, so one too small for words still does.
-  await page.goto('/net-worth/loans');
-  const boxes = page.getByTestId('share-boxes');
-  await expect(boxes.getByRole('button', { name: /^Credit card, .+, (<1|\d+)%$/ })).toBeVisible();
-  await expect(boxes.getByRole('button', { name: /^Multi-purpose loan, .+, (<1|\d+)%$/ })).toBeVisible();
-});
-
-/**
- * The assets side follows the Add asset catalogue's own taxonomy rather than the plan group an asset is filed under:
- * gold is its own family — "Intangible and other" — and not a line inside Investments.
- */
-test('reads the assets in the catalogue’s families', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
-  await addGold(page);
-
-  await page.goto('/net-worth');
-  /*
-   * Gold is a family of its own, and inside it a kind of its own: the section says "Gold bullion" even though gold is
-   * the only thing in it, because that name is the answer the section exists to give — and the holding itself is one
-   * tap away inside the drawer inside it.
+  /**
+   * A debt is read by what it *is* — a card, a loan, a person — and not by when it falls due: "due within a year" and
+   * "long-term" are a schedule, and beside a column of asset kinds the two of them answer a different question. The bar
+   * divides the same way the drawers do, so the side reads the same from either end.
    */
-  await page.getByTestId('type-drawer-section-other').click();
-  const gold = page.getByTestId('type-drawer-other:gold');
-  await expect(gold).toContainText('Gold bullion');
-  await expect(page.getByTestId('sheet-section-invest').getByText('Antam gold bars')).toHaveCount(0);
-  await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toHaveCount(0);
+  test('reads what you owe by kind rather than by when it falls due', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
+    // A mortgage with months left falls partly within the year and partly later: the sheet splits it into two groups,
+    // and the list of what is owed must still name it once.
+    await openLoan(page, { kind: 'Multi-purpose loan', name: 'KPR BCA', owed: '250000000', months: '60', lender: 'Bank' });
 
-  await gold.click();
-  await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toBeVisible();
-});
+    await page.goto('/net-worth');
+    await expect(page.getByText('Due within a year')).toHaveCount(0);
+    await expect(page.getByText('Long-term', { exact: true })).toHaveCount(0);
 
-/**
- * The figure is read over a range, and the range is chosen under the line it governs: six of them, from the half year
- * the page opens on to everything the snapshots hold.
- */
-test('reads the figure over a range chosen under the line', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    // One group for the side, with a drawer a kind under it, each carrying the whole of what that kind is owed. The kind
+    // is the item the picker opened the debt as — this loan was opened as a multi-purpose loan — so a mortgage, a lease
+    // and a paylater are three drawers rather than one.
+    await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
+    await expect(page.getByTestId('type-drawer-debts:credit_card')).toContainText('10.000.000');
+    await expect(page.getByTestId('type-drawer-debts:multi_purpose_loan')).toContainText('Multi-purpose loan');
+    await expect(page.getByTestId('type-drawer-debts:multi_purpose_loan')).toContainText('250.000.000');
 
-  await page.goto('/net-worth');
-  const ranges = page.getByRole('radiogroup', { name: 'Range' });
-  await expect(ranges.getByRole('radio')).toHaveCount(6);
-  await expect(ranges.getByRole('radio', { name: '6M' })).toHaveAttribute('aria-checked', 'true');
+    // Opening the loan's drawer shows the debt itself: one row, not one row per part of its schedule.
+    await page.getByTestId('type-drawer-debts:multi_purpose_loan').click();
+    await expect(page.getByText('KPR BCA')).toHaveCount(1);
 
-  // Half a year of months is half a year of points on the line, and the range is what decides how many.
-  const points = async () => ((await page.getByTestId('net-worth-line').first().getAttribute('points')) ?? '').split(' ').length;
-  expect(await points()).toBe(6);
+    // And the boxes divide the same kinds into shares — read on the sub page, where the chart and the list it divides are
+    // drawn: the Overview draws a side's sections and its total, and the drawing of what makes it up is that page's.
+    // Each box says its share in its name, so one too small for words still does.
+    await page.goto('/net-worth/loans');
+    const boxes = page.getByTestId('share-boxes');
+    await expect(boxes.getByRole('button', { name: /^Credit card, .+, (<1|\d+)%$/ })).toBeVisible();
+    await expect(boxes.getByRole('button', { name: /^Multi-purpose loan, .+, (<1|\d+)%$/ })).toBeVisible();
+  });
 
-  await ranges.getByRole('radio', { name: '5Y' }).click();
-  await expect(ranges.getByRole('radio', { name: '5Y' })).toHaveAttribute('aria-checked', 'true');
-  await expect.poll(points).toBe(60);
+  /**
+   * The assets side follows the Add asset catalogue's own taxonomy rather than the plan group an asset is filed under:
+   * gold is its own family — "Intangible and other" — and not a line inside Investments.
+   */
+  test('reads the assets in the catalogue’s families', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    await addGold(page);
 
-  // And the change the figure has made is under it: the arrow says which way it went, and the word beside the arrow is
-  // what a screen reader is given in its place.
-  await expect(page.getByTestId('net-worth')).toContainText(/[▲▼] (Up|Down) Rp/);
-});
+    await page.goto('/net-worth');
+    /*
+     * Gold is a family of its own, and inside it a kind of its own: the section says "Gold bullion" even though gold is
+     * the only thing in it, because that name is the answer the section exists to give — and the holding itself is one
+     * tap away inside the drawer inside it.
+     */
+    await page.getByTestId('type-drawer-section-other').click();
+    const gold = page.getByTestId('type-drawer-other:gold');
+    await expect(gold).toContainText('Gold bullion');
+    await expect(page.getByTestId('sheet-section-invest').getByText('Antam gold bars')).toHaveCount(0);
+    await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toHaveCount(0);
 
-/**
- * The chart prints no axis at all: what a grid and a pair of axes would have said is asked for instead, a month at a
- * time — a tap on any part of the drawing reads the month nearest it, with the figure, and the arrows and Escape do the
- * same from a keyboard. One number read on demand beats thirty printed small enough to be none.
- */
-test('reads a month from the part of the line that was tapped', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    await gold.click();
+    await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toBeVisible();
+  });
 
-  await page.goto('/net-worth');
-  // Nothing is read until it is asked for: no gridline, no axis figure, no month name on the drawing.
-  await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
+  /**
+   * The figure is read over a range, and the range is chosen under the line it governs: six of them, from the half year
+   * the page opens on to everything the snapshots hold.
+   */
+  test('reads the figure over a range chosen under the line', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
 
-  const plot = page.getByTestId('net-worth-plot');
-  const box = (await plot.boundingBox())!;
-  await plot.click({ position: { x: box.width - 6, y: box.height / 2 } });
+    await page.goto('/net-worth');
+    const ranges = page.getByRole('radiogroup', { name: 'Range' });
+    await expect(ranges.getByRole('radio')).toHaveCount(6);
+    await expect(ranges.getByRole('radio', { name: '6M' })).toHaveAttribute('aria-checked', 'true');
 
-  const reading = page.getByTestId('net-worth-reading');
-  await expect(reading).toBeVisible();
-  await expect(reading).toContainText(/Rp/);
-  // The last month drawn is the month we are in, and a tap at the line's own end reads it.
-  await expect(reading).toContainText(new Date().toLocaleDateString('en-GB', { month: 'short' }));
+    // Half a year of months is half a year of points on the line, and the range is what decides how many.
+    const points = async () => ((await page.getByTestId('net-worth-line').first().getAttribute('points')) ?? '').split(' ').length;
+    expect(await points()).toBe(6);
 
-  // The keyboard walks the same months, and Escape lets go.
-  const chart = page.getByRole('group', { name: /Net worth by month/ });
-  await chart.press('ArrowLeft');
-  await expect(reading).toBeVisible();
-  await chart.press('Escape');
-  await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
-});
+    await ranges.getByRole('radio', { name: '5Y' }).click();
+    await expect(ranges.getByRole('radio', { name: '5Y' })).toHaveAttribute('aria-checked', 'true');
+    await expect.poll(points).toBe(60);
 
-/**
- * The same series, drawn as what it is made of: a stack a month, what you own above nothing and what you owe below it.
- *
- * It is the second view rather than the first — a line answers where the figure is going, which is the question the page
- * asks — and the choice is the reader's and is kept, so a reader who always looks at the parts opens on the parts.
- */
-test('draws the same months as stacks when the view is switched, and keeps the choice', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
-  await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
+    // And the change the figure has made is under it: the arrow says which way it went, and the word beside the arrow is
+    // what a screen reader is given in its place.
+    await expect(page.getByTestId('net-worth')).toContainText(/[▲▼] (Up|Down) Rp/);
+  });
 
-  await page.goto('/net-worth');
-  const views = page.getByRole('group', { name: 'Chart view' });
-  await expect(views.getByRole('button', { name: 'Line' })).toHaveAttribute('aria-pressed', 'true');
-  // The drawing is read from the series, so it arrives a moment after the page: measured before it lands, the box is
-  // a box with nothing in it and the comparison below says nothing.
-  await expect(page.getByTestId('net-worth-line').first()).toBeVisible();
-  // The box the drawing sits in, measured before and after: it is the page's own furniture, and switching what is
-  // drawn in it must not move anything below it.
-  const box = page.getByTestId('chart-box');
-  const lineBox = (await box.boundingBox())!;
+  /**
+   * The chart prints no axis at all: what a grid and a pair of axes would have said is asked for instead, a month at a
+   * time — a tap on any part of the drawing reads the month nearest it, with the figure, and the arrows and Escape do the
+   * same from a keyboard. One number read on demand beats thirty printed small enough to be none.
+   */
+  test('reads a month from the part of the line that was tapped', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
 
-  await views.getByRole('button', { name: 'Bars' }).click();
-  await expect(views.getByRole('button', { name: 'Bars' })).toHaveAttribute('aria-pressed', 'true');
-  // The line is gone rather than drawn twice: one figure, one drawing at a time.
-  await expect(page.getByTestId('net-worth-line')).toHaveCount(0);
+    await page.goto('/net-worth');
+    // Nothing is read until it is asked for: no gridline, no axis figure, no month name on the drawing.
+    await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
 
-  // A block a family up from nothing, a block a kind down from it, and the figure drawn over the two.
-  const bars = page.getByTestId('net-worth-bars');
-  await expect(bars).toBeVisible();
-  await expect(bars.locator('rect[data-key="liquid"]').first()).toBeVisible();
-  await expect(bars.locator('rect[data-key="credit_card"]').first()).toBeVisible();
-  await expect(page.getByTestId('net-worth-bar-line').first()).toBeVisible();
-  // And the key says which colour is which, naming only what is drawn.
-  await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
-  await expect(page.getByText('Credit card').first()).toBeVisible();
-  await expect(page.getByText('Payables')).toHaveCount(0);
+    const plot = page.getByTestId('net-worth-plot');
+    const box = (await plot.boundingBox())!;
+    await plot.click({ position: { x: box.width - 6, y: box.height / 2 } });
 
-  // The same box, to the pixel: the key under the stacks is inside it, not under it.
-  const barsBox = (await box.boundingBox())!;
-  expect(Math.abs(barsBox.height - lineBox.height)).toBeLessThanOrEqual(1);
+    const reading = page.getByTestId('net-worth-reading');
+    await expect(reading).toBeVisible();
+    await expect(reading).toContainText(/Rp/);
+    // The last month drawn is the month we are in, and a tap at the line's own end reads it.
+    await expect(reading).toContainText(new Date().toLocaleDateString('en-GB', { month: 'short' }));
 
-  // A tap on the stacks reads a month exactly as a tap on the line does.
-  const plot = page.getByTestId('net-worth-plot');
-  const scale = (await plot.boundingBox())!;
-  await plot.click({ position: { x: scale.width - 6, y: scale.height / 2 } });
-  await expect(page.getByTestId('net-worth-reading')).toContainText(/Rp/);
+    // The keyboard walks the same months, and Escape lets go.
+    const chart = page.getByRole('group', { name: /Net worth by month/ });
+    await chart.press('ArrowLeft');
+    await expect(reading).toBeVisible();
+    await chart.press('Escape');
+    await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
+  });
 
-  await page.reload();
-  await expect(page.getByRole('group', { name: 'Chart view' }).getByRole('button', { name: 'Bars' })).toHaveAttribute('aria-pressed', 'true');
-});
+  /**
+   * The same series, drawn as what it is made of: a stack a month, what you own above nothing and what you owe below it.
+   *
+   * It is the second view rather than the first — a line answers where the figure is going, which is the question the page
+   * asks — and the choice is the reader's and is kept, so a reader who always looks at the parts opens on the parts.
+   */
+  test('draws the same months as stacks when the view is switched, and keeps the choice', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
 
-/**
- * The drawing is ruled both ways: a solid hairline a month, and a dotted one along the amounts.
- *
- * A figure on white with nothing but its own line reads as a line that could be anywhere, and the ruling is what makes
- * it a figure on a page. The two directions are drawn differently on purpose — two sets of identical lines would read as
- * a net, and the reader would have to work out which was which.
- */
-test('rules the months and the amounts differently, in both views', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
-  /** How far each line reaches, read off the drawing: a guide that spans nothing is not a guide. */
-  const spans = (testId: string, selector: string) =>
-    page
-      .getByTestId(testId)
-      .locator(selector)
-      .evaluateAll((lines) => lines.map((line) => ({ across: Number(line.getAttribute('x2')) - Number(line.getAttribute('x1')), down: Number(line.getAttribute('y2')) - Number(line.getAttribute('y1')) })));
+    await page.goto('/net-worth');
+    const views = page.getByRole('group', { name: 'Chart view' });
+    await expect(views.getByRole('button', { name: 'Line' })).toHaveAttribute('aria-pressed', 'true');
+    // The drawing is read from the series, so it arrives a moment after the page: measured before it lands, the box is
+    // a box with nothing in it and the comparison below says nothing.
+    await expect(page.getByTestId('net-worth-line').first()).toBeVisible();
+    // The box the drawing sits in, measured before and after: it is the page's own furniture, and switching what is
+    // drawn in it must not move anything below it.
+    const box = page.getByTestId('chart-box');
+    const lineBox = (await box.boundingBox())!;
 
-  await page.goto('/net-worth');
-  await expect(page.getByTestId('net-worth-line').first()).toBeVisible();
-  const months = await spans('net-worth-line-view', 'line:not([stroke-dasharray])');
-  const amounts = await spans('net-worth-line-view', 'line[stroke-dasharray]');
-  expect(Math.max(...months.map((line) => line.down))).toBeGreaterThan(0);
-  expect(amounts.length).toBeGreaterThan(0);
-  expect(Math.min(...amounts.map((line) => line.across))).toBeGreaterThan(0);
+    await views.getByRole('button', { name: 'Bars' }).click();
+    await expect(views.getByRole('button', { name: 'Bars' })).toHaveAttribute('aria-pressed', 'true');
+    // The line is gone rather than drawn twice: one figure, one drawing at a time.
+    await expect(page.getByTestId('net-worth-line')).toHaveCount(0);
 
-  await page.getByRole('group', { name: 'Chart view' }).getByRole('button', { name: 'Bars' }).click();
-  await expect(page.getByTestId('net-worth-bars')).toBeVisible();
-  // The same ruling, plus the line the stacks stand on — solid, because it is the one line they are read from.
-  const barAmounts = await spans('net-worth-bars', 'line[stroke-dasharray]');
-  expect(barAmounts.length).toBeGreaterThan(0);
-  expect(Math.min(...barAmounts.map((line) => line.across))).toBeGreaterThan(0);
-  const barMonths = await spans('net-worth-bars', 'line:not([stroke-dasharray])');
-  expect(Math.max(...barMonths.map((line) => line.down))).toBeGreaterThan(0);
+    // A block a family up from nothing, a block a kind down from it, and the figure drawn over the two.
+    const bars = page.getByTestId('net-worth-bars');
+    await expect(bars).toBeVisible();
+    await expect(bars.locator('rect[data-key="liquid"]').first()).toBeVisible();
+    await expect(bars.locator('rect[data-key="credit_card"]').first()).toBeVisible();
+    await expect(page.getByTestId('net-worth-bar-line').first()).toBeVisible();
+    // And the key says which colour is which, naming only what is drawn.
+    await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
+    await expect(page.getByText('Credit card').first()).toBeVisible();
+    await expect(page.getByText('Payables')).toHaveCount(0);
+
+    // The same box, to the pixel: the key under the stacks is inside it, not under it.
+    const barsBox = (await box.boundingBox())!;
+    expect(Math.abs(barsBox.height - lineBox.height)).toBeLessThanOrEqual(1);
+
+    // A tap on the stacks reads a month exactly as a tap on the line does.
+    const plot = page.getByTestId('net-worth-plot');
+    const scale = (await plot.boundingBox())!;
+    await plot.click({ position: { x: scale.width - 6, y: scale.height / 2 } });
+    await expect(page.getByTestId('net-worth-reading')).toContainText(/Rp/);
+
+    await page.reload();
+    await expect(page.getByRole('group', { name: 'Chart view' }).getByRole('button', { name: 'Bars' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  /**
+   * The drawing is ruled both ways: a solid hairline a month, and a dotted one along the amounts.
+   *
+   * A figure on white with nothing but its own line reads as a line that could be anywhere, and the ruling is what makes
+   * it a figure on a page. The two directions are drawn differently on purpose — two sets of identical lines would read as
+   * a net, and the reader would have to work out which was which.
+   */
+  test('rules the months and the amounts differently, in both views', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    /** How far each line reaches, read off the drawing: a guide that spans nothing is not a guide. */
+    const spans = (testId: string, selector: string) =>
+      page
+        .getByTestId(testId)
+        .locator(selector)
+        .evaluateAll((lines) => lines.map((line) => ({ across: Number(line.getAttribute('x2')) - Number(line.getAttribute('x1')), down: Number(line.getAttribute('y2')) - Number(line.getAttribute('y1')) })));
+
+    await page.goto('/net-worth');
+    await expect(page.getByTestId('net-worth-line').first()).toBeVisible();
+    const months = await spans('net-worth-line-view', 'line:not([stroke-dasharray])');
+    const amounts = await spans('net-worth-line-view', 'line[stroke-dasharray]');
+    expect(Math.max(...months.map((line) => line.down))).toBeGreaterThan(0);
+    expect(amounts.length).toBeGreaterThan(0);
+    expect(Math.min(...amounts.map((line) => line.across))).toBeGreaterThan(0);
+
+    await page.getByRole('group', { name: 'Chart view' }).getByRole('button', { name: 'Bars' }).click();
+    await expect(page.getByTestId('net-worth-bars')).toBeVisible();
+    // The same ruling, plus the line the stacks stand on — solid, because it is the one line they are read from.
+    const barAmounts = await spans('net-worth-bars', 'line[stroke-dasharray]');
+    expect(barAmounts.length).toBeGreaterThan(0);
+    expect(Math.min(...barAmounts.map((line) => line.across))).toBeGreaterThan(0);
+    const barMonths = await spans('net-worth-bars', 'line:not([stroke-dasharray])');
+    expect(Math.max(...barMonths.map((line) => line.down))).toBeGreaterThan(0);
+  });
+
 });
 
 test('says it does not know the cash-flow ratios until there are transactions', async ({ page }) => {
@@ -387,23 +396,28 @@ test('moves net worth by the price difference only', async ({ page }) => {
   await expect(page.getByTestId('net-worth')).toContainText('69.000.000');
 });
 
-/**
- * The three sections are the corner's `…`, and a desktop is this app's highest tier: middle click and "open link in
- * new tab" have to work on them. Only a real `<a href>` gives a browser that — a row that calls `navigate` looks
- * identical and answers none of it — so the href is what is asserted.
- */
-test('every net-worth section is a real link, so it can be opened in a new tab', async ({ page }) => {
-  await page.goto('/net-worth');
-  // Assets and Liabilities are their total cards; the corner is Financial health alone.
-  expect(await page.getByRole('link', { name: 'Assets', exact: true }).getAttribute('href')).toBe('/net-worth/assets');
-  expect(await page.getByRole('link', { name: 'Liabilities', exact: true }).getAttribute('href')).toBe('/net-worth/loans');
-  await expect(page.getByRole('link', { name: 'Financial health' })).toHaveAttribute('href', '/net-worth/health');
-  await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveCount(0);
+test.describe('on a phone, the sections', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
 
-  // And each one goes there: the section opens as its own screen, with Net worth as the way back.
-  await page.getByRole('link', { name: 'Liabilities', exact: true }).click();
-  await expect(page).toHaveURL(/\/net-worth\/loans$/);
-  await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
+  /**
+   * The three sections are the corner's `…`, and a desktop is this app's highest tier: middle click and "open link in
+   * new tab" have to work on them. Only a real `<a href>` gives a browser that — a row that calls `navigate` looks
+   * identical and answers none of it — so the href is what is asserted.
+   */
+  test('every net-worth section is a real link, so it can be opened in a new tab', async ({ page }) => {
+    await page.goto('/net-worth');
+    // Assets and Liabilities are their total cards; the corner is Financial health alone.
+    expect(await page.getByRole('link', { name: 'Assets', exact: true }).getAttribute('href')).toBe('/net-worth/assets');
+    expect(await page.getByRole('link', { name: 'Liabilities', exact: true }).getAttribute('href')).toBe('/net-worth/loans');
+    await expect(page.getByRole('link', { name: 'Financial health' })).toHaveAttribute('href', '/net-worth/health');
+    await expect(page.getByRole('link', { name: 'Buy & sell' })).toHaveCount(0);
+
+    // And each one goes there: the section opens as its own screen, with Net worth as the way back.
+    await page.getByRole('link', { name: 'Liabilities', exact: true }).click();
+    await expect(page).toHaveURL(/\/net-worth\/loans$/);
+    await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
+  });
+
 });
 
 test('an empty account in a currency with no rate does not stop net worth: zero needs no rate', async ({ page }) => {
@@ -447,12 +461,16 @@ test('a currency with no rate stops net worth, the balance sheet and the ratios,
   await expect(page.getByRole('heading', { name: 'Debt to assets' })).toHaveCount(0);
 });
 
-test('the Assets and Liabilities totals open their own pages', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
-  await page.goto('/net-worth');
-  await page.getByTestId('sheet-totals').getByRole('link', { name: 'Assets', exact: true }).click();
-  await expect(page).toHaveURL(/\/net-worth\/assets$/);
-  await page.goto('/net-worth');
-  await page.getByTestId('sheet-totals').getByRole('link', { name: 'Liabilities', exact: true }).click();
-  await expect(page).toHaveURL(/\/net-worth\/loans$/);
+test.describe('on a phone, the totals', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('the Assets and Liabilities totals open their own pages', async ({ page }) => {
+    await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+    await page.goto('/net-worth');
+    await page.getByTestId('sheet-totals').getByRole('link', { name: 'Assets', exact: true }).click();
+    await expect(page).toHaveURL(/\/net-worth\/assets$/);
+    await page.goto('/net-worth');
+    await page.getByTestId('sheet-totals').getByRole('link', { name: 'Liabilities', exact: true }).click();
+    await expect(page).toHaveURL(/\/net-worth\/loans$/);
+  });
 });

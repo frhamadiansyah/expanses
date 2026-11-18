@@ -189,13 +189,12 @@ test('a loan falls due this year and later, and the balance sheet names it once'
   // it into two groups underneath, and a list built from both of those named it twice.
   await page.goto('/net-worth');
   await expect(page.getByText('Due within a year')).toHaveCount(0);
-  // One drawer for the kind, and one loan inside it — shut, so the name is one tap away and the figure on the drawer
-  // is the whole of what is owed on it. The kind is the item the picker opened the loan as; a loan opened on Accounts
-  // with no kind of its own folds as a multi-purpose loan, which is the picker's default for a plain loan.
+  // One row for the kind, and one loan under it, the kind's figure the whole of what is owed on it. The kind is the
+  // item the picker opened the loan as; a loan opened on Accounts with no kind of its own folds as a multi-purpose
+  // loan, which is the picker's default for a plain loan. (The Mac page lists the kind's rows open.)
   const kpr = page.getByTestId('type-drawer-debts:multi_purpose_loan');
   await expect(kpr).toContainText('700.000.000');
-  await kpr.click();
-  await expect(page.getByText('KPR Bintaro')).toHaveCount(1);
+  await expect(page.getByTestId('debts-table').getByText('KPR Bintaro')).toHaveCount(1);
   // 200.000.000 owned against 700.000.000 owed: the figure the whole balance is read against, not a part of it.
   await expect(page.getByTestId('net-worth')).toContainText('500.000.000');
 });
