@@ -44,7 +44,7 @@ export function RingBox({
 }: {
   /** The period, named: "November 2026". */
   period: string;
-  /** A grey line under the ring: "1 yearly bill not in the ring". */
+  /** A grey line under the ring: "1 not in the ring" (`notMonthlyNote`). */
   footnote?: string | null;
   kind: 'expense' | 'income';
   items: readonly LegendItem[];
@@ -128,7 +128,7 @@ export function RingBox({
         </div>
       </div>
       {footnote && (
-        <p data-testid="yearly-bills-note" className="-mt-[6px] px-[14px] pb-[10px] text-right text-[11.5px] text-[var(--ph-ink-3)]">
+        <p data-testid="not-monthly-note" className="-mt-[6px] px-[14px] pb-[10px] text-right text-[11.5px] text-[var(--ph-ink-3)]">
           {footnote}
         </p>
       )}

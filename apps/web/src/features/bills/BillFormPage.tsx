@@ -1,4 +1,4 @@
-import { categoryPath, currencyInfo, groupedMajorString, groupTypedAmount, isoDate, monthName, ordinal, parseGroupedMajor, sinkingPlan } from '@expanses/core';
+import { categoryPath, currencyInfo, groupedMajorString, groupTypedAmount, isNotMonthlyRepeat, isoDate, monthName, ordinal, parseGroupedMajor, sinkingPlan } from '@expanses/core';
 import { deleteExpenseTemplate, saveExpenseTemplate } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -10,6 +10,7 @@ import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, PickerRow, SCREEN, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { CurrencySheet } from '../transactions/CurrencySheet';
+import { NOT_MONTHLY_BILL_NOTE } from '../transactions/not-monthly';
 import { useExpenseTemplates } from '../transactions/queries';
 import { PaidFromSheet, usePaidFromLabels } from './PaidFromSheet';
 import { useSinkingFunds } from './queries';
@@ -262,7 +263,8 @@ export function BillFormPage({ billId }: { billId?: string }) {
             />
           </InsetGroup>
 
-          <InsetGroup>
+          {/* Yearly or every few months (always 2 or more): Cashflow leaves its payments out of a month (`not-monthly.ts`). */}
+          <InsetGroup footer={isNotMonthlyRepeat(repeat, repeat === 'months' ? Number(every) : null) ? <span data-testid="not-monthly-bill-note">{NOT_MONTHLY_BILL_NOTE}</span> : undefined}>
             <SelectRow
               label="Repeats"
               value={repeat}

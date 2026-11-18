@@ -3,7 +3,7 @@ import { categoryTree, formatMinor, monthName, parsePeriod, periodLabel, stepPer
 import { type AccountRow, categoryTotalsIn, type DraftRow, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Repeat, Search, X } from 'lucide-react';
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
@@ -24,9 +24,8 @@ import { useCashflowCells } from './cashflow-cells';
 import { forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, readMarks, unknownLinks, unknownLinksLine } from './paste-categories';
 import { quickFromDraft, shortDate } from './quick-row';
 import { ReceiptPeek } from './ReceiptPeek';
-import { SwitchLook, yearlyBillsHint } from './SortFilterMenu';
 import { useSpendingTrend } from './SpendingTrend';
-import { YEARLY_BILL_LINE } from './yearly-bills';
+import { NOT_MONTHLY_LABEL, notMonthlyWord } from './not-monthly';
 import { EditableRow, type TableHandlers, TypingRow } from './TransactionsTable';
 
 type Filters = Omit<ListFilters, 'month'>;
@@ -34,9 +33,10 @@ type Filters = Omit<ListFilters, 'month'>;
 /**
  * A side of the ledger by category over the period, read exactly as the phone's ring reads it (`SpendingReport`): the
  * same query, so the two share one read, the same tree of the open book's categories, a category set as one slice. Over a
- * month, yearly bills are left out as the phone's ring leaves them (`leaveOutYearlyBills`, the same key).
+ * period shorter than a year, not-monthly bills are left out as the phone's ring leaves them (`leaveOutNotMonthly`, the
+ * same key).
  */
-function useRing(kind: 'expense' | 'income', month: string, paidAccountId: string | undefined, leaveOutYearlyBills: boolean) {
+function useRing(kind: 'expense' | 'income', month: string, paidAccountId: string | undefined, leaveOutNotMonthly: boolean) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
   const inOpenBook = useInOpenBook();
@@ -46,8 +46,8 @@ function useRing(kind: 'expense' | 'income', month: string, paidAccountId: strin
   const to = period?.to ?? '9999-12-31';
   const eventsInCaps = useOpenBook()?.countEventsInBudget ?? false;
   const totals = useQuery({
-    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, monthStart, eventsInCaps ? 'with-events' : 'without-events', paidAccountId ?? null, leaveOutYearlyBills ? 'yearly-out' : 'yearly-in'],
-    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true, paidAccountId, leaveOutYearlyBills }),
+    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, monthStart, eventsInCaps ? 'with-events' : 'without-events', paidAccountId ?? null, leaveOutNotMonthly ? 'not-monthly-out' : 'not-monthly-in'],
+    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true, paidAccountId, leaveOutNotMonthly }),
   });
   const membership = useCategorySetMembership().data ?? {};
   const sets = useCategorySets().data ?? [];
@@ -99,22 +99,22 @@ function MenuList({ title, options, value, onPick }: { title: string; options: r
   );
 }
 
-/** Yearly bills over the period on show (the phone's ⋯ switch, `leavesOutYearlyBills`): what the page's figures do with them. */
-export interface DeskYearly {
-  /** The ring, the boxes and the day bars leave them out: a month (or less) with the switch off. */
+/** Not-monthly bills over the period on show (the phone's ⋯ Not monthly, `leavesOutNotMonthly`): what the page's figures do with them. */
+export interface DeskNotMonthly {
+  /** The ring, the boxes and the day bars leave them out: less than a year, with Not monthly on Hidden. */
   out: boolean;
-  /** The switch, as this device keeps it. */
+  /** Not monthly Shown, as this device keeps it. */
   shown: boolean;
-  /** A year or longer always counts them, and the switch does nothing. */
+  /** A year or longer always counts them: the Filter offers no row for them. */
   yearOrLonger: boolean;
-  onShown: (on: boolean) => void;
-  /** "1 yearly bill not in the ring", while some are left out. */
+  onShown: (shown: boolean) => void;
+  /** "1 not in the ring", while some are left out. */
   note: string | null;
 }
 
 /**
  * Filter ⌄: today's filters in one menu — the category (with everything under it), what paid, rows deleted, rows not
- * recorded yet and what still waits for a category — the Yearly bills switch, and Clear. Esc or a click outside closes it.
+ * recorded yet and what still waits for a category — Not monthly (a grey word, Hidden or Shown), and Clear. Esc or a click outside closes it.
  */
 function FilterMenu({
   filters,
@@ -123,7 +123,7 @@ function FilterMenu({
   paidOptions,
   pendingCount,
   needsCategory,
-  yearly,
+  notMonthly,
   narrowed,
   onClearAll,
   open,
@@ -135,7 +135,7 @@ function FilterMenu({
   paidOptions: readonly ChipOption[];
   pendingCount: number;
   needsCategory: { count: number; active: boolean; onShow: () => void; onClear: () => void };
-  yearly: DeskYearly;
+  notMonthly: DeskNotMonthly;
   narrowed: boolean;
   onClearAll: () => void;
   open: boolean;
@@ -158,9 +158,9 @@ function FilterMenu({
       document.removeEventListener('keydown', esc);
     };
   }, [open, setOpen]);
-  // The switch on counts as one, as the phone's ⋯ counts it.
-  const on = [filters.cat, filters.paid, filters.showDeleted, filters.onlyDrafts, filters.needsCategory, yearly.shown].filter(Boolean).length;
-  const yearlyHint = yearlyBillsHint(yearly.shown, yearly.yearOrLonger);
+  // Not monthly Shown counts as one where it is offered, as the phone's ⋯ counts it.
+  const shownOffered = notMonthly.shown && !notMonthly.yearOrLonger;
+  const on = [filters.cat, filters.paid, filters.showDeleted, filters.onlyDrafts, filters.needsCategory, shownOffered].filter(Boolean).length;
   const words = query.trim().toLowerCase();
   const match = (option: ChipOption) => !words || `${option.label} ${option.meta ?? ''} ${option.keywords ?? ''}`.toLowerCase().includes(words);
   const check = 'flex items-center gap-2 rounded-[6px] px-2 py-[4px] text-[12.5px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
@@ -199,31 +199,27 @@ function FilterMenu({
                 Waiting for a category ({needsCategory.count})
               </label>
             )}
-            {/* Yearly bills (owner, 2026-11-18): off, a month lists them greyed and leaves them out of its figures; a year counts them. */}
-            <button
-              type="button"
-              role="switch"
-              aria-checked={yearly.shown && !yearly.yearOrLonger}
-              aria-label={`Yearly bills, ${yearlyHint}`}
-              data-testid="yearly-bills-filter"
-              disabled={yearly.yearOrLonger}
-              onClick={() => yearly.onShown(!yearly.shown)}
-              className={cx(check, 'w-full justify-between text-left disabled:opacity-60')}
-            >
-              <span className="min-w-0">
-                <span className="block">Yearly bills</span>
-                <span className="block text-[11.5px] leading-[15px] text-[var(--ph-ink-3)]">{yearlyHint}</span>
-              </span>
-              <span className="origin-right scale-[0.7]">
-                <SwitchLook on={yearly.shown && !yearly.yearOrLonger} />
-              </span>
-            </button>
-            {(narrowed || yearly.shown) && (
+            {/* Not monthly (owner, 2026-11-18): Hidden, less than a year lists those bills greyed and leaves them out of its
+                figures; a click shows the other word, the menu left open, as the phone's Sort cycles. A year counts them, and
+                offers no row. */}
+            {!notMonthly.yearOrLonger && (
+              <button
+                type="button"
+                aria-label={`Not monthly, ${notMonthlyWord(notMonthly.shown)}`}
+                data-testid="not-monthly-cycle"
+                onClick={() => notMonthly.onShown(!notMonthly.shown)}
+                className={cx(check, 'w-full justify-between text-left')}
+              >
+                <span>Not monthly</span>
+                <span className="text-[var(--ph-ink-3)]">{notMonthlyWord(notMonthly.shown)}</span>
+              </button>
+            )}
+            {(narrowed || shownOffered) && (
               <button
                 type="button"
                 onClick={() => {
                   onClearAll();
-                  yearly.onShown(false);
+                  notMonthly.onShown(false);
                 }}
                 className={cx(check, 'w-full text-left text-[var(--ph-ink-3)]')}
               >
@@ -292,7 +288,7 @@ export function DesktopCashflow({
   onEdit,
   chips,
   needsCategory,
-  yearly,
+  notMonthly,
   helpers,
   selection,
   onSelection,
@@ -334,8 +330,8 @@ export function DesktopCashflow({
   /** What narrows the page beyond the filters: the account or category it was opened for, Essential or Lifestyle. */
   chips: { key: string; label: ReactNode; clearLabel: string; onClear: () => void }[];
   needsCategory: { count: number; active: boolean; onShow: () => void; onClear: () => void };
-  /** Yearly bills over this period: left out of the ring, the boxes and the bars in a month, and the Filter's switch. */
-  yearly: DeskYearly;
+  /** Not-monthly bills over this period: left out of the ring, the boxes and the bars under a year, and the Filter's row. */
+  notMonthly: DeskNotMonthly;
   helpers: DeskRowHelpers;
   /** The rows picked (`selectionReducer`): the page keeps them, since its bulk actions act on them. */
   selection: Selection;
@@ -348,11 +344,11 @@ export function DesktopCashflow({
 }) {
   const { database, ws } = useApp();
   const colourFor = useCategoryMarkColour();
-  // Over a month the ring, Spent / Received / Left and the day bars leave yearly bills out, as the phone's do.
-  const ring = useRing(kind, month, paidAccountId, yearly.out);
-  const spent = useRing('expense', month, paidAccountId, yearly.out);
-  const received = useRing('income', month, paidAccountId, yearly.out);
-  const trend = useSpendingTrend(month, kind, !ring.eventsInCaps, yearly.out);
+  // Under a year the ring, Spent / Received / Left and the day bars leave not-monthly bills out, as the phone's do.
+  const ring = useRing(kind, month, paidAccountId, notMonthly.out);
+  const spent = useRing('expense', month, paidAccountId, notMonthly.out);
+  const received = useRing('income', month, paidAccountId, notMonthly.out);
+  const trend = useSpendingTrend(month, kind, !ring.eventsInCaps, notMonthly.out);
   const needs = useResolvedNeeds().data;
   const legend = ringLegend(ring.tree, colourFor, ring.setsMinor);
   const figures = monthFigures(spent.ready ? spent.totalMinor : null, received.ready ? received.totalMinor : null, reviewCount);
@@ -575,7 +571,7 @@ export function DesktopCashflow({
           paidOptions={paidOptions}
           pendingCount={pendingCount}
           needsCategory={needsCategory}
-          yearly={yearly}
+          notMonthly={notMonthly}
           narrowed={narrowed}
           onClearAll={onClearAll}
           open={filtering}
@@ -646,7 +642,7 @@ export function DesktopCashflow({
             icon={icon}
             ready={ring.ready}
             period={periodLabel(month)}
-            footnote={kind === 'expense' ? yearly.note : null}
+            footnote={kind === 'expense' ? notMonthly.note : null}
           />
           <DailyBox kind={kind} bars={trend?.bars ?? null} unit={trend?.unit ?? 'day'} currency={trend?.currency ?? ring.currency} today={today} note={periodNote} />
           <MonthBox
@@ -749,7 +745,7 @@ export function DesktopCashflow({
         <ReceiptPeek
           top={peekTop}
           transactionId={selected.tx!.id}
-          yearlyOut={!!selected.yearlyOut}
+          notMonthlyOut={!!selected.notMonthlyOut}
           first={at <= 0}
           last={at === ids.length - 1}
           onStep={(by) => dispatch({ type: 'step', by, ids })}
@@ -788,13 +784,34 @@ function DeskRow({
   onOpen: (keys?: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => void;
   onEdit: () => void;
 }) {
-  // Left out of the report (Rp 0, grey) or a yearly bill left out of the month (whole, grey, tagged): `deskAmount`.
+  // Left out of the report (Rp 0, grey) or a not-monthly bill left out of the month (whole, grey, ↻ on its circle): `deskAmount`.
   const amount = deskAmount(row);
-  const { yearlyOut, extra } = amount;
+  const { notMonthlyOut, extra } = amount;
   const kindLabel = helpers.kindLabel(row);
   const grey = selected ? 'text-white/80' : 'text-[var(--ph-ink-3)]';
   const category = row.categoryName ? `${row.categoryName}${row.moreCounted ? ` +${row.moreCounted}` : ''}` : null;
   const refile = helpers.refile(row);
+  // A not-monthly bill a month leaves out wears the phone's small grey ↻ on its category's circle (option D, owner
+  // 2026-11-18), its amount grey; no words in the row.
+  const mark = (
+    <span className="relative inline-flex shrink-0">
+      <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="xs" />
+      {notMonthlyOut && (
+        <span
+          role="img"
+          aria-label={NOT_MONTHLY_LABEL}
+          title={NOT_MONTHLY_LABEL}
+          data-testid="not-monthly-badge"
+          className={cx(
+            'absolute -right-[4px] -bottom-[4px] flex h-[12px] w-[12px] items-center justify-center rounded-full ring-[1.5px]',
+            selected ? 'bg-white text-[var(--mac-accent)] ring-[var(--mac-accent)]' : 'bg-[var(--ph-ink-3)] text-[var(--ph-surface)] ring-[var(--ph-surface)]',
+          )}
+        >
+          <Repeat size={7} strokeWidth={3} aria-hidden />
+        </span>
+      )}
+    </span>
+  );
   // Each cell is marked for a range of blue cells, and drawn blue while in one.
   const cell = (column: CellColumn) => ({ 'data-cell': column, 'data-cell-row': row.id, 'data-picked': pickedCell === column || undefined });
   const blue = (column: CellColumn) => pickedCell === column && PICKED_CELL;
@@ -802,7 +819,7 @@ function DeskRow({
     <li
       data-testid="transaction-row"
       data-row-id={row.id}
-      data-yearly-out={yearlyOut || undefined}
+      data-not-monthly-out={notMonthlyOut || undefined}
       aria-current={selected ? 'true' : undefined}
       tabIndex={row.sharedTransfer ? undefined : 0}
       title={row.sharedTransfer ? undefined : 'Click to see it · ⌘-click or ⇧-click to pick several · double-click to edit'}
@@ -822,7 +839,7 @@ function DeskRow({
       className={cx(
         DESK_GRID,
         'cursor-default px-0.5 select-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--mac-accent)]',
-        selected ? 'bg-[var(--mac-accent)] text-white' : cx(yearlyOut ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]', striped && 'bg-[var(--mac-zebra)]'),
+        selected ? 'bg-[var(--mac-accent)] text-white' : cx('text-[var(--ph-ink)]', striped && 'bg-[var(--mac-zebra)]'),
         row.deleted && 'opacity-50',
       )}
     >
@@ -831,17 +848,6 @@ function DeskRow({
       </span>
       <span {...cell('description')} className={cx('flex min-w-0 items-center gap-1.5 px-2 py-[5px]', row.deleted && 'line-through', blue('description'))}>
         <span className="truncate">{row.description || <span className={grey}>{category ?? kindLabel ?? 'No note'}</span>}</span>
-        {/* A yearly bill a month leaves out: said beside the note as a short pill, the whole line on hover and to a reader. */}
-        {yearlyOut && (
-          <span
-            data-testid="yearly-tag"
-            title={YEARLY_BILL_LINE}
-            aria-label={YEARLY_BILL_LINE}
-            className={cx('shrink-0 rounded-full px-[6px] text-[11px] whitespace-nowrap', selected ? 'bg-white/20 text-white' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}
-          >
-            Yearly bill
-          </span>
-        )}
         {row.instalment && (
           <span data-testid="instalment-pill" className={cx('shrink-0 rounded-full px-[6px] text-[11px] tabular-nums', selected ? 'bg-white/20' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}>
             {row.instalment.number} of {row.instalment.of}
@@ -857,7 +863,7 @@ function DeskRow({
             {refile ? (
               <button
                 type="button"
-                aria-label={categoryButtonLabel(row.description, { refund: !!row.refund })}
+                aria-label={categoryButtonLabel(row.description, { refund: !!row.refund, notMonthly: notMonthlyOut })}
                 title="Change the category"
                 onClick={(event) => {
                   // Re-filing is not opening: the row's own click (the peek) is left alone.
@@ -867,10 +873,10 @@ function DeskRow({
                 onDoubleClick={(event) => event.stopPropagation()}
                 className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]"
               >
-                <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="xs" />
+                {mark}
               </button>
             ) : (
-              <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="xs" />
+              mark
             )}
             <span className="truncate">{category ?? 'Uncategorised'}</span>
           </>

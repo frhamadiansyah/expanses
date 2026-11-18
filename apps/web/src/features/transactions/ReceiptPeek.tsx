@@ -18,7 +18,7 @@ import { kindWord, type PeekLine, peekFigure, receiptPeekLines } from './receipt
 import { instalmentRowValue } from './turn-into';
 import { TurnIntoSheet } from './TurnIntoSheet';
 import { type Receipt, useReceipt } from './use-receipt';
-import { YEARLY_BILL_LINE } from './yearly-bills';
+import { NOT_MONTHLY_BILL_NOTE } from './not-monthly';
 
 /** "Wed 11 Nov 2026". */
 const peekDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -102,11 +102,11 @@ export function ReceiptPeek({
   onClose,
   back,
   onReplaced,
-  yearlyOut = false,
+  notMonthlyOut = false,
 }: {
   transactionId: string;
-  /** Cashflow's month leaves this yearly bill's payment out of its figures (`leaveOutYearlyBills`): the peek says so, with the bill. */
-  yearlyOut?: boolean;
+  /** Cashflow's month leaves this not-monthly bill's payment out of its figures (`leaveOutNotMonthly`): the peek says so, with the bill. */
+  notMonthlyOut?: boolean;
   top?: number;
   testId?: string;
   first?: boolean;
@@ -127,7 +127,7 @@ export function ReceiptPeek({
       {receipt.receipt.isSuccess && !tx ? (
         <p className="px-[14px] py-2 text-[13px] text-[var(--ph-ink-3)]">That transaction is not on this device.</p>
       ) : tx && view ? (
-        <PeekBody key={transactionId} receipt={receipt} yearlyOut={yearlyOut} />
+        <PeekBody key={transactionId} receipt={receipt} notMonthlyOut={notMonthlyOut} />
       ) : (
         <ErrorBox error={receipt.receipt.error} />
       )}
@@ -135,7 +135,7 @@ export function ReceiptPeek({
   );
 }
 
-function PeekBody({ receipt, yearlyOut }: { receipt: Receipt; yearlyOut: boolean }) {
+function PeekBody({ receipt, notMonthlyOut }: { receipt: Receipt; notMonthlyOut: boolean }) {
   const navigate = useNavigate();
   const needs = useResolvedNeeds().data;
   const openBook = useOpenBook();
@@ -208,10 +208,10 @@ function PeekBody({ receipt, yearlyOut }: { receipt: Receipt; yearlyOut: boolean
         )}
         <div className="mt-[2px] text-[13px] text-[var(--ph-ink-3)]">{peekDate(tx.occurredOn)}</div>
         {/* Left out of the month's figures, as its row says: which bill, and that the year counts it. */}
-        {yearlyOut && (
-          <div data-testid="yearly-note" className="mt-[2px] text-[12px] text-[var(--ph-ink-3)]">
+        {notMonthlyOut && (
+          <div data-testid="not-monthly-peek-note" className="mt-[2px] text-[12px] text-[var(--ph-ink-3)]">
             {bill ? `${bill.name} · ` : ''}
-            {YEARLY_BILL_LINE}
+            {NOT_MONTHLY_BILL_NOTE}
           </div>
         )}
         {jointNote && (

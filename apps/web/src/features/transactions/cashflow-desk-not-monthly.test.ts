@@ -4,14 +4,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { RingBox } from './CashflowBoxes';
 import { deskAmount } from './cashflow-desk-model';
-import { buildRows, EMPTY_FILTERS, filterRows, leaveOutYearlyBills, totals, yearlyBillsOut } from './list-model';
-import { leavesOutYearlyBills, YEARLY_BILL_LINE, yearlyBillsNote } from './yearly-bills';
+import { buildRows, EMPTY_FILTERS, filterRows, leaveOutNotMonthly, notMonthlyOutCount, totals } from './list-model';
+import { leavesOutNotMonthly, notMonthlyNote } from './not-monthly';
 
 /*
- * Mac Cashflow D follows the iPhone's yearly-bills rule (owner, 2026-11-18): over a month a payment of a yearly bill is
- * listed whole, greyed and tagged in the table, and left out of what the month adds up; the switch or a year counts it.
- * The ring and the boxes read the same rule through `categoryTotalsIn(… leaveOutYearlyBills)` (packages/db). Invented
- * names and figures.
+ * Mac Cashflow D follows the iPhone's not-monthly rule (owner, 2026-11-18): under a year a payment of a bill that repeats
+ * yearly or every 2 months or more is listed whole, its amount grey and a ↻ on its circle, and left out of what the month
+ * adds up; Not monthly Shown, or a year, counts it. The ring and the boxes read the same rule through
+ * `categoryTotalsIn(… leaveOutNotMonthly)` (packages/db). Invented names and figures.
  */
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], name: string): AccountRow => ({
@@ -35,41 +35,41 @@ function tx(description: string, occurredOn: string, category: string, amountMin
   };
 }
 
-// A yearly bill paid alone on the 5th, a monthly bill and a dinner on the 4th.
-const yearly = tx('Cover premium', '2027-03-05', 'cover', 8_400_000_00, { billMonth: '2027-03', yearlyBill: true });
+// A not-monthly bill paid alone on the 5th, a monthly bill and a dinner on the 4th.
+const yearly = tx('Cover premium', '2027-03-05', 'cover', 8_400_000_00, { billMonth: '2027-03', notMonthlyBill: true });
 const monthly = tx('Gym', '2027-03-04', 'cover', 390_000_00, { billMonth: '2027-03' });
 const dinner = tx('Warung Contoh', '2027-03-04', 'food', 176_000_00);
 const rows = buildRows([yearly, monthly, dinner], [], accounts, []);
 const march = { ...EMPTY_FILTERS, month: '2027-03' };
 
-describe('a yearly bill in the desk table', () => {
-  it('over a month reads whole and in grey, the row tagged as a yearly bill', () => {
-    const row = leaveOutYearlyBills(rows).find((r) => r.id === yearly.id)!;
+describe('a not-monthly bill in the desk table', () => {
+  it('over a month reads whole and in grey, marked as left out', () => {
+    const row = leaveOutNotMonthly(rows).find((r) => r.id === yearly.id)!;
     const amount = deskAmount(row);
-    expect(amount).toMatchObject({ minor: 8_400_000_00, sign: '', tone: 'grey', yearlyOut: true });
-    expect(YEARLY_BILL_LINE).toBe('Yearly bill · in the year');
+    expect(amount).toMatchObject({ minor: 8_400_000_00, sign: '', tone: 'grey', notMonthlyOut: true });
   });
 
-  it('counted (the switch on, or a year) reads as any spending, with no tag', () => {
+  it('counted (Not monthly Shown, or a year) reads as any spending, unmarked', () => {
     const row = rows.find((r) => r.id === yearly.id)!;
     const amount = deskAmount(row);
-    expect(amount).toMatchObject({ minor: 8_400_000_00, tone: 'ink', yearlyOut: false });
+    expect(amount).toMatchObject({ minor: 8_400_000_00, tone: 'ink', notMonthlyOut: false });
     // The monthly bill and the dinner never carry it.
-    for (const other of rows.filter((r) => r.id !== yearly.id)) expect(deskAmount(leaveOutYearlyBills([other])[0]!).yearlyOut).toBe(false);
+    for (const other of rows.filter((r) => r.id !== yearly.id)) expect(deskAmount(leaveOutNotMonthly([other])[0]!).notMonthlyOut).toBe(false);
   });
 
   it('adds up, over a month, to the dinner and the monthly bill alone — what the ring and Spent read — and to all three counted', () => {
-    const shown = filterRows(leaveOutYearlyBills(rows), march, accounts, true);
+    const shown = filterRows(leaveOutNotMonthly(rows), march, accounts, true);
     expect(shown.map((r) => r.id)).toContain(yearly.id);
     expect(totals(shown).spentMinor).toBe(390_000_00 + 176_000_00);
     expect(totals(filterRows(rows, march, accounts, true)).spentMinor).toBe(8_400_000_00 + 390_000_00 + 176_000_00);
-    expect(yearlyBillsNote(yearlyBillsOut(shown))).toBe('1 yearly bill not in the ring');
+    expect(notMonthlyNote(notMonthlyOutCount(shown))).toBe('1 not in the ring');
   });
 
-  it('is left out by a month with the switch off only: the switch, or a year, counts it', () => {
-    expect(leavesOutYearlyBills({ kind: 'month', from: '2027-03-01', to: '2027-03-31' }, false)).toBe(true);
-    expect(leavesOutYearlyBills({ kind: 'month', from: '2027-03-01', to: '2027-03-31' }, true)).toBe(false);
-    expect(leavesOutYearlyBills({ kind: 'year', from: '2027-01-01', to: '2027-12-31' }, false)).toBe(false);
+  it('is left out under a year with Not monthly Hidden only: Shown, or a year, counts it', () => {
+    expect(leavesOutNotMonthly({ kind: 'month', from: '2027-03-01', to: '2027-03-31' }, false)).toBe(true);
+    expect(leavesOutNotMonthly({ kind: 'quarter', from: '2027-01-01', to: '2027-03-31' }, false)).toBe(true);
+    expect(leavesOutNotMonthly({ kind: 'month', from: '2027-03-01', to: '2027-03-31' }, true)).toBe(false);
+    expect(leavesOutNotMonthly({ kind: 'year', from: '2027-01-01', to: '2027-12-31' }, false)).toBe(false);
   });
 });
 
@@ -79,8 +79,8 @@ describe('the ring box', () => {
       createElement(RingBox, { kind: 'expense', items: [], totalMinor: 566_000_00, currency: 'IDR', picked: '', onPick: () => {}, icon: () => null, ready: true, period: 'March 2027', footnote }),
     );
 
-  it('says under the ring how many yearly bills it leaves out, and nothing when none are', () => {
-    expect(ring('1 yearly bill not in the ring')).toContain('1 yearly bill not in the ring');
-    expect(ring(null)).not.toContain('yearly-bills-note');
+  it('says under the ring how many it leaves out, and nothing when none are', () => {
+    expect(ring('2 not in the ring')).toContain('2 not in the ring');
+    expect(ring(null)).not.toContain('not-monthly-note');
   });
 });

@@ -24,10 +24,10 @@ export async function essentialSplitIn(
   ws: WorkspaceContext,
   from: string,
   to: string,
-  /** `leaveOutYearlyBills`: Cashflow's own month, which leaves yearly bills out of its rings (see `categoryTotalsIn`). */
-  opts: { excludeEvents: boolean; paidAccountId?: string; leaveOutYearlyBills?: boolean },
+  /** `leaveOutNotMonthly`: Cashflow's own month, which leaves not-monthly bills out of its rings (see `categoryTotalsIn`). */
+  opts: { excludeEvents: boolean; paidAccountId?: string; leaveOutNotMonthly?: boolean },
 ): Promise<EssentialSplitResult> {
-  const read = { excludeEvents: opts.excludeEvents, billMonths: true, paidAccountId: opts.paidAccountId, leaveOutYearlyBills: opts.leaveOutYearlyBills };
+  const read = { excludeEvents: opts.excludeEvents, billMonths: true, paidAccountId: opts.paidAccountId, leaveOutNotMonthly: opts.leaveOutNotMonthly };
   const [income, spending, needs] = await Promise.all([
     categoryTotalsIn(database, ws, 'income', from, to, read),
     categoryTotalsIn(database, ws, 'expense', from, to, read),

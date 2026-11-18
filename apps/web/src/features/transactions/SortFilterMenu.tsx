@@ -3,6 +3,7 @@ import { Check, ChevronLeft, ChevronRight, CircleCheck, Ellipsis } from 'lucide-
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { cx } from '../../ui';
 import type { ChipOption } from './ChipMenu';
+import { notMonthlyWord } from './not-monthly';
 
 export const DEFAULT_SORT = 'date:desc';
 
@@ -22,18 +23,12 @@ export const nextSort = (value: string): string => SORTS[(SORTS.findIndex((sort)
 /** The grey word on the Sort row ("Newest"). */
 export const sortWord = (value: string): string => SORTS[sortAt(value)]!.word;
 
-/** What Reset puts back: Sort to Newest, Paid with to All (and, on Cashflow, Yearly bills off). */
+/** What Reset puts back: Sort to Newest, Paid with to All (and, on Cashflow, Not monthly to Hidden). */
 export const MENU_REST = { sortValue: DEFAULT_SORT, paid: '' } as const;
 
-/** How many of the menu's controls are off their rest: the sort, the paid-with filter and Yearly bills. Zero means nothing to reset. */
-export function sortFilterCount(p: { sortValue: string; paid: string; yearlyBills?: boolean }): number {
-  return (p.sortValue !== DEFAULT_SORT ? 1 : 0) + (p.paid ? 1 : 0) + (p.yearlyBills ? 1 : 0);
-}
-
-/** The grey line under Yearly bills: what the switch does now, or why it does nothing over a year. */
-export function yearlyBillsHint(on: boolean, yearOrLonger: boolean): string {
-  if (yearOrLonger) return 'A year always counts them';
-  return on ? 'On: in the ring and total' : 'Off: listed, not in the ring or total';
+/** How many of the menu's controls are off their rest: the sort, the paid-with filter and Not monthly. Zero means nothing to reset. */
+export function sortFilterCount(p: { sortValue: string; paid: string; notMonthlyShown?: boolean }): number {
+  return (p.sortValue !== DEFAULT_SORT ? 1 : 0) + (p.paid ? 1 : 0) + (p.notMonthlyShown ? 1 : 0);
 }
 
 /** What a phone's tab bar and home indicator take off the foot of the screen. */
@@ -41,21 +36,14 @@ const BAR_ROOM = 96;
 
 /** The phone's list look: 15px ink rows, 44 tall, a hairline between each. No hover fill, so a touch leaves nothing lit. */
 const ROW = 'flex min-h-11 w-full items-center gap-2 border-t-[0.5px] border-[var(--ph-hair)] px-3.5 py-3 text-left text-[15px] text-[var(--ph-ink)] first:border-t-0 disabled:text-[var(--ph-ink-3)]';
-/** The kit's switch track (`SwitchRow`), drawn only: the row it sits in is the menu item that says on or off. */
-export function SwitchLook({ on }: { on: boolean }) {
-  return (
-    <span aria-hidden className={cx('flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[2px] transition-colors', on ? 'bg-[var(--ph-switch-on)]' : 'bg-[var(--ph-track)]')}>
-      <span className={cx('h-[22px] w-[22px] rounded-full bg-[var(--ph-selected)] shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-transform', on && 'translate-x-[18px]')} />
-    </span>
-  );
-}
 
 /**
  * The history's one ⋯ square, in the grey capsule the other controls on the row wear (owner 2026-11-15). It opens one
  * fixed-width menu, one group with no headings (owner 2026-11-16): Select (where the list can be ticked), Sort — its order
  * a grey word, each tap the next order, the menu left open — Paid with (a searchable list here, the phone's sheet there),
- * Yearly bills on Cashflow (owner 2026-11-18: off, a month leaves them out of its ring; on, it counts them) and Reset.
- * A small blue dot while any is off its rest.
+ * Not monthly on Cashflow over less than a year (owner 2026-11-18: a grey word, Hidden — a month leaves those bills out
+ * of its ring — or Shown, each tap the other, the menu left open, as Sort is) and Reset. A small blue dot while any is
+ * off its rest.
  */
 export function SortFilterMenu({
   sortValue,
@@ -64,9 +52,8 @@ export function SortFilterMenu({
   paidOptions,
   onPaid,
   onOpenPaid,
-  yearlyBills,
-  yearOrLonger = false,
-  onYearlyBills,
+  notMonthlyShown,
+  onNotMonthly,
   onReset,
   onSelect,
 }: {
@@ -77,11 +64,13 @@ export function SortFilterMenu({
   onPaid: (value: string) => void;
   /** A phone picks the account in its own sheet: the menu closes and this opens it. */
   onOpenPaid?: () => void;
-  /** Cashflow's Yearly bills switch (`yearly-bills.ts`). Absent — an account's own history — no row is drawn. */
-  yearlyBills?: boolean;
-  /** A year or longer is on show: yearly bills count whatever the switch says, so the row says so and is not offered. */
-  yearOrLonger?: boolean;
-  onYearlyBills?: (on: boolean) => void;
+  /** Cashflow's Not monthly choice (`not-monthly.ts`): true Shown, false Hidden. */
+  notMonthlyShown?: boolean;
+  /**
+   * Flips Not monthly. Absent, no row is drawn and the choice puts no dot on the ⋯: an account's own history, and any
+   * period of a year or longer, which counts those bills whatever the choice.
+   */
+  onNotMonthly?: (shown: boolean) => void;
   onReset: () => void;
   /** Starts select mode. Absent (a read-only workspace, or no list to tick), no Select row is drawn. */
   onSelect?: () => void;
@@ -93,7 +82,7 @@ export function SortFilterMenu({
   const menu = useRef<HTMLDivElement>(null);
   const [above, setAbove] = useState(false);
   const listId = useId();
-  const count = sortFilterCount({ sortValue, paid, yearlyBills: !!onYearlyBills && !!yearlyBills });
+  const count = sortFilterCount({ sortValue, paid, notMonthlyShown: !!onNotMonthly && !!notMonthlyShown });
   const dot = count > 0;
   const paidName = paidOptions.find((option) => option.value === paid && option.value)?.label;
 
@@ -200,25 +189,17 @@ export function SortFilterMenu({
                   <ChevronRight size={14} aria-hidden />
                 </span>
               </button>
-              {onYearlyBills && (
+              {onNotMonthly && (
                 <button
                   type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={!!yearlyBills}
-                  aria-label={`Yearly bills, ${yearlyBillsHint(!!yearlyBills, yearOrLonger)}`}
-                  data-testid="yearly-bills-filter"
-                  disabled={yearOrLonger}
-                  onClick={() => {
-                    onYearlyBills(!yearlyBills);
-                    setOpen(false);
-                  }}
-                  className={cx(ROW, 'justify-between gap-3')}
+                  role="menuitem"
+                  aria-label={`Not monthly, ${notMonthlyWord(!!notMonthlyShown)}`}
+                  data-testid="not-monthly-cycle"
+                  onClick={() => onNotMonthly(!notMonthlyShown)}
+                  className={cx(ROW, 'justify-between')}
                 >
-                  <span className="min-w-0">
-                    <span className="block">Yearly bills</span>
-                    <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{yearlyBillsHint(!!yearlyBills, yearOrLonger)}</span>
-                  </span>
-                  <SwitchLook on={!!yearlyBills && !yearOrLonger} />
+                  <span>Not monthly</span>
+                  <span className="text-[var(--ph-ink-3)]">{notMonthlyWord(!!notMonthlyShown)}</span>
                 </button>
               )}
               <button
