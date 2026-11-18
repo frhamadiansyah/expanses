@@ -6,11 +6,13 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { moneyHolders, useAccounts, useInvalidateAll, useMemberPayers } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
+import { toneClass } from '../../ui/native';
 import type { ToastIcon } from '../../ui/UndoToast';
 import { PEEK_BUTTON, SidePeek } from '../../ui/native/SidePeek';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useMonthStart } from '../workspaces/queries';
-import { billCurrencyOf, heroLineOf, pillOf, skippedText } from './bill-view';
+import { billCurrencyOf, pillOf, skippedText } from './bill-view';
+import { deskStatus } from './bills-desk-model';
 import { windowLine } from './BillPage';
 import { usePaidFromLabels } from './PaidFromSheet';
 import { PauseSheet } from './PauseSheet';
@@ -76,7 +78,8 @@ export function BillPeek({
 
   const { bill, history, bookName } = detail.data;
   const currency = billCurrencyOf(bill, accounts, ws.baseCurrency);
-  const hero = heroLineOf(bill, windowLine(bill.window));
+  // When it is due, in the table's own words ("Due in 2 days", "8 days late"), then the dates it is out and due by.
+  const status = deskStatus(bill, today);
   const account = accounts.find((a) => a.id === bill.moneyAccountId);
   const category = accounts.find((a) => a.id === bill.categoryAccountId);
   // The month Pay and Skip act on, as the bill's page picks it: the oldest still owed, else the next one ahead.
@@ -130,9 +133,11 @@ export function BillPeek({
         </div>
         {bill.amountMinor === null && bill.estimateMinor !== null && <div className="text-[12px] text-[var(--ph-ink-3)] tabular-nums">last time {formatMinor(bill.estimateMinor, currency)}</div>}
         <div data-testid="peek-status" className="mt-[2px] text-[13px] text-[var(--ph-ink-3)]">
-          {hero.lead && <span className={hero.tone === 'alarm' ? 'text-[var(--ph-alarm)]' : hero.tone === 'warn' ? 'text-[var(--ph-warn)]' : undefined}>{hero.lead}</span>}
-          {hero.lead && ' · '}
-          {hero.rest}
+          <span data-testid="peek-due" className={toneClass(status.tone)}>
+            {status.text}
+          </span>
+          {' · '}
+          {windowLine(bill.window)}
         </div>
       </div>
       <div className="flex flex-wrap gap-2 px-[14px] pb-[12px]">

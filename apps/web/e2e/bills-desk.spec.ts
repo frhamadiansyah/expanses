@@ -94,6 +94,9 @@ test('Due soon is what is late or due within 3 days, out yet or not; the calenda
   // The month's box still counts both, and the line under the bars says what the month has due.
   await expect(page.getByTestId('bills-total')).toHaveText(/^Rp\s815\.000$/);
   await expect(page.getByTestId('bills-trend')).toHaveText(/^\w+: Rp\s815\.000 due · \w+ paid Rp\s0$/);
+  // The peek says when it is due in the table's words, not a date.
+  await expect((await peekBill(page, 'PLN')).getByTestId('peek-due')).toHaveText('Due in 3 days');
+  await expect((await peekBill(page, 'Internet')).getByTestId('peek-due')).toHaveText('In 4 days');
 });
 
 test('a day picked on the calendar lists its bills and lights their rows', async ({ page }) => {
