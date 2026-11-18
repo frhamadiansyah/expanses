@@ -3,11 +3,11 @@ import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 
 test('Settings has Activity: empty at first, then a new purchase that Undo takes away', async ({ page }) => {
+  // On a wide screen Activity is a section of Settings (Mac Settings A); its address is the phone's page too.
   await page.goto('/account');
-  await expect(page.getByRole('link', { name: /^Activity/ })).not.toContainText('What was changed');
-  await page.getByRole('link', { name: /^Activity/ }).click();
-  await expect(page).toHaveURL(/\/settings\/activity$/);
-  await expect(page.getByText('Nothing changed yet')).toBeVisible();
+  await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Activity' }).click();
+  await expect(page).toHaveURL(/\/account\?section=activity$/);
+  await expect(page.getByTestId('settings-activity').getByText('Nothing changed yet')).toBeVisible();
 
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');

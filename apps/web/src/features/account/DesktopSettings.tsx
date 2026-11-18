@@ -259,11 +259,12 @@ export function DesktopSettings({ section: fixed }: { section?: SettingsSection 
           </ul>
           {matches.length === 0 && <p className="px-[8px] pt-[4px] text-[12px] text-[var(--ph-ink-3)]">No setting by that name.</p>}
         </nav>
-        <section className="min-w-0 flex-1 px-[30px] py-[22px]" aria-label={available.find((each) => each.key === section)?.name}>
+        {/* A region, not a <section>: each group inside is one, and a group is found by its own heading. */}
+        <div role="region" className="min-w-0 flex-1 px-[30px] py-[22px]" aria-label={available.find((each) => each.key === section)?.name}>
           <div className="max-w-[620px]">
             <Pane section={section} />
           </div>
-        </section>
+        </div>
       </div>
     </div>
   );

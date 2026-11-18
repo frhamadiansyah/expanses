@@ -48,14 +48,12 @@ test('the backup screen lists the copies the app keeps, and restores one', async
   // The group's heading sits outside it now, so the heading's parent is its own line rather than the whole card.
   const copies = page.locator('section', { has: page.getByRole('heading', { name: 'Safety copies on this device' }) });
   await expect(copies).toContainText('The day’s copy');
-  // What the copies are not is said behind the group's ⓘ, not in a footer.
-  await expect(copies).not.toContainText('not a backup');
-  await copies.getByRole('button', { name: 'About Safety copies on this device' }).click();
+  // On a wide screen /backup is Settings › Backup (Mac Settings A): what the copies are not is its grey footnote.
   await expect(copies).toContainText('not a backup');
 
   page.once('dialog', (dialog) => void dialog.accept());
   const safety = page.waitForEvent('download');
-  // The row is the action now — a row never holds a button — so it is named for the copy it restores.
+  // Each copy's Restore is named for the copy it restores.
   await copies.getByRole('button', { name: /Restore this copy from/ }).first().click();
   expect((await safety).suggestedFilename()).toMatch(/^expanses-before-restore-\d{4}-\d{2}-\d{2}\.sqlite3$/);
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with the copy from/ }).click()]);
@@ -74,12 +72,20 @@ test('the backup screen lists the copies the app keeps, and restores one', async
   await expect(page.locator('section', { has: page.getByRole('heading', { name: 'Safety copies on this device' }) })).toContainText('Taken before a restore');
 });
 
-test('every explanation on the Backup page waits behind its ⓘ', async ({ page }) => {
+test('every explanation on the phone’s Backup page waits behind its ⓘ; the Mac’s says it under the group', async ({ page }) => {
+  // A phone-wide window: the phone's Backup page, explanations behind each group's ⓘ.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/backup');
   const file = page.locator('section', { has: page.getByRole('heading', { name: 'File' }) });
   await expect(file).not.toContainText('not encrypted');
   await file.getByRole('button', { name: 'About File' }).click();
   await expect(file).toContainText('not encrypted');
   // The browser has no iCloud: that group is the iOS app's alone.
+  await expect(page.getByRole('heading', { name: 'iCloud' })).toHaveCount(0);
+
+  // Wide: Settings › Backup, each group's grey footnote under it, as System Settings draws them.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.getByTestId('settings-backup')).toBeVisible();
+  await expect(page.locator('section', { has: page.getByRole('heading', { name: 'File' }) })).toContainText('not encrypted');
   await expect(page.getByRole('heading', { name: 'iCloud' })).toHaveCount(0);
 });

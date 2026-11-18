@@ -69,8 +69,9 @@ test('Cashflow is the old Transactions; Tools and Settings reach the rest', asyn
   await side.getByRole('link', { name: 'App settings', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Settings', exact: true })).toBeVisible();
-  // What left the sidebar is one step into Settings.
-  for (const name of ['Categories', 'Backup', 'Activity']) await expect(page.getByRole('main').getByRole('link', { name: new RegExp(`^${name}`) })).toBeVisible();
+  // What left the sidebar is one step into Settings: a section of its own (Mac Settings A).
+  const sections = page.getByRole('navigation', { name: 'Settings sections' });
+  for (const name of ['Categories', 'Backup', 'Activity']) await expect(sections.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();
 
   // The Mac app's cicis › Settings… raises this event; the page opens Settings from anywhere.
   await side.getByRole('link', { name: 'Budget', exact: true }).click();
