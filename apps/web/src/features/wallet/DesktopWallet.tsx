@@ -545,9 +545,12 @@ function BoxRow({
   dimmed,
   chevron = false,
   testId,
+  sub,
 }: {
   colour: string;
   label: string;
+  /** A small grey line under the label: what the figure is net of. */
+  sub?: { text: string; testId: string };
   value: number;
   currency: string;
   onClick: () => void;
@@ -570,7 +573,14 @@ function BoxRow({
       )}
     >
       <span aria-hidden className="h-[8px] w-[8px] shrink-0 rounded-full" style={{ background: colour, opacity: dimmed ? 0.5 : 1 }} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate">{label}</span>
+        {sub && (
+          <span data-testid={sub.testId} className="truncate text-[11.5px] font-normal text-[var(--ph-ink-3)]">
+            {sub.text}
+          </span>
+        )}
+      </span>
       <span className="shrink-0 tabular-nums">{formatMinor(value, currency)}</span>
       {pressed && <span className="shrink-0 text-[11px] text-[var(--ph-ink-3)]">✓</span>}
       {chevron && (
@@ -649,6 +659,8 @@ function BalanceBox({
         dimmed={filtering !== null && filtering !== 'spending'}
         onClick={() => onFilter('spending')}
         testId="wallet-spending-row"
+        // What Spending money is net of, so the money groups below and this row tie together.
+        sub={box.setAsideMinor !== null && box.setAsideMinor > 0 ? { text: `after ${formatMinor(box.setAsideMinor, currency)} set aside for ${box.setAsideFor}`, testId: 'wallet-setaside-line' } : undefined}
       />
       <BoxRow
         colour="var(--ph-alarm)"

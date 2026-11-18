@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { spendingBook } from '../accounts/pockets';
 import { type BillMonthInput, billsToPay, filteredCards, type JointBoxInput, moneyCardMinor, toggleFilter, walletBox, type WalletBoxInput, walletFilterSets } from './wallet-balance';
 import { walletCredit, walletMoney } from './wallet-model';
+import { deskGroups } from './wallet-desk-model';
 
 const account = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
   ({ id, name: id, parentId: null, kind: 'asset', subtype, currency: 'IDR', archivedAt: null, sortOrder: 0, forSpending: 1, ...extra }) as AccountRow;
@@ -291,5 +292,65 @@ describe('instalments not billed yet stay out of the Balance', () => {
 
   it('never counts a card below nothing, nor a card owing nothing for its plans', () => {
     expect(walletBox(input({ visa: 20_000_000, mandiri: 3_000_000 }))).toMatchObject({ cardsMinor: 0, balanceMinor: 6_000_000 });
+  });
+});
+
+/*
+ * Mac Wallet (owner, 18 Nov 2026): the money groups' faces add up to more than Spending money by exactly what is set
+ * aside of that money — goals, and a bill's sinking fund — and the line under Spending money says that figure, so the
+ * groups and the Balance box tie together. Invented figures.
+ */
+describe('what Spending money is net of', () => {
+  const accounts = [
+    account('payroll', 'bank'),
+    account('rainy', 'savings'),
+    account('pocket', 'cash'),
+    account('ewallet', 'ewallet'),
+    account('wise', 'bank'),
+    account('wise-usd', 'bank', { parentId: 'wise', currency: 'USD' }),
+    account('wise-idr', 'bank', { parentId: 'wise' }),
+    card('card-1234'),
+  ];
+  const book = spendingBook(accounts);
+  const money = walletMoney(accounts);
+  const credit = walletCredit(accounts);
+  const balances = { payroll: 6_400_000, rainy: 2_750_000, pocket: 180_000, ewallet: 95_000, 'wise-usd': 12_500, 'wise-idr': 310_000, 'card-1234': -870_000 };
+  const rates = { USD: 16_200 };
+  const setAsides = [
+    { accountId: 'payroll', setAsideMinor: 1_300_000, currency: 'IDR', funds: [] },
+    { accountId: 'rainy', setAsideMinor: 900_000, currency: 'IDR', funds: [{ billId: 'insurance', promisedMinor: 600_000 }] },
+  ];
+  const groupsMoney = (box: ReturnType<typeof walletBox>) => {
+    const items = [...money, ...credit].map((a) => ({
+      key: a.id,
+      name: a.name,
+      side: a.subtype === 'credit_card' ? ('credit' as const) : ('money' as const),
+      subtype: a.subtype,
+      currencies: [a.currency ?? 'IDR'],
+      minor: a.subtype === 'credit_card' ? 870_000 : moneyCardMinor(a, book, balances, 'IDR', rates),
+      currency: 'IDR',
+    }));
+    const groups = deskGroups(items, 'IDR', rates).filter((group) => group.key !== 'credit');
+    return { total: groups.reduce((sum, group) => sum + group.totalMinor!, 0), box };
+  };
+
+  it('the money groups’ total less the set-aside is Spending money, and the set-aside says what it is for', () => {
+    const { total, box } = groupsMoney(walletBox({ book, balances, credit, baseCurrency: 'IDR', rates, setAsides, bills: [], month: '2026-11' }));
+    expect(box.setAsideMinor).toBe(2_200_000);
+    expect(total - box.setAsideMinor!).toBe(box.spendingMinor);
+    expect(box.setAsideFor).toBe('goals and bills');
+  });
+
+  it('nothing set aside: the groups are Spending money, and the line has nothing to say', () => {
+    const { total, box } = groupsMoney(walletBox({ book, balances, credit, baseCurrency: 'IDR', rates, setAsides: [], bills: [], month: '2026-11' }));
+    expect(box.setAsideMinor).toBe(0);
+    expect(total).toBe(box.spendingMinor);
+  });
+
+  it('goals alone, a fund alone; a missing rate leaves the figure unsaid', () => {
+    expect(walletBox({ book, balances, credit, baseCurrency: 'IDR', rates, setAsides: setAsides.slice(0, 1), bills: [], month: '2026-11' }).setAsideFor).toBe('goals');
+    const fund = [{ accountId: 'rainy', setAsideMinor: 600_000, currency: 'IDR', funds: [{ billId: 'insurance', promisedMinor: 600_000 }] }];
+    expect(walletBox({ book, balances, credit, baseCurrency: 'IDR', rates, setAsides: fund, bills: [], month: '2026-11' }).setAsideFor).toBe('bills');
+    expect(walletBox({ book, balances, credit, baseCurrency: 'IDR', rates: {}, setAsides, bills: [], month: '2026-11' }).setAsideMinor).toBeNull();
   });
 });

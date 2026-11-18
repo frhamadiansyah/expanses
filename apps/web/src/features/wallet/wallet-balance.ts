@@ -126,6 +126,13 @@ export interface JointBoxInput {
 export interface WalletBox {
   /** Spending money: what is kept for spending, less what is set aside of it. Null when a rate is missing. */
   spendingMinor: number | null;
+  /**
+   * What Spending money is net of: everything set aside of the money it counts (goals, and a bill's sinking fund), in the
+   * base currency — the figure taken off, so the money's own total less this is Spending money. Null when a rate is missing.
+   */
+  setAsideMinor: number | null;
+  /** What that set-aside is for, in the box's words: goals, bills (sinking funds), or both. */
+  setAsideFor: 'goals' | 'bills' | 'goals and bills';
   /** Outstanding on cards: what every credit card owes less its instalments not billed yet. */
   cardsMinor: number | null;
   /** Bills still to pay this month, less what their funds already set aside. */
@@ -178,10 +185,15 @@ export function walletBox({ book, balances, credit, baseCurrency, rates, setAsid
     missing: [...asked.missing, ...billed.missing],
   };
   const free = freeToSpend(spendable, promised, due);
+  // The sinking funds' part of the set-aside; the rest is goals' (and a partner's joint money's, as its phone sent it).
+  const fundsMinor = sumToBase({ amounts: funds.map((fund) => ({ minor: fund.minor, currency: fund.currency })), baseCurrency, ratesToBase: rates }).totalMinor ?? 0;
+  const goalsMinor = (promised.totalMinor ?? 0) - fundsMinor;
   const missing = free.missing;
   const known = (minor: number | null) => (missing.length > 0 ? null : minor);
   return {
     spendingMinor: known(unclaimed.freeMinor),
+    setAsideMinor: known(promised.totalMinor),
+    setAsideFor: fundsMinor > 0 && goalsMinor > 0 ? 'goals and bills' : fundsMinor > 0 ? 'bills' : 'goals',
     cardsMinor: known(asked.totalMinor),
     billsMinor: known(billed.totalMinor),
     balanceMinor: free.freeMinor,
