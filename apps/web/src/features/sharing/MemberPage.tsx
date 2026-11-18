@@ -20,6 +20,13 @@ import { syncedAgo } from './sharing-copy';
 
 type MadeInvite = { invite: CreatedInvite; kind: 'someone' | 'device'; forName?: string };
 
+/** Under a Link a device code: where on the other device it is entered, and as whom it joins. */
+export function deviceInviteFooter(forName?: string): string {
+  return forName
+    ? `On ${forName}’s new device, choose Add workspace › Join with a code and enter this code. It joins as ${forName}.`
+    : 'On the other device, choose Add workspace › Join with a code and enter this code. It joins as the same member.';
+}
+
 /** The route's page: Share › one member. */
 export function MemberPage() {
   const { bookId, memberId } = useParams({ from: '/account/workspaces/$bookId/share/members/$memberId' });
@@ -142,13 +149,7 @@ function Member({ bookId, bookName, detail, member }: { bookId: string; bookName
           bookName={bookName}
           inviterName={me?.name ?? ''}
           header={invite.kind === 'device' ? (invite.forName ? `Link a device for ${invite.forName}` : 'Link a device') : 'Invite'}
-          footer={
-            invite.kind === 'device'
-              ? invite.forName
-                ? `On ${invite.forName}’s new device, choose Add workspace › Join with a code and enter this code. It joins as ${invite.forName}.`
-                : 'On the other device, choose Add workspace › Join with a code and enter this code. It joins as the same member.'
-              : ''
-          }
+          footer={invite.kind === 'device' ? deviceInviteFooter(invite.forName) : ''}
         />
       ) : null}
 

@@ -1,11 +1,20 @@
+import { usePhone, useSideways } from '../../app/use-phone';
 import { ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 import { formatBytes, formatWhen } from '../recovery/recovery-copy';
+import { DesktopSettings } from '../account/DesktopSettings';
 import { ICloudGroup } from './icloud/ICloudGroup';
 import { copyReasonWords, daysSince } from './backupState';
 import { BackupFileInputs, useBackupFlows } from './use-backup-flows';
 
-/** The phone's Backup page (and the address /backup). What every action does lives in `useBackupFlows`. */
+/** /backup: on a wide screen the Mac Settings at Backup, else the phone's Backup page. */
+export function BackupRoute() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopSettings section="backup" /> : <BackupPage />;
+}
+
+/** The phone's Backup page. What every action does lives in `useBackupFlows`, which the Mac's Settings › Backup presses too. */
 export function BackupPage() {
   const flows = useBackupFlows();
   const { photoIndex, last, kept, error, busy, done, pending, blocked } = flows;

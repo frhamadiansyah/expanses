@@ -90,6 +90,16 @@ function ActivityRow({ line, busy, onUndo, position }: GroupChild & { line: Acti
  * Only what the app records is listed; a line it cannot reverse says so.
  */
 export function ActivityPage() {
+  return (
+    <div className={SCREEN}>
+      <LargeTitle title="Activity" back="Account" backTo="/account" />
+      <ActivityList />
+    </div>
+  );
+}
+
+/** The list itself, under the phone's page title or in the Mac's Settings › Activity (`narrow`: a short segmented control). */
+export function ActivityList({ narrow = false }: { narrow?: boolean }) {
   const [segment, setSegment] = useState<'all' | 'transactions' | 'accounts'>('all');
   const [shown, setShown] = useState(PAGE);
   const [error, setError] = useState<unknown>(null);
@@ -106,8 +116,7 @@ export function ActivityPage() {
   const segments = SEGMENTS.filter((s) => s.key !== 'accounts' || hasAccounts);
 
   return (
-    <div className={SCREEN}>
-      <LargeTitle title="Activity" back="Account" backTo="/account" />
+    <>
       <ErrorBox error={error ?? list.error} />
       {segments.length > 1 && (
         <SegmentedControl
@@ -118,7 +127,7 @@ export function ActivityPage() {
             setSegment(key as typeof segment);
             setShown(PAGE);
           }}
-          className="mb-[14px]"
+          className={narrow ? 'mb-[14px] max-w-xs' : 'mb-[14px]'}
         />
       )}
       {list.isSuccess && lines.length === 0 && (
@@ -138,6 +147,6 @@ export function ActivityPage() {
           <InsetRow testId="activity-more" title="Show more" action onClick={() => setShown(shown + PAGE)} />
         </InsetGroup>
       )}
-    </div>
+    </>
   );
 }

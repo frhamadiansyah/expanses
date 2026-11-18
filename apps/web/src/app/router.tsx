@@ -3,7 +3,7 @@ import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/
 import { AddPocketPage } from '../features/accounts/AddPocketPage';
 import { MovePage } from '../features/accounts/MovePage';
 import { AccountPage } from '../features/accounts/AccountPage';
-import { BackupPage } from '../features/backup/BackupPage';
+import { BackupRoute } from '../features/backup/BackupPage';
 import { ICloudRestorePage } from '../features/backup/icloud/ICloudRestorePage';
 import { CoverPage } from '../features/events/CoverPage';
 import { EventDetailPage } from '../features/events/EventDetailPage';
@@ -121,6 +121,7 @@ import { NetWorthMoved } from '../features/sharing/NetWorthMoved';
 import { SharePage } from '../features/sharing/SharePage';
 import { SyncDetailsPage, SyncLogPage } from '../features/sharing/SyncDetailsPage';
 import { AccountMenuPage } from '../features/account/AccountMenuPage';
+import { settingsSearch } from '../features/account/settings-desk-model';
 import { JoinPage } from '../features/sharing/JoinPage';
 import { SharedItemPage } from '../features/networth/SharedItemPage';
 import { DebtPlanPage } from '../features/debt-plan/DebtPlanPage';
@@ -578,9 +579,11 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage, validateSearch: reviewSearch }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
+  // A wide screen's /backup is the Mac Settings at Backup; a phone's is its Backup page.
+  createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage }),
+  // ?section= names a section of the wide screen's Settings (Mac Settings A); a phone's Account page reads none.
+  createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage, validateSearch: settingsSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/month-start', component: MonthStartPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share', component: SharePage }),

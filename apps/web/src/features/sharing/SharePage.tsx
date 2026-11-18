@@ -17,7 +17,7 @@ import { useSyncState } from './sync-state';
 import { currencyRefusal, DISCARD_LABEL, DISCARD_TITLE, discardConfirm, lastChangeLine, leaveConfirm, LOST_LINE, preparing, sayError, stopConfirm } from './sharing-copy';
 
 /** What the person being invited will and will not see, and the one thing about devices worth knowing up front. */
-const EXPLAINER = [
+export const EXPLAINER = [
   'Whoever is invited sees this workspace just as it looks here — its purchases, categories, budgets and bills — and can add and change any of them. They never see accounts, cards or balances outside it, or any other workspace: a purchase paid from elsewhere shows only the name of what paid for it.',
   'Everything is encrypted on this device before it leaves; the relay that passes it along cannot read it.',
   'An invite is for one device. A replaced or restored phone needs a new invite.',

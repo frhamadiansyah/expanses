@@ -4,7 +4,7 @@ import { Check, Plus, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { MORE_GROUPS, type NavItem, SETTINGS_ITEMS } from '../../app/nav';
-import { usePhone } from '../../app/use-phone';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { isPhoneApp } from '../../lib/mac';
 import { hasWidget } from '../../native/widget-summary';
 import { ErrorBox } from '../../ui';
@@ -16,6 +16,7 @@ import { NewWorkspaceSheet } from '../workspaces/NewWorkspaceSheet';
 import { useArchivedBooks, useBooks } from '../workspaces/queries';
 import { WorkspaceDot } from '../workspaces/WorkspaceBadge';
 import { AddWorkspaceSheet } from './AddWorkspaceSheet';
+import { DesktopSettings } from './DesktopSettings';
 import { paymentLabel } from '../transactions/PaymentSheet';
 import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith } from './default-paid-with';
 import { lateNote } from '../debt-plan/plan-view';
@@ -77,10 +78,20 @@ function WorkspaceLine({
 }
 
 /**
+ * /account: on a wide screen (not a phone, not a phone held sideways) the Mac Settings (`DesktopSettings`), else the
+ * phone's Account page.
+ */
+export function AccountMenuPage() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopSettings /> : <PhoneAccountPage />;
+}
+
+/**
  * The Account page: a main page of the menu, so it has no way back. The workspaces, then the settings, then
  * everything the tab bar cannot hold.
  */
-export function AccountMenuPage() {
+function PhoneAccountPage() {
   const { database, ws, switchBook } = useApp();
   const books = useBooks();
   const archived = useArchivedBooks();

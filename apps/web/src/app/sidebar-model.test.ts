@@ -271,5 +271,10 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/goals/new', false)).toBe(false);
     expect(edgeToEdge('/tools', false)).toBe(true);
     expect(edgeToEdge('/tools', true)).toBe(false);
+    expect(edgeToEdge('/account', false)).toBe(true);
+    expect(edgeToEdge('/account', true)).toBe(false);
+    expect(edgeToEdge('/backup', false)).toBe(true);
+    expect(edgeToEdge('/account/workspaces/b1', false)).toBe(false);
+    expect(edgeToEdge('/backup/icloud', false)).toBe(false);
   });
 });
