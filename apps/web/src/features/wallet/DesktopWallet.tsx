@@ -763,6 +763,19 @@ function FaceShelf({
   onOpen: (card: WalletCard, from?: Element | null) => void;
 }) {
   const [shelf, width] = useWidth<HTMLDivElement>();
+  /*
+   * The faces' count to a row follows the shelf's width, and the page's height follows the rows: where scrollbars take
+   * room (not the Mac's own, which float), a scrollbar coming and going would change the width it was measured at and
+   * the faces would never settle. The page keeps the scrollbar's room while the shelf is drawn.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.style.scrollbarGutter;
+    root.style.scrollbarGutter = 'stable';
+    return () => {
+      root.style.scrollbarGutter = before;
+    };
+  }, []);
   const cols = width === 0 ? 0 : Math.max(1, Math.floor((width + GAP) / (FACE_MIN + GAP)));
   const cell = cols === 0 ? 0 : Math.floor((width - GAP * (cols - 1)) / cols);
   const scale = cell / CARD_W;
