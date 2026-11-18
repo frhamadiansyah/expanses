@@ -64,12 +64,16 @@ test('three pasted rows with no category get one, picked once for the range, and
   await page.goto('/transactions');
   await pasteInto(page, ['2026-10-14\tPasar Lama\t\tBank Contoh\t41.500', '2026-10-15\tKios Sayur\t\tBank Contoh\t17.250', '2026-10-16\tToko Beras\t\tBank Contoh\t96.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
-  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(recordOf(page, note)).toBeDisabled();
+  // A blank category does not hold Record back (the row would be recorded under Uncategorised).
+  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(recordOf(page, note)).toBeEnabled();
 
-  // The rows wait in the order pasted: Pasar Lama, Kios Sayur, Toko Beras. Click the first category cell, ⇧-click the last.
-  await draftRow(page, 'Pasar Lama').getByLabel('Row category').click();
+  // The rows wait in the order pasted: Pasar Lama, Kios Sayur, Toko Beras. A drag down the Category cells picks the three
+  // (⇧-click picks rows; once two cells are blue, ⇧-click in their column stretches them).
+  await dragCells(page, cellOf(draftRow(page, 'Pasar Lama'), 'category'), cellOf(draftRow(page, 'Kios Sayur'), 'category'));
+  await expect(page.locator('[data-cell="category"][data-picked="true"]')).toHaveCount(2);
   await draftRow(page, 'Toko Beras').getByLabel('Row category').click({ modifiers: ['Shift'] });
   await expect(page.locator('[data-cell="category"][data-picked="true"]')).toHaveCount(3);
+  await expect(page.getByTestId('cashflow-selection')).toHaveCount(0);
   await expect(page.getByTestId('table-note')).toContainText('3 cells');
   await page.screenshot({ path: test.info().outputPath('cashflow-range.png') });
 
@@ -87,7 +91,7 @@ test('three pasted rows with no category get one, picked once for the range, and
   await picked.getByTestId('record-many').click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
   await expect(page.getByTestId('transaction-row')).toHaveCount(3);
-  await expect(page.getByTestId('recorded-toast')).toContainText('Recorded in October 2026');
+  await expect(page.getByTestId('recorded-toast')).toContainText('Recorded 3 in October 2026');
 });
 
 test('⌘D fills down from the top cell, Delete clears drafts only, ⌘C copies the cells, ⌘V fills them, and Undo puts a change back', async ({ page }) => {

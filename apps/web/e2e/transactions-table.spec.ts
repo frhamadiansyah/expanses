@@ -140,9 +140,9 @@ test('rows pasted in the table’s own column order land in the right cells, wai
   await expect(warung.getByLabel('Row category')).toHaveValue('Restaurants');
   await expect(warung.getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?38\.000$/);
   await expect(warung.getByLabel('Row date')).toHaveValue('16 Nov 2026');
-  // A category it cannot find is left empty, never guessed; its Record stays grey.
+  // A category it cannot find is left empty, never guessed; its Record still records it, under Uncategorised.
   await expect(draftRow(page, 'Something odd').getByLabel('Row category')).toHaveValue('');
-  await expect(draftRow(page, 'Something odd').getByRole('button', { name: 'Record Something odd' })).toBeDisabled();
+  await expect(draftRow(page, 'Something odd').getByRole('button', { name: 'Record Something odd' })).toBeEnabled();
 
   await pasar.getByRole('button', { name: 'Record Pasar Santa' }).click();
   await warung.getByRole('button', { name: 'Record Warung Tegal' }).click();

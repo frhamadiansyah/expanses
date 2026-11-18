@@ -91,9 +91,11 @@ test('rows pasted from two months back wait just above the typing row, are fille
   await page.getByRole('button', { name: 'Later period' }).click();
   await expect(page.getByTestId('chart-month')).toHaveText('November 2026');
 
-  // Black Record when complete, grey while a cell is blank; the same text colours as a recorded row.
+  // Black Record once the date, amount and Paid with read — a blank category does not hold it back (it records under
+  // Uncategorised) — grey while one of those is blank, as the empty typing row's; the same text colours as a recorded row.
   await expect(recordOf(page, 'Kedai Contoh')).toBeEnabled();
-  await expect(recordOf(page, 'Teh Contoh')).toBeDisabled();
+  await expect(recordOf(page, 'Teh Contoh')).toBeEnabled();
+  await expect(page.getByTestId('typing-row').getByRole('button', { name: 'Record', exact: true })).toBeDisabled();
   const colours = await page.evaluate(() => {
     const read = (el: Element | null | undefined) => (el ? getComputedStyle(el).color : null);
     const recorded = document.querySelector('[data-testid="transaction-row"]');
@@ -105,7 +107,7 @@ test('rows pasted from two months back wait just above the typing row, are fille
       paid: [read(recorded?.querySelector('[data-cell="paid"]')), read(waiting?.querySelector('[data-cell="paid"] input'))],
       amount: [read(recorded?.querySelector('[data-cell="amount"]')), read(waiting?.querySelector('[data-cell="amount"] input'))],
       complete: ground(waiting?.querySelector('button[aria-label="Record Kedai Contoh"]')),
-      blank: ground([...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Record Teh Contoh')),
+      blank: ground([...document.querySelectorAll('[data-testid="typing-row"] button')].find((b) => b.textContent === 'Record')),
     };
   });
   for (const pair of [colours.date, colours.note, colours.paid, colours.amount]) expect(pair[1]).toBe(pair[0]);
@@ -146,7 +148,7 @@ test('rows pasted from two months back wait just above the typing row, are fille
   await expect(picked.getByTestId('record-skipped')).toHaveCount(0);
   await picked.getByTestId('record-many').click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
-  await expect(toast).toContainText('Recorded in September 2026');
+  await expect(toast).toContainText('Recorded 3 in September 2026');
   // The typing row is still the last row.
   expect(await tableOrder(page)).toEqual(['Warung Pagi', 'Toko Siang', '(typing row)']);
 
@@ -162,17 +164,18 @@ test('rows pasted from two months back wait just above the typing row, are fille
 test('Record N records the complete ones of those picked and says how many it skips; rows of two months are said together', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
-  await pasteInto(page, ['2026-08-30\tPasar Contoh\tGroceries\tBank Contoh\t41.500', '2026-09-02\tKios Contoh\tGroceries\tBank Contoh\t17.250', '2026-09-03\tToko Contoh\t\tBank Contoh\t9.000'].join('\n'));
+  // Toko Contoh has no Paid with: the one thing (with a date and an amount) that keeps a row waiting.
+  await pasteInto(page, ['2026-08-30\tPasar Contoh\tGroceries\tBank Contoh\t41.500', '2026-09-02\tKios Contoh\tGroceries\tBank Contoh\t17.250', '2026-09-03\tToko Contoh\tGroceries\t\t9.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
   for (const note of ['Pasar Contoh', 'Kios Contoh', 'Toko Contoh']) await draftRow(page, note).getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
   const picked = page.getByTestId('cashflow-selection');
   await expect(picked.getByTestId('peek-title')).toHaveText('3 selected');
   await expect(picked.getByTestId('record-many')).toHaveText('Record 2');
-  await expect(picked.getByTestId('record-skipped')).toHaveText('1 with a blank cell is skipped');
+  await expect(picked.getByTestId('record-skipped')).toHaveText('1 missing a date, amount or Paid with is skipped');
   // Only waiting rows picked: none of the recorded rows' actions.
   await expect(picked.getByRole('button', { name: 'Add to event' })).toHaveCount(0);
   await picked.getByTestId('record-many').click();
-  await expect(page.getByTestId('recorded-toast')).toContainText('Recorded in August and September 2026');
+  await expect(page.getByTestId('recorded-toast')).toContainText('Recorded 2 in August and September 2026 · 1 skipped');
   // The one skipped stays waiting, and picked.
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await expect(draftRow(page, 'Toko Contoh')).toHaveAttribute('data-selected', 'true');
@@ -207,4 +210,104 @@ test('a row typed into the last row is recorded into the list above it, and the 
   await page.getByRole('button', { name: /^Date/ }).click();
   expect(await tableOrder(page)).toEqual(['Sate Contoh', 'Roti Contoh', '(typing row)']);
   await expect(page.getByTestId('table-note')).toHaveText('newest at the top · new rows at the bottom');
+});
+
+test('Record all records every waiting row with a date, amount and Paid with — a blank category under Uncategorised — and Undo puts them all back', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  // Two months; Bioskop Contoh with no category, Parkir Contoh with no Paid with.
+  await pasteInto(
+    page,
+    ['2026-08-28\tPasar Contoh\tGroceries\tBank Contoh\t41.500', '2026-09-04\tBioskop Contoh\t\tBank Contoh\t50.000', '2026-09-06\tParkir Contoh\tParking & tolls\t\t5.000', '2026-09-07\tKedai Contoh\tCafe & dessert\tBank Contoh\t23.000'].join('\n'),
+  );
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(4);
+  await expect(draftRow(page, 'Bioskop Contoh').getByLabel('Row category')).toHaveValue('');
+  await expect(recordOf(page, 'Bioskop Contoh')).toBeEnabled();
+  await expect(recordOf(page, 'Parkir Contoh')).toBeDisabled();
+  // The box header's black Record all, counting what it would record.
+  const all = page.getByTestId('record-all');
+  await expect(all).toHaveText('Record all 3');
+  await page.screenshot({ path: test.info().outputPath('record-all.png') });
+
+  await all.click();
+  const toast = page.getByTestId('recorded-toast');
+  await expect(toast).toContainText('Recorded 3 in August and September 2026 · 1 skipped');
+  await expect(toast.getByRole('button', { name: 'Show ›' })).toBeVisible();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(draftRow(page, 'Parkir Contoh')).toHaveCount(1);
+  await expect(all).toHaveText('Record all');
+  await expect(all).toBeDisabled();
+
+  // Undo: all three wait again, Bioskop Contoh's category blank as it was.
+  await toast.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(4);
+  await expect(draftRow(page, 'Bioskop Contoh').getByLabel('Row category')).toHaveValue('');
+  await expect(all).toHaveText('Record all 3');
+
+  // Again, then Show › to September: Bioskop Contoh is recorded under Uncategorised, and Filter's "Waiting for a
+  // category" lists it alone.
+  await all.click();
+  await expect(toast).toContainText('Recorded 3 in August and September 2026 · 1 skipped');
+  await toast.getByRole('button', { name: 'Show ›' }).click();
+  await expect(page.getByTestId('chart-month')).toHaveText('September 2026');
+  const bioskop = page.getByTestId('transaction-row').filter({ hasText: 'Bioskop Contoh' });
+  await expect(bioskop.locator('[data-cell="category"]')).toHaveText('Uncategorised');
+  await page.getByRole('button', { name: /^Filter/ }).click();
+  const waitingFor = page.getByRole('dialog', { name: 'Filter' }).getByLabel('Waiting for a category (1)');
+  await waitingFor.check();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('transaction-row')).toHaveCount(1);
+  await expect(page.getByTestId('transaction-row')).toContainText('Bioskop Contoh');
+  // The row with no Paid with still waits.
+  await expect(draftRow(page, 'Parkir Contoh')).toHaveCount(1);
+
+  // At a phone's width Cashflow's box says so too: Uncategorised, 1 needs a category.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/transactions');
+  await expect(page.getByTestId('needs-category-card')).toContainText('1 needs a category');
+});
+
+test('a click on the first waiting row and ⇧-click on the last picks every waiting row between; ⌘-click still takes one out', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Warung Pagi', paidWith: 'Bank Contoh', category: 'Restaurants', amount: '27000', date: '2026-11-02' });
+  await page.goto('/transactions');
+  await pasteInto(
+    page,
+    [
+      '2026-08-01\tLaundry Contoh\tDry clean & laundry\tBank Contoh\t64.000',
+      '2026-09-08\tToko Buah Contoh\tGroceries\tBank Contoh\t412.300',
+      '2026-09-09\tKedai Teh Contoh\t\tBank Contoh\t18.000',
+      '2026-09-12\tApotek Contoh\tPharmacy\t\t75.500',
+      '2026-09-14\tRoti Contoh\tGroceries\tBank Contoh\t32.000',
+    ].join('\n'),
+  );
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(5);
+
+  // Click the first (into its cell, as ever), ⇧-click the fourth: the four between, not the recorded row above them.
+  await draftRow(page, 'Laundry Contoh').getByLabel('Row description').click();
+  await expect(draftRow(page, 'Laundry Contoh').getByLabel('Row description')).toBeFocused();
+  await draftRow(page, 'Apotek Contoh').getByLabel('Row description').click({ modifiers: ['Shift'] });
+  const picked = page.getByTestId('cashflow-selection');
+  await expect(picked.getByTestId('peek-title')).toHaveText('4 selected');
+  await expect(page.locator('[data-testid="not-recorded-row"][data-selected="true"]')).toHaveCount(4);
+  await expect(page.locator('[data-picked="true"]')).toHaveCount(0);
+  await expect(picked.getByTestId('selection-total')).toHaveText(/^Rp\s?569\.800$/);
+  await expect(picked.getByTestId('selection-note')).toHaveText('4 waiting rows · 1 Aug – 12 Sep 2026');
+  // Apotek Contoh has no Paid with; Kedai Teh Contoh's blank category records under Uncategorised.
+  await expect(picked.getByTestId('record-many')).toHaveText('Record 3');
+  await expect(picked.getByTestId('record-skipped')).toHaveText('1 missing a date, amount or Paid with is skipped');
+  await page.screenshot({ path: test.info().outputPath('range-picked.png') });
+
+  // ⌘-click takes one out.
+  await draftRow(page, 'Toko Buah Contoh').getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  await expect(picked.getByTestId('peek-title')).toHaveText('3 selected');
+  await expect(picked.getByTestId('record-many')).toHaveText('Record 2');
+  await draftRow(page, 'Toko Buah Contoh').getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  await expect(picked.getByTestId('record-many')).toHaveText('Record 3');
+
+  await picked.getByTestId('record-many').click();
+  await expect(page.getByTestId('recorded-toast')).toContainText('Recorded 3 in August and September 2026 · 1 skipped');
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+  for (const note of ['Apotek Contoh', 'Roti Contoh']) await expect(draftRow(page, note)).toHaveCount(1);
 });
