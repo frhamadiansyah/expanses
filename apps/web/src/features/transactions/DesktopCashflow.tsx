@@ -12,7 +12,7 @@ import { CategoryIcon, useCategoryMarkColour } from '../categories/CategoryIcon'
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
-import { clickAction, deskAmount, monthFigures, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringLegend, type Selection, type SelectionAction, skippedLine, waitingOrder } from './cashflow-desk-model';
+import { clickAction, deskAmount, monthFigures, movedDoubleClick, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringLegend, type RowClick, type Selection, type SelectionAction, skippedLine, waitingOrder } from './cashflow-desk-model';
 import { type BulkActions, type RecordMany, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
@@ -403,6 +403,21 @@ export function DesktopCashflow({
   const edit = (row: ListRow) => {
     if (helpers.editable(row)) onEdit(row);
   };
+  // A row's first click opens the peek, and the page making room for it can move the row from under the pointer: the
+  // second click, at the same place and soon enough, is still the row's double-click (`movedDoubleClick`) — its edit
+  // screen, never whatever box or row now sits there.
+  const lastClick = useRef<RowClick | null>(null);
+  const onClickCapture = (event: ReactMouseEvent) => {
+    const rowId = (event.target as HTMLElement).closest<HTMLElement>('[data-testid="transaction-row"]')?.dataset.rowId ?? null;
+    const click = { rowId, x: event.clientX, y: event.clientY, at: event.timeStamp };
+    const doubled = movedDoubleClick(lastClick.current, click);
+    lastClick.current = rowId && !event.metaKey && !event.ctrlKey && !event.shiftKey && !doubled ? { id: rowId, x: click.x, y: click.y, at: click.at } : null;
+    if (!doubled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const row = rows.find((one) => one.id === doubled);
+    if (row && peekable(row)) edit(row);
+  };
   // Keys for the whole page: ⌘N, ⌘F and ⌘A, and — while rows are picked — Esc, and with one ↑ ↓ and Return.
   const keys = useRef<(event: KeyboardEvent) => void>(() => undefined);
   keys.current = (event: KeyboardEvent) => {
@@ -546,7 +561,7 @@ export function DesktopCashflow({
   const periodNote = period?.kind === 'month' ? monthName(month, 'long') : periodLabel(month);
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="desktop-cashflow">
+    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="desktop-cashflow" onClickCapture={onClickCapture}>
       <header ref={bar} className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Cashflow</h1>
         {chips.map((chip) => (

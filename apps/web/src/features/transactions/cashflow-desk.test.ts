@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
-import { clickAction, countsAs, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, waitingOrder } from './cashflow-desk-model';
+import { clickAction, countsAs, DOUBLE_CLICK, movedDoubleClick, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, waitingOrder } from './cashflow-desk-model';
 import type { ListRow } from './list-model';
 import { PeekRow } from './ReceiptPeek';
 import { kindWord, peekFigure, receiptPeekLines } from './receipt-peek-model';
@@ -311,5 +311,22 @@ describe('the waiting rows, the typing row and Record', () => {
     expect(orderNote(DESK_SORT)).toBe('oldest at the top · new rows at the bottom');
     expect(orderNote({ key: 'date', dir: 'desc' })).toBe('newest at the top · new rows at the bottom');
     expect(orderNote({ key: 'amount', dir: 'desc' })).toBe('largest at the top · new rows at the bottom');
+  });
+});
+
+describe('movedDoubleClick', () => {
+  const first = { id: 'a', x: 400, y: 300, at: 1000 };
+  it('is the first row’s double-click when the second click, soon and at the same place, lands off it', () => {
+    expect(movedDoubleClick(first, { rowId: null, x: 401, y: 299, at: 1200 })).toBe('a');
+    expect(movedDoubleClick(first, { rowId: 'b', x: 400, y: 300, at: 1000 + DOUBLE_CLICK.ms })).toBe('a');
+  });
+  it('leaves the same row’s second click to its own double-click', () => {
+    expect(movedDoubleClick(first, { rowId: 'a', x: 400, y: 300, at: 1100 })).toBeNull();
+  });
+  it('is an ordinary click when too late, too far, or with no first click', () => {
+    expect(movedDoubleClick(first, { rowId: null, x: 400, y: 300, at: 1001 + DOUBLE_CLICK.ms })).toBeNull();
+    expect(movedDoubleClick(first, { rowId: null, x: 405, y: 300, at: 1100 })).toBeNull();
+    expect(movedDoubleClick(first, { rowId: null, x: 400, y: 295, at: 1100 })).toBeNull();
+    expect(movedDoubleClick(null, { rowId: null, x: 400, y: 300, at: 1100 })).toBeNull();
   });
 });

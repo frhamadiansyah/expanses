@@ -174,6 +174,25 @@ export function clickAction(id: string, keys: { metaKey: boolean; ctrlKey: boole
   return { type: 'open', id };
 }
 
+/** A plain click on a row, kept for a moment: where it was and when. */
+export type RowClick = { id: string; x: number; y: number; at: number };
+
+/** How soon, and how near, a second click must come to make a double-click (as the Mac counts one: by place, not by row). */
+export const DOUBLE_CLICK = { ms: 500, px: 4 };
+
+/**
+ * A double-click on a row whose second click lands on something else: the first opened the peek, and the page making
+ * room for it moved the row from under the pointer. Two clicks at one place, soon enough, are the row's double-click
+ * still — the row whose edit screen opens, or null when it is an ordinary click (on the same row, its own double-click
+ * does it).
+ */
+export function movedDoubleClick(first: RowClick | null, second: { rowId: string | null; x: number; y: number; at: number }): string | null {
+  if (!first || second.rowId === first.id) return null;
+  if (second.at - first.at > DOUBLE_CLICK.ms) return null;
+  if (Math.abs(second.x - first.x) > DOUBLE_CLICK.px || Math.abs(second.y - first.y) > DOUBLE_CLICK.px) return null;
+  return first.id;
+}
+
 /**
  * What a key does on the page while rows are picked: Esc lets them go; with one row picked ↑ ↓ step and Return opens
  * the full edit screen. Never while typing in a field (the typing row's own Return records, its Esc clears), and never
