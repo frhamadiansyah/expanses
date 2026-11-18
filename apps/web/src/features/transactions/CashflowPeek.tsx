@@ -27,8 +27,10 @@ export interface RecordMany {
   count: number;
   /** Of those, the complete ones: what Record N records. */
   ready: number;
-  /** "1 with a blank cell is skipped", when some are. */
+  /** "1 missing a date, amount or Paid with is skipped", when some are. */
   skipped: string | null;
+  /** Under the total, with only waiting rows picked: "10 waiting rows · 1 Aug – 12 Sep 2026" (`waitingSpan`). */
+  span?: string;
   /** What the waiting rows picked add up to (formatted), said while no recorded row is picked. */
   total: string | null;
   busy: boolean;
@@ -88,7 +90,9 @@ export function SelectionPeek({
         <div data-testid="selection-total" className="text-[22px] font-semibold text-[var(--ph-ink)] tabular-nums">
           {spent ?? received ?? (onlyWaiting ? record?.total : null) ?? '–'}
         </div>
-        <div className="mt-[2px] text-[13px] text-[var(--ph-ink-3)]">{spent ? 'Spent' : received ? 'Received' : onlyWaiting && record?.total ? 'Not recorded yet' : 'Nothing counted'}</div>
+        <div data-testid="selection-note" className="mt-[2px] text-[13px] text-[var(--ph-ink-3)]">
+          {spent ? 'Spent' : received ? 'Received' : onlyWaiting && record?.total ? (record.span ?? 'Not recorded yet') : 'Nothing counted'}
+        </div>
         {spent && received && (
           <div className="mt-[6px] flex justify-between text-[13px]">
             <span className="text-[var(--ph-ink-3)]">Received</span>

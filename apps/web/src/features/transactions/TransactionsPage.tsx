@@ -26,6 +26,7 @@ import {
   tagDroppedText,
   topUpsCategory,
   type TransactionView,
+  uncategorisedCategory,
   uncategorisedTransactionIds,
   reopenDraft,
   voidTransaction,
@@ -72,7 +73,7 @@ import { SelectBar } from './SelectBar';
 import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import type { PasteMark } from './paste-categories';
-import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
+import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate, withUncategorised } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
 import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, leaveOutNotMonthly, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, notMonthlyOutCount, sortRows, totals } from './list-model';
 import { leavesOutNotMonthly, notMonthlyNote, periodCountsNotMonthly, readNotMonthlyShown, writeNotMonthlyShown } from './not-monthly';
@@ -952,11 +953,14 @@ export function TransactionsPage() {
 
   /** An edit replaces the row with a new one: `onSaved` hears its id (an Undo of several cells puts it back by it). */
   async function saveRecorded(id: string, values: QuickValues, onSaved?: (replacement: string) => void): Promise<boolean> {
-    const { read } = readQuick(values, accounts, today, ws.baseCurrency);
+    // The desk's rule (`categoryLater`): a row with no category is filed under Uncategorised. The phone asks for one
+    // before it ever saves, so this reads its rows as it always did.
+    const { read } = readQuick(values, accounts, today, ws.baseCurrency, { categoryLater: true });
     if (!read) return false;
     const input = quickToInput(read, accounts);
     return guarded(id, spendingDoor(read.accountId, outflowFrom(input.lines, read.accountId)), id, async (choice) => {
-      const replacement = await replaceTransaction(database, ws, id, { ...input, ratesToBase: await ratesFor(read), setAside: choice });
+      const filed = quickToInput(await withUncategorised(read, uncategorisedExpense), accounts);
+      const replacement = await replaceTransaction(database, ws, id, { ...filed, ratesToBase: await ratesFor(read), setAside: choice });
       onSaved?.(replacement);
       close();
     });
@@ -982,12 +986,19 @@ export function TransactionsPage() {
     };
   }
 
+  /** Drafts the desk's Record filed under Uncategorised (no category chosen): Undo puts their category back to blank. */
+  const filedUncategorised = useRef(new Set<string>());
+  /** Where a row recorded with no category is filed: the open book's Uncategorised, made the first time it is needed. */
+  const uncategorisedExpense = () => uncategorisedCategory(database, ws, 'expense');
+
   async function recordTyped(values: QuickValues) {
-    const { read } = readQuick(values, accounts, today, ws.baseCurrency);
+    // The desk records a typed row with no category under Uncategorised; the phone's row never comes here without one.
+    const { read } = readQuick(values, accounts, today, ws.baseCurrency, { categoryLater: true });
     if (!read) return false;
     const input = quickToInput(read, accounts);
     return guarded('typing', spendingDoor(read.accountId, outflowFrom(input.lines, read.accountId)), null, async (choice) => {
-      await postTransaction(database, ws, { ...input, ratesToBase: await ratesFor(read), setAside: choice });
+      const filed = quickToInput(await withUncategorised(read, uncategorisedExpense), accounts);
+      await postTransaction(database, ws, { ...filed, ratesToBase: await ratesFor(read), setAside: choice });
     });
   }
 
@@ -1025,6 +1036,13 @@ export function TransactionsPage() {
       });
     }
     return guarded(id, spendingDoor(fields.accountId ?? '', Math.max(0, fields.amountMinor)), null, async (choice) => {
+      // Recorded with no category (the desk's Record, `categoryLater`): filed under its kind's Uncategorised, where
+      // "Waiting for a category" lists it. A transfer has no category to file.
+      const kind = queued?.kind === 'income' ? 'income' : queued?.kind === 'transfer' ? null : 'expense';
+      if (!fields.categoryAccountId && kind) {
+        fields.categoryAccountId = await uncategorisedCategory(database, ws, kind);
+        filedUncategorised.current.add(id);
+      }
       await editDraft(database, ws, id, fields);
       const { transactionId } = await confirmDraft(database, ws, id, { setAside: choice });
       onRecorded?.(transactionId);
@@ -1032,12 +1050,16 @@ export function TransactionsPage() {
     });
   }
 
-  /** The desk toast's Undo: what each Record posted is voided, then its draft waits again (Review's own way back). */
+  /**
+   * The desk toast's Undo: what each Record posted is voided, then its draft waits again (Review's own way back). A row
+   * Record filed under Uncategorised waits with its category blank again, as it was.
+   */
   const unrecord = (recorded: readonly { draftId: string; transactionId: string }[]) =>
     run('unrecord', async () => {
       for (const { draftId, transactionId } of [...recorded].reverse()) {
         await voidTransaction(database, ws, transactionId);
         await reopenDraft(database, ws, draftId);
+        if (filedUncategorised.current.delete(draftId)) await editDraft(database, ws, draftId, { categoryAccountId: null });
       }
     });
 

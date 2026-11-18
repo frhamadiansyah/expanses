@@ -173,9 +173,10 @@ export function useCashflowCells({
 
   const cells = useCellRange({
     ids,
-    // ⇧-click on a recorded row picks rows, as it always has; a range begun on a draft's cell, or already two cells or
-    // more, takes ⇧-click as a spreadsheet does. A drag always picks cells.
-    shiftExtends: (range, picked) => picked.length >= 2 || byId.get(range.anchor)?.kind === 'draft',
+    // One rule for the whole table (Record many, owner 2026-11-18): ⇧-click picks rows — recorded and waiting alike,
+    // from the last row clicked to this one — and a drag picks cells. Once two cells or more are blue, ⇧-click in
+    // their column stretches them, as a spreadsheet does.
+    shiftExtends: (_range, picked) => picked.length >= 2,
     onStart: () => {
       setNote(null);
       onStart();

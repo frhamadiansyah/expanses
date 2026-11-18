@@ -1,5 +1,5 @@
 import { DeskNotices } from '../../app/DeskNotices';
-import { categoryTree, formatMinor, monthName, parseLooseDate, parsePeriod, periodLabel, periodMonthOf, stepPeriod } from '@expanses/core';
+import { categoryTree, formatMinor, isUncategorisedKey, monthName, parseLooseDate, parsePeriod, periodLabel, periodMonthOf, stepPeriod } from '@expanses/core';
 import { type AccountRow, categoryTotalsIn, type DraftRow, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -12,7 +12,7 @@ import { CategoryIcon, useCategoryMarkColour } from '../categories/CategoryIcon'
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
-import { clickAction, deskAmount, monthFigures, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringLegend, type Selection, type SelectionAction, skippedLine, waitingOrder } from './cashflow-desk-model';
+import { clickAction, deskAmount, monthFigures, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringLegend, type Selection, type SelectionAction, skippedLine, waitingOrder, waitingSpan } from './cashflow-desk-model';
 import { type BulkActions, type RecordMany, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
@@ -372,7 +372,8 @@ export function DesktopCashflow({
   const [pasteOrder, setPasteOrder] = useState<string[]>([]);
   const waiting = waitingOrder(waitingIn, pasteOrder);
   // The rows picked, in the table's own order: one shows its side peek, several what can be done to them all at once.
-  // A waiting row is picked too (⌘-click, ⇧-click from a picked row, ⌘A), for Record N; it has no peek of its own.
+  // A waiting row is picked too (⌘-click; ⇧-click from the last row clicked, picked or typed in; ⌘A), for Record N; it
+  // has no peek of its own.
   const dispatch = onSelection;
   const peekIds = rows.filter(peekable).map((row) => row.id);
   const ids = [...peekIds, ...waiting.map((row) => row.id)];
@@ -453,9 +454,10 @@ export function DesktopCashflow({
   const icon = (categoryId: string) => <CategoryIcon categoryId={categoryId} accounts={accounts} size="xs" />;
   // What this device keeps of pasted rows (`paste-categories`): a guessed category's mark, an unmatched name to learn.
   const [marks, setMarks] = useState(readMarks);
-  // Rows recorded from the waiting rows: the toast says which month they went to, with Show › and Undo (option E).
-  const [recorded, setRecorded] = useState<{ items: { draftId: string; transactionId: string; month: string }[] } | null>(null);
-  // While Record N runs, each row recorded joins one toast rather than showing its own.
+  // Rows recorded from the waiting rows: the toast says which month they went to, with Show › and Undo (option E), and
+  // how many Record N or Record all left waiting.
+  const [recorded, setRecorded] = useState<{ items: { draftId: string; transactionId: string; month: string }[]; skipped: number } | null>(null);
+  // While Record N or Record all runs, each row recorded joins one toast rather than showing its own.
   const batch = useRef<{ draftId: string; transactionId: string; month: string }[] | null>(null);
   const [recordingMany, setRecordingMany] = useState(false);
   const monthOf = (values: QuickValues) => {
@@ -480,14 +482,16 @@ export function DesktopCashflow({
     saveDraft: async (id, values, record, onRecorded) => {
       const mine = readMarks()[id];
       const waitingNow = drafts.filter((draft) => draft.id !== id && marks[draft.id]).map((draft) => ({ id: draft.id, values: quickFromDraft(draft, today, accounts) }));
-      const { fills } = learnFromSaved(id, values, record, waitingNow);
+      // A row with no category (recorded under Uncategorised) teaches its name or link nothing: Uncategorised is no answer.
+      const filedNowhere = !values.categoryId || isUncategorisedKey(accounts.find((a) => a.id === values.categoryId)?.systemKey);
+      const { fills } = learnFromSaved(id, filedNowhere ? { ...values, categoryId: '' } : values, record, waitingNow);
       const month = record ? monthOf(values) : null;
       const ok = await handlers.saveDraft(id, values, record, (transactionId) => {
         onRecorded?.(transactionId);
         if (!month) return;
         const item = { draftId: id, transactionId, month };
         if (batch.current) batch.current.push(item);
-        else setRecorded({ items: [item] });
+        else setRecorded({ items: [item], skipped: 0 });
       });
       // Read back from the device, not from before the save: a paste made meanwhile has marks of its own.
       const now = readMarks();
@@ -518,19 +522,21 @@ export function DesktopCashflow({
   };
   // Notion links among the waiting pasted rows this device does not know yet: a light grey count in the box header.
   const unknown = unknownLinks(marks, new Set(drafts.map((draft) => draft.id)));
-  // Record N: the complete ones of the waiting rows picked, one after another, each as its own Record records it.
+  // Record N: the waiting rows picked that can be recorded, one after another, each as its own Record records it. Record
+  // all: every waiting row that can. Only a date, amount or Paid with missing leaves a row waiting (`recordable`).
   const pickedWaiting = recordable(selection.ids, waiting, accounts, today, baseCurrency);
+  const allWaiting = recordable(waiting.map((row) => row.id), waiting, accounts, today, baseCurrency);
   const waitingPicked = waiting.filter((row) => picked.has(row.id)).length;
-  const recordMany = async () => {
+  const recordMany = async (which: { ready: readonly ListRow[]; skipped: number }) => {
     setRecordingMany(true);
     batch.current = [];
     try {
-      for (const row of pickedWaiting.ready) await deskHandlers.saveDraft(row.id, quickFromDraft(row.draft!, today, accounts), true);
+      for (const row of which.ready) await deskHandlers.saveDraft(row.id, quickFromDraft(row.draft!, today, accounts), true);
     } finally {
       const items = batch.current ?? [];
       batch.current = null;
       setRecordingMany(false);
-      if (items.length > 0) setRecorded({ items });
+      if (items.length > 0) setRecorded({ items, skipped: which.skipped });
     }
   };
   // What the waiting rows picked add up to, in the workspace's money (a row read in another currency is left out).
@@ -542,11 +548,12 @@ export function DesktopCashflow({
           ready: pickedWaiting.ready.length,
           skipped: pickedWaiting.skipped > 0 ? skippedLine(pickedWaiting.skipped) : null,
           total: waitingMinor > 0 ? formatMinor(waitingMinor, baseCurrency) : null,
+          span: waitingSpan(waiting.filter((row) => picked.has(row.id)).map((row) => row.draft?.occurredOn ?? '')),
           busy: recordingMany,
-          onRecord: () => void recordMany(),
+          onRecord: () => void recordMany(pickedWaiting),
         }
       : undefined;
-  const toast = recorded ? recordedToast(recorded.items.map((item) => item.month)) : null;
+  const toast = recorded ? recordedToast(recorded.items.map((item) => item.month), recorded.skipped) : null;
   const at = selected ? peekIds.indexOf(selected.id) : -1;
   const sortBy = (key: Sort['key']) => onSort({ key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' });
   const sortMark = (key: Sort['key']) => (sort.key === key ? (sort.dir === 'desc' ? ' ↓' : ' ↑') : '');
@@ -707,6 +714,19 @@ export function DesktopCashflow({
               <span className={NOTE} data-testid="table-note">
                 {cells.hint ?? limitNote ?? orderNote(sort)}
               </span>
+              {/* Record all (option A, owner 2026-11-18): every waiting row that can be recorded, one toast for them all. */}
+              {waiting.length > 0 && !readOnly && (
+                <button
+                  type="button"
+                  data-testid="record-all"
+                  disabled={recordingMany || allWaiting.ready.length === 0}
+                  title={allWaiting.skipped > 0 ? skippedLine(allWaiting.skipped) : 'Record every waiting row'}
+                  onClick={() => void recordMany(allWaiting)}
+                  className="self-center rounded-[6px] bg-[var(--ph-ink)] px-[11px] py-[3px] text-[12px] font-medium whitespace-nowrap text-[var(--ph-surface)] disabled:bg-[var(--ph-chevron)] disabled:text-white"
+                >
+                  {allWaiting.ready.length > 0 ? `Record all ${allWaiting.ready.length}` : 'Record all'}
+                </button>
+              )}
             </span>
           </h2>
           {cells.line}
@@ -773,8 +793,10 @@ export function DesktopCashflow({
                         waiting: true,
                         striped: (rows.length + index) % 2 === 1,
                         selected: picked.has(row.id),
-                        onPick: (keys) => dispatch(clickAction(row.id, { ...keys, shiftKey: false }, ids)),
-                        onPress: () => (selection.ids.length > 0 ? dispatch({ type: 'close' }) : undefined),
+                        // ⌘-click adds the row or takes it out; ⇧-click picks every row from the last one clicked.
+                        onPick: (keys) => dispatch(clickAction(row.id, keys, ids)),
+                        // Typing in it lets the rows picked go; a ⇧-click on another waiting row reaches from here.
+                        onPress: () => dispatch({ type: 'anchor', id: row.id }),
                       }}
                       guess={guessOf(row.id)}
                       paidGuess={paidGuessOf(row.id)}
@@ -812,6 +834,7 @@ export function DesktopCashflow({
           icon="recorded"
           testId="recorded-toast"
           text={toast.text}
+          wide
           extra={
             toast.show !== month ? (
               <button

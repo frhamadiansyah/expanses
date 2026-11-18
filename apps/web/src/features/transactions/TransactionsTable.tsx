@@ -100,9 +100,12 @@ interface DeskLayout {
   selected?: boolean;
   /** A waiting row (typed or pasted, any month): its date says its year. */
   waiting?: boolean;
-  /** A press on the row with ⌘ (Ctrl off a Mac) held: picks it rather than typing in it. */
-  onPick?: (keys: { metaKey: boolean; ctrlKey: boolean }) => void;
-  /** A plain press on the row: the rows picked step aside while it is typed in. */
+  /**
+   * A press on the row with ⌘ (Ctrl off a Mac) or ⇧ held: picks it (⌘ adds or takes it out, ⇧ every row from the last
+   * one clicked to this one) rather than typing in it.
+   */
+  onPick?: (keys: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => void;
+  /** A plain press on the row: the rows picked step aside while it is typed in, and a ⇧-click reaches from here. */
   onPress?: () => void;
 }
 
@@ -127,7 +130,8 @@ export function TypingRow({
   // A paste that could not be read as rows, and why (the desk's line under the row).
   const [notice, setNotice] = useState<string | null>(null);
   const touched = values.description !== '' || values.amount !== '' || values.categoryId !== '';
-  const { needs } = readQuick(values, accounts, today, baseCurrency);
+  // The desk records a row once its date, amount and Paid with read; no category files it under Uncategorised.
+  const { needs } = readQuick(values, accounts, today, baseCurrency, { categoryLater: !!desk });
   const busy = handlers.busy === 'typing';
 
   // The date and the account carry down to the next row, since a batch is usually one day and one card.
@@ -286,7 +290,8 @@ export function EditableRow({
     setValuesState(latest.current);
   }, [initialKey]);
   const dirty = !same(values, initial);
-  const { needs } = readQuick(values, accounts, today, baseCurrency);
+  // The desk records a row once its date, amount and Paid with read; no category files it under Uncategorised.
+  const { needs } = readQuick(values, accounts, today, baseCurrency, { categoryLater: !!desk });
   const busy = handlers.busy === row.id;
 
   const save = () => {
@@ -313,12 +318,14 @@ export function EditableRow({
       onMouseDown={
         desk
           ? (event) => {
-              if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
-              if (event.metaKey || event.ctrlKey) {
-                // ⌘-click picks the row (Record N), as on a recorded row: the cell is not typed in.
+              // A press the blue cells took (⇧-click stretching a range already two cells long) is theirs alone.
+              if (event.button !== 0 || event.defaultPrevented || (event.target as HTMLElement).closest('button')) return;
+              if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                // ⌘-click and ⇧-click pick rows (Record N), as on a recorded row: the cell is not typed in.
                 event.preventDefault();
-                desk.onPick?.({ metaKey: event.metaKey, ctrlKey: event.ctrlKey });
-              } else if (!event.shiftKey) desk.onPress?.();
+                (document.activeElement as HTMLElement | null)?.blur?.();
+                desk.onPick?.({ metaKey: event.metaKey, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey });
+              } else desk.onPress?.();
             }
           : undefined
       }

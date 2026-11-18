@@ -29,12 +29,15 @@ export function ToastCard({
   text,
   detail,
   action,
+  wide = false,
   ...rest
 }: {
   icon?: ToastIcon;
   text: string;
   detail?: string | undefined;
   action?: ReactNode;
+  /** Wider on a wide screen, for a line that says more (the Mac Cashflow's "Recorded 29 in August and September 2026"). */
+  wide?: boolean;
   role?: 'status';
   'aria-live'?: 'polite';
   'data-testid'?: string;
@@ -48,7 +51,7 @@ export function ToastCard({
     <div
       role="status"
       {...rest}
-      className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md items-center gap-[10px] rounded-[16px] bg-[var(--ph-surface)] py-[10px] pr-[10px] pl-[14px] shadow-[0_8px_28px_rgba(0,0,0,0.14),0_0_0_0.5px_var(--ph-hair)] md:bottom-6"
+      className={`fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md ${wide ? 'md:max-w-[640px]' : ''} items-center gap-[10px] rounded-[16px] bg-[var(--ph-surface)] py-[10px] pr-[10px] pl-[14px] shadow-[0_8px_28px_rgba(0,0,0,0.14),0_0_0_0.5px_var(--ph-hair)] md:bottom-6`}
     >
       <span
         data-icon={icon}
@@ -76,6 +79,7 @@ export function UndoToast({
   icon,
   testId,
   extra,
+  wide = false,
   onUndo,
   onDone,
 }: {
@@ -85,6 +89,8 @@ export function UndoToast({
   testId?: string;
   /** A second way on, before Undo: the Mac Cashflow's Show › to the month a row was recorded in. */
   extra?: ReactNode;
+  /** Wider on a wide screen (`ToastCard`'s `wide`). */
+  wide?: boolean;
   onUndo: () => void;
   onDone: () => void;
 }) {
@@ -101,6 +107,7 @@ export function UndoToast({
       {...(icon ? { icon } : {})}
       text={text}
       detail={detail}
+      wide={wide}
       {...(testId ? { 'data-testid': testId } : {})}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
