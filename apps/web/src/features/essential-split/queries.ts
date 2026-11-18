@@ -15,14 +15,18 @@ export function useSpendingGuide() {
  * Essential · Lifestyle · Debts & savings over a period, read as Cashflow reads its rings: events held out unless the
  * open workspace counts them. `owner` reads every workspace, as Financial health does.
  */
-export function useEssentialSplit(range: { from: string; to: string }, opts: { paidAccountId?: string; owner?: boolean; enabled?: boolean } = {}) {
+export function useEssentialSplit(
+  range: { from: string; to: string },
+  /** `leaveOutYearlyBills`: Cashflow's own month only (`yearly-bills.ts`); Budget and Financial health keep them. */
+  opts: { paidAccountId?: string; owner?: boolean; enabled?: boolean; leaveOutYearlyBills?: boolean } = {},
+) {
   const { database, ws } = useApp();
   const excludeEvents = !(useOpenBook()?.countEventsInBudget ?? false);
   const read = opts.owner ? ownerScope(ws) : ws;
   return useQuery({
-    queryKey: ['essential-split', read.workspaceId, read.bookId ?? null, range.from, range.to, excludeEvents, opts.paidAccountId ?? null],
+    queryKey: ['essential-split', read.workspaceId, read.bookId ?? null, range.from, range.to, excludeEvents, opts.paidAccountId ?? null, opts.leaveOutYearlyBills ? 'yearly-out' : 'yearly-in'],
     enabled: opts.enabled ?? true,
-    queryFn: () => essentialSplitIn(database, read, range.from, range.to, { excludeEvents, paidAccountId: opts.paidAccountId }),
+    queryFn: () => essentialSplitIn(database, read, range.from, range.to, { excludeEvents, paidAccountId: opts.paidAccountId, leaveOutYearlyBills: opts.leaveOutYearlyBills }),
   });
 }
 

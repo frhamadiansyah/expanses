@@ -27,11 +27,12 @@ test('the header has Transactions, Days/Categories and one ⋯; its menu selects
 
   await historyMenu(page).click();
   const menu = page.getByTestId('sort-filter-menu');
-  // Every item, in order, one group with no headings: Select, Sort, Paid with, Reset.
+  // Every item, in order, one group with no headings: Select, Sort, Paid with, Yearly bills (owner 2026-11-18), Reset.
   await expect(menu.getByRole('menuitem').or(menu.getByRole('menuitemradio')).or(menu.getByRole('menuitemcheckbox'))).toHaveText([
     'Select',
     /^Sort\s*Newest$/,
     /^Paid with\s*All$/,
+    /^Yearly bills\s*Off: listed, not in the ring or total$/,
     'Reset',
   ]);
   await expect(menu.getByText('Show', { exact: true })).toHaveCount(0);

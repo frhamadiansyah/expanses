@@ -70,7 +70,8 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, leaveOutYearlyBills, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, sortRows, totals, yearlyBillsOut } from './list-model';
+import { leavesOutYearlyBills, periodCountsYearlyBills, readYearlyBillsShown, writeYearlyBillsShown, YEARLY_BILL_LINE, yearlyBillsNote } from './yearly-bills';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
@@ -210,6 +211,12 @@ export function TransactionsPage() {
     }
   });
   const [sort, setSort] = useRemembered<Sort>('sort', () => ({ key: 'date', dir: 'desc' }));
+  // The ⋯ menu's Yearly bills (`yearly-bills.ts`): off, a month's Cashflow lists them in grey and counts them nowhere.
+  const [yearlyShown, setYearlyShownState] = useState(readYearlyBillsShown);
+  const setYearlyShown = (on: boolean) => {
+    setYearlyShownState(on);
+    writeYearlyBillsShown(on);
+  };
   const [adding, setAdding] = useState(false);
   // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
   const [showSearch, setShowSearch] = useRemembered<boolean>('show-search', () => false);
@@ -479,10 +486,18 @@ export function TransactionsPage() {
     const lines = read.lines.filter((line) => (!scopeIds || scopeIds.includes(line.categoryId)) && (!need || (needIds !== null && needIds.has(line.categoryId))));
     return instalmentRows({ lines, repayments: scopeIds || need ? [] : read.repayments }, accounts, ws.baseCurrency);
   })();
-  const rows = [
+  /*
+   * Yearly bills (owner, 2026-11-18): over a month or less Cashflow leaves a yearly bill's payment out of its ring, its
+   * total, its bars and the day's total, and lists it in grey; a year or longer — or the ⋯ menu's switch — counts it.
+   * Cashflow's own figures only, a category opened from its ring included: an account's history is its statement.
+   */
+  const yearOrLonger = periodCountsYearlyBills(period);
+  const yearlyOut = !ownerWide && leavesOutYearlyBills(period, yearlyShown);
+  const built = [
     ...markSpread(buildRows(recorded, view === 'table' || sideways || filters.onlyDrafts ? pending : [], accounts, everyCard, walletLast4, listWs.bookId), spreadOver),
     ...instalmentList,
   ];
+  const rows = yearlyOut ? leaveOutYearlyBills(built) : built;
   /*
    * What still waits under Uncategorised — every one of them, whatever period is on show. Tapping the line lists them
    * all (the period goes to All while it does); once the last one has its category, the filter and the period go back.
@@ -518,6 +533,7 @@ export function TransactionsPage() {
   // Nothing Cashflow could list in the period at all — only transfers, say — reads as an empty period, not as a filter.
   const listable = inCashflow ? rows.filter(countsInOrOut) : rows;
   const sum = totals(shown);
+  const yearlyNote = yearlyOut ? yearlyBillsNote(yearlyBillsOut(shown)) : null;
   /*
    * Rows put in order by hand within their day: only in the day-by-day list sorted by date, where a day is a group, and
    * never in a share that ended (read-only) or among deleted rows, which hold no place. A filtered list moves its rows
@@ -1240,6 +1256,8 @@ export function TransactionsPage() {
             parts={[
               // Spread each month by its plan: the purchase stays here, its figure counted a month at a time instead.
               ...(row.spreadOver ? [{ text: `counts ${formatMinor(0, row.currency)} now`, tone: 'foreign' as const }] : []),
+              // A yearly bill on a month's Cashflow: listed whole, in grey, and counted in the year instead.
+              ...(row.yearlyOut ? [{ text: YEARLY_BILL_LINE, tone: 'foreign' as const }] : []),
               ...amountExtraParts(tx, phone ? undefined : points, row),
             ]}
           />
@@ -1595,6 +1613,7 @@ export function TransactionsPage() {
           onMonth={(next) => setSearch({ month: next === thisMonth ? undefined : next })}
           alsoMissing={list.data?.missing ?? []}
           paidAccountId={paidAccountId}
+          leaveOutYearlyBills={yearlyOut}
           need={need}
           onNeed={(next) => {
             setKind('income');
@@ -1683,10 +1702,15 @@ export function TransactionsPage() {
                 paidOptions={paidOptions}
                 onPaid={(value) => setFilter('paid', value)}
                 onOpenPaid={phone ? () => setPickingPaid(true) : undefined}
+                // Cashflow's own: an account's history lists what moved it, and has no ring to leave a bill out of.
+                yearlyBills={yearlyShown}
+                yearOrLonger={yearOrLonger}
+                onYearlyBills={ownerWide ? undefined : setYearlyShown}
                 onReset={() => {
                   const [key, dir] = MENU_REST.sortValue.split(':') as [Sort['key'], Sort['dir']];
                   setSort({ key, dir });
                   setFilter('paid', MENU_REST.paid);
+                  setYearlyShown(false);
                 }}
                 // Ticking rows, to put a run of them into an event at once: never in a read-only workspace.
                 onSelect={view === 'list' && !readOnly ? startSelecting : undefined}
@@ -1694,6 +1718,12 @@ export function TransactionsPage() {
               )}
               {pickingPaid && <PaidWithSheet choices={paidChoices} value={filters.paid} onPick={(value) => setFilter('paid', value)} onClose={() => setPickingPaid(false)} />}
             </div>
+          )}
+          {/* Said once over the list, small and grey: the month's figures leave these out, the year's count them. */}
+          {shown.length > 0 && yearlyNote && (
+            <p data-testid="yearly-bills-note" className="-mt-2 px-0.5 text-right text-[12px] leading-4 text-[var(--ph-ink-3)]">
+              {yearlyNote}
+            </p>
           )}
 
           {sort.key === 'amount' && grouping === 'date' && shown.length > 0 ? (
@@ -1754,7 +1784,7 @@ export function TransactionsPage() {
               <ReorderScope enabled={phone && reorderable} className="space-y-4">
               {days.map((day) => (
                 <Card key={day.date || 'undated'}>
-                  <DayHeader date={day.date} net={dayTotal(day.rows)} currency={listCurrency} />
+                  <DayHeader date={day.date} net={dayTotal(day.rows)} currency={listCurrency} zeroShown={day.rows.some((row) => row.yearlyOut)} />
                   <DayReorder
                     className="divide-y divide-slate-100"
                     enabled={(movableIds.get(day.date)?.length ?? 0) > 1}

@@ -18,7 +18,7 @@ const TICK_ROOM = 22;
  *
  * One read of the days covers both — the comparisons reach back further than the bars, so the window is theirs.
  */
-export function useSpendingTrend(month: string, kind: 'expense' | 'income', excludeEvents: boolean) {
+export function useSpendingTrend(month: string, kind: 'expense' | 'income', excludeEvents: boolean, leaveOutYearlyBills = false) {
   const { database, ws } = useApp();
   const today = isoDate();
   const events = excludeEvents ? 'without-events' : 'with-events';
@@ -32,9 +32,10 @@ export function useSpendingTrend(month: string, kind: 'expense' | 'income', excl
   const ctx = { today, first: first.data ?? null };
   const window = period && first.isSuccess ? trendWindow(period, ctx) : null;
   const daily = useQuery({
-    queryKey: ['daily-totals', ws.workspaceId, ws.bookId ?? null, kind, window?.from, window?.to, events],
+    // A month's bars, and the months it is compared with, leave yearly bills out alike (`yearly-bills.ts`).
+    queryKey: ['daily-totals', ws.workspaceId, ws.bookId ?? null, kind, window?.from, window?.to, events, leaveOutYearlyBills ? 'yearly-out' : 'yearly-in'],
     enabled: window !== null,
-    queryFn: () => dailyTotalsIn(database, ws, kind, window!.from, window!.to, { excludeEvents, billMonths: true }),
+    queryFn: () => dailyTotalsIn(database, ws, kind, window!.from, window!.to, { excludeEvents, billMonths: true, leaveOutYearlyBills }),
   });
   if (!period || !daily.data) return null;
   return {
