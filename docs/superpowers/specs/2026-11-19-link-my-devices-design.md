@@ -106,26 +106,38 @@ sorted (same pattern as `NEVER_SYNCED_COLUMNS`' test).
 
 ### 3.1 Data (one migration)
 
-`self_group(relay_book_id, epoch, joined_at)`; `self_devices(device_id PK, name, kind, sign_jwk, agree_jwk, added_at,
-removed_at, last_synced_at, app_version, schema)` (replicated: the Devices list on every device);
-`household_seats(relay_book_id PK, device_id, hlc)` (replicated: who keeps each household book up to date; no row =
-this device, i.e. today's behaviour); `self_clocks(tbl, pk, col, hlc)` and `self_tombstones(tbl, pk, hlc)` (kept by
-every device identically through apply; travel inside the snapshot); device-only `self_outbox`, `self_pending`,
-`self_cursor`, `self_held`.
+**As built (Drop 1, migration `0126_self_sync.sql`):** device-only `self_state` (`capture` = this device has linked
+devices; `quiet` = an apply is running), `self_pending` (table, key, changed columns or `*`/`-`, and the ms it was
+written), `self_outbox`, `self_notes` (what an apply settled by itself); class `meta` — never captured, kept alike by
+every device's apply, carried in the copy a new device starts from — `self_clocks(tbl, pk, col, hlc)` (`col = ''` is
+when the row was made), `self_tombstones(tbl, pk, hlc)`, `self_aliases(tbl, from_pk, to_pk)` (a row merged into
+another by rule 5). `SELF_TABLES` (`packages/db/src/self/tables.ts`) now has four classes: `replicate`, `seat`,
+`device`, `meta`.
+
+Still to come with the relay (Drop 2): `self_group(relay_book_id, epoch, joined_at)`; `self_devices(device_id PK, name,
+kind, sign_jwk, agree_jwk, added_at, removed_at, last_synced_at, app_version, schema)` (replicated: the Devices list on
+every device); `household_seats(relay_book_id PK, device_id, hlc)` (replicated; no row = this device, today's
+behaviour); device-only `self_cursor`, `self_held`.
 
 ### 3.2 Capture
 
-- Every replicated table gets `AFTER INSERT/UPDATE/DELETE` triggers that write `(tbl, pk, changed columns | '*' | 'delete')`
-  into `self_pending`, generated from `PRAGMA table_info` and **re-made after every migration** at open (a hash of the
-  column list per table). Triggers are the only way 159 tables (and every future one) cannot escape capture.
+- Every `replicate` and `seat` table gets `AFTER INSERT/UPDATE/DELETE` triggers that write `(tbl, pk, changed columns
+  | '*' | '-')` into `self_pending`, made from `PRAGMA table_info`. Triggers are the only way 160 tables (and every future
+  one) cannot escape capture, and they catch writes outside a `Database.transaction` too. **As built:** persistent
+  triggers (`self_cap_<table>_{i,u,d,k}`, `self/triggers.ts`), present only while `self_state.capture` is set (a device
+  with no linked devices pays nothing). `migrate` drops them before it runs anything (a column a trigger names cannot be
+  dropped, and no migration write may be captured: every device migrates itself) and makes them again from the new
+  schema afterwards, also when a migration failed. A settings row of class `device` is filtered in the trigger itself.
 - All tables have a primary key except `sync_skipped` (device-only) — checked against the schema built from all
-  migrations.
-- The trigger is off (`WHEN` on a temp flag) during migrations, self apply, household apply on a non-seat (none
-  happens) and the join's restore. Migrations run on each device and are deterministic: one migration ever used
-  `randomblob` (`0027_category_revamp.sql`), long applied everywhere; a test forbids it in new ones.
-- At flush (the existing per-transaction hook, `database.ts:55-67`), pending rows become one change-set per transaction
-  in `self_outbox`: column values as they are now, one hlc (the device-wide clock, `hlc.ts:11-14`), plus `schema`
-  (`LATEST_VERSION`, `migrations.ts:262`) and app version. Split by size like household change-sets, sharing a group id.
+  migrations (test).
+- The trigger is off while `self_state.quiet` is set: the self channel's own apply sets it inside its transaction.
+  Migrations run on each device and are deterministic: one migration ever used `randomblob`
+  (`0027_category_revamp.sql`), long applied everywhere; a test forbids it in new ones.
+- **Collect** (`collectSelfChanges`): every marked row at its values now — a row made goes whole (`i`), a row changed
+  with the columns that changed, a row gone as a removal — in one change-set `{ v, hlc, schema, ops }`. The clock is the
+  latest write time among the marked rows (not when they were collected), never behind the device's clock. An apply
+  collects this device's own waiting writes first, so its edits carry their clocks when the rules compare them. Size
+  splitting and app version come with the relay (Drop 2).
 - Sealing, signing, drain, pull: the household machinery as is (`seal.ts`, `relay-signing.ts`, `relay-transport.ts`).
 
 ### 3.3 Apply: six plain rules
@@ -136,6 +148,11 @@ every device identically through apply; travel inside the snapshot); device-only
 4. **Two edits of one transaction made apart** (two posted rows replacing the same row): the later one stays, the
    other and anything that replaced it are voided, on every device, with an Activity line "Edited on two devices at once:
    the later edit was kept".
+   As built: "later" is when each replacement was made (its row clock); the void goes through the ledger's own
+   `voidTransactionTx` on every device, not sent; its audit line is named and dated by the edit that won, so the devices
+   agree. A void the ledger refuses (an event's own posting, a sale) leaves both rows posted, noted
+   (`edited-twice-kept-both`) — never silent. Known gap: a void whose side effects make new rows with random ids (a goal
+   arrival taken back) can leave those rows different per device.
 5. **Two rows clash on a unique key** (two devices made "the same" row under different ids). **A clash never deletes a
    transaction, an entry, a split, a payment or any row that holds money, and never removes children.** Each unique
    index has one fixed answer, the same on every device (the "later" row is the one whose key columns have the later
@@ -162,7 +179,11 @@ every device identically through apply; travel inside the snapshot); device-only
    | `securities_ticker` | hold | trades and prices hang on it |
    | `tax_year_reports_year` | hold | a frozen or filed report and its rows |
    | `statement_checks_period` | hold | deleting would cascade its links |
-   | `book_member_accounts`, `event_books`, `group_logs`, `nw_item_map` (UNIQUE columns) | hold | seat-owned, one writer, so a clash means a bug |
+   | `book_member_accounts`, `event_books`, `event_category_accounts`, `group_logs`, `nw_item_map` (UNIQUE columns) | hold | seat-owned, one writer, so a clash means a bug |
+
+   An edit that moves an existing row onto another row's key (rather than two rows made apart) is held for every key.
+   A merge's children keyed by the parent itself (a budget's frequency and share) land on the row that stayed, and a
+   removal of a merged-away row is dropped (it went into the other). As built: `self/clashes.ts`, `self/channel.ts`.
 6. **A change from a newer data version waits** (`self_held`, cursor stops, nothing skipped): "Update cicis on this Mac
    to keep in step with iPhone." Changes from an older version apply; absent columns are left as they are. A migration
    that drops or renames a replicated column ships an upgrader (test-enforced).
@@ -170,6 +191,14 @@ every device identically through apply; travel inside the snapshot); device-only
 A change-set group applies in one transaction with `PRAGMA defer_foreign_keys` (FKs are on: `worker.ts:57`). A
 deterministic refusal is recorded and shown, like `sync_skipped`; anything else rethrows and the cursor stays (rulings,
 "guarded").
+
+**Drop 0 as built:** the gate test (`test/self/upkeep-twice.test.ts`) runs the open's upkeep, the catalogue's terms,
+points derive / catch-up / write-offs and the foreign-currency recalculation on two copies at one moment. It failed on
+default category sets, catalogue earn rules / bonuses / partners / cash value, points batches, redraw pieces and
+write-offs, and the revalue audit line: all now take name-based ids (`stableId`, uuidv5 under their workspace,
+programme or transaction). The points-expiry fix (7538c254) had made batch ids stable on one device only: two devices
+deriving the same new batch still minted two ids. Exchange gain/loss pairs and the ledger's post/void audit lines are
+named too.
 
 ### 3.4 The household seat
 
@@ -276,10 +305,10 @@ Tests use two or three in-memory devices (`MemoryTransport`, `MemoryKeyStore`) a
 
 | Drop | What | Tests | Needs |
 |---|---|---|---|
-| 0 | Sorting and determinism, no visible change: `SELF_TABLES` / settings-key classification; deterministic ids for automatic writers; derived caches made pure; meaning-carrying localStorage keys moved to `settings` | every table/column/key sorted; "upkeep and automatic jobs on two copies of one DB → equal dumps"; localStorage move once | both (one web bundle) |
+| 0 | Sorting and determinism, no visible change: `SELF_TABLES` / settings-key classification; deterministic ids for automatic writers | every table/key sorted; "upkeep and automatic jobs on two copies of one DB → equal dumps" (the gate) | both (one web bundle) |
 | 1 | Self capture + apply in `packages/db`, no relay: triggers, flush, six rules, version hold | property test: random writes on two devices, exchanged in random order → equal dumps; one test per rule; every repo write emits a self change | both |
 | 2 | Self relay book + link: `/links` endpoints, check digits, blobs, pruning; Devices list rows | relay ↔ MemoryTransport parity; wrong code ×5 burns it; relay cannot pass a key swap; unlink rotates | both |
-| 3 | **Replace on join + Devices screens + seat rule** (phone Account › Devices; Mac Settings › Devices; progress per workspace; shared workspaces view-only off-seat). First owner test. | source dump unchanged; kill at each §4.2 step; refused joins; non-seat never runs household code; Playwright: two browser contexts on the local relay | iPhone TestFlight (shows the code) + Mac TestFlight (types it) |
+| 3 | **Replace on join + Devices screens + seat rule** + the meaning-carrying localStorage keys moved into `settings` (moved here from Drop 0: they need the screens that read them made async, and nothing replicates before linking is live) (phone Account › Devices; Mac Settings › Devices; progress per workspace; shared workspaces view-only off-seat). First owner test. | source dump unchanged; kill at each §4.2 step; refused joins; non-seat never runs household code; Playwright: two browser contexts on the local relay | iPhone TestFlight (shows the code) + Mac TestFlight (types it) |
 | 4 | Photos and draft pictures as blobs, after the figures; sweep-safe | photo on phone appears on Mac; sweep keeps held photos; big library resumes | both |
 | 5 | Standby + takeover on Unlink | phone (seat) + Mac (standby) + husband: phone lost with unsent household changes → Mac takes over → husband's copy equals Mac's; husband's DB never holds a row outside scope | iPhone mainly (it is the seat) |
 | 6 | Editing shared workspaces on a non-seat (capture adapter) | capture parity: every capture-harness write made on the Mac gives the same household ops as on the seat; race refusal listed | Mac mainly |

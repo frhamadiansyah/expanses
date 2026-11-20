@@ -46,6 +46,7 @@ import { recordActivityTx } from './activity-log';
 import { rederiveCardCycles } from './point-ledger';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 import { purchaseSpreadsExist } from './instalment-spending';
+import { stableId } from '../self/stable-id';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email' | 'notification' | 'screen' | 'photo';
 
@@ -226,7 +227,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 async function audit(tx: Db, ws: WorkspaceContext, action: string, entityId: string, payload: unknown) {
   await tx.insert(auditLog).values({
-    id: uuidv7(),
+    // A transaction is posted once and voided once: those lines are named by it (link my devices), so a void two linked
+    // devices both make (an edit made on each, rule 4) leaves one line, not two.
+    id: action === 'post' || action === 'void' ? await stableId(entityId, `audit:${action}`) : uuidv7(),
     workspaceId: ws.workspaceId,
     action,
     entity: 'transaction',

@@ -9,18 +9,26 @@
  *   the household (the seat, §3.4), sent to the owner's other devices as read-only facts so one of them can take over.
  * - `device`: belongs to this install alone (keys sealed for it, what it still has to send, its own clock) — never sent,
  *   and taken out of a copy handed to a new device.
+ * - `meta`: the self channel's own clocks, removals and merged ids. Never captured — every device's apply keeps them
+ *   alike — and carried in the copy a new device starts from.
  *
  * `settings` is one table holding all three kinds of key: `settingsKeyClass` sorts each row.
  */
 
-export type SelfClass = 'replicate' | 'seat' | 'device';
+export type SelfClass = 'replicate' | 'seat' | 'device' | 'meta';
 
 const DEVICE: readonly string[] = [
   'book_epoch_keys', // sealed for this device's own agreement key (household §5.5)
   'sync_outbox', // the seat's change-sets, stamped with its own clock
   'sync_skipped', // a diagnostic of this device's pulls; it has no primary key
   'schema_migrations', // every device runs its own migrations
+  'self_state',
+  'self_pending',
+  'self_outbox',
+  'self_notes',
 ];
+
+const META: readonly string[] = ['self_clocks', 'self_tombstones', 'self_aliases'];
 
 const SEAT: readonly string[] = [
   'shared_books',
@@ -190,7 +198,7 @@ const REPLICATE: readonly string[] = [
 
 function classes(): Readonly<Record<string, SelfClass>> {
   const out: Record<string, SelfClass> = {};
-  for (const [kind, list] of [['device', DEVICE], ['seat', SEAT], ['replicate', REPLICATE]] as const) {
+  for (const [kind, list] of [['device', DEVICE], ['meta', META], ['seat', SEAT], ['replicate', REPLICATE]] as const) {
     for (const table of list) {
       if (out[table]) throw new Error(`Table ${table} is sorted twice`);
       out[table] = kind;

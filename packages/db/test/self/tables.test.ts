@@ -25,6 +25,11 @@ describe('which tables the owner’s other devices get', () => {
     for (const t of ['book_epoch_keys', 'sync_outbox', 'sync_skipped', 'schema_migrations']) expect(SELF_TABLES[t]).toBe('device');
   });
 
+  it('keeps the self channel’s own queue on the device, and its clocks for the copy a new device starts from', () => {
+    for (const t of ['self_state', 'self_pending', 'self_outbox', 'self_notes']) expect(SELF_TABLES[t]).toBe('device');
+    for (const t of ['self_clocks', 'self_tombstones', 'self_aliases']) expect(SELF_TABLES[t]).toBe('meta');
+  });
+
   it('marks household bookkeeping as the seat’s', () => {
     for (const t of ['shared_books', 'book_devices', 'sync_lineage', 'sync_field_clocks', 'sync_cursor', 'sync_authority', 'nw_group_books', 'goal_share_log'])
       expect(SELF_TABLES[t]).toBe('seat');
@@ -38,7 +43,7 @@ describe('which tables the owner’s other devices get', () => {
   it('every table that travels has a primary key', async () => {
     const { database } = await setupDb();
     for (const [table, kind] of Object.entries(SELF_TABLES)) {
-      if (kind === 'device') continue;
+      if (kind === 'device' || kind === 'meta') continue;
       const pk = await database.db.values<[number]>(sql`SELECT count(*) FROM pragma_table_info(${table}) WHERE pk > 0`);
       expect([table, Number(pk[0]![0])]).not.toEqual([table, 0]);
     }
@@ -72,5 +77,13 @@ describe('settings keys', () => {
     ['fx.withdrawal_rate_notice', 'replicate'],
   ] as const)('%s is %s', (key, kind) => {
     expect(settingsKeyClass(key)).toBe(kind);
+  });
+});
+
+describe('migrations every device runs on its own rows', () => {
+  it('make no random ids after 0027, so two linked devices migrating alike end alike', async () => {
+    const { MIGRATIONS } = await import('../../src/migrations');
+    const random = MIGRATIONS.filter((m) => m.version > 27 && /randomblob\s*\(|\brandom\s*\(/i.test(m.sql)).map((m) => m.version);
+    expect(random).toEqual([]);
   });
 });
