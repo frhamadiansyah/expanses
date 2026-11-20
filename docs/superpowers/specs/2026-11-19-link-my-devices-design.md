@@ -243,8 +243,8 @@ the copied `book_devices`). Books only the joiner had are refused at step 0, nev
   book it is standby in: whole-log pull with the replicated bookkeeping, `emitNewerTx` (`seed.ts:558`, sends what the
   lost seat never sent), then removes the lost device from each household book and rotates. Books with no standby show
   today's "needs a new invite".
-- **Lost device that comes back**: its next call gets `403 removed` (HS §8.4); it stops syncing and keeps its data
-  (owner question 3: erase itself?). Its offline edits after the removal are refused by the others (ruling I2).
+- **Lost device that comes back**: its next call gets `403 removed` (HS §8.4); it stops syncing, keeps its data and
+  shows "Unlinked from this data" (owner answer 3: nothing erased by itself; erasing is a manual action). Its offline edits after the removal are refused by the others (ruling I2).
 - **Two links at once**: each code is one-shot and one device; two new devices can join one group in parallel. Two
   devices typing each other's codes cannot happen: a device showing a code cannot join, and a device with a linked
   device cannot join.
@@ -299,13 +299,14 @@ again with today's resilience flows.
 Also: 6-digit code strength (check digits), self log growth (pruning), 5-device cap with standby, Mac keychain only in
 TestFlight builds.
 
-## 8. Owner questions
+## 8. Owner questions (answered 2026-11-20)
 
-1. At first, Rumah (shared with Sari) can be looked at on the Mac but changed only on the iPhone, because the iPhone is
-   the one that keeps it shared with Sari. Changing Rumah on the Mac comes in a later build. Is that fine to start with?
-2. When the Mac types the code, the iPhone asks "Link MacBook Air?" and both screens show the same 4 numbers; Allow
-   only if they match. This stops anyone else who saw the code. Is one extra tap fine?
-3. If a lost phone is unlinked and later switches on again, should cicis erase its own data on that phone by itself?
+1. Shared workspaces view-only on non-seat devices until Drop 6? **Yes.**
+2. An Allow step on the linking device, with the same 4 check digits on both screens? **Yes.**
+3. A lost device that was unlinked and comes back: **(a)** it stops syncing and shows "Unlinked from this data";
+   nothing is erased by itself. Erasing it is a manual action on that device.
+
+Also: the macOS platform is now added in App Store Connect, so Mac TestFlight builds are possible for Drop 3.
 
 ## Appendix A. Tables household sharing never moves (111 of 159)
 
