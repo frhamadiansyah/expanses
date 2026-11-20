@@ -37,7 +37,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { withShownNames } from '../../lib/account-name';
-import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
+import { isMoneyAccount, useAccounts, useRatesBehind } from '../../lib/queries';
 import { useActiveNetWorthGroup, useJointAccountIds } from '../sharing/net-worth-queries';
 import { groupItems, jointRows, type JointRows, jointStatus, type JointStatus, type ReceivedItem } from './joint-rows';
 
@@ -170,7 +170,7 @@ function useMoneyCurrencies(): { currencies: string[]; ready: boolean } {
  */
 export function useNetWorthSeries(months: string[], options: { enabled?: boolean } = {}) {
   const { database, ws } = useApp();
-  const resolveRates = useResolveRates();
+  const resolveRates = useRatesBehind();
   const { currencies, ready } = useMoneyCurrencies();
   const today = isoDate();
   return useQuery({
@@ -189,7 +189,7 @@ export function useNetWorthSeries(months: string[], options: { enabled?: boolean
 
 export function useSheet(date?: string) {
   const { database, ws } = useApp();
-  const resolveRates = useResolveRates();
+  const resolveRates = useRatesBehind();
   const { currencies, ready } = useMoneyCurrencies();
   const onDate = date ?? isoDate();
   return useQuery({
@@ -367,7 +367,7 @@ export function useJointSheet(date?: string): {
   error: unknown;
 } {
   const { ws } = useApp();
-  const resolveRates = useResolveRates();
+  const resolveRates = useRatesBehind();
   const onDate = date ?? isoDate();
   const shared = useSharedNetWorth();
   const own = useSheet(onDate);
