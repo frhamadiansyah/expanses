@@ -112,8 +112,8 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await debtRow(page, 'BCA Visa').getByText('2.450.000').click();
   await expect(page).toHaveURL(/\/cards\/[^/?]+/);
   await expect(page.getByRole('heading', { name: 'BCA Visa' })).toBeVisible();
-  // It opens raised out of the Wallet stack, and its Unpaid tile is the very figure the Debts row showed.
-  await expect(page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]')).toBeVisible();
+  // It opens as the card's own page (Mac account pages on a wide screen), and its Outstanding is the very figure the Debts row showed.
+  await expect(page.getByTestId('card-desk')).toBeVisible();
   await showCardBack(page);
   await expect(page.getByTestId('tile-unpaid-balance')).toHaveText('Rp 2.450.000');
 

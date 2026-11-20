@@ -11,8 +11,9 @@ test('each account in Net worth’s rows opens its own page', async ({ page }) =
   await page.getByRole('link', { name: /^Everyday/ }).first().dblclick();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(page.getByRole('heading', { name: 'Everyday' })).toBeVisible();
-  // Money kept for spending opens as its Wallet card, raised; ✕ goes back to Net worth, where it was opened from.
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  // Money kept for spending opens as its own Mac page; Back goes back to Net worth, where it was opened from.
+  await expect(page.getByTestId('account-desk')).toBeVisible();
+  await page.goBack();
   await expect(page).toHaveURL(/\/net-worth$/);
 
   await page.goto('/net-worth');

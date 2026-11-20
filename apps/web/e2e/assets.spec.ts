@@ -105,10 +105,11 @@ test('renames an account from its settings page, and every list reads the new na
   await addBank(page);
   await openSettings(page, 'BCA Tahapan');
 
-  // Kept when the row is left, as every settings row is: the way back then carries the new name.
+  // Kept when the row is left, as every settings row is. On a wide screen the settings are the account page's side
+  // peek, so the page's own title, beside them, carries the new name.
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan Utama');
   await page.getByLabel('Name', { exact: true }).press('Enter');
-  await expect(page.getByRole('button', { name: 'BCA Tahapan Utama', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'BCA Tahapan Utama', exact: true })).toBeVisible();
 
   await page.goto('/net-worth/assets');
   await openDrawers(page);

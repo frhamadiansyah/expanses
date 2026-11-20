@@ -52,8 +52,10 @@ test('Card rewards is a row of a bank account’s Settings, not a group on Walle
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Garuda x Blu Debit' })).toHaveAttribute('aria-current', 'true');
   await page.getByRole('dialog').getByRole('button', { name: 'Open card page' }).click();
   await expect(page).toHaveURL(new RegExp(`/cards/${accountId}$`));
-  // A card that is not listed is set up by hand, on the same page.
+  // A card that is not listed is set up by hand, on the same page. (Back on a wide screen is the account's page: its
+  // settings are its side peek, opened again.)
   await page.goBack();
+  if ((await page.getByTestId('account-desk').count()) > 0) await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
   await row.click();
   await page.getByRole('dialog').getByRole('button', { name: 'Add manually' }).click();
   await expect(page).toHaveURL(new RegExp(`/cards/${accountId}$`));

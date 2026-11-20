@@ -165,7 +165,9 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
   await showCardBack(page);
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile).toContainText('2.000.000');
-  await expect(tile.getByTestId('due-date')).toContainText(/^Due \d+ \w+ · /);
+  // The wide screen's bill box names the statement and the day it is due, and how long is left.
+  await expect(page.getByTestId('card-bill')).toContainText(/due \d+ \w+/);
+  await expect(page.getByTestId('bill-to-pay')).toContainText('2.000.000');
   // Pay opens the Add screen locked to paying the card, the bill filled in; From is chosen, then Save.
   const form = await openCardPay(page);
   await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^2\.?000\.?000$/);

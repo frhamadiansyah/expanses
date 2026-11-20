@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openAccount, walletCard, openFace } from './accounts';
+import { openAccount, walletCard, openFace, wideScreen } from './accounts';
 
 /**
  * The drawn faces on Wallet, walked once and run at both widths (`wallet-card-art.spec.ts`, `phone-wallet-card-art.spec.ts`).
@@ -39,10 +39,13 @@ export async function drawnFaces(page: Page) {
   await expect(ovo.getByTestId('card-chip')).toHaveCount(0);
   await expect(ovo.getByTestId('card-contactless')).toHaveCount(0);
 
-  // Raised, the Mandiri card shows its chip and contactless mark, and nothing top-right: its bank's mark alone.
+  // Raised (on a wide screen, in its own page's Balance box), the Mandiri card shows its chip and contactless mark, and
+  // nothing top-right: its bank's mark alone.
   await openFace(walletCard(page, 'Mandiri Payroll'));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
-  const payroll = faceOf(page, 'Mandiri Payroll');
+  const wide = wideScreen(page);
+  const deskFace = page.getByTestId('desk-face').getByTestId('card-face');
+  const payroll = wide ? deskFace : faceOf(page, 'Mandiri Payroll');
   await expect(payroll.getByTestId('card-chip')).toBeVisible();
   await expect(payroll.getByTestId('card-contactless')).toBeVisible();
   await expect(payroll).toContainText('mandiri');
@@ -55,8 +58,14 @@ export async function drawnFaces(page: Page) {
   await tier.selectOption('gold');
   // Back inside the app, as a person would: a navigation straight after the choice could cut the save short. The
   // raised card wears the new face once the save has landed, and only then is the stack opened afresh.
-  await page.goBack();
-  await expect(faceOf(page, 'Mandiri Payroll')).toHaveAttribute('data-face', 'mandiri-gold');
+  // On a wide screen the settings are the page's side peek: Save puts them away, and the page's face follows.
+  if (wide) {
+    await page.getByTestId('settings-peek').getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(deskFace).toHaveAttribute('data-face', 'mandiri-gold');
+  } else {
+    await page.goBack();
+    await expect(faceOf(page, 'Mandiri Payroll')).toHaveAttribute('data-face', 'mandiri-gold');
+  }
   await page.goto('/wallet');
   await expect(faceOf(page, 'Mandiri Payroll')).toHaveAttribute('data-face', 'mandiri-gold');
   await page.reload();

@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { addPlastic, openCard, openFace } from './accounts';
+import { addPlastic, openCard, openFace, wideScreen } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, pickChargedOn, saveCardTerms, showCardBack } from './card-section';
 
@@ -32,6 +32,7 @@ export async function openWalletCard(page: Page, name: string) {
 /** The card's hero is the card: face up to begin with, Outstanding on the back, and nothing of it left under the card. */
 export async function flipHero(page: Page, name: string) {
   await openWalletCard(page, name);
+  if (wideScreen(page)) return deskHero(page);
   const raised = page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]');
   await expect(raised.getByTestId('card-face')).toBeVisible();
   await expect(page.getByTestId('tile-left-to-pay')).toBeHidden();
@@ -59,6 +60,23 @@ export async function flipHero(page: Page, name: string) {
   await expect.poll(async () => Math.abs((await back.boundingBox())!.height - front.height)).toBeLessThanOrEqual(1);
   await page.getByRole('button', { name: /, show card$/ }).click();
   await expect(back).toBeHidden();
+}
+
+/**
+ * A wide screen's card page (Mac account pages) has no card to turn: its face is in the Outstanding box, and what the
+ * phone's back says is in the boxes beside it, always there. Its actions are the title bar's.
+ */
+async function deskHero(page: Page) {
+  await expect(page.getByTestId('card-desk').getByTestId('desk-face')).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Pay']);
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link')).toHaveText(['Spend', 'Statement', '']);
+  const back = page.getByTestId('tile-left-to-pay');
+  await expect(back).toContainText('Outstanding');
+  await expect(back.getByTestId('tile-unpaid-balance')).toContainText('412.000');
+  await expect(back.getByTestId('limit-bar')).toHaveCount(0);
+  // No bonus yet and no rewards on this card: the points box says so rather than showing a ring.
+  await expect(page.getByTestId('back-bonus')).toHaveCount(0);
+  await expect(page.getByTestId('back-points')).toContainText('Rewards are not set up');
 }
 
 /** Sets the annual fee on the card's Settings and returns to the Fee waiver row. */
@@ -185,6 +203,15 @@ export async function plasticSpendFlow(page: Page) {
   await buy(page, 'BCA Twin Card ···· 8802', '450000');
 
   await openWalletCard(page, 'BCA Twin Card');
+  if (wideScreen(page)) {
+    // A wide screen's card page says which card each purchase was made on, in the statement's Card column; Outstanding
+    // is the whole account's.
+    const rows = page.getByTestId('card-row');
+    await expect(rows.filter({ hasText: '•1467' })).toContainText('120.000');
+    await expect(rows.filter({ hasText: '•8802' })).toContainText('450.000');
+    await expect(page.getByTestId('tile-unpaid-balance')).toContainText('570.000');
+    return;
+  }
   const spent = page.getByTestId('face-spent');
   // The primary leads; its own spend, small "Spent" over the figure.
   await expect(spent).toContainText('Spent');

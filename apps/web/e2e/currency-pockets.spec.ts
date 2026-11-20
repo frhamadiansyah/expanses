@@ -46,9 +46,10 @@ test('an account with pockets is one row that adds them up, and opens to each po
   // Its kode harta lives in its settings.
   await openSettings(page);
   await expect(page.getByRole('button', { name: /^Tax code/ })).toContainText('0102');
-  // Back to the pocket's page, and from there to its account.
-  await page.getByRole('button', { name: 'Bank One Valas Plus · USD', exact: true }).click();
-  await page.getByRole('button', { name: 'Bank One Valas Plus', exact: true }).click();
+  // Back to the pocket's page (on a wide screen Save puts its settings peek away), and from there, ‹ in its title bar,
+  // to its account.
+  await page.getByTestId('settings-peek').getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('link', { name: 'Bank One Valas Plus', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });
 

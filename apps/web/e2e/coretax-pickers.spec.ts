@@ -243,11 +243,14 @@ test('a saving account picked as a current account becomes one, and stays one wh
   await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Current account');
 
   await page.reload();
+  // On a wide screen the settings are the account page's side peek: opened again after the reload.
+  await openSettings(page);
   await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Current account');
   await page.getByRole('button', { name: /^Description/ }).click();
   await expect(page.getByRole('button', { name: 'Current account', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Saving account', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Saving account');
   await page.reload();
+  await openSettings(page);
   await expect(page.getByRole('button', { name: /^Description/ })).toContainText('Saving account');
 });

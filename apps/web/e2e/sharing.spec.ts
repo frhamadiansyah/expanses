@@ -526,6 +526,9 @@ test("an owner stops and shares again: the member's read-only copy rejoins throu
 async function setSwitch(page: Page, label: string, on: boolean) {
   const toggle = page.getByRole('checkbox', { name: label, exact: true });
   await toggle.scrollIntoViewIfNeeded();
+  // The switch waits for the household to be read (a wide screen's settings peek opens before that); a forced click on
+  // it meanwhile would do nothing.
+  await expect(toggle).toBeEnabled({ timeout: 15_000 });
   if ((await toggle.isChecked()) !== on) await toggle.click({ force: true });
 }
 

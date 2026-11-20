@@ -1,9 +1,16 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openWalletAccount, showBalance } from './accounts';
-import { addForm, addTransaction, saveButton } from './add-transaction';
+import { addForm, addTransaction, fillAmount, openAmount, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
 import { currencyRow, pickInSheet, setCurrency } from './currency-field';
+
+/*
+ * The account's page as the phone draws it: its round actions, Recent, pockets and the deposit's maturity. A wide screen
+ * reads a bank, cash or e-wallet account as its own Mac page instead (`mac-account-pages.spec.ts`), so these journeys
+ * walk the phone's page at a phone's width.
+ */
+test.use({ viewport: { width: 390, height: 844 } });
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -402,7 +409,9 @@ test('an expense added from an account is saved by the Add screen’s ✓, goes 
   // ✓ in the bar, dimmed until the expense would save.
   const save = saveButton(form);
   await expect(save).toBeDisabled();
-  await form.getByLabel('Amount', { exact: true }).fill('45000');
+  // At a phone's width the amount is typed on the keypad.
+  await openAmount(form);
+  await fillAmount(page, form, '45000');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Market');

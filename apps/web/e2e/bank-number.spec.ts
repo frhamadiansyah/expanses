@@ -37,6 +37,8 @@ test('a bank account named by the end of its number shows it on its transactions
   await expect(page.getByText('Account holder')).toHaveCount(1);
   await expect(page.getByLabel('Account number', { exact: true })).toHaveCount(1);
   await page.reload();
+  // The settings are the account page's side peek on a wide screen: opened again after the reload.
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Account number', { exact: true })).toHaveValue('1234 5678 9012');
   await page.goto('/transactions');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('9012');

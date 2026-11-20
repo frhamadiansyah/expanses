@@ -123,15 +123,15 @@ test('a click opens a card’s side peek — its figure, what it is, Transfer an
   await peek(page).getByRole('button', { name: 'Transfer', exact: true }).click();
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=transfer/);
 
-  // A double-click opens its page, under the raised card; ✕ comes back to Mac Wallet.
+  // A double-click opens its own page, full width (Mac account pages); Back comes back to Mac Wallet.
   // At a 1280 window the first click's peek moves the face from under the pointer; the second is still BCA Tahapan's.
   await page.goto('/wallet');
   const bcaPage = await walletCard(page, 'BCA Tahapan').getAttribute('href');
   expect((await doubleClickInPlace(page, walletCard(page, 'BCA Tahapan'))).moved).toBe(true);
   await expect(page).toHaveURL(new RegExp(`${bcaPage}$`));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
-  await expect(page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]')).toBeVisible();
-  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByTestId('account-desk')).toBeVisible();
+  await page.goBack();
   await expect(page).toHaveURL(/\/wallet$/);
   await expect(page.getByTestId('wallet-accounts')).toBeVisible();
 });

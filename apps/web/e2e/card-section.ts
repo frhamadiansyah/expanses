@@ -14,8 +14,11 @@ export const walletCard = (page: Page, name: string | RegExp) => page.getByRole(
 export async function showCardBack(page: Page) {
   const turn = page.getByRole('button', { name: /, show balance$/ });
   const back = page.getByRole('button', { name: /, show card$/ });
-  // The page says it has a back a moment after it mounts: wait for either side's button.
-  await expect(turn.or(back)).toBeVisible();
+  const desk = page.getByTestId('card-desk');
+  // The page says it has a back a moment after it mounts: wait for either side's button. A wide screen's card page has
+  // no card to turn: what the back says is in its boxes, always there.
+  await expect(turn.or(back).or(desk)).toBeVisible();
+  if ((await desk.count()) > 0) return expect(page.getByTestId('tile-points')).toBeVisible();
   if ((await turn.count()) > 0) await turn.click();
   await expect(page.getByTestId('tile-points')).toBeVisible();
 }
@@ -28,7 +31,8 @@ export async function showCardBack(page: Page) {
 export async function cardPage(page: Page, which: 'Statement' | 'Points' | 'Settings') {
   const main = page.getByRole('main');
   if (which === 'Statement') await main.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Statement', exact: true }).click();
-  else if (which === 'Points') await main.getByRole('group', { name: 'Actions' }).getByRole('link', { name: /^(Points|Miles|Cashback)$/ }).click();
+  // A wide screen's card page opens this statement's points from its Points box.
+  else if (which === 'Points') await main.getByRole('group', { name: 'Actions' }).getByRole('link', { name: /^(Points|Miles|Cashback)$/ }).or(main.getByTestId('desk-points-link')).click();
   else await main.getByRole('link', { name: 'Settings', exact: true }).first().click();
   const title = { Statement: 'Statement', Points: "This statement's points", Settings: 'Settings' }[which];
   await expect(page.getByRole('heading', { name: title, exact: true }).first()).toBeVisible();

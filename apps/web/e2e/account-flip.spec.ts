@@ -2,6 +2,12 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openWalletAccount, showBalance, showCard } from './accounts';
 import { mockRates, openWithPockets } from './pockets';
 
+/*
+ * The raised card is the phone's: a wide screen reads the account as its own Mac page, with no card to turn
+ * (`mac-account-pages.spec.ts`), so these journeys walk the phone's page at a phone's width.
+ */
+test.use({ viewport: { width: 390, height: 844 } });
+
 /**
  * The account page's hero is the card Wallet raised: tapped, it turns over to a white back with the balance on it, and
  * back. Face up is the default whenever the page opens; nothing is remembered.

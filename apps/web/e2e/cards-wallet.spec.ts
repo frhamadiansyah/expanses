@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard, openFace } from './accounts';
-import { cardPage, saveCardTerms, setUpRewardsByHand, showCardBack } from './card-section';
+import { cardPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
@@ -19,10 +19,10 @@ async function addEarningCard(page: Page, name: string) {
 
 /**
  * A wide screen draws each card as its own face (Mac Wallet), the credit cards side by side under Credit cards in
- * Wallet's order; a double-click opens the card the phone's way, raised at Wallet's own desktop card width with every
- * action of its page under it.
+ * Wallet's order; a double-click opens the card's own Mac page, full width (Mac account pages, owner 2026-11-20): its
+ * face in the Outstanding box, its points, and its statement under them.
  */
-test('a wide screen draws the cards as faces side by side, and a double-click raises the one chosen at a fixed width, with its page below', async ({ page }) => {
+test('a wide screen draws the cards as faces side by side, and a double-click opens the one chosen as its own full-width page', async ({ page }) => {
   for (const name of ['Alpha Card', 'Beta Card']) await addEarningCard(page, name);
 
   await page.goto('/wallet');
@@ -38,28 +38,25 @@ test('a wide screen draws the cards as faces side by side, and a double-click ra
   await expect(cards.nth(0).getByTestId('card-face')).toContainText('Alpha Card');
   await expect(cards.nth(0).getByTestId('face-figure')).toBeVisible();
 
-  // A double-click opens THAT card, raised at Wallet's desktop card width, with its page's actions.
+  // A double-click opens THAT card's own page: its face, what it owes, its points and its statement.
   await openFace(wall.getByRole('link', { name: /^Alpha Card, / }));
   await expect(page).toHaveURL(/\/cards\/[^/]+$/);
-  await expect(page.getByRole('heading', { name: 'Alpha Card', exact: true })).toBeFocused();
-  const raised = wall.locator('[data-place="raised"]');
-  // It grows from the face it was into Wallet's desktop card width.
-  await expect.poll(async () => Math.round((await raised.boundingBox())!.width)).toBe(380);
-  // Turned over, the card's back is the card's own box: Outstanding and the points on it.
-  await showCardBack(page);
+  await expect(page.getByRole('heading', { name: 'Alpha Card', exact: true })).toBeVisible();
+  const desk = page.getByTestId('card-desk');
+  await expect(desk.getByTestId('desk-face')).toBeVisible();
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('Outstanding');
-  await expect.poll(async () => Math.round((await page.getByTestId('tile-left-to-pay').boundingBox())!.width)).toBe(380);
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Points', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible();
+  await expect(page.getByTestId('tile-points')).toBeVisible();
+  await expect(page.getByTestId('desk-points-link')).toBeVisible();
+  await expect(page.getByTestId('card-table')).toContainText('This statement');
 
-  // ⚙ opens the card's settings, a page of its own with its desktop forms; ‹ comes back to the raised card.
+  // ⚙ opens the card's settings, a page of its own with its desktop forms; ‹ comes back to the card's page.
   await cardPage(page, 'Settings');
   await expect(page.getByRole('radiogroup', { name: 'Card sections' })).toHaveCount(0);
   await expect(page.getByLabel('Billing date')).toHaveValue('25');
   await page.getByRole('button', { name: 'Alpha Card', exact: true }).click();
-  await expect(page.getByTestId('wallet-slot')).toBeVisible();
+  await expect(desk).toBeVisible();
 
-  // Back behaves like ✕: Mac Wallet again, in its order.
+  // Back: Mac Wallet again, in its order.
   await page.goBack();
   await expect(page).toHaveURL(/\/wallet$/);
   await expect(wall.getByRole('link')).toHaveCount(2);

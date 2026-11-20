@@ -94,13 +94,16 @@ export async function expectWalletFigure(page: Page, name: string, figure: strin
 export const wideScreen = (page: Page) => (page.viewportSize()?.width ?? 0) >= 768;
 
 /**
- * Opens a Wallet card's own page, as a person does: a tap on a phone; on a wide screen a double-click, since a click
- * there opens the card's side peek. Either way the page is the card raised over it.
+ * Opens a Wallet card's own page, as a person does: a tap on a phone, where the page is the card raised over it; on a
+ * wide screen a double-click, since a click there opens the card's side peek, and the page is the account's or the
+ * card's own Mac page, full width (only the partner's joint item is still a raised card there).
  */
 export async function openFace(face: Locator) {
   const page = face.page();
   if (!wideScreen(page)) return face.click();
   await face.dblclick();
+  await expect(page).not.toHaveURL(/\/wallet(\?|$)/);
+  if (!/\/wallet\/joint\//.test(page.url())) return;
   // The face grows from where it was into the raised card: a journey that measures the card waits for it to land.
   const raised = page.getByRole('region', { name: 'Cards' }).locator('[data-place="raised"]');
   await expect
@@ -140,6 +143,8 @@ export async function openAccountHistory(page: Page, name: string) {
  * to the balance when it is not there already, so a journey that reads the balance can call this wherever it is.
  */
 export async function showBalance(page: Page) {
+  // A wide screen's account page has no card to turn: its Balance box is always there.
+  if (wideScreen(page) && (await page.getByTestId('account-desk').count()) > 0) return expect(page.getByTestId('balance-card')).toBeVisible();
   const turn = page.getByRole('button', { name: /, show balance$/ });
   if ((await turn.count()) > 0) await turn.click();
   await expect(page.getByTestId('balance-card')).toBeVisible();
