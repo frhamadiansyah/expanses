@@ -15,6 +15,7 @@ import { categorySetMembers, categorySets } from '../schema-category-sets';
 import { hasBooks, isJoinedBookTx, personalBookIdTx } from './books';
 import { withCapture } from '../sync/capture';
 import { bookSplitsExist } from './book-splits';
+import { stableId } from '../self/stable-id';
 
 export class CategorySetError extends Error {
   constructor(
@@ -183,11 +184,15 @@ export async function ensureDefaultCategorySets(database: Database, ws: Workspac
   const now = new Date().toISOString();
   await database.transaction((tx) => withCapture(tx, { entity: 'category' }, async () => {
     for (const set of missing) {
-      const setId = uuidv7();
+      // Named, not random (link my devices): two linked devices giving the same workspace its sets make the same ones.
+      const setId = await stableId(ws.workspaceId, `default-set:${set.name}`);
+      // Given once under this id and archived or renamed since: the person's choice stands, nothing is made again.
+      if ((await tx.values(sql`SELECT 1 FROM category_sets WHERE id = ${setId}`)).length > 0) continue;
       await tx.insert(categorySets).values({ id: setId, workspaceId: ws.workspaceId, name: set.name, archivedAt: null, createdAt: now });
       await fileSetTx(tx, owner, setId);
       for (const [index, name] of set.categories.entries()) {
-        const accountId = uuidv7();
+        const accountId = await stableId(ws.workspaceId, `default-set:${set.name}:${name}`);
+        if ((await tx.values(sql`SELECT 1 FROM accounts WHERE id = ${accountId}`)).length > 0) continue;
         await tx.insert(accounts).values({
           id: accountId,
           workspaceId: ws.workspaceId,

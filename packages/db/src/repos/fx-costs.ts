@@ -13,12 +13,12 @@ import {
   isFxLotAccount,
   type Revalued,
   revalueTransaction,
-  uuidv7,
 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
 import { auditLog } from '../schema';
+import { stableId } from '../self/stable-id';
 import { captureRevaluingTx } from '../sync/capture';
 import { sharingTablesExist } from '../sync/placeholder';
 import { splitBooksOfTx } from './book-splits';
@@ -417,15 +417,22 @@ export async function recalcAccountTx(
     if (spentAfter < spentBefore) await clampEventItemsTx(tx, ws, transactionId);
     if (changed.length > 0 || pairWritten) {
       changedTransactions.push(transactionId);
-      await tx.insert(auditLog).values({
-        id: uuidv7(),
-        workspaceId: ws.workspaceId,
-        action: 'revalue',
-        entity: 'transaction',
-        entityId: transactionId,
-        payloadJson: JSON.stringify({ accountId, bases: Object.fromEntries(changed.map((line) => [line.entryId, revalued.bases[line.entryId]])), gainLossBaseMinor }),
-        createdAt: new Date().toISOString(),
-      });
+      const payloadJson = JSON.stringify({ accountId, bases: Object.fromEntries(changed.map((line) => [line.entryId, revalued.bases[line.entryId]])), gainLossBaseMinor });
+      const createdAt = new Date().toISOString();
+      // Named by what it says and the day (link my devices): two linked devices working out the same figures on the
+      // same day keep one line of it, not two.
+      await tx
+        .insert(auditLog)
+        .values({
+          id: await stableId(transactionId, `revalue:${createdAt.slice(0, 10)}:${payloadJson}`),
+          workspaceId: ws.workspaceId,
+          action: 'revalue',
+          entity: 'transaction',
+          entityId: transactionId,
+          payloadJson,
+          createdAt,
+        })
+        .onConflictDoNothing();
     }
     // The chain (§6, R10): money arriving in another pocket whose figure changed here, or — a same-currency move —
     // whose carried lots changed though the figure did not. A filed exchange into another currency's pocket changes

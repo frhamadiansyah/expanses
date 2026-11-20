@@ -29,6 +29,7 @@ import { listTransactionPointActuals } from './point-actuals';
 import { categoryIdsByKeyAll } from './categories';
 import { cardTerms } from '../schema-points';
 import { cardSpendLines, listCycleActuals, listCycleBonuses, listEarnRules, listRedemptionOptions, PointsError, toRedemption } from './points';
+import { stableId } from '../self/stable-id';
 
 /** Entries the derivation owns and may rewrite. Everything else is the owner's own record. */
 const DERIVED_SOURCES = ['transaction', 'statement', 'projected'] as const;
@@ -215,7 +216,18 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
     }
     const gone = [...unmatched.values()].flat().map((entry) => entry.id);
     if (gone.length > 0) await tx.delete(pointEntries).where(inArray(pointEntries.id, gone));
-    if (added.length > 0) await tx.insert(pointEntries).values(added);
+    if (added.length > 0) {
+      // A new batch is named by the purchase, the day and what it is (link my devices, Drop 0): two linked devices
+      // working out the same cycle make the same batch, not one each.
+      const seen = new Map<string, number>();
+      for (const entry of added) {
+        const name = `earn:${entry.source}:${keyOf(entry)}`;
+        const n = seen.get(name) ?? 0;
+        seen.set(name, n + 1);
+        entry.id = await stableId(programId, `${name}:${n}`);
+      }
+      await tx.insert(pointEntries).values(added);
+    }
     await mendBatchesTx(tx, ws, gone, changed);
   });
 
@@ -274,7 +286,11 @@ async function redrawTx(tx: Tx, ws: WorkspaceContext, orphans: (typeof pointEntr
     await tx.update(pointEntries).set({ batchId: first!.batchId, quantity: -first!.quantity }).where(eq(pointEntries.id, orphan.id));
     if (rest.length > 0) {
       // The act's value stays on its first entry, as a redemption is written.
-      await tx.insert(pointEntries).values(rest.map((piece) => ({ ...orphan, id: uuidv7(), batchId: piece.batchId, quantity: -piece.quantity, valueMinor: null })));
+      // Named by the entry it was cut from (link my devices, Drop 0), so two linked devices cut it alike.
+      const pieces = await Promise.all(
+        rest.map(async (piece, i) => ({ ...orphan, id: await stableId(orphan.id, `redraw:${i}:${piece.batchId ?? ''}`), batchId: piece.batchId, quantity: -piece.quantity, valueMinor: null })),
+      );
+      await tx.insert(pointEntries).values(pieces);
     }
     for (const piece of pieces) if (piece.batchId !== null) drawnOn.add(piece.batchId);
   }
@@ -407,9 +423,12 @@ export async function expireDueEntries(database: Database, ws: WorkspaceContext,
   if (due.length === 0) return 0;
 
   const now = new Date().toISOString();
+  // A write-off is named by its batch and day (link my devices, Drop 0): two linked devices writing off the same batch
+  // write one write-off, and the points die once.
+  const ids = await Promise.all(due.map((batch) => stableId(programId, `expire:${batch.batchId ?? ''}:${batch.expiresOn}`)));
   await database.db.insert(pointEntries).values(
-    due.map((batch) => ({
-      id: uuidv7(),
+    due.map((batch, i) => ({
+      id: ids[i]!,
       workspaceId: ws.workspaceId,
       programId,
       transactionId: null,
