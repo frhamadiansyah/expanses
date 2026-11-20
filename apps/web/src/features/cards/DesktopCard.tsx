@@ -389,7 +389,7 @@ export function DesktopCard({ page }: { page: CardPage }) {
             <InstallmentList cardAccountId={card.id} currency={currency} />
           </div>
         )}
-        <div className="max-w-[720px]">
+        <div className="max-w-[720px] empty:hidden">
           <OwnJointRows accountId={card.id} />
         </div>
       </div>

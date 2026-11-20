@@ -411,7 +411,7 @@ export function actionsFor(
 }
 
 /** What a foreign balance comes to here, and the rate that says so: "≈ Rp 39.000.000 at 16.250 IDR per 1 USD". */
-function ForeignLine({ currency, minor, rates }: { currency: string; minor: number; rates: { rates: Record<string, number>; stale: string[] } | undefined }) {
+export function ForeignLine({ currency, minor, rates }: { currency: string; minor: number; rates: { rates: Record<string, number>; stale: string[] } | undefined }) {
   const { ws } = useApp();
   const rate = rates?.rates[currency];
   return (
@@ -427,7 +427,7 @@ function ForeignLine({ currency, minor, rates }: { currency: string; minor: numb
  * The currency an account holds, as the round flag in its card's corner, named for a screen reader. While the household
  * files jointly it wears its owner's ring (`useOwnRing`), as the account's row does on Net worth.
  */
-function CurrencyFlag({ currency, ring }: { currency: string; ring?: string | null }) {
+export function CurrencyFlag({ currency, ring }: { currency: string; ring?: string | null }) {
   return (
     <span
       role="img"
@@ -448,7 +448,7 @@ function CurrencyFlag({ currency, ring }: { currency: string; ring?: string | nu
  * Read from this phone's copy of the group alone, so it never waits on the household. Null on a single person's Net
  * worth, or with separate tax IDs, which stay unringed.
  */
-function useOwnRing(): string | null {
+export function useOwnRing(): string | null {
   const owners = useOwnerRings();
   if (!owners || owners.mode !== 'joint') return null;
   return ownerRing(owners.rings, owners.me);

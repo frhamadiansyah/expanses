@@ -1,4 +1,4 @@
-import { addMonths, formatMinor, isoDate, monthName, monthPeriod, periodMonthOf } from '@expanses/core';
+import { addMonths, formatMinor, isFxLotAccount, isoDate, monthName, monthPeriod, periodMonthOf } from '@expanses/core';
 import { type AccountRow, listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -10,12 +10,14 @@ import { Sheet } from '../../app/Sheet';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { approxLine, type RoundAction } from '../../ui/native';
+import { rateLine, type RoundAction } from '../../ui/native';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { PEEK_BUTTON, SidePeek } from '../../ui/native/SidePeek';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useSetAsideView } from '../goals/queries';
 import { AssetSettingsPage } from '../networth/AssetSettingsPage';
+import { SetAsidePanel } from '../networth/SetAsidePanel';
+import { OwnJointRows } from '../sharing/JointAccountRows';
 import { isCardPayment } from '../cards/card-pay';
 import { isEditable } from '../transactions/draft';
 import { buildRows, type ListRow } from '../transactions/list-model';
@@ -23,13 +25,14 @@ import { ReceiptPeek } from '../transactions/ReceiptPeek';
 import { useWalletCards } from '../wallet/useWalletCards';
 import { useMonthStart } from '../workspaces/queries';
 import { type AccountMove, accountMonth, balancesAfter, monthEndBalances, moveOf } from './account-desk-model';
-import { ADJUST_FORM, actionsFor, MONEY_IN_FORM, type NewTxDraft } from './AccountPage';
+import { ADJUST_FORM, actionsFor, CurrencyFlag, ForeignLine, MONEY_IN_FORM, type NewTxDraft, useOwnRing } from './AccountPage';
+import { WithdrawalsLeft } from './WithdrawalsLeft';
 import { AdjustBalanceForm } from './AdjustBalanceForm';
 import { adjustTitle } from './adjust-model';
 import { DeskBox, DeskFace, DeskTitleBar, FigureRow, GBTN, BOX_GRID, FIRST_BOX, GearLink, MonthsLine, PBTN, PEEK_ROOM, signedMoney } from './desk-account-parts';
 import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
 import { spendsFrom } from './pockets';
-import { useHeldRates } from './queries';
+import { useHeldRates, useOpenings } from './queries';
 
 /** How many months the Balance over time line covers, the one shown last. */
 const LINE_MONTHS = 6;
@@ -78,6 +81,9 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
   const months = Array.from({ length: LINE_MONTHS }, (_, index) => addMonths(month, index - (LINE_MONTHS - 1))).map((m) => ({ month: m, to: monthPeriod(m, startDay).to }));
   const from = monthPeriod(months[0]!.month, startDay).from;
   const rates = useHeldRates([currency]);
+  const opened = useOpenings([account.id]).data?.[account.id];
+  // While the household files jointly, the account wears its owner's ring, as on Net worth and the phone's page.
+  const ownRing = useOwnRing();
   const setAside = useSetAsideView(account.id).data;
 
   // Every row from the line's first month on, owner-wide as the phone's Recent and line are, so the figures agree with
@@ -165,13 +171,13 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
 
   const kind = [SUBTYPE_LABELS[account.subtype], currency].join(' · ');
   const title = parent ? `${parent.name} · ${currency}` : account.name;
-  const foreign = currency !== ws.baseCurrency ? approxLine(todayMinor, currency, ws.baseCurrency, rates.data?.rates ?? {}) : null;
+  const foreign = currency !== ws.baseCurrency;
   const counted = spendsFrom(account, everything);
   const setAsideFor = setAside && setAside.state !== 'none' ? (setAside.goals.length > 0 && setAside.funds.length > 0 ? 'goals and bills' : setAside.funds.length > 0 ? 'bills' : 'goals') : null;
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="account-desk" data-desk="true" {...doubleClick}>
-      <DeskTitleBar title={title} line={kind} barRef={(node) => (bar.current = node)}>
+      <DeskTitleBar title={title} line={kind} barRef={(node) => (bar.current = node)} back={parent ? { label: parent.name, to: '/accounts/$accountId', params: { accountId: parent.id } } : undefined}>
         <span className="flex items-center gap-[2px] text-[12.5px] text-[var(--ph-ink)]" role="group" aria-label="Month">
           <button type="button" aria-label="Earlier month" onClick={() => setMonth((was) => addMonths(was, -1))} className="rounded-[5px] p-[3px] text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]">
             <ChevronLeft size={15} aria-hidden />
@@ -218,10 +224,21 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
             <div className="flex flex-wrap items-start gap-x-[16px] gap-y-[8px] px-[14px] pt-[4px] pb-[14px]">
               {face && <DeskFace card={face} />}
               <div className="min-w-0 pt-[4px]">
-                <p data-testid="account-balance" className="text-[22px] leading-[28px] font-semibold whitespace-nowrap text-[var(--ph-ink)] tabular-nums">
-                  {formatMinor(todayMinor, currency)}
-                </p>
-                {foreign && <p className="text-[12px] text-[var(--ph-ink-3)] tabular-nums">{foreign}</p>}
+                <div className="flex items-center gap-[10px]">
+                  <p data-testid="account-balance" className="text-[22px] leading-[28px] font-semibold whitespace-nowrap text-[var(--ph-ink)] tabular-nums">
+                    {formatMinor(todayMinor, currency)}
+                  </p>
+                  <CurrencyFlag currency={currency} ring={ownRing} />
+                </div>
+                {/* Money in another currency: what it comes to here at the rate held, and the rate it was opened at (the phone's Details). */}
+                {foreign && (
+                  <p className="text-[12px] text-[var(--ph-ink-3)] tabular-nums">
+                    <ForeignLine currency={currency} minor={todayMinor} rates={rates.data} />
+                  </p>
+                )}
+                {foreign && opened && <p className="text-[12px] text-[var(--ph-ink-3)] tabular-nums">
+                    Opened at <span>{rateLine(opened.fxRateToBase, currency, ws.baseCurrency)}</span>
+                  </p>}
                 <p className="mt-[2px] text-[12px] text-[var(--ph-ink-3)]">{counted ? 'counts toward spending' : 'kept as savings, off Wallet’s spending money'}</p>
                 {setAside && setAsideFor && (
                   <p data-testid="account-setaside" className={cx('mt-[8px] text-[12px] tabular-nums', setAside.state === 'short' ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-ink-3)]')}>
@@ -298,6 +315,22 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
           </table>
           {history.isSuccess && shown.length === 0 && <p className="border-t border-[var(--ph-hair)] px-[14px] py-[12px] text-[13px] text-[var(--ph-ink-3)]">Nothing moved in {monthName(month, 'long')}.</p>}
         </DeskBox>
+        {/* What is promised out of the account, what is free, and which goals and bills claim it — as on the phone's page. */}
+        {setAsideFor && (
+          <section aria-label="Set aside" data-testid="account-setaside-panel" className="max-w-[720px]">
+            <SetAsidePanel accountId={account.id} />
+          </section>
+        )}
+        {/* With a household: this account's rows as the partner sees them, when it is owned together — as on the phone's page. */}
+        <div className="max-w-[720px] empty:hidden">
+          <OwnJointRows accountId={account.id} />
+        </div>
+        {/* Withdrawal rate §7: what the foreign money held cost, and the withdrawals still in it — as on the phone's page. */}
+        {isFxLotAccount(account, ws.baseCurrency) && (
+          <div className="max-w-[720px]">
+            <WithdrawalsLeft account={account} balanceMinor={todayMinor} rates={rates.data} />
+          </div>
+        )}
       </div>
 
       {peeked && (

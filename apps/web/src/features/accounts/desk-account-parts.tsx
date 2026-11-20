@@ -1,6 +1,6 @@
 import { formatMinor, monthName } from '@expanses/core';
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { Settings } from 'lucide-react';
+import { ChevronLeft, Settings } from 'lucide-react';
 import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { cx } from '../../ui';
 import { CARD_W, cardHeightFor, type WalletCard, WalletFace } from '../../ui/native';
@@ -21,12 +21,36 @@ const GEAR = 'inline-flex h-[26px] w-[28px] items-center justify-center rounded-
 const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[11px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]';
 
 /** The page's own title bar (`desk-titlebar`, so the Mac app's title strip never covers it): the name and its line, then the controls. */
-export function DeskTitleBar({ title, line, barRef, children }: { title: string; line?: string; barRef?: (node: HTMLElement | null) => void; children: ReactNode }) {
+export function DeskTitleBar({
+  title,
+  line,
+  barRef,
+  back,
+  children,
+}: {
+  title: string;
+  line?: string;
+  barRef?: (node: HTMLElement | null) => void;
+  /** The page this one belongs to (a pocket's account): ‹ and its name, before the title. */
+  back?: { label: string; to: LinkProps['to']; params: LinkProps['params'] };
+  children: ReactNode;
+}) {
   return (
     <header
       ref={barRef}
       className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]"
     >
+      {back && (
+        <Link
+          to={back.to}
+          params={back.params}
+          aria-label={back.label}
+          className="flex shrink-0 items-center gap-[2px] rounded-[5px] px-[4px] py-[2px] text-[12.5px] text-[var(--mac-accent)] hover:bg-[var(--ph-fill)]"
+        >
+          <ChevronLeft size={14} aria-hidden />
+          <span className="max-w-[180px] truncate">{back.label}</span>
+        </Link>
+      )}
       <span className="flex min-w-0 shrink items-baseline gap-[8px]">
         <h1 className="truncate text-[15px] font-semibold text-[var(--ph-ink)]">{title}</h1>
         {line && (
