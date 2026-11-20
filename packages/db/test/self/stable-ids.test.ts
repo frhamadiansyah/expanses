@@ -66,38 +66,38 @@ describe('a default category set taken away and given again', () => {
     const { phone, mac } = await setWithNoSets();
     await ensureDefaultCategorySets(phone.database, phone.ws);
     await together(phone, mac);
-    const [[setId]] = await phone.database.db.values<[string]>(sql`SELECT id FROM category_sets ORDER BY name LIMIT 1`);
+    const setId = (await phone.database.db.values<[string]>(sql`SELECT id FROM category_sets ORDER BY name LIMIT 1`))[0]![0];
 
-    await takeAway(phone, setId!);
+    await takeAway(phone, setId);
     await together(phone, mac);
-    expect(await count(mac, sql`SELECT count(*) FROM category_sets WHERE id = ${setId!}`)).toBe(0);
+    expect(await count(mac, sql`SELECT count(*) FROM category_sets WHERE id = ${setId}`)).toBe(0);
 
     await pause();
     await ensureDefaultCategorySets(phone.database, phone.ws);
     await together(phone, mac);
-    for (const d of [phone, mac]) expect(await count(d, sql`SELECT count(*) FROM category_sets WHERE id = ${setId!}`)).toBe(1);
+    for (const d of [phone, mac]) expect(await count(d, sql`SELECT count(*) FROM category_sets WHERE id = ${setId}`)).toBe(1);
   });
 
   it('given again on both devices at once, is one set', async () => {
     const { phone, mac } = await setWithNoSets();
     await ensureDefaultCategorySets(phone.database, phone.ws);
     await together(phone, mac);
-    const [[setId]] = await phone.database.db.values<[string]>(sql`SELECT id FROM category_sets ORDER BY name LIMIT 1`);
-    await takeAway(phone, setId!);
+    const setId = (await phone.database.db.values<[string]>(sql`SELECT id FROM category_sets ORDER BY name LIMIT 1`))[0]![0];
+    await takeAway(phone, setId);
     await together(phone, mac);
     await pause();
     await ensureDefaultCategorySets(phone.database, phone.ws);
     await ensureDefaultCategorySets(mac.database, mac.ws);
     await together(phone, mac);
-    for (const d of [phone, mac]) expect(await count(d, sql`SELECT count(*) FROM category_sets WHERE id = ${setId!}`)).toBe(1);
+    for (const d of [phone, mac]) expect(await count(d, sql`SELECT count(*) FROM category_sets WHERE id = ${setId}`)).toBe(1);
   });
 
   it('an old removal arriving after it was given again does not take it away', async () => {
     const { phone, mac } = await setWithNoSets();
     await ensureDefaultCategorySets(phone.database, phone.ws);
     await together(phone, mac);
-    const [[setId]] = await phone.database.db.values<[string]>(sql`SELECT id FROM category_sets ORDER BY name LIMIT 1`);
-    await takeAway(mac, setId!);
+    const setId = (await phone.database.db.values<[string]>(sql`SELECT id FROM category_sets ORDER BY name LIMIT 1`))[0]![0];
+    await takeAway(mac, setId);
     await collectSelfChanges(mac.database, mac.deviceId);
     const removal = await drainSelfOutbox(mac.database);
     for (const changeSet of removal) await applySelfChangeSet(phone.database, changeSet, phone.deviceId);
@@ -107,7 +107,7 @@ describe('a default category set taken away and given again', () => {
     // The same removal again — a resend after a lost answer — is older than the set made since: it changes nothing.
     for (const changeSet of removal) await applySelfChangeSet(phone.database, changeSet, phone.deviceId);
     for (const changeSet of removal) await applySelfChangeSet(mac.database, changeSet, mac.deviceId);
-    for (const d of [phone, mac]) expect(await count(d, sql`SELECT count(*) FROM category_sets WHERE id = ${setId!}`)).toBe(1);
+    for (const d of [phone, mac]) expect(await count(d, sql`SELECT count(*) FROM category_sets WHERE id = ${setId}`)).toBe(1);
     expect(await sameRows(phone, mac)).toEqual([]);
   });
 });
@@ -145,7 +145,7 @@ describe('a points batch that went away and came back', () => {
     await deriveCycleEntries(phone.database, phone.ws, program, cycle);
     await together(phone, mac);
     const batch = async (d: Device) => d.database.db.values<[string, number]>(sql`SELECT id, quantity FROM point_entries WHERE kind = 'earn'`);
-    const [[batchId]] = await batch(phone);
+    const batchId = (await batch(phone))[0]![0];
 
     await setRate(phone, program, 0); // earns nothing: the batch goes
     await deriveCycleEntries(phone.database, phone.ws, program, cycle);
