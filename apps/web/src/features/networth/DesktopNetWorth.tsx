@@ -311,7 +311,7 @@ export function DesktopNetWorth() {
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="networth-page" data-desk="true" {...doubleClick}>
-      <header ref={bar} className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
+      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Net worth</h1>
         <span className="flex-1" />
         <Segments label="Chart view" value={view} onChange={setView} options={[{ key: 'line', label: 'Line' }, { key: 'bars', label: 'Bars' }]} />

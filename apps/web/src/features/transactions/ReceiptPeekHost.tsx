@@ -1,6 +1,7 @@
 import { useRouterState } from '@tanstack/react-router';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ReceiptPeek } from './ReceiptPeek';
+import { windowTopInset } from '../../ui/native/window-top';
 
 /**
  * Opens a transaction's Mac receipt (`ReceiptPeek`) over the page: `back` names the page's own peek it was opened from
@@ -72,9 +73,9 @@ export function useReceiptPeekHost(enabled: boolean): { room: boolean; provide: 
   }, [open]);
 
   const openReceipt = useCallback<OpenReceipt>((id, opts) => {
-    // Over a page's peek it hangs where that one does; on its own, from the top of the window.
+    // Over a page's peek it hangs where that one does; on its own, from the top of the window (below the Mac's title strip).
     const under = opts?.back ? document.querySelector('aside.ph-peek') : null;
-    setOpen({ id, back: opts?.back ?? null, top: under ? Math.max(0, under.getBoundingClientRect().top) : 0 });
+    setOpen({ id, back: opts?.back ?? null, top: under ? Math.max(0, under.getBoundingClientRect().top) : windowTopInset() });
   }, []);
 
   const provide = (children: ReactNode) => (

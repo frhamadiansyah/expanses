@@ -562,7 +562,7 @@ export function DesktopCashflow({
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="desktop-cashflow" {...doubleClick}>
-      <header ref={bar} className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
+      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Cashflow</h1>
         {chips.map((chip) => (
           <span key={chip.key} className="inline-flex h-[22px] max-w-[220px] items-center gap-1 rounded-full bg-[var(--ph-fill)] pr-[2px] pl-[9px] text-[12px] text-[var(--ph-ink)]">

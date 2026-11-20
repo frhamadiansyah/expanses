@@ -232,7 +232,7 @@ export function DesktopOverviewPage() {
   const figure = onHandMinor === null ? '–' : formatMinor(onHandMinor, ws.baseCurrency);
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]">
-      <header className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
+      <header className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Overview</h1>
         <span className="flex-1" />
         <div className="flex items-center gap-[2px] text-[13px] text-[var(--ph-ink)]">

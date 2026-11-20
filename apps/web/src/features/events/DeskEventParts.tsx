@@ -61,7 +61,7 @@ export function EventTitleBar({
 }) {
   return (
     <>
-      <header ref={barRef} className="sticky top-0 z-20 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[14px]">
+      <header ref={barRef} className="desk-titlebar sticky top-0 z-20 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[14px]">
         <Link to="/events" className="shrink-0 text-[13px] text-[var(--ph-ink-3)] hover:text-[var(--ph-ink)]" aria-label="Events">
           <span aria-hidden>‹ </span>Events
         </Link>

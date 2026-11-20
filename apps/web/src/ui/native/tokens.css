@@ -431,3 +431,26 @@ body:has([role='dialog']) .ph-under-dialog {
 .mac-app {
   --ph-side-top: 40px;
 }
+
+/*
+ * The Mac window's title-bar strip (hidden title, no toolbar: SceneDelegate.swift) still lies over the top of the page
+ * — it blurs what is under it and takes the clicks there, to drag the window. Nothing to read or press sits in it: a
+ * page's own title bar grows by the strip's height (the web view's safe-area inset) and keeps its buttons under it, its
+ * own colour filling the strip so there is no band of another colour; a page in the column starts below it too.
+ * `--desk-bar` is how far down a title bar ends, for whatever hangs from it.
+ */
+:root {
+  --desk-bar: 52px;
+}
+.mac-app {
+  --desk-bar: calc(52px + env(safe-area-inset-top, 0px));
+}
+.mac-app .desk-titlebar {
+  padding-top: env(safe-area-inset-top, 0px);
+  height: var(--desk-bar);
+}
+@media (min-width: 768px) {
+  .mac-app .desk-column {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+  }
+}

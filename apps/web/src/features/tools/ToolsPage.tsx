@@ -108,7 +108,7 @@ export function ToolsPage() {
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="tools-page" data-desk="true">
-      <header className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
+      <header className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Tools</h1>
         <span className="flex-1" />
         <label className="relative flex h-[26px] w-[180px] shrink-0 items-center rounded-[7px] bg-[var(--ph-fill)] text-[12px]">

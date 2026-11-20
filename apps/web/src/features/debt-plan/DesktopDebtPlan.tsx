@@ -84,7 +84,7 @@ export function DesktopDebtPlan({ view, month, period, debt }: { view: DeskView;
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="debt-plan-page" data-desk="true">
-      <header ref={bar} className="sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
+      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
         <h1 className="shrink-0 text-[15px] font-semibold text-[var(--ph-ink)]">Debt-free plan</h1>
         <span className="flex-1" />
         {!none && <Segments label="View" value={view} onChange={(next) => void navigate({ to: VIEWS.find((v) => v.key === next)!.to })} options={VIEWS} />}
