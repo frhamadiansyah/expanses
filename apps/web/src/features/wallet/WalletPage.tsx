@@ -136,8 +136,10 @@ export function WalletPage() {
   const phone = usePhone();
   const sideways = useSideways();
   const { cardId, accountId, itemId } = useParams({ strict: false }) as { cardId?: string; accountId?: string; itemId?: string };
-  // A wide screen reads Wallet itself as Mac Wallet (`DesktopWallet`); a card opened from it is the phone's raised card over its page.
-  if (!phone && !sideways && cardId === undefined && accountId === undefined && itemId === undefined) return <DesktopWallet />;
+  // A wide screen reads Wallet itself as Mac Wallet (`DesktopWallet`), and an account or a card opened from it as its
+  // own Mac page, full width (`DesktopAccount`, `DesktopCard`), with no stack behind it. Only the partner's joint item
+  // is still the phone's raised card over its page there.
+  if (!phone && !sideways && itemId === undefined) return cardId === undefined && accountId === undefined ? <DesktopWallet /> : <Outlet />;
   return <StackWallet />;
 }
 

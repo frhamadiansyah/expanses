@@ -287,7 +287,13 @@ const EDGE_TO_EDGE_WIDE = [
   '/backup',
 ];
 /** Pages of one thing, drawn edge to edge on a wide screen: an event (Mac Events) — not its settings, plan or costs. */
-const EDGE_TO_EDGE_PATTERNS = [/^\/events\/[^/]+$/];
+const EDGE_TO_EDGE_PATTERNS = [
+  /^\/events\/[^/]+$/,
+  // An account's and a card's own page (Mac account pages): not the static pages beside them (New account, Add, Points,
+  // Merchants). A kind with no Mac page (a deposit, a debit card) brings the column itself (`DeskColumn`).
+  /^\/accounts\/(?!new$|add$)[^/]+$/,
+  /^\/cards\/(?!points$|merchants$)[^/]+$/,
+];
 export function edgeToEdge(pathname: string, phoneShell: boolean, accountScoped = false): boolean {
   if (pathname === '/overview') return true;
   if (phoneShell || accountScoped) return false;

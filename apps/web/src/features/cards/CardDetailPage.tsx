@@ -7,6 +7,9 @@ import { InstallmentList } from '../loans/InstallmentList';
 import { useInstallments } from '../loans/queries';
 import { creditMinor, owedMinor } from '../networth/debt-rows';
 import { useCardPage } from './card-page';
+import { DesktopCard } from './DesktopCard';
+import { DeskColumn } from '../../app/DeskColumn';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { OwnJointRows } from '../sharing/JointAccountRows';
 import { CardHero } from './CardHero';
 
@@ -36,21 +39,27 @@ export function CardDetailPage() {
   const plans = useInstallments(cardId);
   // Opened from the Wallet stack, the raised card is this page's header and the stack's screen is its ground.
   const slot = useWalletSlot();
+  // A wide screen reads a credit card full width (`DesktopCard`); a debit card keeps this page, in the column.
+  const phone = usePhone();
+  const sideways = useSideways();
+  const wide = !phone && !sideways;
   const Ground = slot ? Fragment : Screen;
   if (!page) {
     return (
-      <>
+      <DeskColumn wide={wide}>
         {slot && <div aria-hidden style={{ height: slot.height }} className="mb-5" />}
         {gate}
-      </>
+      </DeskColumn>
     );
   }
+  if (wide && !page.isDebit) return <DesktopCard key={page.card.id} page={page} />;
   const { card, cp, all, plastic, issuer, isDebit, today, ledger, currency } = page;
   // The Debts page's figure for this card, read by the same function, so the two screens always agree.
   const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
   // Paid past what it owed: the bank holds the rest. Unpaid stays at nothing, as the Debts page says.
   const credit = isDebit ? 0 : creditMinor(balances.data ?? {}, card.id);
   return (
+    <DeskColumn wide={wide}>
     <Ground>
       {/* Opened from the stack, the wallet's own bar carries ✕ and ⚙; on its own the page has a title of its own. */}
       {!slot && (
@@ -77,5 +86,6 @@ export function CardDetailPage() {
       />
       {!isDebit && <OwnJointRows accountId={card.id} />}
     </Ground>
+    </DeskColumn>
   );
 }

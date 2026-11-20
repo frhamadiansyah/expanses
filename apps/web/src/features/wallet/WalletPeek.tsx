@@ -39,7 +39,8 @@ export function peekLine({ card, account, joint, pockets }: PeekSubject): string
 /**
  * A Wallet card in Mac Wallet's side peek: its name, its figure as the face prints it, what it is, the round actions
  * an account or a card page offers in a row — Transfer, Move for an account with pockets, Pay and Statement for a credit
- * card, Edit — its last few rows and the way to all of them. Open (or a double-click on its face) is its whole page.
+ * card, Edit — its last few rows and the way to all of them. Open (or a double-click on its face) is its whole page,
+ * full width (Mac account pages).
  * The partner's joint item says where its figure came from; its statement, plans and settings stay on its holder's phone.
  */
 export function WalletPeek({

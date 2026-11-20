@@ -16,6 +16,9 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
+import { DeskColumn } from '../../app/DeskColumn';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { DesktopAccount } from './DesktopAccount';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -80,20 +83,41 @@ import { useOwnerRings } from '../networth/queries';
 export function AccountPage() {
   const { accountId = '' } = useParams({ strict: false }) as { accountId?: string };
   const accounts = useAccounts();
+  // A wide screen (the Mac app, a desktop browser) reads a bank, cash or e-wallet account full width (`DesktopAccount`).
+  const phone = usePhone();
+  const sideways = useSideways();
+  const wide = !phone && !sideways;
   const all = accounts.data ?? [];
   const account = all.find((a) => a.id === accountId);
   if (accounts.isSuccess && !account) {
     return (
-      <div className={SCREEN}>
-        <PushedTitle title="Account" back="Wallet" backTo="/wallet" />
-        <Empty>That account is not in this workspace.</Empty>
-      </div>
+      <DeskColumn wide={wide}>
+        <div className={SCREEN}>
+          <PushedTitle title="Account" back="Wallet" backTo="/wallet" />
+          <Empty>That account is not in this workspace.</Empty>
+        </div>
+      </DeskColumn>
     );
   }
-  if (!account) return <div className={SCREEN}>Loading…</div>;
+  if (!account) return <DeskColumn wide={wide}><div className={SCREEN}>Loading…</div></DeskColumn>;
   const parent = account.parentId ? all.find((a) => a.id === account.parentId) : undefined;
+  const parentOfPockets = pocketParentIds(all).has(account.id);
+  if (wide && hasDeskPage(account, parentOfPockets)) return <DesktopAccount key={account.id} account={account} parent={parent} />;
   // Keyed, so moving from a pocket to its parent starts the page's own state (an error, an open sheet) afresh.
-  return <AccountBody key={account.id} account={account} parent={parent} pockets={pocketParentIds(all).has(account.id) ? pocketsOf(account.id, all) : null} />;
+  return (
+    <DeskColumn wide={wide}>
+      <AccountBody key={account.id} account={account} parent={parent} pockets={parentOfPockets ? pocketsOf(account.id, all) : null} />
+    </DeskColumn>
+  );
+}
+
+/**
+ * Which money accounts read full width on a wide screen: a bank, saving, cash or e-wallet account, or one pocket of an
+ * account with pockets. A deposit (its maturity), a broker's cash and an account with pockets (its pockets list) keep
+ * today's page, in the column.
+ */
+export function hasDeskPage(account: Pick<AccountRow, 'subtype' | 'kind'>, parentOfPockets: boolean): boolean {
+  return account.kind === 'asset' && !parentOfPockets && account.subtype !== 'time_deposit' && account.subtype !== 'fund';
 }
 
 function AccountBody({ account, parent, pockets }: { account: AccountRow; parent: AccountRow | undefined; pockets: AccountRow[] | null }) {
@@ -329,7 +353,7 @@ function pageCorner(account: AccountRow): CornerAction[] {
  * which, and it adds what only the parent can do: move between its pockets.
  * Adding another currency is the last row of its Pockets list. A pocket is an account, and has an account's actions.
  */
-function actionsFor(
+export function actionsFor(
   account: AccountRow,
   pockets: AccountRow[] | null,
   baseCurrency: string,
@@ -432,11 +456,11 @@ function useOwnRing(): string | null {
 
 /** The sheet's name says what the action was: there are no tabs to say it (Spend opens an expense, and only that). */
 const ADD_CURRENCY_FORM = 'account-add-currency';
-const ADJUST_FORM = 'account-adjust-balance';
-const MONEY_IN_FORM = 'account-money-in';
+export const ADJUST_FORM = 'account-adjust-balance';
+export const MONEY_IN_FORM = 'account-money-in';
 
 /** What a new transaction opened from an account starts with: its mode, and the account on the side the action says. */
-interface NewTxDraft {
+export interface NewTxDraft {
   mode: 'expense' | 'income' | 'transfer';
   account?: string;
   to?: string;

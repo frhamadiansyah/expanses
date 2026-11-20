@@ -61,7 +61,7 @@ export function AssetSettingsRoute() {
  * Every row saves as it is changed, as iOS's own settings do; the page has no Save. The way out — archive, or delete
  * for a thing opened by mistake — is the last group, in ink rather than alarm, each asking first.
  */
-export function AssetSettingsPage({ accountId }: { accountId: string }) {
+export function AssetSettingsPage({ accountId, inPeek = false }: { accountId: string; /** Drawn in a wide screen's side peek (Mac account pages): no bar of its own, the peek's is it. */ inPeek?: boolean }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -207,8 +207,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const archivable = money ? !pocket || !value || value.valueMinor === 0 : !value || (value.valueMinor === 0 && (value.unitsMicro ?? 0) === 0 && (value.mode !== 'amount' || value.costMinor === 0));
   const goBack = useBack(money ? `/accounts/${accountId}` : `/net-worth/assets/${accountId}`);
   return (
-    <div className={SCREEN}>
-      <PushedTitle
+    <div className={inPeek ? undefined : SCREEN}>
+      {!inPeek && <PushedTitle
         title="Settings"
         back={name}
         // Every row is kept when it is left; the ✓ finishes the one being typed in and goes back, so saving is seen.
@@ -226,7 +226,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
         // Back to the page these settings were opened from (its ⋯); a page opened with nothing behind it falls back
         // to the account's or the asset's own page.
         onBack={goBack}
-      />
+      />}
       <ErrorBox error={values.error ?? profile.error ?? stock.error} />
       {!value && !money && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
       {parentMoney && account && bankParent && <PocketedIdentityGroup accountId={accountId} subtype={account.subtype} />}

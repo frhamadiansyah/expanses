@@ -25,6 +25,7 @@ export function SidePeek({
   onStep,
   onClose,
   back,
+  actions,
   children,
 }: {
   /** Where the title bar ends on screen: the peek hangs from it. */
@@ -43,6 +44,8 @@ export function SidePeek({
   onClose: () => void;
   /** Opened from another peek (a bill's history, a category's rows): the way back to it, named after it. */
   back?: { label: string; onBack: () => void };
+  /** A control of the peek's own, before ✕: a settings peek's Save. */
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -78,6 +81,7 @@ export function SidePeek({
               </button>
             </>
           )}
+          {actions}
           <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={cx(STEP, 'ml-1')}>
             <X size={15} aria-hidden />
           </button>

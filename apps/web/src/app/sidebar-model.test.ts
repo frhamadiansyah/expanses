@@ -244,14 +244,20 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/review', true)).toBe(false);
     expect(edgeToEdge('/wallet', false)).toBe(true);
     expect(edgeToEdge('/wallet', true)).toBe(false);
-    // A card opened from Wallet is the raised card over its page, in the column.
     expect(edgeToEdge('/wallet/reorder', false)).toBe(false);
     expect(edgeToEdge('/net-worth', false)).toBe(true);
     expect(edgeToEdge('/net-worth', true)).toBe(false);
     // Its sub pages (Assets, Liabilities, an asset, Prices) keep the column.
     expect(edgeToEdge('/net-worth/assets', false)).toBe(false);
     expect(edgeToEdge('/net-worth/prices', false)).toBe(false);
-    expect(edgeToEdge('/accounts/a1', false)).toBe(false);
+    // An account's and a card's own page are Mac pages; the static pages beside them and the pages under them keep the column.
+    expect(edgeToEdge('/accounts/a1', false)).toBe(true);
+    expect(edgeToEdge('/accounts/a1', true)).toBe(false);
+    expect(edgeToEdge('/cards/c1', false)).toBe(true);
+    expect(edgeToEdge('/cards/c1', true)).toBe(false);
+    for (const path of ['/accounts/new', '/accounts/add', '/accounts/a1/move', '/accounts/a1/pocket', '/cards/merchants', '/cards/c1/statement', '/cards/c1/settings']) {
+      expect(edgeToEdge(path, false)).toBe(false);
+    }
     expect(edgeToEdge('/cards/points', false)).toBe(true);
     // Events and an event's own page; its settings, plan and costs keep the column.
     expect(edgeToEdge('/events', false)).toBe(true);

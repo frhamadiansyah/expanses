@@ -100,8 +100,8 @@ interface DeskCard {
  * Wallet on a wide screen (Mac Wallet, owner 2026-11-17): a title bar with Cards / List, Points, Reorder and Add
  * account; the Balance box — the phone's figure and rows, with its 30-day line — and where the money sits; then every
  * card Wallet holds, as its own face (the iPhone's art), grouped as bank accounts, cash and e-wallets, credit cards and
- * foreign currency, each group with its total. A click opens a card's side peek, a double-click its page (the phone's
- * raised card over it); a face dragged onto another in its group takes its place in Wallet's order. List shows the same
+ * foreign currency, each group with its total. A click opens a card's side peek, a double-click its page (its own Mac
+ * page, `DesktopAccount` or `DesktopCard`); a face dragged onto another in its group takes its place in Wallet's order. List shows the same
  * cards as plain rows. The cards, their figures, the Balance and the order are the phone's own (`useMoneyOnHand`,
  * `useWalletCards`), so the sidebar's Accounts and Overview read the same. The phone's Wallet is not this page.
  */
@@ -305,10 +305,13 @@ export function DesktopWallet() {
     return () => document.removeEventListener('keydown', listen);
   }, []);
 
-  /** A card's whole page, as the phone opens it: its face rises from where it was into the raised card. */
+  /**
+   * A card's whole page: an account's or a credit card's own Mac page, full width; the partner's joint item the phone's
+   * raised card over its page, its face rising from where it was.
+   */
   const open = (card: WalletCard, from?: Element | null) => {
     if (!card.to) return;
-    if (from) leaveFrom(card.key, from.getBoundingClientRect());
+    if (from && isJointKey(card.key)) leaveFrom(card.key, from.getBoundingClientRect());
     window.scrollTo(0, 0);
     void navigate({ to: card.to, params: card.params });
   };
