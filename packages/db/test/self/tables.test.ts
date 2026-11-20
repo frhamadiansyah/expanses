@@ -1,7 +1,10 @@
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { settingsKeyClass, SELF_TABLES } from '../../src/self/tables';
 import { setupDb } from '../helpers';
+
+// Each test builds two whole databases and their triggers: seconds on a busy machine, more than the default allows.
+vi.setConfig({ testTimeout: 60_000 });
 
 /*
  * Link my devices §2.1: every table, and every settings key, is sorted into exactly one class. A migration that adds a

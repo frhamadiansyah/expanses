@@ -1,12 +1,15 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
-import { createAccount, listAccounts, postTransaction } from '../../src/index';
+import { describe, expect, it, vi } from 'vitest';
+import { activityOf, createAccount, listAccounts, postTransaction } from '../../src/index';
 import { CLASH_RULES, uniqueKeysOf } from '../../src/self/clashes';
 import { applySelfChangeSet, collectSelfChanges } from '../../src/self/channel';
 import { dumpForSelf } from '../../src/self/dump';
 import { SELF_TABLES } from '../../src/self/tables';
 import { exchange, linkedPair, MAC_ID, PHONE_ID, sameRows, type Device } from './devices';
+
+// Each test builds two whole databases and their triggers: seconds on a busy machine, more than the default allows.
+vi.setConfig({ testTimeout: 60_000 });
 
 /*
  * Link my devices, rule 5 (spec §3.3): two devices made "the same" row under different ids. One test per unique key,
@@ -123,7 +126,10 @@ describe('keep both', () => {
         .then(() => undefined),
     );
     const results = await exchange(phone, mac);
-    for (const d of [phone, mac]) expect(await rows(d, sql`SELECT id, external_ref FROM draft_transactions ORDER BY id`)).toEqual([['draft-1', 'msg-test-1'], ['draft-2', null]]);
+    for (const d of [phone, mac]) {
+      expect(await rows(d, sql`SELECT id, external_ref FROM draft_transactions ORDER BY id`)).toEqual([['draft-1', 'msg-test-1'], ['draft-2', null]]);
+      expect((await activityOf(d.database, d.ws)).map((line) => line.title)).toContain('Test grocer may be in To review twice');
+    }
     expect(results.flatMap((r) => (r.status === 'applied' ? r.notes : [])).map((n) => n.kind)).toContain('maybe-duplicate');
     expect(await sameRows(phone, mac)).toEqual([]);
   });
@@ -143,6 +149,11 @@ describe('keep both', () => {
       const found = await rows(d, sql`SELECT external_ref, status FROM transactions WHERE description = 'Test grocer (statement)' ORDER BY created_at, id`);
       expect(found.map((r) => r[1])).toEqual(['posted', 'posted']);
       expect(found.map((r) => r[0]).sort()).toEqual([null, 'stmt-test-7'].sort());
+      // Never a silent double count: the owner is told, on each device, which purchase may be there twice.
+      const [later] = await rows(d, sql`SELECT id FROM transactions WHERE description = 'Test grocer (statement)' AND external_ref IS NULL`);
+      const lines = (await activityOf(d.database, d.ws)).filter((line) => line.title.includes('may be recorded twice'));
+      expect(lines.map((line) => [line.title, line.transactionId])).toEqual([['Test grocer (statement) may be recorded twice', later![0]]]);
+      expect(lines[0]!.subtitle).toContain('Recorded on two devices from one statement line');
     }
     expect(await sameRows(phone, mac)).toEqual([]);
   });

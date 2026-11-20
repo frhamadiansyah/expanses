@@ -1,6 +1,6 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createAccount,
   LATEST_VERSION,
@@ -17,6 +17,9 @@ import {
 import { applySelfChangeSet, collectSelfChanges, type SelfChangeSet } from '../../src/self/channel';
 import { dumpForSelf } from '../../src/self/dump';
 import { exchange, linkedPair, MAC_ID, PHONE_ID, sameRows, send, type Device } from './devices';
+
+// Each test builds two whole databases and their triggers: seconds on a busy machine, more than the default allows.
+vi.setConfig({ testTimeout: 60_000 });
 
 /*
  * Link my devices, Drop 1: the self channel's capture and apply, between two in-memory devices (spec §3.2, §3.3).

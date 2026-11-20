@@ -400,13 +400,17 @@ async function placeRow(run: Run, meta: TableMeta, key: unknown[], values: Recor
       if (clash.rule.answer === 'keep-both') {
         run.notes.push({ kind: 'maybe-duplicate', table: meta.table, pk, other: otherPk });
         const column = clash.rule.clear;
+        // Dated by the later row, never by this apply's own clock: every device clears the same row at the same clock.
+        const laterAt = (incomingLater ? mineAt : theirsAt) || run.hlc;
         if (incomingLater) {
           values[column] = null;
-          clocks.set(column, run.hlc);
+          clocks.set(column, laterAt);
         } else {
           await run.tx.run(sql`UPDATE ${id(meta.table)} SET ${id(column)} = NULL WHERE ${whereKey(meta, clash.other)}`);
-          await setClocks(run.tx, meta.table, otherPk, [column], run.hlc);
+          await setClocks(run.tx, meta.table, otherPk, [column], laterAt);
         }
+        const workspace = incomingLater ? values.workspace_id : (await readRow(run.tx, meta, clash.other))?.workspace_id;
+        await noteDuplicateTx(run.tx, meta.table, incomingLater ? key[0] : clash.other[0], incomingLater ? clash.other[0] : key[0], workspace, laterAt);
         continue;
       }
       // Merge: the earlier row stays, each column the later value of the two, the other's children moved onto it.
@@ -440,6 +444,19 @@ async function placeRow(run: Run, meta: TableMeta, key: unknown[], values: Recor
     }
   }
   throw new Error(`A row of ${meta.table} kept meeting a clash`);
+}
+
+/**
+ * Rule 5's "keep both", said where the owner looks (Settings › Activity, `activity.ts`): the later row may be the same
+ * purchase or draft recorded twice. One line, named by the later row and dated by its clock, so every device that
+ * settles the clash writes the same line; nothing is sent.
+ */
+async function noteDuplicateTx(db: Db, table: string, laterId: unknown, earlierId: unknown, workspaceId: unknown, laterAt: string): Promise<void> {
+  if (typeof laterId !== 'string' || typeof workspaceId !== 'string') return;
+  const at = new Date(decodeHlc(laterAt).ms).toISOString();
+  const payload = JSON.stringify({ table, other: earlierId });
+  await db.run(sql`INSERT OR IGNORE INTO audit_log (id, workspace_id, action, entity, entity_id, payload_json, created_at)
+    VALUES (${await stableId(laterId, 'linked:maybe-duplicate')}, ${workspaceId}, 'maybe_duplicate', 'linked', ${laterId}, ${payload}, ${at})`);
 }
 
 /** A merged row's children, moved onto the row it went into. Each lands as a row of its own, by the same rules. */

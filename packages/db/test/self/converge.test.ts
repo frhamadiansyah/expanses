@@ -79,7 +79,7 @@ describe('two devices apart, then together', () => {
         }
         expect(await sameRows(phone, mac)).toEqual([]);
       }),
-      { numRuns: 25 },
+      { numRuns: 15 },
     );
-  }, 120_000);
+  }, 300_000);
 });

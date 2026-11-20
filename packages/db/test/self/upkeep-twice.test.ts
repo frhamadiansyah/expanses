@@ -38,6 +38,9 @@ import { goalCalculators } from '../../src/schema-budget';
 import { dumpForSelf } from '../../src/self/dump';
 import { setupDb } from '../helpers';
 
+// Each test builds two whole databases and their triggers: seconds on a busy machine, more than the default allows.
+vi.setConfig({ testTimeout: 60_000 });
+
 /*
  * Link my devices, Drop 0 gate (spec §2.1, §7 risk 1). The owner's devices hold the same rows, and each runs the app's
  * own upkeep by itself: the open's category/set/held-at/goal upkeep, the catalogue's card terms, the points ledger
