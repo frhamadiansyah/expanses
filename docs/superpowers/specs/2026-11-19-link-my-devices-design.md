@@ -136,8 +136,33 @@ every device identically through apply; travel inside the snapshot); device-only
 4. **Two edits of one transaction made apart** (two posted rows replacing the same row): the later one stays, the
    other and anything that replaced it are voided, on every device, with an Activity line "Edited on two devices at once:
    the later edit was kept".
-5. **Two rows clash on a unique key** (12 unique indexes, e.g. `budgets_category`, `accounts_system_key`): the row with
-   the later clock stays, the other is removed with its children, with an Activity line. Never a stop.
+5. **Two rows clash on a unique key** (two devices made "the same" row under different ids). **A clash never deletes a
+   transaction, an entry, a split, a payment or any row that holds money, and never removes children.** Each unique
+   index has one fixed answer, the same on every device (the "later" row is the one whose key columns have the later
+   clock, ties by id):
+   - **Merge** (settings-like rows, no money): one row stays under the earlier id; each column takes the later value of
+     the two; the other row's children are moved onto it (their own clashes merge the same way); only the other row
+     itself goes, and its id is kept as an alias so later changes to it land on the row that stayed. Activity line.
+   - **Keep both** (a real record each, the key is only a "seen before" mark): both rows stay; the later row's key is
+     cleared. Activity line "Recorded on two devices: may be a duplicate".
+   - **Hold** (money, or rows that money hangs on): the change waits, exactly like rule 6, and the Devices screen names
+     the two rows and what to do; it applies by itself once either row changes so the clash is gone.
+
+   | Unique index | Answer | What happens |
+   |---|---|---|
+   | `budgets_category` | merge | one budget per category; later amount; overrides, frequency, share move over |
+   | `budget_overrides_month` | merge | one override per budget and month; later amount |
+   | `merchant_mccs_active_pattern` | merge | one live pattern; later code |
+   | `income_sources_account` | merge | one income source per account; later settings |
+   | `draft_transactions_ref` | keep both | both drafts stay in To review; the later loses its message ref |
+   | `transactions_external_ref` | keep both | both purchases stay posted; the later loses its ref; Activity says "may be a duplicate" |
+   | `accounts_system_key` | hold | a system account holds entries; Drop 0 gives these fixed ids so it should never happen |
+   | `asset_sales_account` | hold | a sale posts a transaction |
+   | `deposit_events_once` | hold | an event posts interest and principal |
+   | `securities_ticker` | hold | trades and prices hang on it |
+   | `tax_year_reports_year` | hold | a frozen or filed report and its rows |
+   | `statement_checks_period` | hold | deleting would cascade its links |
+   | `book_member_accounts`, `event_books`, `group_logs`, `nw_item_map` (UNIQUE columns) | hold | seat-owned, one writer, so a clash means a bug |
 6. **A change from a newer data version waits** (`self_held`, cursor stops, nothing skipped): "Update cicis on this Mac
    to keep in step with iPhone." Changes from an older version apply; absent columns are left as they are. A migration
    that drops or renames a replicated column ships an upgrader (test-enforced).
@@ -269,7 +294,7 @@ again with today's resilience flows.
 2. **The seat boundary**: any household code running on a non-seat over copied bookkeeping breaks sharing for both
    phones. Seat-owned tables are written only by the seat, apply refuses them from others, a test asserts it.
 3. **Generic merge of a double-entry ledger**: replace forks, unique clashes and FK order across split change-sets must
-   never stall or unbalance. Rules 3–5 plus the property test; any refusal is shown, never silent.
+   never stall or unbalance. Rules 3–5 plus the property test; a clash never deletes money rows (rule 5); any hold is shown, never silent.
 
 Also: 6-digit code strength (check digits), self log growth (pruning), 5-device cap with standby, Mac keychain only in
 TestFlight builds.
