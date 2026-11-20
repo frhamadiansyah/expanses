@@ -34,12 +34,15 @@ export interface CardIdentityRow {
 
 const FOUR_DIGITS = /^\d{4}$/;
 
-/** The bank behind a card account. */
+/** The bank behind a card account. A joint card's summary carries it (`ItemFace.bank`), so the card is sent again. */
 export async function saveCardIdentity(database: Database, ws: WorkspaceContext, input: { accountId: string; issuer: string | null }): Promise<void> {
-  await database.db
-    .insert(cardIdentity)
-    .values({ accountId: input.accountId, workspaceId: ws.workspaceId, issuer: input.issuer })
-    .onConflictDoUpdate({ target: cardIdentity.accountId, set: { issuer: input.issuer } });
+  await database.transaction(async (tx) => {
+    await tx
+      .insert(cardIdentity)
+      .values({ accountId: input.accountId, workspaceId: ws.workspaceId, issuer: input.issuer })
+      .onConflictDoUpdate({ target: cardIdentity.accountId, set: { issuer: input.issuer } });
+    markAccountDirtyTx(tx, input.accountId);
+  });
 }
 
 export async function listCardIdentities(database: Database, ws: WorkspaceContext): Promise<CardIdentityRow[]> {

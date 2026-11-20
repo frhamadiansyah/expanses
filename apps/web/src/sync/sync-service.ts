@@ -845,7 +845,7 @@ export class SyncService {
       }
       const tags = report.eventTags;
       const changed =
-        (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0 || (report.cardFaces ?? 0) > 0 || (report.tripSwitches ?? 0) > 0 || (report.monthStart ?? 0) > 0 || (report.thirdMarks ?? 0) > 0;
+        (report.billLinks ?? 0) > 0 || (tags !== null && tags.moved + tags.untagged > 0) || (report.tripTransfers ?? 0) > 0 || (report.cardFaces ?? 0) > 0 || (report.creditCardFaces ?? 0) > 0 || (report.tripSwitches ?? 0) > 0 || (report.monthStart ?? 0) > 0 || (report.thirdMarks ?? 0) > 0;
       // R6: the workspace's "Month starts on", sent again for a phone that updated since it took it.
       if ((report.monthStart ?? 0) > 0) await this.note('repair', bookId, { message: 'Month starts on sent again for a phone that updated' });
       // R5: a shared trip's Split costs and Plan switches, sent again for a phone that updated since it took them.
@@ -854,6 +854,8 @@ export class SyncService {
       if ((report.thirdMarks ?? 0) > 0) await this.note('repair', bookId, { message: `${report.thirdMarks} Debts & savings marks sent now every phone can take them` });
       // R4: this phone's joint accounts sent again with their card faces (bank, tier, digits), once.
       if ((report.cardFaces ?? 0) > 0) await this.note('repair', bookId, { message: `One-time repair: ${report.cardFaces} net-worth items sent again with their card faces` });
+      // R10: the same once more for the joint credit cards' faces (issuer, catalogue product).
+      if ((report.creditCardFaces ?? 0) > 0) await this.note('repair', bookId, { message: `One-time repair: ${report.creditCardFaces} net-worth items sent again with their credit card faces` });
       // R3: transfers listed on a shared event, sent again for a device that has updated since it took them.
       if ((report.tripTransfers ?? 0) > 0) await this.note('repair', bookId, { message: `${report.tripTransfers} transfers listed on a shared event sent again for a phone that updated` });
       if (report.billLinks !== null || tags !== null) {
