@@ -8,13 +8,13 @@ import {
   dismissDraft,
   editDraft,
   existingExternalRefs,
-  inReviewQueue,
   listAccounts,
   listDrafts,
   listTransactions,
   type NewDraft,
   purgeExpiredPayloads,
   reopenDraft,
+  typedInCashflow,
 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
@@ -54,17 +54,22 @@ describe('capturing drafts', () => {
     expect(await countPendingDrafts(database, ws)).toBe(2);
   });
 
-  it('counts for Review only what was captured or imported: a row typed or pasted into Cashflow’s table is not Review’s', async () => {
+  it('counts every draft waiting for Review, a row typed or pasted into Cashflow’s table among them', async () => {
     const { database, ws, draft } = await workspace();
     await captureDrafts(database, ws, [draft(), draft({ externalRef: 'mail', source: 'email', description: 'TIKET' })]);
     const pasted = await createDraft(database, ws, { source: 'manual', occurredOn: '2026-09-10', description: 'Warung Bu Tini', amountMinor: 18_500, currency: 'IDR' });
-    expect(await countPendingDrafts(database, ws)).toBe(2);
-    // Cashflow's table still lists it, among every other draft waiting.
+    expect(await countPendingDrafts(database, ws)).toBe(3);
+    // Review's list and Cashflow's are the one list: the pasted row is in it, with the captures.
     const all = await listDrafts(database, ws);
+    expect(all.map((d) => d.source).sort()).toEqual(['csv', 'email', 'manual']);
     expect(all.map((d) => d.id)).toContain(pasted);
-    expect(all.filter(inReviewQueue).map((d) => d.source).sort()).toEqual(['csv', 'email']);
-    for (const source of ['csv', 'voice', 'receipt', 'email', 'notification', 'screen', 'photo'] as const) expect(inReviewQueue({ source }), source).toBe(true);
-    expect(inReviewQueue({ source: 'manual' })).toBe(false);
+    // Only Cashflow's desk tells them apart, to put a typed or pasted row above its typing row.
+    expect(all.filter(typedInCashflow).map((d) => d.id)).toEqual([pasted]);
+    for (const source of ['csv', 'voice', 'receipt', 'email', 'notification', 'screen', 'photo'] as const) expect(typedInCashflow({ source }), source).toBe(false);
+    // Recorded or discarded in either place, it leaves the count — the same row.
+    await dismissDraft(database, ws, pasted);
+    expect(await countPendingDrafts(database, ws)).toBe(2);
+    expect((await listDrafts(database, ws, 'dismissed')).map((d) => d.id)).toEqual([pasted]);
   });
 
   it('skips what has already been posted to the ledger', async () => {

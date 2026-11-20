@@ -66,10 +66,13 @@ export function queueCounts(states: readonly DeskDraftState[]): QueueCounts {
   };
 }
 
-/** What a row that is not a capture came in as: a statement's import, a row typed to finish later, a receipt, a voice note. */
+/**
+ * What a row that is not a capture came in as: a statement's import, a receipt, a voice note — or "Cashflow", a row typed
+ * or pasted into Cashflow's table to finish later (it waits there too; the draft does not say which of the two it was).
+ */
 const SOURCE_WORDS: Record<DraftRow['source'], string> = {
   csv: 'Import',
-  manual: 'By hand',
+  manual: 'Cashflow',
   voice: 'Voice',
   receipt: 'Receipt',
   email: 'Email',
@@ -161,7 +164,7 @@ const FROM_PHRASES: Record<CaptureType, string> = {
 };
 const SOURCE_PHRASES: Record<DraftRow['source'], string> = {
   csv: 'from an import',
-  manual: 'added by hand',
+  manual: 'typed or pasted in Cashflow',
   voice: 'from a voice note',
   receipt: 'from a receipt',
   email: 'from an email',

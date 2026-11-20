@@ -3,7 +3,7 @@ import { openAccount, openCard } from './accounts';
 
 /*
  * Mac Cashflow's paste and blue cells (owner 2026-11-18): a Notion copy read right, a paste's empty categories guessed
- * and its unknown names learnt, pasted rows finished in Cashflow (never Review's), and a range of cells down a column
+ * and its unknown names learnt, pasted rows waiting in Cashflow and in Review alike, and a range of cells down a column
  * copied, pasted, filled down or given one choice. Every figure, place and card here is invented.
  */
 
@@ -153,24 +153,54 @@ test('a range of recorded rows changes them by their own edit, never clears them
   await expect(recorded('Toko B')).toContainText('Groceries');
 });
 
-test('pasted rows wait in Cashflow, after a reload too, and are not Review’s: not listed there, nor in its counts', async ({ page }) => {
+test('pasted rows wait in Cashflow and in Review alike: counted by both, recorded in Review gone from Cashflow, discarded in Cashflow gone from Review', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
-  await pasteInto(page, ['2026-10-16\tToko C\t\tBank Contoh\t13.000', '2026-10-15\tToko D\t\tBank Contoh\t14.000'].join('\n'));
+  await pasteInto(page, ['2026-10-16\tToko C\tGroceries\tBank Contoh\t13.000', '2026-10-15\tToko D\tGroceries\tBank Contoh\t14.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
-  await expect(page.getByTestId('month-review')).toHaveText('0');
+  // This month's To review counts them; the month's figures still leave them out.
+  await expect(page.getByTestId('month-review')).toHaveText('2');
   const nav = page.locator('aside').getByRole('navigation', { name: 'Sections' });
-  await expect(nav.getByRole('link', { name: /^Review/ })).toHaveText('Review');
-
-  await page.goto('/review');
-  await expect(page.getByTestId('review-to-review-count')).toHaveText('0');
-  await expect(page.getByTestId('draft-row')).toHaveCount(0);
-  await page.getByRole('radio', { name: 'Discarded' }).click();
-  await expect(page.getByTestId('resolved-row')).toHaveCount(0);
-
-  await page.goto('/transactions');
+  await expect(nav.getByRole('link', { name: /^Review/ })).toHaveText(/^Review\s*2$/);
   await page.reload();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+
+  await nav.getByRole('link', { name: /^Review/ }).click();
+  await expect(page.getByTestId('review-to-review-count')).toHaveText('2');
+  await expect(page.getByTestId('review-ready-count')).toHaveText('2');
+  const toko = (note: string) => page.getByTestId('draft-row').filter({ hasText: note });
+  await expect(page.getByTestId('draft-row')).toHaveCount(2);
+  // Its From says the door it came in by; the peek has no captured words to show.
+  await expect(toko('Toko C').getByTestId('review-from')).toHaveText('Cashflow');
+  await toko('Toko C').click();
+  await expect(page.getByTestId('peek-when')).toContainText('typed or pasted in Cashflow');
+  await expect(page.getByTestId('peek-captured')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await toko('Toko C').getByRole('button', { name: 'Record Toko C' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await expect(page.getByTestId('review-to-review-count')).toHaveText('1');
+  await expect(nav.getByRole('link', { name: /^Review/ })).toHaveText(/^Review\s*1$/);
+
+  // Recorded in Review, it no longer waits in Cashflow: it is a row of its month.
+  await nav.getByRole('link', { name: /^Cashflow/ }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(draftRow(page, 'Toko D')).toHaveCount(1);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Toko C' })).toHaveCount(1);
+  await expect(page.getByTestId('month-review')).toHaveText('1');
+  // ✕ (twice) in Cashflow discards it from Review too.
+  await draftRow(page, 'Toko D').getByRole('button', { name: 'Discard' }).click();
+  await draftRow(page, 'Toko D').getByRole('button', { name: 'Click again to discard' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
+  await expect(page.getByTestId('month-review')).toHaveText('0');
+  await expect(nav.getByRole('link', { name: /^Review/ })).toHaveText('Review');
+
+  await nav.getByRole('link', { name: /^Review/ }).click();
+  await expect(page.getByTestId('review-to-review-count')).toHaveText('0');
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  await page.getByRole('radio', { name: 'Recorded' }).click();
+  await expect(page.getByTestId('resolved-row').filter({ hasText: 'Toko C' })).toHaveCount(1);
+  await page.getByRole('radio', { name: 'Discarded' }).click();
+  await expect(page.getByTestId('resolved-row').filter({ hasText: 'Toko D' })).toHaveCount(1);
 });
 
 test('a Notion copy reads right: its header names, YYYY/MM/DD dates, a card by its last four digits, a relation’s link left out', async ({ page }) => {

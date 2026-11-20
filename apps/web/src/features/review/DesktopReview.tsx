@@ -22,7 +22,7 @@ import { CAPTURE_TYPES, type CaptureType, captureTypeOf } from './capture-type';
 import { captureRowView, effectiveCategory } from './capture-view';
 import type { Correction } from './draft-form';
 import { DraftPeek, type PeekPick } from './DraftPeek';
-import { useReviewDrafts, useSkippedCaptures } from './queries';
+import { useDrafts, useSkippedCaptures } from './queries';
 import {
   type DeskColumns,
   type DeskDraftState,
@@ -127,7 +127,7 @@ export function DesktopReview({
   actions,
   children,
 }: {
-  /** The queue: every pending draft, as the sidebar and Cashflow count it. */
+  /** The queue: every pending draft, whatever door it came in by (Cashflow's typed or pasted rows too), as the sidebar and Cashflow count it. */
   drafts: readonly DraftRow[];
   loaded: boolean;
   error: unknown;
@@ -147,8 +147,8 @@ export function DesktopReview({
   // A recorded capture's Open transaction: its Mac receipt in the peek's place, with ‹ back to the capture.
   const openReceipt = useOpenReceipt();
   const [tab, setTab] = useState<Tab>('pending');
-  const recorded = useReviewDrafts('confirmed', tab === 'confirmed');
-  const discarded = useReviewDrafts('dismissed', tab === 'dismissed');
+  const recorded = useDrafts('confirmed', tab === 'confirmed');
+  const discarded = useDrafts('dismissed', tab === 'dismissed');
   const events = useEvents().data ?? [];
 
   const queue = useMemo(() => newestFirst(drafts), [drafts]);

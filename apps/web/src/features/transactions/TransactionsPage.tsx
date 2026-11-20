@@ -7,7 +7,6 @@ import {
   dismissDraft,
   editDraft,
   guessCategoryFromHistory,
-  inReviewQueue,
   inBook as workspaceInBook,
   instalmentSpendingIn,
   listTransactionsIn,
@@ -25,6 +24,7 @@ import {
   isBookShared,
   tagDroppedText,
   topUpsCategory,
+  typedInCashflow,
   type TransactionView,
   uncategorisedCategory,
   uncategorisedTransactionIds,
@@ -521,9 +521,9 @@ export function TransactionsPage() {
    * its typing row, whatever month is shown (option E), and is not listed again in its own month; a capture or an
    * import still waits among its month's rows, as in the old table.
    */
-  const waitingDrafts = desk ? pending.filter((draft) => !inReviewQueue(draft)) : [];
+  const waitingDrafts = desk ? pending.filter(typedInCashflow) : [];
   const waitingRows = waitingOrder(buildRows([], waitingDrafts, accounts, everyCard, walletLast4, listWs.bookId));
-  const listedDrafts = desk ? pending.filter(inReviewQueue) : view === 'table' || sideways || filters.onlyDrafts ? pending : [];
+  const listedDrafts = desk ? pending.filter((draft) => !typedInCashflow(draft)) : view === 'table' || sideways || filters.onlyDrafts ? pending : [];
   const built = [
     ...markSpread(buildRows(recorded, listedDrafts, accounts, everyCard, walletLast4, listWs.bookId), spreadOver),
     ...instalmentList,
@@ -1669,7 +1669,6 @@ export function TransactionsPage() {
         emptyText={listable.length === 0 ? 'No transactions in this period. Type the first one below.' : 'Nothing matches the search and filters.'}
         limitNote={month === 'all' && recorded.length >= ALL_TIME_LIMIT ? `The newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only` : undefined}
         pendingCount={pending.length}
-        reviewCount={pending.filter(inReviewQueue).length}
         drafts={drafts.data ?? []}
         waiting={waitingRows}
         accounts={accounts}
@@ -1906,8 +1905,8 @@ export function TransactionsPage() {
       {!inCategory && chartShown && (
         <WaitingBox
           today={today}
-          // Its To review row is Review's: captures and imports, not the rows typed or pasted into Cashflow's table.
-          drafts={pending.filter(inReviewQueue)}
+          // Its To review row is Review's queue: every draft waiting, the rows typed or pasted into Cashflow's table among them.
+          drafts={pending}
           needsCategory={{ count: needCategoryCount, active: filters.needsCategory === true, onShow: showNeedsCategory, onClear: hideNeedsCategory }}
         />
       )}

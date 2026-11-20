@@ -78,7 +78,7 @@ describe('fromTag', () => {
     expect(fromTag({ source: 'notification' }, 'sms')).toEqual({ word: 'SMS', type: 'sms' });
     expect(fromTag({ source: 'email' }, 'email')).toEqual({ word: 'Email', type: 'email' });
     expect(fromTag({ source: 'csv' }, null)).toEqual({ word: 'Import', type: null });
-    expect(fromTag({ source: 'manual' }, null)).toEqual({ word: 'By hand', type: null });
+    expect(fromTag({ source: 'manual' }, null)).toEqual({ word: 'Cashflow', type: null });
   });
 });
 
@@ -153,7 +153,7 @@ describe('fromPhrase', () => {
     expect(fromPhrase({ source: 'notification' }, 'notification')).toBe('from a notification');
     expect(fromPhrase({ source: 'notification' }, 'sms')).toBe('from an SMS');
     expect(fromPhrase({ source: 'csv' }, null)).toBe('from an import');
-    expect(fromPhrase({ source: 'manual' }, null)).toBe('added by hand');
+    expect(fromPhrase({ source: 'manual' }, null)).toBe('typed or pasted in Cashflow');
   });
 });
 

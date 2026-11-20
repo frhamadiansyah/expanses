@@ -202,3 +202,29 @@ test('a capture whose shop has history shows that category, and a swipe right re
   await swipe(page, row(page, 'TOKO ASING BARU'), 'right');
   await expect(page.getByRole('form', { name: 'Review TOKO ASING BARU' })).toBeVisible();
 });
+
+test('a row pasted into Cashflow’s table on a wide screen waits in the phone’s Review too, and a swipe records it', async ({ page }) => {
+  await page.clock.setSystemTime(new Date('2026-10-20T12:00:00'));
+  await addAccount(page);
+  // Pasted where pasting is: Cashflow's table on a wide screen.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/transactions');
+  const typing = page.getByTestId('typing-row');
+  await expect(typing.getByLabel('Row paid with')).toBeEnabled();
+  await typing.getByLabel('Row description').evaluate((input) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', '2026-10-16\tToko Contoh\tGroceries\tBCA Tahapan\t21.000');
+    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/review');
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await expect(row(page, 'Toko Contoh')).toContainText('21.000');
+  await swipe(page, row(page, 'Toko Contoh'), 'right');
+  await expect(toast(page)).toContainText('Recorded Toko Contoh');
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  await page.goto('/transactions');
+  await expect(page.getByTestId('not-recorded-card')).toHaveCount(0);
+});

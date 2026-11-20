@@ -274,7 +274,6 @@ export function DesktopCashflow({
   emptyText,
   limitNote,
   pendingCount,
-  reviewCount,
   drafts,
   waiting: waitingIn,
   accounts,
@@ -313,9 +312,8 @@ export function DesktopCashflow({
   rows: readonly ListRow[];
   emptyText: string;
   limitNote?: string;
+  /** Every draft waiting (Review's queue): the This month box's To review and the filter's Only not recorded. */
   pendingCount: number;
-  /** Of those, Review's (captures and imports, `inReviewQueue`): the This month box's To review. */
-  reviewCount: number;
   /** Every row waiting as not recorded: where a paste's rows are found again, whatever the table is narrowed to. */
   drafts: readonly DraftRow[];
   /**
@@ -357,7 +355,7 @@ export function DesktopCashflow({
   const received = useRing('income', month, paidAccountId, notMonthly.out);
   const trend = useSpendingTrend(month, kind, !ring.eventsInCaps, notMonthly.out);
   const legend = ringLegend(ring.tree, colourFor, ring.setsMinor);
-  const figures = monthFigures(spent.ready ? spent.totalMinor : null, received.ready ? received.totalMinor : null, reviewCount);
+  const figures = monthFigures(spent.ready ? spent.totalMinor : null, received.ready ? received.totalMinor : null, pendingCount);
   const monthStart = useMonthStart();
   const period = parsePeriod(month, monthStart);
   const [picking, setPicking] = useState(false);

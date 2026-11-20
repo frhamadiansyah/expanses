@@ -337,27 +337,24 @@ export async function listDrafts(database: Database, ws: WorkspaceContext, statu
 }
 
 /**
- * Whether a draft is Review's: a capture (an SMS, a notification, an email, a screenshot or a photo, a receipt, a voice
- * note) or an import sent there. A row typed or pasted into Cashflow's table (`manual`) is not — it is finished where it
- * was typed, as a row of that table, and Review lists and counts none of them (owner 2026-11-18). No new mark: the
- * draft's own source already says which door it came in by.
+ * Whether a draft was typed or pasted into Cashflow's table to finish later (`manual`), rather than captured (an SMS, a
+ * notification, an email, a screenshot or a photo, a receipt, a voice note) or imported. Review lists and counts every
+ * draft waiting, whatever door it came in by (owner 2026-11-20); this only says where Cashflow's desk table puts it — a
+ * typed or pasted row waits just above its typing row, a capture among its month's rows. No new mark: the draft's own
+ * source already says which door it came in by.
  */
-export const inReviewQueue = (draft: Pick<DraftRow, 'source'>): boolean => draft.source !== 'manual';
+export const typedInCashflow = (draft: Pick<DraftRow, 'source'>): boolean => draft.source === 'manual';
 
-/** How many drafts Review has to deal with (`inReviewQueue`): the badge that says there is anything to do. */
+/**
+ * How many drafts are waiting to be recorded, whatever door they came in by — captures, imports, and the rows typed or
+ * pasted into Cashflow's table: Review's queue, and the badge that says there is anything to do.
+ */
 export async function countPendingDrafts(database: Database, ws: WorkspaceContext): Promise<number> {
   const [row] = await database.db
     .select({ count: sql<number>`count(*)` })
     .from(draftTransactions)
     // A draft that was merged into another is not something to deal with: it is the row it was merged into.
-    .where(
-      and(
-        eq(draftTransactions.workspaceId, ws.workspaceId),
-        eq(draftTransactions.status, 'pending'),
-        isNull(draftTransactions.mergedInto),
-        ne(draftTransactions.source, 'manual'),
-      ),
-    );
+    .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.status, 'pending'), isNull(draftTransactions.mergedInto)));
   return Number(row?.count ?? 0);
 }
 

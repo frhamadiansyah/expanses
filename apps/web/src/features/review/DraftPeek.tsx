@@ -1,5 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import type { AccountRow, CaptureSource, CardRow, DraftEdit, DraftRow } from '@expanses/db';
+import { type AccountRow, type CaptureSource, type CardRow, type DraftEdit, type DraftRow, typedInCashflow } from '@expanses/db';
 import { type KeyboardEvent, type ReactNode, useState } from 'react';
 import { cx, ErrorBox } from '../../ui';
 import { PEEK_BUTTON, SidePeek } from '../../ui/native/SidePeek';
@@ -203,7 +203,7 @@ export function DraftPeek({
     >
       <div className="px-[14px] pb-[10px]">
         <div data-testid="peek-amount" className={cx('text-[22px] font-semibold tabular-nums', draft.kind === 'income' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink)]')}>
-          {draft.amountMinor === 0 ? <span className={WARN}>No amount read</span> : formatMinor(Math.abs(draft.amountMinor), draft.currency)}
+          {draft.amountMinor === 0 ? <span className={WARN}>{typedInCashflow(draft) ? 'No amount yet' : 'No amount read'}</span> : formatMinor(Math.abs(draft.amountMinor), draft.currency)}
         </div>
         <div data-testid="peek-when" className="mt-[2px] text-[12px] text-[var(--ph-ink-3)]">
           {whenText(draft, type !== null)} · {fromPhrase(draft, type)}

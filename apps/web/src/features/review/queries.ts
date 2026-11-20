@@ -1,29 +1,18 @@
-import { countPendingDrafts, type DraftRow, guessCategoryFromHistory, inReviewQueue, listDrafts, listSkipped, listSources } from '@expanses/db';
+import { countPendingDrafts, type DraftRow, guessCategoryFromHistory, listDrafts, listSkipped, listSources } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
 /**
- * Every draft in one state, whatever door it came in by — Cashflow's own rows typed or pasted to finish later among
- * them: what Cashflow's table lists. Review reads `useReviewDrafts`.
+ * Every draft in one state, whatever door it came in by — captures, imports, and Cashflow's own rows typed or pasted to
+ * finish later (owner 2026-11-20): the queue (pending), or what it became — recorded or discarded — read only when asked
+ * for. Review and Cashflow's table read the same list, so recording or discarding a draft in one leaves both.
  */
 export function useDrafts(status: DraftRow['status'] = 'pending', enabled = true) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['drafts', ws.workspaceId, status], queryFn: () => listDrafts(database, ws, status), enabled });
 }
 
-const reviewOnly = (drafts: DraftRow[]) => drafts.filter(inReviewQueue);
-
-/**
- * Review's drafts in one state: the queue (pending), or what it became — recorded or discarded — read only when asked
- * for. Captures and imports only (`inReviewQueue`): a row typed or pasted into Cashflow is finished there. The same
- * query as `useDrafts`, read through its filter, so the two never disagree about a draft.
- */
-export function useReviewDrafts(status: DraftRow['status'] = 'pending', enabled = true) {
-  const { database, ws } = useApp();
-  return useQuery({ queryKey: ['drafts', ws.workspaceId, status], queryFn: () => listDrafts(database, ws, status), enabled, select: reviewOnly });
-}
-
-/** How many captures are waiting (`inReviewQueue`), for the badge that says there is anything to do. */
+/** How many drafts are waiting, whatever door they came in by: the badge that says there is anything to do. */
 export function usePendingDraftCount() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['drafts-pending-count', ws.workspaceId], queryFn: () => countPendingDrafts(database, ws) });
