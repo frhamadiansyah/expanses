@@ -1,12 +1,18 @@
-import { isoDate } from '@expanses/core';
+import { findEntry } from '@expanses/catalog';
+import { isoDate, type ItemSummary, summaryHash } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+  applyCatalogEntry,
   confirmReview,
   createAccount,
+  createCardAccount,
+  customiseFromScratch,
+  listPrograms,
   openPocketedAccount,
   runSharedBookRepairs,
   saveAssetProfile,
+  saveCardIdentity,
   setAccountCardTier,
   setAccountNumberLast4,
   setJointAccount,
@@ -223,5 +229,99 @@ describe('a joint account’s card face on the partner’s phone', () => {
     await settle(home);
     expect(await everythingOn(rina)).toContain('"tier":"gold"');
     expect(await everythingOn(andi)).toBe(sent);
+  });
+});
+
+/*
+ * A joint credit card's face on the partner's phone (fix/joint-card-face, owner 20 Nov: "the joint account shared
+ * already shows its card art on the other phone, but the credit card doesn't yet"). The holder's Wallet draws a credit
+ * card from its catalogue product's look and its issuer; only a joint money account's summary carried a face, so the
+ * partner's phone drew the plain card. A joint card's summary now carries its issuer and its catalogue entry — the
+ * product the art is drawn from, a public id the app ships with — and nothing else of the card. Digits and names here
+ * are invented; the entry is the shipped catalogue's.
+ */
+describe('a joint credit card’s face on the partner’s phone', () => {
+  const ENTRY = 'bca-sq-krisflyer-visa-signature';
+
+  async function jointCard() {
+    const s = await sharing();
+    const card = await createCardAccount(s.rina.database, s.rina.ws, { name: 'Rina Kartu', subtype: 'credit_card', currency: 'IDR', last4: '7302' });
+    await setShareSetting(s.rina.database, card.id, 'total');
+    return { ...s, card: card.id };
+  }
+
+  it('carries the card’s issuer and its catalogue product, and follows a new product, a new issuer and a product taken off', async () => {
+    const { home, rina, andi, groupBookId, card } = await jointCard();
+    await setJointAccount(rina.database, card, true);
+    await applyCatalogEntry(rina.database, rina.ws, { cardAccountId: card, entry: findEntry(ENTRY)!, today, replaceManual: false });
+    await settle(home);
+    const item = await itemOn(andi, groupBookId, rina, card);
+    expect(item?.joint).toBe(true);
+    expect(item?.name).toBe('Rina Kartu ···· 7302');
+    expect(item?.face).toEqual({ bank: 'BCA', entry: ENTRY });
+
+    await saveCardIdentity(rina.database, rina.ws, { accountId: card, issuer: 'Bank Contoh Raya' });
+    await settle(home);
+    expect((await itemOn(andi, groupBookId, rina, card))?.face).toEqual({ bank: 'Bank Contoh Raya', entry: ENTRY });
+
+    const [program] = (await listPrograms(rina.database, rina.ws)).filter((p) => p.cardAccountId === card);
+    await customiseFromScratch(rina.database, rina.ws, program!.id);
+    await settle(home);
+    expect((await itemOn(andi, groupBookId, rina, card))?.face).toEqual({ bank: 'Bank Contoh Raya' });
+  });
+
+  it('never sends a card’s face while the card is merely shared, nor once Joint card is off', async () => {
+    const { home, rina, andi, groupBookId, card } = await jointCard();
+    await applyCatalogEntry(rina.database, rina.ws, { cardAccountId: card, entry: findEntry(ENTRY)!, today, replaceManual: false });
+    await settle(home);
+    expect(await itemOn(andi, groupBookId, rina, card)).toBeDefined();
+    expect((await itemOn(andi, groupBookId, rina, card))?.face).toBeUndefined();
+    expect(await everythingOn(andi)).not.toContain(ENTRY);
+
+    await setJointAccount(rina.database, card, true);
+    await settle(home);
+    expect((await itemOn(andi, groupBookId, rina, card))?.face).toEqual({ bank: 'BCA', entry: ENTRY });
+    await setJointAccount(rina.database, card, false);
+    await settle(home);
+    expect((await itemOn(andi, groupBookId, rina, card))?.face).toBeUndefined();
+  });
+
+  it('a card made joint before this build reaches the partner with its face through the one-time repair, once', async () => {
+    const { home, rina, andi, bookId, groupBookId, card } = await jointCard();
+    await applyCatalogEntry(rina.database, rina.ws, { cardAccountId: card, entry: findEntry(ENTRY)!, today, replaceManual: false });
+    await setJointAccount(rina.database, card, true);
+    await settle(home);
+    // As an older build left it: the summary sent without a face, its hash kept as sent, and R4 long since run.
+    const itemId = await itemIdOf(groupBookId, card);
+    const [row] = await rina.database.db.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE item_id = ${itemId}`);
+    const { face: _face, ...older } = JSON.parse(row![0]) as ItemSummary & Record<string, unknown>;
+    for (const d of [rina, andi]) await d.database.db.run(sql`UPDATE nw_items SET summary_json = ${JSON.stringify(older)} WHERE item_id = ${itemId}`);
+    await rina.database.db.run(sql`UPDATE nw_sent SET summary_hash = ${summaryHash(older)} WHERE item_id = ${itemId}`);
+    for (const d of [rina, andi]) await d.database.db.run(sql`INSERT INTO settings (key, value) VALUES (${`repair.card-faces.v1.${bookId}`}, '2026-11-01T00:00:00.000Z')`);
+    expect((await itemOn(andi, groupBookId, rina, card))?.face).toBeUndefined();
+
+    const first = await runSharedBookRepairs(rina.database, bookId, { today });
+    expect(first.cardFaces).toBeNull();
+    expect(first.creditCardFaces).toBe(1);
+    await settle(home);
+    expect((await itemOn(andi, groupBookId, rina, card))?.face).toEqual({ bank: 'BCA', entry: ENTRY });
+
+    // Once per phone: a second run sends nothing, and the partner's own run has nothing of its own to send.
+    expect((await runSharedBookRepairs(rina.database, bookId, { today })).creditCardFaces).toBeNull();
+    expect((await runSharedBookRepairs(andi.database, bookId, { today })).creditCardFaces).toBe(0);
+  });
+
+  it('a partner reads a card’s face defensively: an entry that is no catalogue id is dropped, the item still read', async () => {
+    const { home, rina, andi, groupBookId, card } = await jointCard();
+    await setJointAccount(rina.database, card, true);
+    await applyCatalogEntry(rina.database, rina.ws, { cardAccountId: card, entry: findEntry(ENTRY)!, today, replaceManual: false });
+    await settle(home);
+    const itemId = await itemIdOf(groupBookId, card);
+    const [row] = await andi.database.db.values<[string]>(sql`SELECT summary_json FROM nw_items WHERE item_id = ${itemId}`);
+    const stored = JSON.parse(row![0]) as Record<string, unknown>;
+    await andi.database.db.run(sql`UPDATE nw_items SET summary_json = ${JSON.stringify({ ...stored, face: { entry: 'Not An Id!', other: 'x' } })} WHERE item_id = ${itemId}`);
+    const read = await itemOn(andi, groupBookId, rina, card);
+    expect(read?.joint).toBe(true);
+    expect(read?.face).toBeUndefined();
   });
 });

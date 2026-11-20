@@ -211,7 +211,7 @@ export async function computeItemSummary(
     tax: taxGroup ? await itemTaxOf(tx, ws, accountId, taxGroup, workspaceBookId, today, taxSource) : null,
     ...(jointRow ? { joint: true as const } : {}),
     ...(await sheetFactsOf(tx, accountId, kind, account.subtype)),
-    ...(jointRow && kind === 'asset' ? await faceFactsOf(tx, accountId, primary?.[0] ?? null) : {}),
+    ...(jointRow && facedKind(kind, account.subtype) ? await faceFactsOf(tx, accountId, primary?.[0] ?? null) : {}),
     ...(jointRow && kind === 'asset' ? await setAsideFactsOf(ws, accountId, setAsides ?? freshSetAsideSource(tx, today)) : {}),
   };
 }
@@ -282,11 +282,19 @@ export async function itemsWithStaleSetAsideTx(tx: Db, today: string, source: Se
   return stale;
 }
 
-/** The `face` an item's summary carries now (`computeItemSummary`), without computing the rest: none unless joint money. */
+/**
+ * Whether an item of this kind carries a `face` while joint: money (an asset), and a credit card (fix/joint-card-face),
+ * the two kinds a partner's Wallet draws as a card. Never a loan or anything else owed.
+ */
+function facedKind(kind: string, subtype: string): boolean {
+  return kind === 'asset' || (kind === 'liability' && subtype === 'credit_card');
+}
+
+/** The `face` an item's summary carries now (`computeItemSummary`), without computing the rest: none unless joint money or a joint card. */
 async function itemFaceTx(tx: Db, accountId: string): Promise<{ face?: ItemFace }> {
-  const [account] = await tx.values<[string]>(sql`SELECT kind FROM accounts WHERE id = ${accountId}`);
+  const [account] = await tx.values<[string, string]>(sql`SELECT kind, subtype FROM accounts WHERE id = ${accountId}`);
   const [jointRow] = await tx.values<[number]>(sql`SELECT 1 FROM nw_joint_accounts WHERE account_id = ${accountId}`);
-  if (account?.[0] !== 'asset' || !jointRow) return {};
+  if (!account || !facedKind(account[0], account[1]) || !jointRow) return {};
   const [primary] = await tx.values<[string | null]>(
     sql`SELECT last4 FROM cards WHERE account_id = ${accountId} AND archived_at IS NULL AND last4 IS NOT NULL ORDER BY is_primary DESC, created_at LIMIT 1`,
   );
@@ -326,6 +334,8 @@ export async function itemsWithStaleFaceTx(tx: Db): Promise<string[]> {
 const FACE_BANK_MAX = 80;
 const FACE_TIER = /^[a-z]{2,24}$/;
 const FACE_DIGITS = /^\d{4}$/;
+/** A catalogue entry's id, as the catalogue's own check has it (lowercase kebab-case), and of a sane length. */
+const FACE_ENTRY = /^(?=.{1,80}$)[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** Whether `accounts` has a column (0080 number_last4, 0087 card_tier): a database stopped before has none. */
 async function accountColumnExists(tx: Db, name: string): Promise<boolean> {
@@ -339,9 +349,25 @@ async function accountColumnExists(tx: Db, name: string): Promise<boolean> {
  * in the item's name (`cardLast4`). A pocket's tier and digits are its account's, where Wallet's card is: the pocket's
  * own only when the account has none. Never the profile's other fields (its owner's name, its place). Empty — no `face`
  * key at all — when none is set. Called for a joint account only: an account merely shared, or private, sends none.
+ *
+ * A joint credit card (fix/joint-card-face): its issuer (`accountBanksTx`, the card's `card_identity`) and the catalogue
+ * entry its live points programme is linked to — what the holder's Wallet draws its art and network from. Its card's
+ * digits are already in the item's name; no holder's name, limit, programme or rule goes with it.
  */
 async function faceFactsOf(tx: Db, accountId: string, cardLast4: string | null): Promise<{ face?: ItemFace }> {
   const face: ItemFace = {};
+  const [kind] = await tx.values<[string, string]>(sql`SELECT kind, subtype FROM accounts WHERE id = ${accountId}`);
+  if (kind?.[0] === 'liability') {
+    if (kind[1] !== 'credit_card') return {};
+    const bank = (await accountBanksTx(tx, [accountId])).get(accountId) ?? '';
+    if (bank.length > 0 && bank.length <= FACE_BANK_MAX) face.bank = bank;
+    // As the holder's Wallet finds it (`loadCardPoints`): the card's first live programme, by when it was made.
+    const [entry] = await tx.values<[string | null]>(
+      sql`SELECT catalog_entry_id FROM reward_programs WHERE card_account_id = ${accountId} AND archived_at IS NULL ORDER BY created_at LIMIT 1`,
+    );
+    if (entry?.[0] && FACE_ENTRY.test(entry[0])) face.entry = entry[0];
+    return Object.keys(face).length > 0 ? { face } : {};
+  }
   let bank = (await accountBanksTx(tx, [accountId])).get(accountId) ?? '';
   if (bank === '') {
     const [profile] = await tx.values<[string]>(sql`SELECT coretax_fields_json FROM asset_profiles WHERE account_id = ${accountId}`);
@@ -371,7 +397,7 @@ async function faceFactsOf(tx: Db, accountId: string, cardLast4: string | null):
   return Object.keys(face).length > 0 ? { face } : {};
 }
 
-/** A peer's `face`, read defensively: a short bank name, a tier word and four digits survive; anything else is dropped. */
+/** A peer's `face`, read defensively: a short bank name, a tier word, four digits and a catalogue id survive; anything else is dropped. */
 function faceOf(sent: unknown): { face?: ItemFace } {
   if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) return {};
   const raw = sent as Record<string, unknown>;
@@ -379,6 +405,7 @@ function faceOf(sent: unknown): { face?: ItemFace } {
   if (typeof raw.bank === 'string' && raw.bank.trim().length > 0 && raw.bank.length <= FACE_BANK_MAX) face.bank = raw.bank.trim();
   if (typeof raw.tier === 'string' && FACE_TIER.test(raw.tier)) face.tier = raw.tier;
   if (typeof raw.last4 === 'string' && FACE_DIGITS.test(raw.last4)) face.last4 = raw.last4;
+  if (typeof raw.entry === 'string' && FACE_ENTRY.test(raw.entry)) face.entry = raw.entry;
   return Object.keys(face).length > 0 ? { face } : {};
 }
 
@@ -639,7 +666,7 @@ export async function receivedItems(database: Database, groupBookId: string): Pr
       if (summary && typeof summary === 'object') {
         const { joint, sheet, face, pocketOf, setAsideMinor, ...rest } = summary;
         // Only a literal `true` makes an item joint; anything else a peer sends reads as off. A face and a set-aside only
-        // on a joint item; a set-aside that is not a whole figure above nought reads as nothing set aside.
+        // on a joint item (a card's face too); a set-aside that is not a whole figure above nought reads as nothing set aside.
         const jointFacts = joint === true ? { joint: true as const, ...faceOf(face), ...setAsideOf(setAsideMinor) } : {};
         out.push({ ...rest, ...transfersOf(summary), ...jointFacts, ...sheetOf(sheet), ...pocketOfSent(pocketOf), owner, itemId });
       }

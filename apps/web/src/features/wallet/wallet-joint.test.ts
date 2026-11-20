@@ -57,6 +57,21 @@ describe('which of the partner’s items are Wallet cards', () => {
     expect(bare).toMatchObject({ last4: null, bank: null, tier: null });
   });
 
+  it('carries a joint credit card’s issuer and catalogue product, and never a product on money', () => {
+    const [credit, money] = walletJoint(
+      [
+        item('c', 'credit_card', { name: 'Rina Kartu ···· 7302', face: { bank: 'BCA', entry: 'bca-sq-krisflyer-visa-signature' } }),
+        item('m', 'savings', { name: 'Joint savings', face: { bank: 'Bank Contoh', entry: 'bca-sq-krisflyer-visa-signature' } }),
+      ],
+      ANDI,
+      names,
+    );
+    expect(credit).toMatchObject({ side: 'credit', name: 'Rina Kartu', last4: '7302', bank: 'BCA', entry: 'bca-sq-krisflyer-visa-signature' });
+    expect(money).toMatchObject({ side: 'money', bank: 'Bank Contoh', entry: null });
+    const [bare] = walletJoint([item('d', 'credit_card', { name: 'Rina Kartu' })], ANDI, names);
+    expect(bare).toMatchObject({ bank: null, entry: null });
+  });
+
   it('carries what its holder set aside of joint money, 0 when the summary sends none, and never on a card', () => {
     const [kept, none, credit] = walletJoint(
       [item('a', 'savings', { balanceMinor: 8_000_000, setAsideMinor: 3_000_000 }), item('b', 'bank', { balanceMinor: 1_000_000 }), item('c', 'credit_card', { balanceMinor: 400_000, setAsideMinor: 90_000 })],
