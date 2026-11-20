@@ -115,6 +115,8 @@ export interface ClaimResult {
   keys: Sealed;
   sameMember: boolean;
   memberId: string;
+  /** A self book (link my devices): the log's seq at the claim, where the new device's reading starts. */
+  seq?: number;
 }
 
 /**

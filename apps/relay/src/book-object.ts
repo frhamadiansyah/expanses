@@ -29,7 +29,11 @@ export type MemberOp =
   | { type: 'putInvite'; invite: InviteRecord }
   | { type: 'removeDevice'; target: string }
   | { type: 'setOwners'; deviceIds: string[] }
-  | { type: 'deleteBook' };
+  | { type: 'deleteBook' }
+  | { type: 'ack'; seq: number }
+  | { type: 'putBlob'; hash: string; data: string; expiresAt: string }
+  | { type: 'getBlob'; hash: string }
+  | { type: 'deleteBlob'; hash: string };
 
 export class BookObject extends DurableObject<Env> {
   private queue: Promise<unknown> = Promise.resolve();
@@ -38,8 +42,8 @@ export class BookObject extends DurableObject<Env> {
     this.env.INVITES.get(this.env.INVITES.idFromName(inviteId)).attach(bookId),
   );
 
-  async create(bookId: string, device: DevicePublic, deviceId: string): Promise<Result> {
-    return this.serial(async () => ({ status: 201, body: await this.book.create(bookId, device, deviceId) }));
+  async create(bookId: string, device: DevicePublic, deviceId: string, self = false): Promise<Result> {
+    return this.serial(async () => ({ status: 201, body: await this.book.create(bookId, device, deviceId, { self }) }));
   }
 
   async preview(inviteId: string): Promise<Result> {
@@ -76,6 +80,17 @@ export class BookObject extends DurableObject<Env> {
           return { status: 204 };
         case 'deleteBook':
           await this.book.deleteBook(actor);
+          return { status: 204 };
+        case 'ack':
+          await this.book.ack(op.seq, actor);
+          return { status: 204 };
+        case 'putBlob':
+          await this.book.putBlob(op.hash, op.data, op.expiresAt, actor);
+          return { status: 204 };
+        case 'getBlob':
+          return { status: 200, body: await this.book.getBlob(op.hash, actor) };
+        case 'deleteBlob':
+          await this.book.deleteBlob(op.hash, actor);
           return { status: 204 };
       }
     });

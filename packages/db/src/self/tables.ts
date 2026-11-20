@@ -26,6 +26,7 @@ const DEVICE: readonly string[] = [
   'self_pending',
   'self_outbox',
   'self_notes',
+  'self_group',
 ];
 
 const META: readonly string[] = ['self_clocks', 'self_tombstones', 'self_aliases'];
@@ -65,6 +66,7 @@ const SEAT: readonly string[] = [
 ];
 
 const REPLICATE: readonly string[] = [
+  'self_devices', // the Devices list: each device writes its own row
   'accounts',
   'asset_acquired',
   'asset_profiles',

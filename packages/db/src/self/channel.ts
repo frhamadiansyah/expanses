@@ -118,8 +118,12 @@ const maxClock = (clocks: Map<string, string>, columns: readonly string[]) => co
 
 /* ------------------------------------------------------------------------------------------------------ collect */
 
+/** One change-set's ops as JSON at most this big: deflated and sealed, it fits a 128 KB log entry even if nothing compresses. */
+export const MAX_PART_BYTES = 48 * 1024;
+
 /**
- * What this device has written since it last collected, as one change-set in `self_outbox`, or null when nothing was.
+ * What this device has written since it last collected, as change-sets in `self_outbox` (one, or several parts in
+ * order when it is too big for one log entry), or null when nothing was. Answers the first part.
  * Each row goes at its values now: a row made goes whole, a row changed goes with the columns that changed, a row gone
  * goes as a removal.
  */
@@ -142,8 +146,8 @@ export function collectSelfChanges(database: Database, deviceId: string): Promis
       rows.set(name, entry);
     }
     // Dated when the last of these writes was made, not when they were collected; never behind this device's clock.
-    const hlc = await localTick(tx, deviceId, madeAt);
-    const ops: SelfOp[] = [];
+    // Each op with what its clocks will say once its part's clock is known; then cut into parts that fit one log entry.
+    const planned: { op: SelfOp; size: number; pk: string; columns: string[] }[] = [];
     for (const { table, key, made, columns } of rows.values()) {
       const meta = await tableMeta(tx, table);
       if (!meta) continue;
@@ -152,22 +156,45 @@ export function collectSelfChanges(database: Database, deviceId: string): Promis
       if (!row) {
         // Merged into another row by an apply here: that row carries it now, and the other devices did the same.
         if ((await tx.values(sql`SELECT 1 FROM self_aliases WHERE tbl = ${table} AND from_pk = ${pk}`)).length > 0) continue;
-        ops.push({ t: table, k: key, d: true });
-        await tx.run(sql`DELETE FROM self_clocks WHERE tbl = ${table} AND pk = ${pk}`);
-        await tx.run(sql`INSERT INTO self_tombstones (tbl, pk, hlc) VALUES (${table}, ${pk}, ${hlc}) ON CONFLICT (tbl, pk) DO UPDATE SET hlc = excluded.hlc`);
+        const op: SelfOp = { t: table, k: key, d: true };
+        planned.push({ op, size: JSON.stringify(op).length, pk, columns: [] });
         continue;
       }
       const names = made ? meta.columns.filter((column) => !meta.keys.includes(column)) : meta.columns.filter((column) => columns.has(column));
       if (!made && names.length === 0) continue;
-      ops.push({ t: table, k: key, c: Object.fromEntries(names.map((column) => [column, row[column]])), ...(made ? { i: true as const } : {}) });
-      await setClocks(tx, table, pk, made ? ['', ...names] : names, hlc);
-      if (made) await tx.run(sql`DELETE FROM self_tombstones WHERE tbl = ${table} AND pk = ${pk}`);
+      const op: SelfOp = { t: table, k: key, c: Object.fromEntries(names.map((column) => [column, row[column]])), ...(made ? { i: true as const } : {}) };
+      planned.push({ op, size: JSON.stringify(op).length, pk, columns: made ? ['', ...names] : names });
     }
     await tx.run(sql`DELETE FROM self_pending WHERE seq <= ${pending[pending.length - 1]![0]}`);
-    if (ops.length === 0) return null;
-    const changeSet: SelfChangeSet = { v: 1, hlc, schema: LATEST_VERSION, ops };
-    await tx.run(sql`INSERT INTO self_outbox (id, hlc, change_json, created_at) VALUES (${uuidv7()}, ${hlc}, ${JSON.stringify(changeSet)}, ${new Date().toISOString()})`);
-    return changeSet;
+    if (planned.length === 0) return null;
+    const parts: (typeof planned)[] = [[]];
+    let size = 0;
+    for (const item of planned) {
+      if (size + item.size > MAX_PART_BYTES && parts[parts.length - 1]!.length > 0) {
+        parts.push([]);
+        size = 0;
+      }
+      parts[parts.length - 1]!.push(item);
+      size += item.size;
+    }
+    const sets: SelfChangeSet[] = [];
+    for (const part of parts) {
+      // Dated when the last of these writes was made, not when they were collected; never behind this device's clock.
+      const hlc = await localTick(tx, deviceId, madeAt);
+      for (const { op, pk, columns } of part) {
+        if (op.d) {
+          await tx.run(sql`DELETE FROM self_clocks WHERE tbl = ${op.t} AND pk = ${pk}`);
+          await tx.run(sql`INSERT INTO self_tombstones (tbl, pk, hlc) VALUES (${op.t}, ${pk}, ${hlc}) ON CONFLICT (tbl, pk) DO UPDATE SET hlc = excluded.hlc`);
+          continue;
+        }
+        await setClocks(tx, op.t, pk, columns, hlc);
+        if (op.i) await tx.run(sql`DELETE FROM self_tombstones WHERE tbl = ${op.t} AND pk = ${pk}`);
+      }
+      const changeSet: SelfChangeSet = { v: 1, hlc, schema: LATEST_VERSION, ops: part.map(({ op }) => op) };
+      await tx.run(sql`INSERT INTO self_outbox (id, hlc, change_json, created_at) VALUES (${uuidv7()}, ${hlc}, ${JSON.stringify(changeSet)}, ${new Date().toISOString()})`);
+      sets.push(changeSet);
+    }
+    return sets[0]!;
   });
 }
 
@@ -185,6 +212,16 @@ interface Run {
   notes: SelfNote[];
   /** Transactions this change-set made, for rule 4. */
   made: string[];
+}
+
+/** What waits to be sent, oldest first, with each row's id so it is dropped only once the relay has it. */
+export async function selfOutbox(database: Database): Promise<{ id: string; changeSet: SelfChangeSet }[]> {
+  const rows = await database.db.values<[string, string]>(sql`SELECT id, change_json FROM self_outbox ORDER BY hlc`);
+  return rows.map(([rowId, json]) => ({ id: rowId, changeSet: JSON.parse(json) as SelfChangeSet }));
+}
+
+export async function dropFromSelfOutbox(database: Database, rowId: string): Promise<void> {
+  await database.db.run(sql`DELETE FROM self_outbox WHERE id = ${rowId}`);
 }
 
 /** Every change-set this device collected and has not sent, oldest first, taken out of the outbox. */

@@ -1,5 +1,7 @@
 import { bytesToBase64Url, requestSigningBytes, type RequestSigner } from './relay-signing';
-import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SequencedEntry, SyncTransport } from './types';
+import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SealedFor, SequencedEntry } from './types';
+import type { LinkView } from '../self/link-hub';
+import type { SelfTransport } from '../self/transport';
 import { SyncTransportError } from './types';
 
 /*
@@ -24,7 +26,7 @@ export interface RelayTransportOptions {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
-export class RelayTransport implements SyncTransport {
+export class RelayTransport implements SelfTransport {
   private readonly baseUrl: string;
   private readonly signer: RequestSigner;
   private readonly fetchImpl: typeof fetch;
@@ -75,6 +77,52 @@ export class RelayTransport implements SyncTransport {
 
   async deleteBook(bookId: string): Promise<void> {
     await this.call('DELETE', `/books/${seg(bookId)}`);
+  }
+
+  /* ---------------------------------------------------------------- link my devices */
+
+  async createSelfBook(device: DevicePublic): Promise<{ bookId: string }> {
+    return (await this.call('POST', '/self-books', device)) as { bookId: string };
+  }
+
+  async ack(bookId: string, seq: number): Promise<void> {
+    await this.call('POST', `/books/${seg(bookId)}/ack`, { seq });
+  }
+
+  async putBlob(bookId: string, hash: string, data: string, expiresAt: string): Promise<void> {
+    await this.call('PUT', `/books/${seg(bookId)}/blobs/${seg(hash)}`, { data, expiresAt });
+  }
+
+  async getBlob(bookId: string, hash: string): Promise<string> {
+    return ((await this.call('GET', `/books/${seg(bookId)}/blobs/${seg(hash)}`)) as { data: string }).data;
+  }
+
+  async deleteBlob(bookId: string, hash: string): Promise<void> {
+    await this.call('DELETE', `/books/${seg(bookId)}/blobs/${seg(hash)}`);
+  }
+
+  async startLink(device: DevicePublic): Promise<LinkView> {
+    return (await this.call('POST', '/links', device)) as LinkView;
+  }
+
+  async claimLink(code: string, device: DevicePublic, commit: string): Promise<LinkView> {
+    return (await this.call('POST', '/links/claim', { code, device, commit })) as LinkView;
+  }
+
+  async readLink(sessionId: string): Promise<LinkView> {
+    return (await this.call('GET', `/links/${seg(sessionId)}`)) as LinkView;
+  }
+
+  async revealLink(sessionId: string, nonce: string, joinerName?: SealedFor): Promise<LinkView> {
+    return (await this.call('POST', `/links/${seg(sessionId)}/reveal`, { nonce, ...(joinerName ? { joinerName } : {}) })) as LinkView;
+  }
+
+  async allowLink(sessionId: string, welcome: SealedFor & { payload?: Sealed }): Promise<void> {
+    await this.call('POST', `/links/${seg(sessionId)}/allow`, welcome);
+  }
+
+  async declineLink(sessionId: string): Promise<void> {
+    await this.call('POST', `/links/${seg(sessionId)}/decline`);
   }
 
   private async call(method: Method, path: string, body?: unknown, signed = true): Promise<unknown> {

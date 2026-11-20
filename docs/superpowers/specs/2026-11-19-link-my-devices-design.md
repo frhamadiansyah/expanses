@@ -236,6 +236,38 @@ named too.
   iPhone shares Rumah with Sari, so it shows a code instead of typing one." This is what keeps a seat from ever being
   replaced by mistake.
 
+**As built (Drop 2).**
+- *Meeting place* (`packages/db/src/self/link-hub.ts`): one implementation, used by `MemoryTransport` (a map) and by
+  the Worker (one `LinkObject` Durable Object, migration `v2`). Endpoints: `POST /links` (source, own key), `POST
+  /links/claim` (new device, own key: code, keys, commitment), `GET /links/:id`, `POST /links/:id/reveal | allow |
+  decline` (parties only, checked against the key the session holds; anyone else gets 404). A code is 6 digits, unique
+  among open sessions, 10 minutes, claimed once (then it is free again).
+- *Five tries*: six digits cannot say which session a wrong code was aimed at, so **every wrong code counts against
+  every session open at that moment, and a session that has seen five is burned** (the source shows "try again" and a
+  new code); one device may try five wrong codes in ten minutes (429 after). An attacker gets 5 in 1,000,000 at a code,
+  and even a hit only reaches the Allow screen, whose digits will not match.
+- *Check digits* (`link-crypto.ts`): the new device sends sha-256 of its nonce with its claim; the source reveals its
+  nonce only after that; the new device reveals its own (with its name, sealed for the source's key — the relay never
+  reads a device name) only after the source's. Digits = sha-256 over both devices' keys and both nonces, mod 10,000.
+  The source checks the revealed nonce against the commitment and ends the link if they differ.
+- **Design change: the square code carries the same 6 digits** (`cicis://link#482719`), a convenience for a camera, not
+  a 32-byte secret. Both ways rest on the check digits and Allow (owner answer 2), so there is one path to get right.
+- *Allow*: the source puts an ordinary signed invite on the group's book (its keys sealed with a fresh secret) and leaves
+  `{ relayBookId, inviteId, secret }` in the session sealed for the new device's key. The new device claims the invite:
+  on a self book the relay makes every claiming device an owner (so any device can unlink any other) and answers the
+  log's seq at the claim, where its reading starts.
+- *Engine* (`self/engine.ts`, `SelfEngine`): `startLinking / checkLinking / allowLinking / declineLinking` (source),
+  `joinWithCode / checkJoining` (new device; refused on a device that already holds a group — linked, or showing a code
+  itself), `sync` (collect, pull → apply → send → pull, ack; a hold stops at that entry; `403 removed` → unlinked),
+  `unlink(device)` (signed removal, relay drop, new epoch sealed for every device still in `self_devices`), `devices()`,
+  and `uploadCopy / downloadCopy / deleteCopy` (the copy sealed under a one-off key, blobs of 700 KB, 24 hours, each
+  checked against its hash and the whole against its sha-256).
+- *Tables* (migration `0126`, unreleased, amended): device-only `self_group` (relay book, epoch, cursor, `active` |
+  `unlinked`); replicated `self_devices` (each device writes its own row: name, kind, keys, app version, last synced —
+  at most every 5 minutes; `removed_at` set by the device that unlinked it).
+- *Change-sets* are cut into parts of at most 48 KB of JSON, each under its own clock, so any part fits a 128 KB log
+  entry even if nothing compresses.
+
 ## 4. Replace on join
 
 ### 4.1 Source (linking device): read only
@@ -287,7 +319,9 @@ the copied `book_devices`). Books only the joiner had are refused at step 0, nev
   `MARKETING_VERSION`, so they should go to TestFlight together.
 - **Currency**: no rule for the self channel (the whole DB moves). `assertShareableTx` (`seed.ts:96-107`) is unchanged
   for households.
-- **Relay limits and cost**: 5 active devices per relay book (`book.ts:20,192`) counts standby devices, so owner 3 +
+- **Relay limits and cost** (as built in Drop 2: blobs of at most 700 KB each so a request stays under 1 MB, 256 MB per
+  book, kept a week at most — the copy 24 hours; a self book is pruned below the lowest ack of its active devices and a
+  pull from before that is `410 pruned`; a household book is never pruned): 5 active devices per relay book (`book.ts:20,192`) counts standby devices, so owner 3 +
   husband 2 fills Rumah; 128 KB per entry (`book.ts:19,138`); 1 MB per request (`index.ts:19`); 500 entries per pull
   (`book.ts:21,158`); the log is never pruned today (`book.ts:13-17`). New: blob store (snapshot deleted after the
   join, photos after every device has them) and pruning of the self log below the lowest device mark. Cost on Durable

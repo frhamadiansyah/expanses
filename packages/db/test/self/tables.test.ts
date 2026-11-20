@@ -29,7 +29,8 @@ describe('which tables the owner’s other devices get', () => {
   });
 
   it('keeps the self channel’s own queue on the device, and its clocks for the copy a new device starts from', () => {
-    for (const t of ['self_state', 'self_pending', 'self_outbox', 'self_notes']) expect(SELF_TABLES[t]).toBe('device');
+    for (const t of ['self_state', 'self_pending', 'self_outbox', 'self_notes', 'self_group']) expect(SELF_TABLES[t]).toBe('device');
+    expect(SELF_TABLES.self_devices).toBe('replicate');
     for (const t of ['self_clocks', 'self_tombstones', 'self_aliases']) expect(SELF_TABLES[t]).toBe('meta');
   });
 

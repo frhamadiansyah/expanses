@@ -54,3 +54,29 @@ export function isInviteRecord(value: unknown): value is InviteRecord {
 export function isOwnersBody(value: unknown): value is { deviceIds: string[] } {
   return isObject(value) && Array.isArray(value.deviceIds) && value.deviceIds.every(isText);
 }
+
+/* Link my devices (spec §3.5). */
+
+function isSealedFor(value: unknown): value is { deviceId: string; epoch: number; ephJwk: JsonWebKey; iv: string; ct: string } {
+  return isObject(value) && isText(value.deviceId) && typeof value.epoch === 'number' && isObject(value.ephJwk) && typeof value.iv === 'string' && typeof value.ct === 'string';
+}
+
+export function isClaimBody(value: unknown): value is { code: string; device: DevicePublic; commit: string } {
+  return isObject(value) && typeof value.code === 'string' && isDevicePublic(value.device) && typeof value.commit === 'string';
+}
+
+export function isRevealBody(value: unknown): value is { nonce: string; joinerName?: { deviceId: string; epoch: number; ephJwk: JsonWebKey; iv: string; ct: string } } {
+  return isObject(value) && typeof value.nonce === 'string' && (value.joinerName === undefined || isSealedFor(value.joinerName));
+}
+
+export function isWelcome(value: unknown): value is { deviceId: string; epoch: number; ephJwk: JsonWebKey; iv: string; ct: string } {
+  return isSealedFor(value);
+}
+
+export function isAckBody(value: unknown): value is { seq: number } {
+  return isObject(value) && typeof value.seq === 'number';
+}
+
+export function isBlobBody(value: unknown): value is { data: string; expiresAt: string } {
+  return isObject(value) && typeof value.data === 'string' && typeof value.expiresAt === 'string';
+}

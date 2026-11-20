@@ -57,3 +57,28 @@ CREATE TABLE self_aliases (
   to_pk TEXT NOT NULL,
   PRIMARY KEY (tbl, from_pk)
 );
+
+-- The group itself (Drop 2). This install's own: which relay book its linked devices share, the epoch it writes under,
+-- how far into that book's log it has applied, and whether it is still linked ('active') or was unlinked by another of
+-- the owner's devices ('unlinked': it stops syncing and keeps its data). One row at most.
+CREATE TABLE self_group (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  relay_book_id TEXT NOT NULL,
+  epoch INTEGER NOT NULL,
+  cursor INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL CHECK (state IN ('active', 'unlinked')),
+  joined_at TEXT NOT NULL
+);
+-- Every device of the group, as each device wrote its own row: sent to all of them, so the Devices list reads the same
+-- everywhere. Its keys are the ones a rotation seals the next epoch for. removed_at is set by the device that unlinked it.
+CREATE TABLE self_devices (
+  device_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('phone', 'tablet', 'mac', 'other')),
+  sign_jwk TEXT NOT NULL,
+  agree_jwk TEXT NOT NULL,
+  app_version TEXT,
+  added_at TEXT NOT NULL,
+  last_synced_at TEXT,
+  removed_at TEXT
+);
