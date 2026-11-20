@@ -1485,7 +1485,7 @@ export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: Chan
 
 /** One change-set in its own transaction, capture off (§7.2). What tests and a re-apply reach for. */
 export async function applyChangeSet(database: Database, bookId: string, changeSet: ChangeSet): Promise<void> {
-  await database.transaction((tx) => withCapturePaused(tx, async () => applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet), changeSet));
+  await database.transaction((tx) => withCapturePaused(tx, async () => applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet), changeSet, bookId));
 }
 
 /* ------------------------------------------------------------------ the loop */
@@ -1774,7 +1774,7 @@ export async function pullAndApply(
           const decisions = applyingDecisions;
           if (own || !changeSet || !decisions) return undefined; // our own, or refused as a whole
           return { ...changeSet, ops: changeSet.ops.filter((_, i) => !(decisions[i] instanceof AuthorityError)) };
-        }),
+        }, bookId),
       );
       if (admitted) introduced.push(entry.deviceId);
       if (removal) removals.push(removal);

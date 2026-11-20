@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import { createAccount, createDatabase, createWorkspace, migrate, personalBook, type Database, type WorkspaceContext } from '../../src/index';
 import { createNodeExecutor } from '../../src/node';
 import type { SqlExecutor } from '../../src/executor';
-import { projectPurchase } from '../../src/sync/capture';
+import { paidFromOf, projectPurchase } from '../../src/sync/capture';
 import { SyncEngine } from '../../src/sync/engine';
 import { generateDevice, requestSignerOf, type DeviceKeys } from '../../src/sync/keys';
 import { MemoryTransport } from '../../src/sync/memory-transport';
@@ -212,12 +212,13 @@ export async function projectBook(database: Database, bookId: string): Promise<R
   const out: Record<string, Record<string, unknown>> = {};
   for (const entity of SHARED_ENTITIES) {
     if (entity.kind === 'purchase') {
-      const lineages = await database.db.values<[string, string | null, string, string]>(
-        sql`SELECT lineage_id, head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE book_id = ${bookId} ORDER BY lineage_id`,
+      const lineages = await database.db.values<[string, string | null, string, string, string | null, string | null]>(
+        sql`SELECT lineage_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE book_id = ${bookId} ORDER BY lineage_id`,
       );
       const purchases: Record<string, unknown> = {};
-      for (const [lineageId, head, paidBy, paidLabel] of lineages) {
-        purchases[lineageId] = head === null ? 'void' : await projectPurchase(database.db, head, memberId, { paidBy, paidLabel });
+      for (const [lineageId, head, paidBy, paidLabel, owner, itemId] of lineages) {
+        // Read as capture reads it: the item another member paid from (a joint account, Paid with) keeps them the payer.
+        purchases[lineageId] = head === null ? 'void' : await projectPurchase(database.db, head, memberId, { paidBy, paidLabel, paidFrom: paidFromOf(owner, itemId) });
       }
       out.purchase = purchases;
       continue;
