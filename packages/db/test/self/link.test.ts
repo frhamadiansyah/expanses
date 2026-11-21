@@ -1,7 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
-import { createAccount, type Database, listAccounts, postTransaction, renameAccount, type WorkspaceContext } from '../../src/index';
+import { activityOf, createAccount, type Database, listAccounts, postTransaction, renameAccount, type WorkspaceContext } from '../../src/index';
 import { generateDevice, requestSignerOf, type DeviceKeys } from '../../src/sync/keys';
 import { MemoryTransport } from '../../src/sync/memory-transport';
 import { SyncTransportError } from '../../src/sync/types';
@@ -335,5 +335,26 @@ describe('the seat', () => {
     expect(await phone!.database.db.values(sql`SELECT description FROM transactions WHERE description = 'Test shop (Mac)'`)).toEqual([['Test shop (Mac)']]);
     // On the seat it went into the household's outbox, as if it had been recorded there.
     expect(Number((await phone!.database.db.values<[number]>(sql`SELECT count(*) FROM sync_outbox WHERE book_id = ${bookId}`))[0]![0])).toBeGreaterThan(0);
+  });
+
+  it('a change the household will not take (the workspace stopped being shared meanwhile) stays on both devices and is said in Activity', async () => {
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    const bookId = (await phone!.database.db.values<[string]>(sql`SELECT id FROM books ORDER BY created_at LIMIT 1`))[0]![0];
+    await phone!.database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, 'test-relay', 1, 'test-member', 'active', '2026-11-01T00:00:00Z')`);
+    await link(phone!, mac!);
+    configureCapture(phone!.database, { deviceId: phone!.keys.deviceId });
+    const groceries = (await listAccounts(mac!.database, mac!.ws)).find((a) => a.name === 'Groceries')!.id;
+    const bank = (await listAccounts(mac!.database, mac!.ws)).find((a) => a.name === 'Test Bank')!.id;
+    await postTransaction(mac!.database, mac!.ws, { occurredOn: '2026-11-19', description: 'Test shop (late)', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 7_000, currency: 'IDR' }) });
+    await mac!.engine.sync();
+    // Meanwhile the iPhone's share ended (as Stop sharing leaves it): read-only there.
+    await phone!.database.db.run(sql`UPDATE shared_books SET state = 'unshared' WHERE book_id = ${bookId}`);
+    await phone!.engine.sync();
+    expect(await phone!.database.db.values(sql`SELECT description FROM transactions WHERE description = 'Test shop (late)'`)).toEqual([['Test shop (late)']]);
+    expect(await phone!.database.db.values(sql`SELECT count(*) FROM sync_outbox`)).toEqual([[0]]);
+    expect((await activityOf(phone!.database, phone!.ws)).map((line) => line.title)).toContain('A change made on another device was not shared');
+    await phone!.engine.sync();
+    await mac!.engine.sync();
+    expect((await activityOf(mac!.database, mac!.ws)).map((line) => line.title)).toContain('A change made on another device was not shared');
   });
 });

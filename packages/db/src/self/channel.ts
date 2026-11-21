@@ -298,8 +298,12 @@ async function applyOnce(database: Database, changeSet: SelfChangeSet, share: bo
       await tx.run(sql`INSERT OR REPLACE INTO self_state (key, value) VALUES ('quiet', '1')`);
       await tx.run(sql`PRAGMA defer_foreign_keys = ON`);
       await receiveHlc(tx, changeSet.hlc);
-      // Only the seat shares, and only while some workspace here is shared with someone.
-      const shares = share && !(await seatIsElsewhere(tx)) && (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE name = 'shared_books'`)).length > 0 && (await tx.values(sql`SELECT 1 FROM shared_books WHERE state = 'active' LIMIT 1`)).length > 0;
+      // Only the seat shares, and only while some workspace here is (or was, now read-only) shared with someone.
+      const shares =
+        share &&
+        !(await seatIsElsewhere(tx)) &&
+        (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE name = 'shared_books'`)).length > 0 &&
+        (await tx.values(sql`SELECT 1 FROM shared_books WHERE state IN ('active', 'unshared') LIMIT 1`)).length > 0;
       const run: Run = { tx, hlc: changeSet.hlc, notes: [], made: [], share: shares };
       const apply = async () => {
         for (const op of changeSet.ops) await applyOp(run, op);
