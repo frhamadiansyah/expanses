@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openAccountHistory, openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
-import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, payCard, payStatementPurchases, saveCardTerms, showCardBack } from './card-section';
+import { cardPage, chooseCardPayFrom, closePaidBubble, openCardPay, openPaidBubble, openStatementPay, payCard, payStatementPurchases, saveCardTerms, showCardBack } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -103,13 +103,18 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   await expect(page).toHaveURL(/\/cards\/[^/]+\/statement$/);
   await expect(bar).toHaveCount(0);
 
-  // Paid purchases stay ticked, and can no longer be unticked.
+  // Paid purchases wear the paid ✓, no longer a box to untick; its name says how, and so does its bubble.
   const lines = page.getByTestId('statement-line');
-  const superindo = page.getByLabel(/^Superindo, paid on/);
-  await expect(superindo).toBeChecked();
-  await expect(superindo).toBeDisabled();
-  await expect(page.getByLabel(/^Ranch Market, paid on/)).toBeChecked();
+  await expect(page.getByRole('button', { name: /^Superindo, Paid \d+ \w+$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Ranch Market, Paid \d+ \w+$/ })).toBeVisible();
+  await expect(page.getByLabel('Pay Superindo')).toHaveCount(0);
   await expect(lines.filter({ hasText: 'payment' })).toContainText('530.000');
+  const superindoLine = lines.filter({ hasText: 'Superindo' });
+  const bubble = await openPaidBubble(page, superindoLine);
+  await expect(bubble.getByTestId('statement-paid-how')).toHaveText(/^Paid \d+ \w+$/);
+  // The payment's amount, both purchases together, and where it came from.
+  await expect(bubble.getByTestId('statement-paid-detail')).toHaveText(/^Rp\s530\.000 from BCA Tahapan$/);
+  await closePaidBubble(page, superindoLine);
 
   // Deleting the payment frees them to be paid again. Cashflow lists no card payment (owner 2026-11-16): the bank's
   // history and the statement do.
@@ -143,10 +148,11 @@ test('the totals band splits the previous bill from what is unbilled, and names 
   // Tick this cycle's purchase and pay it: the bank clears the older bill first, so that is where it lands.
   await page.getByLabel('Pay Superindo').check();
   await payStatementPurchases(page, 'BCA Tahapan');
-  // Paid one by one: the one paid ✓, and the pay day in green words at the start of its subtitle.
+  // Paid one by one: the one paid ✓; the pay day is in its bubble, and the row keeps its date.
   const superindo = page.getByTestId('statement-line').filter({ hasText: 'Superindo' });
-  await expect(superindo.getByTestId('statement-paid-how')).toHaveText(/^Paid \d+ \w+$/);
-  await expect(page.getByLabel(/^Superindo, paid on/)).toBeChecked();
+  const paidHow = (await openPaidBubble(page, superindo)).getByTestId('statement-paid-how');
+  await expect(paidHow).toHaveText(/^Paid \d+ \w+$/);
+  await closePaidBubble(page, superindo);
   await expect(page.getByTestId('statement-line').filter({ hasText: 'payment' })).toContainText('for 1 purchase');
   // Rp 450.000 of the Rp 2.000.000 previous bill is settled, and the upcoming bill drops by the same.
   await expect(band).toContainText('1.550.000');
@@ -216,21 +222,28 @@ test('a payment made with Pay covers the statement’s purchases oldest first, a
   const ride = page.getByTestId('statement-line').filter({ hasText: 'Ride to airport' });
   const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
   await expect(ride.getByTestId('statement-covered')).toBeVisible();
-  await expect(ride.getByTestId('statement-paid-how')).toHaveText(/^Paid with the \d+ \w+ payment$/);
+  await expect(ride.getByRole('button', { name: /^Ride to airport, Paid with the \d+ \w+ payment$/ })).toBeVisible();
   await expect(page.getByLabel('Pay Ride to airport')).toHaveCount(0);
   await expect(hotel).toContainText(/200\.000 covered, Rp\s1\.800\.000 left/);
   await expect(page.getByTestId('statement-group')).toContainText(/1 of 2 paid/i);
-  // The words on each row say how it was paid: no legend under the statement.
+  // No legend under the statement, and no words on the rows: the ✓ keeps them.
   await expect(page.getByTestId('statement-legend')).toHaveCount(0);
-  await expect(hotel.getByTestId('statement-paid-how')).toHaveCount(0);
+  await expect(ride).not.toContainText('Paid with');
 
-  // The covered ✓ says which payment covered it, and is not a switch.
-  await ride.getByTestId('statement-covered').click();
-  const why = page.getByRole('dialog', { name: 'Ride to airport' });
-  await expect(why).toContainText('Covered by');
-  await expect(why).toContainText(/Paid with the card’s payment of Rp\s500\.000\. Deleting that payment makes it owed again\./);
-  await why.getByRole('button', { name: 'Close' }).click();
+  // The covered ✓ says which payment covered it, and is not a switch: a tap opens its bubble, a tap elsewhere shuts it.
+  const why = await openPaidBubble(page, ride);
+  await expect(why).toHaveAccessibleName(/^Paid with the \d+ \w+ payment$/);
+  await expect(why.getByTestId('statement-paid-how')).toHaveText(/^Paid with the \d+ \w+ payment$/);
+  await expect(why.getByTestId('statement-paid-detail')).toHaveText(/^Rp\s500\.000 from BCA Tahapan$/);
+  await expect(why.getByRole('button', { name: 'Not paid off' })).toHaveCount(0);
+  // A tap on the section's heading, nothing to press there.
+  await page.getByText(/^1 of 2 paid$/i).click();
   await expect(why).toHaveCount(0);
+  // It opens the payment, as the sheet it replaced did.
+  await (await openPaidBubble(page, ride)).getByRole('button', { name: 'Open payment' }).click();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/statement\?back=1$/);
 
   // Ticked and paid, the part-covered purchase pays only what is left: the statement ends at exactly nothing.
   await page.getByLabel('Pay Hotel Mulia').check();
@@ -245,7 +258,10 @@ test('a payment made with Pay covers the statement’s purchases oldest first, a
   await expect(page).toHaveURL(/\/statement\?back=1$/);
   // Paid for what was left, it is covered by the two payments together, not settled on its own.
   await expect(hotel.getByTestId('statement-covered')).toBeVisible();
-  await expect(hotel.getByTestId('statement-paid-how')).toHaveText('Paid with 2 payments');
+  const both = await openPaidBubble(page, hotel);
+  await expect(both.getByTestId('statement-paid-how')).toHaveText('Paid with 2 payments');
+  await expect(both.getByTestId('statement-paid-detail')).toHaveCount(0);
+  await closePaidBubble(page, hotel);
   await expect(page.getByTestId('statement-group')).toContainText(/All paid/i);
   await expect(ride.getByTestId('statement-covered')).toBeVisible();
   await expect(page.getByTestId('statement-band')).toContainText(/Still to pay\s*Rp\s0\s*Total bill/);
@@ -315,10 +331,14 @@ test('a purchase on a closed statement is marked paid off from the statement, an
   // One line, no balancing settlement drawn, and the Pay box gives way to the ✓.
   await expect(page.getByTestId('statement-line')).toHaveCount(1);
   await expect(hotel.getByTestId('statement-paid-off')).toBeVisible();
-  await expect(hotel.getByTestId('statement-paid-how')).toHaveText('Paid before cicis');
   await expect(page.getByLabel('Pay Hotel Mulia')).toHaveCount(0);
 
-  await hotel.getByTestId('statement-paid-off').click();
+  // Its ✓ opens the bubble, whose Not paid off asks first in the same sheet as before.
+  const bubble = await openPaidBubble(page, hotel);
+  await expect(bubble.getByTestId('statement-paid-how')).toHaveText('Paid before cicis');
+  await bubble.getByRole('button', { name: 'Not paid off' }).click();
+  await expect(bubble).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Already paid off' })).toBeVisible();
   await page.getByTestId('statement-not-paid-off').click();
   await expect(page.getByLabel('Pay Hotel Mulia')).toBeEnabled();
   await expect(page.getByTestId('statement-paid-off')).toHaveCount(0);
@@ -377,12 +397,13 @@ test('money back on the card can be marked settled before the app, so it does no
   await expect(page.getByLabel('Pay Hotel Mulia refund')).toBeHidden();
   await refund.getByRole('button', { name: 'Mark Hotel Mulia refund already settled' }).click();
   await expect(refund.getByTestId('statement-paid-off')).toBeVisible();
-  await expect(refund.getByTestId('statement-paid-how')).toHaveText('Settled');
   // No balancing line is drawn: the two lines are the purchase and the refund.
   await expect(page.getByTestId('statement-line')).toHaveCount(2);
 
-  // Taken back from its ✓.
-  await refund.getByTestId('statement-paid-off').click();
+  // Taken back from its ✓'s bubble.
+  const bubble = await openPaidBubble(page, refund);
+  await expect(bubble.getByTestId('statement-paid-how')).toHaveText('Settled');
+  await bubble.getByRole('button', { name: 'Not settled' }).click();
   await expect(page.getByRole('dialog', { name: 'Already settled' })).toBeVisible();
   await page.getByTestId('statement-not-paid-off').click();
   await expect(page.getByTestId('statement-paid-off')).toHaveCount(0);

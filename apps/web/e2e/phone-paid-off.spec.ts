@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, openAmount, saveButton } from './add-transaction';
-import { cardPage } from './card-section';
+import { cardPage, openPaidBubble, paidTick } from './card-section';
 
 /*
  * The paid-off mark, found without the swipe: a switch on the purchase's receipt, and a ⋯ at the end of each statement
@@ -57,8 +57,16 @@ test('a card purchase is marked paid off from its receipt, and from the ⋯ on i
   await openStatement(page);
   const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
   await expect(hotel.getByTestId('statement-paid-off')).toBeVisible();
-  // How it was paid, in green words where the date was; the card's digits, when shown, still follow.
-  await expect(hotel.getByTestId('statement-paid-how')).toHaveText('Paid before cicis');
+  // The row keeps its date; how it was paid is in the ✓'s name and in the bubble a tap opens.
+  await expect(hotel).not.toContainText('Paid before cicis');
+  await expect(paidTick(hotel)).toHaveAccessibleName('Hotel Mulia, Paid before cicis');
+  const bubble = await openPaidBubble(page, hotel);
+  await expect(bubble.getByTestId('statement-paid-how')).toHaveText('Paid before cicis');
+  await expect(bubble.getByTestId('statement-paid-detail')).toHaveCount(0);
+  await expect(bubble.getByRole('button', { name: 'Not paid off' })).toBeVisible();
+  // A tap anywhere shuts it.
+  await hotel.getByText('Hotel Mulia', { exact: true }).click();
+  await expect(bubble).toHaveCount(0);
   await expect(page.getByLabel('Pay Hotel Mulia')).toHaveCount(0);
 
   // Off again from the receipt, and the ✓ goes.
@@ -78,6 +86,15 @@ test('a card purchase is marked paid off from its receipt, and from the ⋯ on i
   await expect(sheet.getByRole('button', { name: 'Assign card' })).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Paid off', exact: true }).click();
   await expect(sheet).toHaveCount(0);
+  await expect(hotel.getByTestId('statement-paid-off')).toBeVisible();
+
+  // The ✓'s bubble takes it back too, asking first in the sheet the ✓ used to open.
+  await (await openPaidBubble(page, hotel)).getByRole('button', { name: 'Not paid off' }).click();
+  await expect(page.getByTestId('statement-paid-bubble')).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Already paid off' })).toContainText('Hotel Mulia');
+  await page.getByTestId('statement-not-paid-off').click();
+  await expect(page.getByTestId('statement-paid-off')).toHaveCount(0);
+  await (await openActions(page, 'Hotel Mulia')).getByRole('button', { name: 'Paid off', exact: true }).click();
   await expect(hotel.getByTestId('statement-paid-off')).toBeVisible();
 
   // Marked, the ⋯ offers to take it back instead.
@@ -130,7 +147,11 @@ test('money back on the card reads Settled on its receipt and in its ⋯', async
   await expect(sheet.getByRole('button', { name: 'Billed next statement' })).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Settled', exact: true }).click();
   await expect(refund.getByTestId('statement-paid-off')).toBeVisible();
-  await expect(refund.getByTestId('statement-paid-how')).toHaveText('Settled');
+  const bubble = await openPaidBubble(page, refund);
+  await expect(bubble.getByTestId('statement-paid-how')).toHaveText('Settled');
+  await expect(bubble.getByRole('button', { name: 'Not settled' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(bubble).toHaveCount(0);
   // The purchase and the refund: no balancing line is drawn.
   await expect(page.getByTestId('statement-line')).toHaveCount(2);
 

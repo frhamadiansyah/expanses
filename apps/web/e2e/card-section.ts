@@ -179,3 +179,25 @@ export async function payStatementPurchases(page: Page, from: string): Promise<v
   await expect(form).toHaveCount(0);
   await expect(page).toHaveURL(/\/cards\/[^/]+\/statement/);
 }
+
+/** A paid statement line's green ✓: covered by a payment, paid off (or settled, or ticked paid), or paid one by one. */
+export const paidTick = (line: Locator) => line.getByTestId(/^statement-(covered|paid-off|paid-by)$/);
+
+/**
+ * Taps a paid line's ✓ and gives back the bubble saying how it was paid, checked to be the one bubble open and its ✓
+ * marked expanded. The bubble hangs over the page, outside the row.
+ */
+export async function openPaidBubble(page: Page, line: Locator): Promise<Locator> {
+  await paidTick(line).click();
+  const bubble = page.getByTestId('statement-paid-bubble');
+  await expect(bubble).toHaveCount(1);
+  await expect(paidTick(line)).toHaveAttribute('aria-expanded', 'true');
+  return bubble;
+}
+
+/** Escape closes the bubble and gives focus back to its ✓. */
+export async function closePaidBubble(page: Page, line: Locator): Promise<void> {
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('statement-paid-bubble')).toHaveCount(0);
+  await expect(paidTick(line)).toHaveAttribute('aria-expanded', 'false');
+}

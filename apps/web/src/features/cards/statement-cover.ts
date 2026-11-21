@@ -52,7 +52,7 @@ export const payableLine = (line: StatementLine, cover: ReadonlyMap<string, Line
 const shortDay = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 /**
- * How a line shown paid was paid, in the few words that lead its subtitle where its date is otherwise: "Paid 3 Nov"
+ * How a line shown paid was paid, in the few words its ✓'s bubble says and its ✓'s name carries: "Paid 3 Nov"
  * one by one, "Paid with the 15 Nov payment" (or "with 2 payments") covered, "Paid before cicis" marked paid off,
  * "Settled" for money back so marked, and "Paid" for a plan's instalment ticked paid. Null for a line not shown paid.
  * The order is the ✓'s: a cover first, then the mark, then paid one by one.

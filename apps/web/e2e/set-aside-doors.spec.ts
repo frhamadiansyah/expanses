@@ -110,7 +110,7 @@ test('paying chosen purchases now from Jenius asks the same question', async ({ 
   await borrowFromEmergencyFund(page.locator('body'));
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
-  await expect(page.getByLabel(/^Laptop, paid on/)).toBeChecked();
+  await expect(page.getByRole('button', { name: /^Laptop, Paid \d+ \w+$/ })).toBeVisible();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
 });

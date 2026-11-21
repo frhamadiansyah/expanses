@@ -1,5 +1,5 @@
 import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
-import { type AccountRow, billOnNextStatement, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, setPlanPaidSoFar, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
+import { type AccountRow, billOnNextStatement, cardPaymentSource, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, setPlanPaidSoFar, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Banknote, CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
@@ -20,6 +20,7 @@ import { groupStatementLines } from './statement-groups';
 import { isCharge, type LineCover, paidCountText, paidHowText, payableLine, showsPaid, statementCover } from './statement-cover';
 import { statementPayLink } from './card-pay';
 import { CardSheet } from './CardSheet';
+import { type BubbleAction, PaidBubble } from './PaidBubble';
 import { SELECT_CIRCLE, SelectBarFrame } from '../transactions/SelectBar';
 import { formatPoints } from './useCardPoints';
 import { takeCheckedNote } from '../statement-check/batch';
@@ -34,12 +35,12 @@ export interface StatementPoints {
 
 /**
  * The one paid look (owner, 21 Nov 2026): a solid green circle with a white ✓, whether the purchase was paid one by one,
- * covered by a payment, paid off before the app, settled or ticked paid on its plan. How it was paid is said in words at
- * the start of the row's subtitle (`paidHowText`), so no legend is needed under the statement.
+ * covered by a payment, paid off before the app, settled or ticked paid on its plan. How it was paid is not on the row:
+ * a tap on the ✓ opens a small bubble that says it (`paidHowText`, mockup A), and the ✓ wears a faint ring meanwhile.
  */
-function PaidTick() {
+function PaidTick({ open = false }: { open?: boolean }) {
   return (
-    <span aria-hidden className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-up)] text-white">
+    <span aria-hidden className={cx('flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-up)] text-white', open && 'shadow-[0_0_0_4px_var(--ph-up-ring)]')}>
       <Check size={11} strokeWidth={3.5} aria-hidden />
     </span>
   );
@@ -102,8 +103,8 @@ export function StatementPanel({
   const [assigning, setAssigning] = useState<readonly StatementLine[] | null>(null);
   // The line whose ⋯ was tapped on a phone: the sheet listing what can be done to it.
   const [acting, setActing] = useState<StatementLine | null>(null);
-  // The covered purchase whose ✓ was tapped: the sheet naming the payment that covered it.
-  const [explaining, setExplaining] = useState<StatementLine | null>(null);
+  // The paid line whose ✓ was tapped, and that ✓: the bubble saying how it was paid hangs from it. One at a time.
+  const [bubble, setBubble] = useState<{ key: string; anchor: HTMLElement } | null>(null);
 
   const cycle = cycleBack(today, statementDay, back);
   const statement = useQuery({
@@ -132,11 +133,6 @@ export function StatementPanel({
   // What the card's payments cover, oldest first: worked out by the ledger with the statement, never stored.
   const cover = useMemo<ReadonlyMap<string, LineCover>>(() => (statement.data ? statementCover(statement.data) : new Map()), [statement.data]);
   const coveredWhole = (line: StatementLine) => cover.get(line.key)?.whole === true;
-  // The payment that completed a purchase's cover; money back says so, and credit from before names none.
-  const coveredNote = (line: StatementLine) => {
-    const by = cover.get(line.key)?.by ?? null;
-    return by === null ? 'covered by an earlier credit' : `covered by ${by.spending ? 'refund' : 'payment'} ${day(by.occurredOn)}`;
-  };
   /*
    * An instalment of a plan with no purchase (0124): its ✓ is the plan's Paid list's. Ticked, it and every one before it
    * are paid; only the latest ticked can be unticked, which leaves the ones before it paid.
@@ -256,58 +252,61 @@ export function StatementPanel({
     </>
   );
 
+  /*
+   * A paid line's ✓ is a button, not a switch: a tap opens the bubble saying how it was paid, and taps it shut again.
+   * Its name carries the same words, so a screen reader hears them without opening it. Every way of paying wears it.
+   */
+  const paidButton = (line: StatementLine, testId: string) => {
+    const words = paidHowText(line, cover) ?? 'Paid';
+    const open = bubble?.key === line.key;
+    return (
+      <button
+        type="button"
+        aria-label={`${line.description}, ${words}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        // A mouse can read the words on hover; a click opens the bubble.
+        title={phone ? undefined : words}
+        data-testid={testId}
+        onClick={(event) => {
+          const anchor = event.currentTarget;
+          setBubble((was) => (was?.key === line.key ? null : { key: line.key, anchor }));
+        }}
+        className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
+      >
+        <PaidTick open={open} />
+      </button>
+    );
+  };
+
   /** A purchase already paid stays ticked and cannot be unticked; deleting its payment frees it again. */
   const tick = (line: StatementLine) =>
+    // Covered by a payment, paid off before the app (or settled, or a plan's instalment ticked paid), paid one by one.
     coveredWhole(line) ? (
-      // Covered by a payment: the paid ✓, not a switch. A tap says which payment covered it.
-      <button
-        type="button"
-        aria-label={`${line.description}, ${coveredNote(line)}`}
-        data-testid="statement-covered"
-        onClick={() => setExplaining(line)}
-        className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
-      >
-        <PaidTick />
-      </button>
+      paidButton(line, 'statement-covered')
     ) : line.paidOff ? (
-      // Paid off before the app: nothing to pay, so the paid ✓ in the box's place. A tap offers to take it back.
-      <button
-        type="button"
-        aria-label={`${line.description}, already ${settledWord(line)}`}
-        title={planRow(line) ? 'Paid' : line.owedMinor < 0 ? 'Already settled' : 'Already paid off'}
-        data-testid="statement-paid-off"
-        // A plan's instalment before its latest ticked one stays paid while the later one is.
-        disabled={busy || !unmarkable(line)}
-        onClick={() => setUnmarking(line)}
-        className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
-      >
-        <PaidTick />
-      </button>
+      paidButton(line, 'statement-paid-off')
+    ) : line.paidBy ? (
+      paidButton(line, 'statement-paid-by')
     ) : (
-    // The label is the circle's reach: an 18 px circle inside a 44 pt target, the size of the ✓ a paid-off line wears. The
-    // checkbox is still the real control, laid invisibly under it; what is drawn is an empty ring, filled with a ✓ once chosen.
-    <label className={cx('relative flex h-[44px] w-[32px] shrink-0 items-center justify-center', !payable(line) && !line.paidBy && 'invisible')}>
+    // The label is the circle's reach: an 18 px circle inside a 44 pt target, the size of the paid ✓. The checkbox is
+    // still the real control, laid invisibly under it; what is drawn is an empty ring, filled with a ✓ once chosen.
+    <label className={cx('relative flex h-[44px] w-[32px] shrink-0 items-center justify-center', !payable(line) && 'invisible')}>
       <input
         type="checkbox"
         className="peer ph-focus absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
         disabled={!payable(line)}
-        checked={line.paidBy !== null || selected.has(line.transactionId)}
+        checked={selected.has(line.transactionId)}
         onChange={() => toggle(line.transactionId)}
-        title={line.paidBy ? `Paid on ${day(line.paidBy.paidOn)}` : undefined}
-        aria-label={line.paidBy ? `${line.description}, paid on ${day(line.paidBy.paidOn)}` : `Pay ${line.description}`}
+        aria-label={`Pay ${line.description}`}
       />
-      {line.paidBy ? (
-        // Paid one by one: the paid ✓ every way of paying wears, at full strength though its box cannot be unticked.
-        <PaidTick />
-      ) : (
-        // A line picked to pay is an ink ring with a ✓, not filled.
-        <span
-          aria-hidden
-          className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)] peer-disabled:opacity-60"
-        >
-          <Check size={11} strokeWidth={3.5} aria-hidden />
-        </span>
-      )}
+      {/* A line picked to pay is an ink ring with a ✓, not filled. */}
+      <span
+        aria-hidden
+        className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)] peer-disabled:opacity-60"
+      >
+        <Check size={11} strokeWidth={3.5} aria-hidden />
+      </span>
     </label>
     );
 
@@ -325,32 +324,22 @@ export function StatementPanel({
     ) : null;
 
   /** What else the statement says about a line, after its description: plan, conversion, payment, card, tag. */
-  const notes = (line: StatementLine, withDigits = true): ReactNode[] => {
+  const notes = (line: StatementLine): ReactNode[] => {
     const out: ReactNode[] = [];
     // One purchase split across workspaces is one charge here, as the bank prints it: its line names every part.
     if (line.splitCategories) out.push(line.splitCategories.join(' · '));
     // An instalment row names the purchase's category, as a purchase row on Cashflow does; its "1 of 12" is a pill.
     if (line.instalment) out.push([categoryNameOf(line.instalment.categoryId), 'instalment'].filter(Boolean).join(' · '));
     if (line.convertedTo) out.push(`converted to ${line.convertedTo.months} months, billed monthly`);
-    // How a paid line was paid leads the subtitle (`how`); part covered says how much is left to pay.
+    // How a paid line was paid is in its ✓'s bubble; part covered says how much is left to pay.
     const covered = cover.get(line.key);
     if (covered && !covered.whole && covered.coveredMinor > 0) out.push(`${money(covered.coveredMinor)} covered, ${money(covered.leftMinor)} left`);
     // A payment made for chosen purchases says so, so a batch can be told from a bill payment.
     if (line.settles > 0) out.push(`for ${line.settles} purchase${line.settles === 1 ? '' : 's'}`);
-    if (withDigits && !grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
+    if (!grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
     const tag = tagFor(line);
     if (tag) out.push(tag);
     return out;
-  };
-
-  /** How a paid line was paid, in small green words where the phone's subtitle has its date, at the start of the table's. */
-  const how = (line: StatementLine) => {
-    const text = paidHowText(line, cover);
-    return text ? (
-      <span data-testid="statement-paid-how" className="text-[var(--ph-up)]">
-        {text}
-      </span>
-    ) : null;
   };
 
   const pointsOf = (line: StatementLine) =>
@@ -385,9 +374,7 @@ export function StatementPanel({
    * drawn from the kit's parts rather than as an `InsetRow`, which holds one target and nothing inside it.
    */
   const statementRow = (line: StatementLine) => {
-    // "Paid with the 15 Nov payment" fills a phone row's subtitle: the card's digits give way to it (mockup 21 Nov).
-    const extra = notes(line, !paidHowText(line, cover)?.startsWith('Paid with'));
-    const paid = how(line);
+    const extra = notes(line);
     const earned = points ? pointsOf(line) : '';
     return (
       <Line
@@ -427,7 +414,7 @@ export function StatementPanel({
             <WorkspaceBadge book={badgeOf(line.transactionId)} />
           </span>
           <span className={cx('mt-[2px] block truncate', SUBTITLE)}>
-            {paid ?? <span className="tabular">{day(line.occurredOn)}</span>}
+            <span className="tabular">{day(line.occurredOn)}</span>
             {extra.map((note, index) => (
               <span key={index}> · {note}</span>
             ))}
@@ -469,8 +456,7 @@ export function StatementPanel({
       <tbody>
         {lines.map((line) => {
           const late = lateOf(line);
-          const paid = how(line);
-          const extra = paid ? [paid, ...notes(line)] : notes(line);
+          const extra = notes(line);
           return (
             <tr key={line.key} data-testid="statement-line" className={cx('border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0', line.convertedTo && 'opacity-60')}>
               <td className="pl-[6px] align-middle">{tick(line)}</td>
@@ -542,6 +528,52 @@ export function StatementPanel({
       {day(cycle.start)} – {dayYear(cycle.end)}
     </StepperRow>
   );
+
+  /*
+   * The open bubble's line, and what it says beyond the words: the covering payment's amount and the account it came
+   * from, the amount of the payment that paid a purchase one by one, the money back that covered it. Its buttons open
+   * that payment, or take a paid-off mark back through the same sheet the ⋯ offers.
+   */
+  const bubbleLine = bubble ? (lines.find((line) => line.key === bubble.key) ?? null) : null;
+  const coverOf = bubbleLine ? cover.get(bubbleLine.key) : undefined;
+  const coveredBy = bubbleLine && coverOf?.whole && coverOf.creditCount <= 1 ? coverOf.by : null;
+  const paymentId = coveredBy ? (coveredBy.spending ? null : coveredBy.transactionId) : bubbleLine && !coverOf?.whole && !bubbleLine.paidOff ? (bubbleLine.paidBy?.transactionId ?? null) : null;
+  const source = useQuery({
+    queryKey: ['card-payment-source', ws.workspaceId, card.id, paymentId],
+    enabled: paymentId !== null,
+    queryFn: () => cardPaymentSource(database, ws, card.id, paymentId!),
+  });
+  // A line paged or searched away closes its bubble.
+  useEffect(() => {
+    if (bubble && (!bubbleLine || searching)) setBubble(null);
+  }, [bubble, bubbleLine, searching]);
+  const from = paymentId && source.data?.fromName ? ` from ${source.data.fromName}` : '';
+  const bubbleDetail = coveredBy
+    ? coveredBy.spending
+      ? `${money(-coveredBy.owedMinor)} · ${coveredBy.description}`
+      : `${money(-coveredBy.owedMinor)}${from}`
+    : paymentId && source.data
+      ? `${money(source.data.amountMinor)}${from}`
+      : null;
+  const openTx = (transactionId: string) => {
+    setBubble(null);
+    void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
+  };
+  const bubbleActions: BubbleAction[] = [];
+  if (coveredBy) bubbleActions.push({ label: coveredBy.spending ? 'Open refund' : 'Open payment', onPress: () => openTx(coveredBy.transactionId) });
+  else if (paymentId) bubbleActions.push({ label: 'Open payment', onPress: () => openTx(paymentId) });
+  if (bubbleLine && !coverOf?.whole && unmarkable(bubbleLine)) {
+    const line = bubbleLine;
+    bubbleActions.push({
+      label: planRow(line) ? 'Not paid' : line.owedMinor < 0 ? 'Not settled' : 'Not paid off',
+      tone: 'alarm',
+      disabled: busy,
+      onPress: () => {
+        setBubble(null);
+        setUnmarking(line);
+      },
+    });
+  }
 
   const subtotal = (minor: number) => (minor < 0 ? `−${money(-minor)}` : money(minor));
 
@@ -634,7 +666,7 @@ export function StatementPanel({
       )}
 
       {acting && (
-        // One line's actions, each only when it applies: the swipe's mark (or its taking back, as the ✓'s sheet does),
+        // One line's actions, each only when it applies: the swipe's mark (or its taking back, as the ✓'s bubble does),
         // the two fixes a glyph offers, and the receipt. A choice closes the sheet, then does its work.
         <Sheet grouped title={acting.description} onClose={() => setActing(null)}>
           <InsetGroup wide>
@@ -725,31 +757,8 @@ export function StatementPanel({
         </Sheet>
       )}
 
-      {explaining && (
-        // A covered ✓ explains itself and links to the payment; it is not a switch.
-        <Sheet grouped title={explaining.description} onClose={() => setExplaining(null)}>
-          {(() => {
-            const by = cover.get(explaining.key)?.by ?? null;
-            const kind = by?.spending ? 'refund' : 'payment';
-            return (
-              <InsetGroup wide footer={by ? `Paid with the card’s ${kind} of ${money(-by.owedMinor)}. Deleting that ${kind} makes it owed again.` : 'Paid with credit left on the card from an earlier statement.'}>
-                <InsetRow plain title="Amount" value={money(explaining.owedMinor)} />
-                {by && (
-                  <InsetRow
-                    plain
-                    title="Covered by"
-                    value={`${kind === 'refund' ? 'Refund' : 'Payment'} ${day(by.occurredOn)}`}
-                    valueTone="tint"
-                    onClick={() => {
-                      setExplaining(null);
-                      void navigate({ to: '/transactions/$transactionId', params: { transactionId: by.transactionId } });
-                    }}
-                  />
-                )}
-              </InsetGroup>
-            );
-          })()}
-        </Sheet>
+      {bubbleLine && bubble && (
+        <PaidBubble key={bubble.key} anchor={bubble.anchor} words={paidHowText(bubbleLine, cover) ?? 'Paid'} detail={bubbleDetail} actions={bubbleActions} onClose={() => setBubble(null)} />
       )}
 
       {unmarking && (
