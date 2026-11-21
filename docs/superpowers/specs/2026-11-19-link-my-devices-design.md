@@ -399,6 +399,13 @@ again with today's resilience flows.
   (CF-Connecting-IP, IPv6 by /64: 20) per 10 minutes and never end anyone's session; one waiting code a device, ten new
   codes an address per 10 minutes, 500 sessions in all; tries kept in one pruned value.
 - **Before Allow** the source says what goes: N workspaces, N transactions.
+- **Second review.** Both sides pin the other's keys exactly as they fed the check digits on the first confirm: a
+  later view with other keys ends the link (`mismatch`); the joiner verifies the welcome against the pinned key, and
+  the source seals the welcome for the pinned joiner. Re-linking clears `self_devices.removed_at` (on Allow, and in the
+  device's own row). Standby removals go one at a time (a 404 is done). `planWaitsHere` throws on a failed read, so a
+  plan is dropped only on a clean "not the copy"; a failed read at open is 'incomplete'. `UNFINISHED_JOIN_MS` is 14
+  days: the joiner's row is the only sign of life the source sees, and a finished device taken off is told "Unlinked
+  from this data" and offered Link to another device.
 
 ## 7. Risks
 
