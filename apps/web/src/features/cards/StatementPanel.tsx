@@ -2,7 +2,7 @@ import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
 import { type AccountRow, billOnNextStatement, cardPaymentSource, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, setPlanPaidSoFar, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Banknote, CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, Undo2, X } from 'lucide-react';
+import { ArrowDown, Banknote, CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, RotateCcw, Undo2, X } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
@@ -21,6 +21,7 @@ import { isCharge, type LineCover, paidCountText, paidHowText, payableLine, show
 import { statementPayLink } from './card-pay';
 import { CardSheet } from './CardSheet';
 import { type BubbleAction, PaidBubble } from './PaidBubble';
+import { isPaymentLine, type PaidEntry, paidFootText, statementPaid } from './statement-payments';
 import { SELECT_CIRCLE, SelectBarFrame } from '../transactions/SelectBar';
 import { formatPoints } from './useCardPoints';
 import { takeCheckedNote } from '../statement-check/batch';
@@ -105,6 +106,8 @@ export function StatementPanel({
   const [acting, setActing] = useState<StatementLine | null>(null);
   // The paid line whose ✓ was tapped, and that ✓: the bubble saying how it was paid hangs from it. One at a time.
   const [bubble, setBubble] = useState<{ key: string; anchor: HTMLElement } | null>(null);
+  // The sheet the totals box's Paid opens: the statement's payments, kept off its list.
+  const [paidOpen, setPaidOpen] = useState(false);
 
   const cycle = cycleBack(today, statementDay, back);
   const statement = useQuery({
@@ -167,8 +170,10 @@ export function StatementPanel({
   const assignable = (line: StatementLine) => line.spending && !line.instalment?.noPurchase && plastic.length > 1 && !plastic.some((piece) => piece.id === line.cardId);
   const lines = statement.data?.lines ?? [];
   const chosen = lines.filter((line) => selected.has(line.transactionId) && payable(line));
+  // Payments are kept off the list (owner, 21 Nov 2026): it holds what was charged and money back. Paid opens them.
+  const shown = lines.filter((line) => !isPaymentLine(line));
   // One statement, split by card when the account carries more than one, the way the bank prints it.
-  const groups = groupStatementLines(lines, plastic);
+  const groups = groupStatementLines(shown, plastic);
   const grouped = groups.length > 0 && groups[0]!.title !== null;
 
   // Ticking a plan's instalment ticks it and every one before it, as its Paid list does.
@@ -575,6 +580,66 @@ export function StatementPanel({
     });
   }
 
+  /*
+   * What Paid opens: the payments behind the figure and, on a closed statement, the ones made between its dates. Where
+   * each came from is asked only once the sheet is open.
+   */
+  const paid = s ? statementPaid(s) : null;
+  const paidCount = paid ? paid.entries.length + paid.during.length : 0;
+  const paymentIds = paidOpen && paid ? [...paid.entries, ...paid.during].filter((entry) => !entry.refund).map((entry) => entry.line.transactionId) : [];
+  const sources = useQuery({
+    queryKey: ['card-payment-sources', ws.workspaceId, card.id, paymentIds],
+    enabled: paymentIds.length > 0,
+    queryFn: async () => Object.fromEntries(await Promise.all(paymentIds.map(async (id) => [id, await cardPaymentSource(database, ws, card.id, id)] as const))),
+  });
+  // Another statement, or a search, puts the sheet away.
+  useEffect(() => setPaidOpen(false), [cycle.start, searching]);
+  const foot = sources.data ? paidFootText(paymentIds.map((id) => sources.data[id]?.fromName ?? null)) : null;
+  const openTransaction = (transactionId: string) => {
+    setPaidOpen(false);
+    void navigate({ to: '/transactions/$transactionId', params: { transactionId } });
+  };
+  /** One payment or money back in the Paid sheet, and under a payment the bank posted late, the way to put it back. */
+  const paidRow = (entry: PaidEntry) => {
+    const { line } = entry;
+    const from = sources.data?.[line.transactionId]?.fromName;
+    const subtitle = [
+      day(line.occurredOn),
+      entry.refund ? 'counts as paid' : from ? `from ${from}` : null,
+      line.settles > 0 ? `for ${line.settles} purchase${line.settles === 1 ? '' : 's'}` : null,
+      entry.countedMinor < entry.wholeMinor ? `part of ${money(entry.wholeMinor)}` : null,
+      line.postedOn ? `posted ${day(line.postedOn)}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    const row = (
+      <InsetRow
+        key={line.key}
+        testId="statement-paid-entry"
+        icon={entry.refund ? <RotateCcw size={15} strokeWidth={2.5} aria-hidden /> : <ArrowDown size={15} strokeWidth={2.5} aria-hidden />}
+        iconColour={entry.refund ? 'var(--ph-up)' : 'var(--ph-dot)'}
+        title={line.description}
+        subtitle={subtitle}
+        value={entry.refund ? `−${money(entry.countedMinor)}` : money(entry.countedMinor)}
+        valueTone="ink"
+        plain
+        onClick={() => openTransaction(line.transactionId)}
+      />
+    );
+    // The bank's posting date moved it to this statement: the fix its ⋯ offered on the list, kept here.
+    return line.postedOn
+      ? [
+          row,
+          <ActionRow
+            key={`${line.key}-date`}
+            label={`Use payment date for ${line.description}`}
+            disabled={busy}
+            onClick={() => void run(() => setPostedOn(database, ws, line.transactionId, null))}
+          />,
+        ]
+      : [row];
+  };
+
   const subtotal = (minor: number) => (minor < 0 ? `−${money(-minor)}` : money(minor));
 
   return (
@@ -591,7 +656,8 @@ export function StatementPanel({
               {found.map((line) => (
                 <InsetRow
                   key={line.key}
-                  onClick={() => openStatementOf(line)}
+                  // A payment is not drawn on its statement: its hit opens the payment itself.
+                  onClick={() => (isPaymentLine(line) ? openTransaction(line.transactionId) : openStatementOf(line))}
                   title={
                     <>
                       {line.description}
@@ -615,9 +681,9 @@ export function StatementPanel({
         </div>
       )}
 
-      {!searching && s && <StatementBand statement={s} currency={currency} lead={stepper} />}
+      {!searching && s && <StatementBand statement={s} currency={currency} lead={stepper} onOpenPaid={paid && paidCount > 0 ? () => setPaidOpen(true) : undefined} paidMinor={paid?.totalMinor} />}
 
-      {searching ? null : lines.length === 0 ? (
+      {searching ? null : shown.length === 0 ? (
         <p className="pb-[18px] text-center text-[15px] text-[var(--ph-ink-3)]">Nothing on this statement.</p>
       ) : (
         groups.map((group) => {
@@ -754,6 +820,20 @@ export function StatementPanel({
               />
             )}
           </InsetGroup>
+        </Sheet>
+      )}
+
+      {paidOpen && paid && (
+        // The statement's payments: each opens as it does from Cashflow, to be changed or deleted there.
+        <Sheet grouped title={`Paid · ${money(paid.totalMinor)}`} onClose={() => setPaidOpen(false)}>
+          <div data-testid="statement-paid-sheet">
+            {paid.entries.length > 0 && <InsetGroup wide footer={paid.during.length === 0 ? foot : undefined}>{paid.entries.flatMap(paidRow)}</InsetGroup>}
+            {paid.during.length > 0 && (
+              <InsetGroup wide header="During this statement" footer={[`Paid between its dates, so they came off the bill before it first.`, foot].filter(Boolean).join(' ')}>
+                {paid.during.flatMap(paidRow)}
+              </InsetGroup>
+            )}
+          </div>
         </Sheet>
       )}
 

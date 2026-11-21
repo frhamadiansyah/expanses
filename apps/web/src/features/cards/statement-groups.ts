@@ -43,6 +43,8 @@ export function groupStatementLines(lines: readonly StatementLine[], cards: read
   const unassigned = lines.filter((line) => line.spending && (line.cardId === null || !known.has(line.cardId)));
   if (unassigned.length > 0) groups.push({ key: 'unassigned', title: 'Card not recorded', digits: null, kind: 'unassigned', lines: unassigned, totalMinor: total(unassigned) });
   const account = lines.filter((line) => !line.spending);
-  if (account.length > 0) groups.push({ key: 'account', title: 'Payment', digits: null, kind: 'account', lines: account, totalMinor: total(account) });
+  // Payments, when they are drawn; the statement keeps them off its list, leaving what the account itself was charged.
+  const title = account.every((line) => line.owedMinor < 0) ? 'Payment' : 'Account';
+  if (account.length > 0) groups.push({ key: 'account', title, digits: null, kind: 'account', lines: account, totalMinor: total(account) });
   return groups;
 }

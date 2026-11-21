@@ -201,3 +201,14 @@ export async function closePaidBubble(page: Page, line: Locator): Promise<void> 
   await expect(page.getByTestId('statement-paid-bubble')).toHaveCount(0);
   await expect(paidTick(line)).toHaveAttribute('aria-expanded', 'false');
 }
+
+/**
+ * The statement keeps its payments off its list: Paid in the totals box (Previous bill on an open statement) opens
+ * them in a sheet titled "Paid · Rp …". Gives back that sheet.
+ */
+export async function openPaidSheet(page: Page): Promise<Locator> {
+  await page.getByTestId('statement-paid-open').click();
+  const sheet = page.getByRole('dialog', { name: /^Paid · / });
+  await expect(sheet.getByTestId('statement-paid-sheet')).toBeVisible();
+  return sheet;
+}

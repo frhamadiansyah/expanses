@@ -34,6 +34,8 @@ async function openStatement(page: Page) {
 }
 
 test('every paid purchase wears one green ✓, and a tap on it says how it was paid', async ({ page }) => {
+  // Seven purchases through the Add screen, two payments and every bubble: close to a minute on its own.
+  test.slow();
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '20000000' });
   await openCard(page, { name: 'Kartu Contoh', last4: '4417', statementDay: '31', dueDay: '15' });
   // A plan whose purchase is not in the app, first billed last month: its first instalment, due before today, is ticked paid.

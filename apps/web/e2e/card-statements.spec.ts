@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPlastic, openAccount, openAccountHistory, openCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
-import { cardPage, chooseCardPayFrom, closePaidBubble, openCardPay, openPaidBubble, openStatementPay, payCard, payStatementPurchases, saveCardTerms, showCardBack } from './card-section';
+import { cardPage, chooseCardPayFrom, closePaidBubble, openCardPay, openPaidBubble, openPaidSheet, openStatementPay, payCard, payStatementPurchases, saveCardTerms, showCardBack } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -108,7 +108,23 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   await expect(page.getByRole('button', { name: /^Superindo, Paid \d+ \w+$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Ranch Market, Paid \d+ \w+$/ })).toBeVisible();
   await expect(page.getByLabel('Pay Superindo')).toHaveCount(0);
-  await expect(lines.filter({ hasText: 'payment' })).toContainText('530.000');
+  // The payment is kept off the list; the box's Previous bill opens it, where it came from and what it was for.
+  await expect(lines.filter({ hasText: 'payment' })).toHaveCount(0);
+  await expect(lines).toHaveCount(2);
+  const sheet = await openPaidSheet(page);
+  await expect(sheet).toHaveAccessibleName(/^Paid · Rp\s530\.000$/);
+  const entry = sheet.getByTestId('statement-paid-entry');
+  await expect(entry).toHaveCount(1);
+  await expect(entry).toContainText('Credit card payment');
+  await expect(entry).toContainText(/from BCA Tahapan · for 2 purchases/);
+  await expect(entry).toContainText('530.000');
+  await expect(sheet).toContainText('Payments stay in Cashflow and on BCA Tahapan as transfers.');
+  // A tap opens the payment itself, as Cashflow does.
+  await entry.click();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
+  await expect(page.getByRole('heading', { name: 'Credit card payment' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('dialog', { name: /^Paid · / })).toHaveCount(0);
   const superindoLine = lines.filter({ hasText: 'Superindo' });
   const bubble = await openPaidBubble(page, superindoLine);
   await expect(bubble.getByTestId('statement-paid-how')).toHaveText(/^Paid \d+ \w+$/);
@@ -153,7 +169,11 @@ test('the totals band splits the previous bill from what is unbilled, and names 
   const paidHow = (await openPaidBubble(page, superindo)).getByTestId('statement-paid-how');
   await expect(paidHow).toHaveText(/^Paid \d+ \w+$/);
   await closePaidBubble(page, superindo);
-  await expect(page.getByTestId('statement-line').filter({ hasText: 'payment' })).toContainText('for 1 purchase');
+  await expect(page.getByTestId('statement-line').filter({ hasText: 'payment' })).toHaveCount(0);
+  const sheet = await openPaidSheet(page);
+  await expect(sheet.getByTestId('statement-paid-entry')).toContainText('for 1 purchase');
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(sheet).toHaveCount(0);
   // Rp 450.000 of the Rp 2.000.000 previous bill is settled, and the upcoming bill drops by the same.
   await expect(band).toContainText('1.550.000');
   await expect(page.getByTestId('statement-total')).toContainText('2.000.000');
@@ -164,6 +184,11 @@ test('the totals band splits the previous bill from what is unbilled, and names 
   await expect(band).toContainText('Still to pay');
   await expect(band).toContainText('1.550.000');
   await expect(page.getByTestId('statement-total')).toContainText('Total bill');
+  // Its Paid opens the payment made since its date, the one that paid it down.
+  const closed = await openPaidSheet(page);
+  await expect(closed).toHaveAccessibleName(/^Paid · Rp\s450\.000$/);
+  await expect(closed.getByTestId('statement-paid-entry')).toHaveCount(1);
+  await expect(closed.getByTestId('statement-paid-entry')).toContainText(/from BCA Tahapan · for 1 purchase/);
 });
 
 test('the last statement is paid from the card’s Current bill tile', async ({ page }) => {
