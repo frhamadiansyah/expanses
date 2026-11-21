@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cashflow waiting rows: without a Record button on each row</title>
+<style>
+  :root { --ink:#1d1d1f; --ink2:#55555a; --ink3:#8e8e93; --line:#e5e5ea; --zebra:#f6f6f8; --accent:#0a66d8; --bg:#f2f2f5; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); font:13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; color:var(--ink); padding:28px 32px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .intro { color:var(--ink2); margin:0 0 22px; max-width:900px; }
+  .opt { margin:0 0 30px; }
+  .opt h2 { font-size:15px; margin:0 0 3px; }
+  .opt h2 b { display:inline-block; width:22px; height:22px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:22px; font-size:12px; margin-right:8px; }
+  .opt p.how { color:var(--ink2); margin:0 0 10px 30px; max-width:900px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; width:990px; overflow:hidden; }
+  .head { display:flex; align-items:center; justify-content:space-between; padding:11px 14px; }
+  .head .t { font-weight:600; font-size:14px; }
+  .head .r { display:flex; align-items:center; gap:10px; color:var(--ink3); font-size:12px; }
+  .btn { border-radius:6px; padding:4px 10px; font-size:12px; font-weight:500; border:1px solid var(--line); background:#fff; color:var(--ink); }
+  .btn.dark { background:var(--ink); color:#fff; border-color:var(--ink); }
+  table { border-collapse:collapse; width:100%; table-layout:fixed; }
+  th { text-align:left; font-weight:500; color:var(--ink3); font-size:12px; padding:7px 10px; background:#fafafb; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+  td { padding:7px 10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  td.k { overflow:visible; text-overflow:clip; padding:7px 0 7px 12px; }
+  tr.z td { background:var(--zebra); }
+  .amt { text-align:right; font-variant-numeric:tabular-nums; }
+  .date { color:var(--ink3); }
+  .cat { display:inline-flex; align-items:center; gap:6px; }
+  .ic { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; }
+  .paid { display:flex; justify-content:space-between; gap:6px; }
+  .paid .n { overflow:hidden; text-overflow:ellipsis; }
+  .paid .d { font-size:11px; color:var(--ink2); font-variant-numeric:tabular-nums; }
+  .pend { border-bottom:1px dashed var(--ink3); }
+  .muted { color:var(--ink3); }
+  .typing td { border-top:1px dashed var(--line); color:var(--ink3); }
+  /* A: tick column */
+  .circ { width:15px; height:15px; border-radius:50%; border:1.5px solid var(--accent); display:inline-block; vertical-align:middle; }
+  .circ.on { background:var(--accent); position:relative; }
+  .circ.on::after { content:""; position:absolute; left:4px; top:1.5px; width:3.5px; height:7px; border:solid #fff; border-width:0 1.8px 1.8px 0; transform:rotate(45deg); }
+  .circ.off { border:1.5px dashed var(--ink3); }
+  /* B: section */
+  tr.sec td { background:#eef4fc; color:var(--accent); font-weight:600; font-size:12px; padding:6px 10px; border-top:1px solid #d6e4f7; }
+  tr.w td { background:#f7fafe; }
+  tr.w.z td { background:#f0f5fc; }
+  /* C: hover tools */
+  .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--accent); margin-right:6px; vertical-align:middle; }
+  .dot.grey { background:transparent; border:1.5px solid var(--ink3); width:7px; height:7px; }
+  tr.hover td { background:#e9f1fc !important; }
+  .tools { display:inline-flex; gap:4px; }
+  .tool { width:22px; height:22px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink2); }
+  .tool.ok { background:var(--ink); color:#fff; border-color:var(--ink); }
+  /* D: status word */
+  .st { font-size:11px; font-weight:600; padding:2px 7px; border-radius:10px; }
+  .st.ready { color:#1c7c3b; background:#e7f5ec; }
+  .st.need { color:#a15c00; background:#fdf1e1; }
+  .bar { display:flex; align-items:center; justify-content:space-between; padding:9px 14px; background:#1d1d1f; color:#fff; font-size:12px; }
+  .bar .k { color:#b9b9c0; }
+  .note { position:relative; }
+  .callout { font-size:11px; color:var(--accent); margin:6px 0 0 30px; }
+</style>
+</head>
+<body>
+<h1>Cashflow · rows not recorded yet, without a Record button on each row</h1>
+<p class="intro">Today every waiting row ends in a grey or black Record button and an ✕. Four quieter ways below, same invented rows in each: one recorded row, five waiting (two can be recorded, three still need a Paid with), and the blank typing row.</p>
+
+<!-- ============ A ============ -->
+<section class="opt">
+  <h2><b>A</b>Tick column, one button in the header</h2>
+  <p class="how">A small circle in front of each waiting row. Filled = can be recorded; dashed = something missing. Click circles to choose, then one <b>Record 2</b> button in the header. Return still records the row being typed in; ⌫ discards a selected row.</p>
+  <div class="card">
+    <div class="head"><span class="t">Transactions</span><span class="r">oldest at the top · new rows at the bottom <span class="btn dark">Record 2</span></span></div>
+    <table>
+      <colgroup><col style="width:34px"><col style="width:92px"><col style="width:250px"><col style="width:210px"><col style="width:200px"><col style="width:140px"><col style="width:64px"></colgroup>
+      <tr><th></th><th>Date ↑</th><th>Note</th><th>Category</th><th>Paid with</th><th class="amt">Amount</th><th></th></tr>
+      <tr><td></td><td class="date">17 Nov</td><td>Kedai Kopi Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><div class="paid"><span class="n">Bank Contoh</span></div></td><td class="amt">Rp 53.000</td><td></td></tr>
+      <tr class="z"><td class="k"><span class="circ off"></span></td><td class="date">14 Sep</td><td>Toko Buah Contoh</td><td><span class="cat"><span class="ic" style="background:#e2f4e8;color:#1c7c3b">⌂</span>Groceries</span></td><td><span class="pend">•• 5512</span></td><td class="amt">Rp 412.300</td><td></td></tr>
+      <tr><td class="k"><span class="circ off"></span></td><td class="date">13 Sep</td><td>Kedai Teh Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><span class="pend">•• 5512</span></td><td class="amt">Rp 58.000</td><td></td></tr>
+      <tr class="z"><td class="k"><span class="circ on"></span></td><td class="date">13 Sep</td><td>Bioskop Contoh</td><td><span class="cat"><span class="ic" style="background:#efe4fb;color:#7a3fd1">▣</span>Movies</span></td><td><div class="paid"><span class="n">Kartu Contoh</span><span class="d">4417</span></div></td><td class="amt">Rp 120.000</td><td></td></tr>
+      <tr><td class="k"><span class="circ off"></span></td><td class="date">12 Sep</td><td>Parkir Contoh</td><td><span class="cat"><span class="ic" style="background:#e3ecfb;color:#2f6fd6">P</span>Parking &amp; tolls</span></td><td><span class="pend">Jago</span></td><td class="amt">Rp 15.000</td><td></td></tr>
+      <tr class="z"><td class="k"><span class="circ on"></span></td><td class="date">12 Sep</td><td>Roti Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><div class="paid"><span class="n">Kartu Contoh</span><span class="d">4417</span></div></td><td class="amt">Rp 32.000</td><td></td></tr>
+      <tr class="typing"><td></td><td>20 Nov</td><td>Note</td><td>Category</td><td>Paid with</td><td class="amt">Amount</td><td></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============ B ============ -->
+<section class="opt">
+  <h2><b>B</b>Waiting rows in their own band</h2>
+  <p class="how">Rows not recorded yet sit together under a thin blue band that says how many wait and how many can go. One <b>Record 2</b> in the band. The rows themselves carry no buttons; a faint blue tint is the only difference.</p>
+  <div class="card">
+    <div class="head"><span class="t">Transactions</span><span class="r">oldest at the top · new rows at the bottom</span></div>
+    <table>
+      <colgroup><col style="width:92px"><col style="width:270px"><col style="width:220px"><col style="width:210px"><col style="width:150px"><col style="width:48px"></colgroup>
+      <tr><th>Date ↑</th><th>Note</th><th>Category</th><th>Paid with</th><th class="amt">Amount</th><th></th></tr>
+      <tr><td class="date">17 Nov</td><td>Kedai Kopi Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><div class="paid"><span class="n">Bank Contoh</span></div></td><td class="amt">Rp 53.000</td><td></td></tr>
+      <tr class="sec"><td colspan="6"><div style="display:flex;justify-content:space-between;align-items:center"><span>Not recorded yet · 5 · 3 need a Paid with</span><span class="btn dark">Record 2</span></div></td></tr>
+      <tr class="w"><td class="date">14 Sep</td><td>Toko Buah Contoh</td><td><span class="cat"><span class="ic" style="background:#e2f4e8;color:#1c7c3b">⌂</span>Groceries</span></td><td><span class="pend">•• 5512</span></td><td class="amt">Rp 412.300</td><td></td></tr>
+      <tr class="w z"><td class="date">13 Sep</td><td>Kedai Teh Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><span class="pend">•• 5512</span></td><td class="amt">Rp 58.000</td><td></td></tr>
+      <tr class="w"><td class="date">13 Sep</td><td>Bioskop Contoh</td><td><span class="cat"><span class="ic" style="background:#efe4fb;color:#7a3fd1">▣</span>Movies</span></td><td><div class="paid"><span class="n">Kartu Contoh</span><span class="d">4417</span></div></td><td class="amt">Rp 120.000</td><td></td></tr>
+      <tr class="w z"><td class="date">12 Sep</td><td>Parkir Contoh</td><td><span class="cat"><span class="ic" style="background:#e3ecfb;color:#2f6fd6">P</span>Parking &amp; tolls</span></td><td><span class="pend">Jago</span></td><td class="amt">Rp 15.000</td><td></td></tr>
+      <tr class="w"><td class="date">12 Sep</td><td>Roti Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><div class="paid"><span class="n">Kartu Contoh</span><span class="d">4417</span></div></td><td class="amt">Rp 32.000</td><td></td></tr>
+      <tr class="typing"><td>20 Nov</td><td>Note</td><td>Category</td><td>Paid with</td><td class="amt">Amount</td><td></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============ C ============ -->
+<section class="opt">
+  <h2><b>C</b>A dot, and buttons only on the row under the pointer</h2>
+  <p class="how">A blue dot before the date marks a row that can be recorded; a hollow dot marks one still missing something. Nothing else shows until the pointer is on a row: then a small ✓ and ✕ appear at its end (here on Bioskop Contoh). <b>Record all 2</b> stays in the header.</p>
+  <div class="card">
+    <div class="head"><span class="t">Transactions</span><span class="r">oldest at the top · new rows at the bottom <span class="btn dark">Record all 2</span></span></div>
+    <table>
+      <colgroup><col style="width:104px"><col style="width:262px"><col style="width:215px"><col style="width:205px"><col style="width:134px"><col style="width:70px"></colgroup>
+      <tr><th>Date ↑</th><th>Note</th><th>Category</th><th>Paid with</th><th class="amt">Amount</th><th></th></tr>
+      <tr><td class="date"><span style="display:inline-block;width:13px"></span>17 Nov</td><td>Kedai Kopi Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><div class="paid"><span class="n">Bank Contoh</span></div></td><td class="amt">Rp 53.000</td><td></td></tr>
+      <tr class="z"><td class="date"><span class="dot grey"></span>14 Sep</td><td>Toko Buah Contoh</td><td><span class="cat"><span class="ic" style="background:#e2f4e8;color:#1c7c3b">⌂</span>Groceries</span></td><td><span class="pend">•• 5512</span></td><td class="amt">Rp 412.300</td><td></td></tr>
+      <tr><td class="date"><span class="dot grey"></span>13 Sep</td><td>Kedai Teh Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><span class="pend">•• 5512</span></td><td class="amt">Rp 58.000</td><td></td></tr>
+      <tr class="z hover"><td class="date"><span class="dot"></span>13 Sep</td><td>Bioskop Contoh</td><td><span class="cat"><span class="ic" style="background:#efe4fb;color:#7a3fd1">▣</span>Movies</span></td><td><div class="paid"><span class="n">Kartu Contoh</span><span class="d">4417</span></div></td><td class="amt">Rp 120.000</td><td class="k" style="padding-left:6px"><span class="tools"><span class="tool ok">✓</span><span class="tool">✕</span></span></td></tr>
+      <tr><td class="date"><span class="dot grey"></span>12 Sep</td><td>Parkir Contoh</td><td><span class="cat"><span class="ic" style="background:#e3ecfb;color:#2f6fd6">P</span>Parking &amp; tolls</span></td><td><span class="pend">Jago</span></td><td class="amt">Rp 15.000</td><td></td></tr>
+      <tr class="z"><td class="date"><span class="dot"></span>12 Sep</td><td>Roti Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><div class="paid"><span class="n">Kartu Contoh</span><span class="d">4417</span></div></td><td class="amt">Rp 32.000</td><td></td></tr>
+      <tr class="typing"><td><span style="display:inline-block;width:13px"></span>20 Nov</td><td>Note</td><td>Category</td><td>Paid with</td><td class="amt">Amount</td><td></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============ D ============ -->
+<section class="opt">
+  <h2><b>D</b>No marks on the rows; one bar at the bottom</h2>
+  <p class="how">Waiting rows look exactly like recorded ones. A dark bar under the table counts them and holds the only button. Clicking “3 need a Paid with” jumps to the first one.</p>
+  <div class="card">
+    <div class="head"><span class="t">Transactions</span><span class="r">oldest at the top · new rows at the bottom</span></div>
+    <table>
+      <colgroup><col style="width:92px"><col style="width:270px"><col style="width:220px"><col style="width:210px"><col style="width:150px"><col style="width:48px"></colgroup>
+      <tr><th>Date ↑</th><th>Note</th><th>Category</th><th>Paid with</th><th class="amt">Amount</th><th></th></tr>
+      <tr><td class="date">17 Nov</td><td>Kedai Kopi Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><div class="paid"><span class="n">Bank Contoh</span></div></td><td class="amt">Rp 53.000</td><td></td></tr>
+      <tr class="z"><td class="date">14 Sep</td><td>Toko Buah Contoh</td><td><span class="cat"><span class="ic" style="background:#e2f4e8;color:#1c7c3b">⌂</span>Groceries</span></td><td><span class="pend">•• 5512</span></td><td class="amt">Rp 412.300</td><td></td></tr>
+      <tr><td class="date">13 Sep</td><td>Kedai Teh Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><span class="pend">•• 5512</span></td><td class="amt">Rp 58.000</td><td></td></tr>
+      <tr class="z"><td class="date">13 Sep</td><td>Bioskop Contoh</td><td><span class="cat"><span class="ic" style="background:#efe4fb;color:#7a3fd1">▣</span>Movies</span></td><td><div class="paid"><span class="n">Kartu Contoh</span><span class="d">4417</span></div></td><td class="amt">Rp 120.000</td><td></td></tr>
+      <tr><td class="date">12 Sep</td><td>Parkir Contoh</td><td><span class="cat"><span class="ic" style="background:#e3ecfb;color:#2f6fd6">P</span>Parking &amp; tolls</span></td><td><span class="pend">Jago</span></td><td class="amt">Rp 15.000</td><td></td></tr>
+      <tr class="z"><td class="date">12 Sep</td><td>Roti Contoh</td><td><span class="cat"><span class="ic" style="background:#fde8dc;color:#e0601b">☕</span>Cafe &amp; dessert</span></td><td><div class="paid"><span class="n">Kartu Contoh</span><span class="d">4417</span></div></td><td class="amt">Rp 32.000</td><td></td></tr>
+      <tr class="typing"><td>20 Nov</td><td>Note</td><td>Category</td><td>Paid with</td><td class="amt">Amount</td><td></td></tr>
+    </table>
+    <div class="bar"><span>5 not recorded yet · <u>3 need a Paid with</u></span><span class="btn" style="background:#fff;color:#1d1d1f;border-color:#fff">Record 2</span></div>
+  </div>
+</section>
+</body>
+</html>
