@@ -21,14 +21,16 @@ describe('the default sets’ category icons', () => {
   it('migration 0077 gives them to sets made before, and leaves an icon already chosen', async () => {
     const { database, ws } = await setupDb();
     await ensureDefaultCategorySets(database, ws);
-    // As a set made before 0077 had them: no icon on any, except one the owner chose.
-    await database.db.run(sql`UPDATE accounts SET icon = NULL WHERE id IN (SELECT category_account_id FROM category_set_members)`);
-    await database.db.run(sql`UPDATE accounts SET icon = 'tent' WHERE name = 'Lodging'`);
-    // A monthly category with a set category's name stays as it is: it belongs to no set.
-    await database.db.run(sql`INSERT INTO accounts (id, workspace_id, parent_id, kind, subtype, name, icon, currency, valuation_mode, system_key, sort_order, archived_at, created_at)
-      VALUES ('own-photo', ${ws.workspaceId}, NULL, 'expense', 'category', 'Photo', NULL, NULL, 'derived', NULL, 99, NULL, '2026-01-01')`);
+    // As a set made before 0077 had them: no icon on any, except one the owner chose. A fixture, and the migration run
+    // as migrate() runs one (`execScript`): neither is a write of the app's (the capture run leaves both out).
+    await database.execScript(`
+      UPDATE accounts SET icon = NULL WHERE id IN (SELECT category_account_id FROM category_set_members);
+      UPDATE accounts SET icon = 'tent' WHERE name = 'Lodging';
+      -- A monthly category with a set category's name stays as it is: it belongs to no set.
+      INSERT INTO accounts (id, workspace_id, parent_id, kind, subtype, name, icon, currency, valuation_mode, system_key, sort_order, archived_at, created_at)
+        VALUES ('own-photo', '${ws.workspaceId}', NULL, 'expense', 'category', 'Photo', NULL, NULL, 'derived', NULL, 99, NULL, '2026-01-01');`);
     const migration = readFileSync(new URL('../migrations/0077_set_category_icons.sql', import.meta.url), 'utf8');
-    await database.db.run(sql.raw(migration));
+    await database.execScript(migration);
     expect(await iconsOf(database, ['Flights', 'Lodging', 'Photo', 'Vaccination'])).toEqual({ Flights: 'plane', Lodging: 'tent', Photo: 'camera', Vaccination: 'syringe' });
     const own = await database.db.values<[string | null]>(sql`SELECT icon FROM accounts WHERE id = 'own-photo'`);
     expect(own[0]![0]).toBeNull();

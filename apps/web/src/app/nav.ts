@@ -1,4 +1,5 @@
 import {
+  MonitorSmartphone,
   ArrowLeftRight,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -58,6 +59,8 @@ export const ACCOUNT_TAB: NavItem = { to: '/account', label: 'Account', icon: Us
  * Capture is drawn on the phone app only (it reads that phone's notifications and screenshots).
  */
 export const SETTINGS_ITEMS: readonly NavItem[] = [
+  // Link my devices: every device holding this data, and the way to link one more.
+  { to: '/account/devices', label: 'Devices', icon: MonitorSmartphone },
   { to: '/settings/capture', label: 'Capture', icon: Smartphone },
   { to: '/settings/widget', label: 'Widget', icon: LayoutGrid },
   { to: '/backup', label: 'Backup', icon: ArrowDownToLine },

@@ -3,6 +3,7 @@ import { memberName, type ReceivedItem } from '../networth/joint-rows';
 import { shortDay } from '../networth/shared-item';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { moneyChip, walletCredit, walletMoney, walletOrder } from './wallet-model';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 /*
  * The partner's joint account and joint card as cards in Wallet (owner, 12 Nov: mockups 2026-11-12-wallet-joint-items
@@ -34,9 +35,14 @@ export interface JointCard {
   name: string;
   /** Its card's last four (from its name), else its account number's (the summary's `face`), else none. */
   last4: string | null;
-  /** Its bank (Nama institusi) and card tier, as its holder set them (the summary's `face`): what its face is drawn from. */
+  /**
+   * Its bank (Nama institusi; a credit card's issuer) and card tier, as its holder set them (the summary's `face`):
+   * what its face is drawn from.
+   */
   bank: string | null;
   tier: string | null;
+  /** A credit card's catalogue product (the summary's `face.entry`), whose art its holder's Wallet draws; null for money. */
+  entry: string | null;
   currency: string;
   /** In `currency`: what money holds, or what a card owes (below 0 while it is in credit). */
   minor: number;
@@ -79,6 +85,7 @@ export function walletJoint(items: readonly ReceivedItem[], me: string, names: R
         last4: last4 ?? item.face?.last4 ?? null,
         bank: item.face?.bank ?? null,
         tier: item.face?.tier ?? null,
+        entry: item.subtype === 'credit_card' ? (item.face?.entry ?? null) : null,
         currency: item.currency,
         minor: item.balanceMinor,
         setAsideMinor: item.subtype === 'credit_card' ? 0 : (item.setAsideMinor ?? 0),
@@ -174,6 +181,7 @@ export function writeJointOrder(order: readonly string[], storage: Pick<Storage,
   try {
     if (order.some(isJointKey)) storage?.setItem(JOINT_ORDER_KEY, JSON.stringify(order));
     else storage?.removeItem(JOINT_ORDER_KEY);
+    if (storage === globalThis.localStorage) mirrorPref(JOINT_ORDER_KEY, order.some(isJointKey) ? JSON.stringify(order) : null);
   } catch {
     /* Kept for this visit only: the cards are still in the order chosen until the page is read again. */
   }

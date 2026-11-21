@@ -1,5 +1,6 @@
 import { DEFAULT_DEBT_SERVICE_BPS, EMERGENCY_BASES, type RatioSettings } from '@expanses/core';
 import { useSyncExternalStore } from 'react';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 /**
  * The two settings the ratios are read with, on this device: what the emergency fund counts and which debt-servicing
@@ -34,6 +35,7 @@ export function readHealthSettings(storage: Pick<Storage, 'getItem'> | undefined
 export function writeHealthSettings(settings: HealthSettings, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
   try {
     storage?.setItem(HEALTH_SETTINGS_KEY, JSON.stringify(settings));
+    if (storage === globalThis.localStorage) mirrorPref(HEALTH_SETTINGS_KEY, JSON.stringify(settings));
   } catch {
     /* Nothing to do: the ratios still read the new setting, it is only not remembered. */
   }

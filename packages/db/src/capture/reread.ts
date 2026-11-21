@@ -26,7 +26,7 @@ import { captureSettings, captureSources } from '../schema-capture';
 import { draftTransactions } from '../schema-drafts';
 import { planDraft } from './ingest';
 import { storedReadingOf } from './learn';
-import { type CaptureSource, isCardEmailSender, readFromSource, sourceById } from './sources';
+import { type CaptureSource, isCardEmailSender, namesCreditCard, readFromSource, sourceById } from './sources';
 
 type Row = typeof draftTransactions.$inferSelect;
 
@@ -307,6 +307,61 @@ export async function fixCardEmailDrafts(database: Database, opts: { today: stri
       fixed += 1;
     }
     await tx.insert(captureSettings).values({ key: CARD_EMAIL_FIX, value: new Date().toISOString() }).onConflictDoNothing();
+    return fixed;
+  });
+}
+
+/** Marks the second one-time fix below as run on this device. */
+const CARD_PURCHASE_FIX = 'fix.card-purchase-income.v2';
+
+/**
+ * Once per device: a credit card purchase email an older build's reader took for money in — whoever it came from, a
+ * sender handed over in a shape that build could not read ("Com") included — still waiting just as the reader left
+ * it, becomes the purchase it was, on the card its digits name.
+ *
+ * It is found by its own words, kept on the draft: they name a credit card, and the reader now reads them as spending
+ * (a table with the card's number or a merchant is a purchase). Its kept reading said money received, and its
+ * figure, account and category are still what that reading gave (`cardEmailFixOf`). A draft whose words are gone, one
+ * the owner changed, and a confirmed or dismissed one are never touched. Returns how many drafts changed.
+ */
+export async function fixCardPurchaseDrafts(database: Database, opts: { today: string }): Promise<number> {
+  return database.transaction(async (tx) => {
+    const [done] = await tx.select({ key: captureSettings.key }).from(captureSettings).where(eq(captureSettings.key, CARD_PURCHASE_FIX));
+    if (done) return 0;
+    const rows = await tx
+      .select()
+      .from(draftTransactions)
+      .where(
+        and(
+          eq(draftTransactions.status, 'pending'),
+          eq(draftTransactions.source, 'notification'),
+          eq(draftTransactions.kind, 'income'),
+          lt(draftTransactions.amountMinor, 0),
+          isNotNull(draftTransactions.rawPayload),
+          isNotNull(draftTransactions.sourceId),
+          isNull(draftTransactions.mergedInto),
+          like(draftTransactions.readingJson, '%"received"%'),
+        ),
+      );
+    let fixed = 0;
+    for (const row of rows) {
+      const capture = captureOf(row);
+      // With no reading kept there is no telling the reader's income from the owner's.
+      if (!storedReadingOf(row.readingJson) || !namesCreditCard(capture)) continue;
+      const source = await sourceById(tx, row.sourceId!);
+      const [home] = await tx.select({ id: workspaces.id, baseCurrency: workspaces.baseCurrency }).from(workspaces).where(eq(workspaces.id, row.workspaceId));
+      if (!source || !home) continue;
+      const reading = readFromSource(capture, source, source.readOffers ? 'transactions' : 'skip');
+      if (reading.skipped !== null || reading.amount === null || reading.type.value !== 'spent') continue;
+      const ws: WorkspaceContext = { workspaceId: home.id, baseCurrency: home.baseCurrency };
+      const edit = await cardEmailFixOf(tx, row, source, ws, opts.today);
+      if (!edit) continue;
+      await editDraftTx(tx, ws, row.id, edit);
+      // The kept reading is what the words say now, so no later re-read turns it back.
+      await tx.update(draftTransactions).set({ readingJson: JSON.stringify(reading) }).where(eq(draftTransactions.id, row.id));
+      fixed += 1;
+    }
+    await tx.insert(captureSettings).values({ key: CARD_PURCHASE_FIX, value: new Date().toISOString() }).onConflictDoNothing();
     return fixed;
   });
 }

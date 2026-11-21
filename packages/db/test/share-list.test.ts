@@ -26,15 +26,25 @@ describe('the share list offered once per member', () => {
 });
 
 describe('the first run of this build', () => {
+  /*
+   * The book shared, and its devices, as a share and the devices' joins left them: written as a fixture
+   * (`execScript`), not through the app. The capture run (capture-setup.ts) shares this book from birth, as a stand-in:
+   * the test's own share takes that row over.
+   */
+  const device = (bookId: string, deviceId: string, memberId: string, addedAt: string, removedAt: string | null) => `
+    INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
+    VALUES ('${bookId}', '${deviceId}', '${memberId}', 'Phone', '{}', '{}', '${addedAt}', ${removedAt === null ? 'NULL' : `'${removedAt}'`});`;
+
   async function sharedBook(withMembers: { memberId: string; removed?: boolean }[]): Promise<string> {
     const [book] = await database.db.values<[string]>(sql`SELECT id FROM books LIMIT 1`);
     const bookId = book![0];
-    await database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, 'relay-1', 1, 'm-rina', 'active', '2026-11-01T00:00:00Z')`);
-    for (const [i, member] of [{ memberId: 'm-rina' }, ...withMembers].entries()) {
-      await database.db.run(sql`
-        INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
-        VALUES (${bookId}, ${`d-${i}`}, ${member.memberId}, 'Phone', '{}', '{}', '2026-11-01T00:00:00Z', ${'removed' in member && member.removed ? '2026-11-02T00:00:00Z' : null})`);
-    }
+    await database.execScript(
+      `INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES ('${bookId}', 'relay-1', 1, 'm-rina', 'active', '2026-11-01T00:00:00Z')
+         ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, member_id = excluded.member_id;` +
+        [{ memberId: 'm-rina' }, ...withMembers]
+          .map((member, i) => device(bookId, `d-${i}`, member.memberId, '2026-11-01T00:00:00Z', 'removed' in member && member.removed ? '2026-11-02T00:00:00Z' : null))
+          .join(''),
+    );
     return bookId;
   }
 
@@ -43,9 +53,7 @@ describe('the first run of this build', () => {
     await seedShareListAsked(database);
     expect(await shareListAskedFor(database, bookId)).toEqual(['m-andi']);
     // Someone joining after the first run is offered the step as usual: the seed does not run again.
-    await database.db.run(sql`
-      INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
-      VALUES (${bookId}, 'd-sari', 'm-sari', 'Phone', '{}', '{}', '2026-11-12T00:00:00Z', NULL)`);
+    await database.execScript(device(bookId, 'd-sari', 'm-sari', '2026-11-12T00:00:00Z', null));
     await seedShareListAsked(database);
     expect(await shareListAskedFor(database, bookId)).toEqual(['m-andi']);
   });

@@ -2,6 +2,7 @@ import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
 import { InstallHint } from '../features/pwa/InstallHint';
+import { SeatNotice } from '../features/devices/SeatNotice';
 import { ReadOnlyNotice } from '../features/sharing/ReadOnlyNotice';
 import { RepairNotice } from '../features/sharing/RepairNotice';
 import { NoticeStrip } from '../ui/native';
@@ -20,6 +21,8 @@ export function AppNotices({ backup = true }: { backup?: boolean } = {}) {
       {backup && <BackupBanner />}
       {/* A share that ended here is read-only (§8.6), and every screen of it says so. */}
       <ReadOnlyNotice />
+      {/* A workspace shared with someone, on a linked device that is not the one keeping it shared: view-only here. */}
+      <SeatNotice />
       {/* Once: Family purchases the shared-book repair put right (sync gaps R2). */}
       <RepairNotice />
     </>

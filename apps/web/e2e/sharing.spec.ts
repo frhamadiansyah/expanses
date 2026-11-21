@@ -7,7 +7,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openAccountHistory, openCard, walletCard, openFace, wideScreen } from './accounts';
 import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
-import { cardPage, saveCardTerms } from './card-section';
+import { cardPage, chooseCatalogueCard, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
 import { openWithPockets } from './pockets';
 import { pickView } from './wallet';
@@ -1213,6 +1213,31 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   } else {
     await expect(faces.nth(0)).toHaveAttribute('aria-label', /^Rina Card/);
     await expect(faces.nth(1)).toHaveAttribute('aria-label', /^Andi Payroll/);
+  }
+
+  // The card art the partner picks reaches Andi's Wallet: checked in the phone's Wallet (pile and grid); the Mac
+  // Wallet draws the same face from the same summary.
+  if (!wideScreen(andi)) {
+    // Rina picks her card's product (her lists name it with its bank from then): Andi's Wallet draws it with the art hers does,
+    // the product's colours and its wordmark, not the plain card face (fix/joint-card-face, owner 20 Nov).
+    await page.goto('/wallet');
+    await walletCard(page, 'Rina Card').click();
+    await cardPage(page, 'Settings');
+    await chooseCatalogueCard(page, 'krisflyer', 'BCA KrisFlyer Visa Signature');
+    await page.goto('/wallet');
+    await pickView(page, 'Grid');
+    const rinaFace = page.getByRole('region', { name: 'Cards' }).locator('[data-testid="card-face"][aria-label^="BCA Rina Card"]');
+    await expect(rinaFace.getByTestId('face-type')).toHaveText('KrisFlyer');
+    const drawn = await rinaFace.getAttribute('style');
+    expect(drawn).toContain('background');
+    // Her lists name the card with its bank; the summary carries its own name, as it always has.
+    const andiFace = grid.locator('[data-testid="card-face"][aria-label^="Rina Card"]');
+    await eventually(andi, async () => {
+      await andi.reload();
+      await expect(andiFace).toHaveAttribute('style', drawn!, { timeout: 1_000 });
+    });
+    await expect(andiFace.getByTestId('face-type')).toHaveText('KrisFlyer · Rina’s');
+    await shot(andi, info, 'wj5-joint-card-art');
   }
 });
 

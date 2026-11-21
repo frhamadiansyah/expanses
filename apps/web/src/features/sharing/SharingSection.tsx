@@ -6,6 +6,7 @@ import { PlaceHeldSheet } from './PlaceHeldSheet';
 import { useCopyRoles, useLostHere, useShareHealth, useSharingDetail } from './queries';
 import { heldLineOf } from './copy-roles';
 import { deviceName, LOST_LINE, PLACE_LABEL } from './sharing-copy';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 /*
  * Settings → Workspaces → a workspace → Share. The workspace page carries one row (`ShareRow`: Off or On); the pages it
@@ -26,6 +27,7 @@ export function rememberedName(): string {
 export function rememberName(name: string): void {
   try {
     localStorage.setItem(NAME_KEY, name);
+    mirrorPref(NAME_KEY, name);
   } catch {
     // A private window: the name is simply asked for again next time.
   }

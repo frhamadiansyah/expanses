@@ -5,6 +5,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardIdentity } from '../schema-cards';
+import { markAccountDirtyTx } from '../sync/capture';
 import { cardTerms, catalogCategoryChoices, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 import { categoryIdsByKeyAllTx } from './categories';
 import { nameOwnProgrammeTx, openOwnProgrammeTx } from './programme-link';
@@ -97,13 +98,17 @@ async function writePlan(
     .from(cardTerms)
     .where(and(eq(cardTerms.accountId, program.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
   const creditLimitMinor = terms?.creditLimitMinor ?? null;
-  for (const { catalogKey, capSpendAtCreditLimit, ...rule } of plan.rules) {
+  // Each row named by its place in the plan (link my devices, Drop 0): two linked devices writing the same terms make
+  // the same rows, and writing them again puts the same rows back in use rather than adding more.
+  for (const [i, { catalogKey, capSpendAtCreditLimit, ...rule }] of plan.rules.entries()) {
     const caps = [rule.capSpendMinor, capSpendAtCreditLimit ? creditLimitMinor : null].filter((cap): cap is number => cap !== null);
     const capSpendMinor = caps.length ? Math.min(...caps) : null;
-    await saveEarnRuleTx(tx, ws, program.id, { ...rule, capSpendMinor, catalogKey }, FROM_CATALOG);
+    await saveEarnRuleTx(tx, ws, program.id, { ...rule, capSpendMinor, catalogKey }, { ...FROM_CATALOG, stableName: `catalog:rule:${i}:${catalogKey}` });
   }
-  for (const { catalogKey, ...bonus } of plan.bonuses) await saveCycleBonusTx(tx, ws, program.id, { ...bonus, catalogKey }, FROM_CATALOG);
-  for (const { catalogKey, ...partner } of plan.transferPartners) await saveTransferPartnerTx(tx, ws, program.id, { ...partner, catalogKey }, FROM_CATALOG);
+  for (const [i, { catalogKey, ...bonus }] of plan.bonuses.entries())
+    await saveCycleBonusTx(tx, ws, program.id, { ...bonus, catalogKey }, { ...FROM_CATALOG, stableName: `catalog:bonus:${i}:${catalogKey}` });
+  for (const [i, { catalogKey, ...partner }] of plan.transferPartners.entries())
+    await saveTransferPartnerTx(tx, ws, program.id, { ...partner, catalogKey }, { ...FROM_CATALOG, stableName: `catalog:partner:${i}:${catalogKey}` });
   if (plan.cashValue) {
     await saveRedemptionOptionTx(
       tx,
@@ -117,7 +122,7 @@ async function writePlan(
         currency: plan.cashValue.currency,
         catalogKey: CASH_VALUE_KEY,
       },
-      FROM_CATALOG,
+      { ...FROM_CATALOG, stableName: `catalog:redemption:${CASH_VALUE_KEY}` },
     );
   }
   // The statement day is personal; only the published fee comes from the catalogue, and only onto terms the user set up.
@@ -232,6 +237,8 @@ export function applyCatalogEntry(
     await clearRows(tx, ws, program.id, input.replaceManual);
     const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked', true, memberLevel);
     await nameOwnProgrammeTx(tx, ws, program.id, input.entry.program.name, input.entry.program.unit);
+    // A joint card's summary carries its issuer and catalogue product (`ItemFace`): the partner's phone draws the new art.
+    markAccountDirtyTx(tx, input.cardAccountId);
     return { programId: program.id, unmappedKeys };
   });
 }
@@ -327,6 +334,8 @@ export function customiseFromScratch(database: Database, ws: WorkspaceContext, p
         catalogSnapshotJson: null,
       })
       .where(eq(rewardPrograms.id, program.id));
+    // Off the catalogue, a joint card's face has no product any more (`ItemFace.entry`).
+    markAccountDirtyTx(tx, program.cardAccountId);
   });
 }
 

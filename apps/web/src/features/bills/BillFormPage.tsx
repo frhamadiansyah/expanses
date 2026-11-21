@@ -14,6 +14,7 @@ import { NOT_MONTHLY_BILL_NOTE } from '../transactions/not-monthly';
 import { useExpenseTemplates } from '../transactions/queries';
 import { PaidFromSheet, usePaidFromLabels } from './PaidFromSheet';
 import { useSinkingFunds } from './queries';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 const FUND_ACCOUNT_KEY = 'expanses.sinking-account';
 const lastFundAccount = (): string => {
@@ -187,6 +188,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
       if (saving) {
         try {
           localStorage.setItem(FUND_ACCOUNT_KEY, fundAccountId);
+          mirrorPref(FUND_ACCOUNT_KEY, fundAccountId);
         } catch {
           // Private windows may refuse storage; the account is then simply not remembered.
         }

@@ -1,3 +1,4 @@
+import { findEntry } from '@expanses/catalog';
 import { formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, pocketParentIds } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
@@ -145,14 +146,18 @@ export function useWalletCards() {
    * The partner's joint cards, drawn like an own card of their kind from what the summary carries — its name, its kind,
    * its currency, its bank and card tier, and the last four digits of its card or its number — and "· Rina’s" after
    * the type, so the face is the one its holder's phone draws (`moneyFaceOf`). Money nothing is drawn for keeps the
-   * plain face with its chip of words; a card has no catalogue look here, so it is the plain card face.
+   * plain face with its chip of words. A credit card is drawn as its holder's Wallet draws it (fix/joint-card-face): its
+   * catalogue product's art and network, with its issuer; one with no product this phone's catalogue knows is the plain
+   * card face, its issuer's colour, or a PayLater line's drawn face by its name.
    */
   const jointCards: WalletCard[] = joint.map((card) => {
-    const face = card.side === 'money' ? moneyFaceOf(card.bank, card.name, card.subtype, card.tier) : faceFor([card.name], ['paylater']);
+    const product = card.side === 'credit' && card.entry ? findEntry(card.entry) : undefined;
+    const face = card.side === 'money' ? moneyFaceOf(card.bank, card.name, card.subtype, card.tier) : product?.look ? null : faceFor([card.name], ['paylater']);
     const whose = `${card.ownerName}’s`;
     return {
       key: card.key,
-      issuer: null,
+      issuer: card.side === 'credit' ? card.bank : null,
+      ...(card.side === 'credit' ? { network: product?.network, look: product?.look } : {}),
       name: card.name,
       // A plain money face prints no digits: what it is is its chip of words ("Debit ···· 7781").
       last4: card.side === 'credit' || face !== null ? card.last4 : null,

@@ -1,4 +1,4 @@
-import { EXCHANGE_GAIN_KEY, EXCHANGE_GAIN_NAME, EXCHANGE_LOSS_KEY, EXCHANGE_LOSS_NAME, isExchangeResultKey, uuidv7 } from '@expanses/core';
+import { EXCHANGE_GAIN_KEY, EXCHANGE_GAIN_NAME, EXCHANGE_LOSS_KEY, EXCHANGE_LOSS_NAME, isExchangeResultKey } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
@@ -9,6 +9,7 @@ import { splitBooksOfTx } from './book-splits';
 import { hasBooks, personalBookIdTx } from './books';
 import { ensureCategoryByKeyTx } from './categories';
 import { eventPostingOfTx } from './event-only';
+import { stableId } from '../self/stable-id';
 
 /*
  * The exchange gain or loss (withdrawal rate §5, ruling R8): one line on Exchange gain or Exchange loss in the owner's
@@ -160,8 +161,10 @@ export async function writeGainLossTx(db: Db, ws: WorkspaceContext, transactionI
 
   const categoryId = await exchangeCategoryTx(db, ws, gainLossBaseMinor > 0);
   const exchangeId = await ensureSystemAccountTx(db, ws, 'currency_exchange');
-  const categoryEntryId = uuidv7();
-  const exchangeEntryId = uuidv7();
+  // Named by the transaction and the figure (link my devices): two linked devices that work out the same pair make
+  // the same two entries, never two pairs. A new figure is a new pair: the old one went above.
+  const categoryEntryId = await stableId(transactionId, `gain-loss:${gainLossBaseMinor}:category`);
+  const exchangeEntryId = await stableId(transactionId, `gain-loss:${gainLossBaseMinor}:exchange`);
   const line = (id: string, accountId: string, amountMinor: number) => ({
     id,
     workspaceId: ws.workspaceId,

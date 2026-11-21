@@ -12,14 +12,18 @@ export interface ItemSheetFacts {
   icon?: 'home' | 'car' | 'loan';
 }
 /**
- * What a joint money account's card face is drawn from on its holder's phone (Wallet's `faceOf`), so the partner's
- * phone draws the same face: its bank (the tax report's Nama institusi), which of the bank's cards it is (0087), and
- * its number's last four digits (0080) when no card's digits are in the item's `name`. Each key is absent when unset.
+ * What a joint account's card face is drawn from on its holder's phone, so the partner's phone draws the same face.
+ * A joint money account (Wallet's `faceOf`): its bank (the tax report's Nama institusi), which of the bank's cards it is
+ * (0087), and its number's last four digits (0080) when no card's digits are in the item's `name`. A joint credit card
+ * (fix/joint-card-face): its issuer (`bank`) and its catalogue product (`entry`, the shipped catalogue's public id the
+ * card's art is drawn from); its card's digits are already in `name`. Each key is absent when unset.
  */
 export interface ItemFace {
   bank?: string;
   tier?: string;
   last4?: string;
+  /** A credit card's catalogue entry id ("bca-sq-krisflyer-visa-signature"), never on money. */
+  entry?: string;
 }
 
 /** The account a pocket sits in, as a pocket's summary names it (`ItemSummary.pocketOf`). */
@@ -65,8 +69,9 @@ export interface ItemSummary {
   /** The finer kind (`ItemSheetFacts`); absent when the subtype says it all, or from a peer before this release. */
   sheet?: ItemSheetFacts;
   /**
-   * Only on a joint money account (`joint`) with something set (`ItemFace`); absent otherwise, so every other summary
-   * is byte-for-byte what it was. A build before this one keeps it in the summary and draws nothing from it.
+   * Only on a joint money account or joint credit card (`joint`) with something set (`ItemFace`); absent otherwise, so
+   * every other summary is byte-for-byte what it was. A build before this one keeps it in the summary and draws nothing
+   * from it (one before fix/joint-card-face reads a card's `bank` and drops its `entry`, and draws the plain card).
    */
   face?: ItemFace;
   /**

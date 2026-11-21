@@ -1,5 +1,18 @@
 import { isoDate } from '@expanses/core';
-import { type AccountRow, categoryIdsOfBook, isBookShared, listAccounts, listCategoryColours, memberPayerAccounts, nativeBalances, pocketParentIds, resolveRates } from '@expanses/db';
+import {
+  type AccountRow,
+  categoryIdsOfBook,
+  type Database,
+  isBookShared,
+  listAccounts,
+  listCategoryColours,
+  memberPayerAccounts,
+  nativeBalances,
+  pocketParentIds,
+  type RateFetcher,
+  type ResolvedRates,
+  resolveRates,
+} from '@expanses/db';
 import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useApp } from '../app/context';
@@ -114,12 +127,14 @@ export async function refreshAfterWrite(queryClient: QueryClient): Promise<void>
 
 export function useInvalidateAll() {
   const queryClient = useQueryClient();
-  const { sync } = useApp();
-  // Every write in the app ends here, so this is also where a shared book hears that it has something to send.
+  const { sync, self } = useApp();
+  // Every write in the app ends here, so this is also where a shared book — and the owner's other devices — hear that
+  // there is something to send.
   return useCallback(() => {
     sync.nudge();
+    self?.nudge();
     return refreshAfterWrite(queryClient);
-  }, [queryClient, sync]);
+  }, [queryClient, sync, self]);
 }
 
 export function useResolveRates() {
@@ -146,6 +161,82 @@ export function useStoredRates() {
     (currencies: string[], onDate: string) => resolveRates(database, { currencies, baseCurrency: ws.baseCurrency, onDate, today: isoDate() }),
     [database, ws],
   );
+}
+
+/** What reads a rate for a screen's figures: re-read once a rate fetched behind them is saved (`useRatesBehind`). */
+export const RATE_READERS: readonly (readonly string[])[] = [['sheet-inputs'], ['net-worth-series'], ['net-worth', 'received-rates']];
+
+/**
+ * The resolver a screen's figures read rates through: the rates this device has stored, at once, and today's fetched
+ * behind them.
+ *
+ * `useResolveRates` asks the rate server, in turn, for every currency without a rate stored for the day, and the
+ * figure waits on every answer — the day's first open of Net worth waited on three round trips before it showed
+ * anything, twice over (its line and its sheet each asked), and on no connection at all it waited on each failure,
+ * every time it opened. Here a currency with an earlier rate is converted at that rate straight away, as a failed
+ * fetch already converts it, and the day's rate is fetched once, behind the screen, and saved exactly as
+ * `useResolveRates` saves it; once one is saved, the figures that read rates are read again (`RATE_READERS`), so
+ * they end on the very rate `useResolveRates` would have given them. A currency with no rate stored at all is still
+ * waited for, as before: there is nothing to show it at. A past day is resolved as `useResolveRates` resolves it.
+ */
+export function useRatesBehind() {
+  const { database, ws } = useApp();
+  const queryClient = useQueryClient();
+  return useCallback(
+    (currencies: string[], onDate: string) => ratesBehind({ database, baseCurrency: ws.baseCurrency, queryClient, fetcher }, currencies, onDate),
+    [database, ws, queryClient],
+  );
+}
+
+/** `useRatesBehind`'s resolver, outside React. */
+export async function ratesBehind(
+  o: { database: Database; baseCurrency: string; queryClient: QueryClient; fetcher: RateFetcher; today?: string },
+  currencies: string[],
+  onDate: string,
+): Promise<ResolvedRates> {
+  const { database, baseCurrency, queryClient } = o;
+  const today = o.today ?? isoDate();
+  // Only today's rate is fetched behind the figures: a past day's (a tax year's last day) is fetched once and kept, and
+  // a figure for a past day is not shown at another day's rate even for a moment.
+  if (onDate < today) return resolveRates(database, { currencies, baseCurrency, onDate, today, fetcher: o.fetcher });
+  const stored = await resolveRates(database, { currencies, baseCurrency, onDate, today });
+  const behind = [...stored.stale, ...stored.missing].sort();
+  if (behind.length === 0) return stored;
+  // One fetch for every screen asking the same thing at once — the line and the sheet ask together.
+  const queryKey = ['rates-behind', baseCurrency, onDate, behind.join(',')];
+  const fresh = queryClient
+    .fetchQuery({
+      queryKey,
+      staleTime: Infinity,
+      queryFn: async () => {
+        const answer = await resolveRates(database, { currencies: behind, baseCurrency, onDate, today, fetcher: o.fetcher });
+        // A rate saved for a currency the figures were drawn at an earlier rate of: they are read again, once.
+        if (stored.stale.some((currency) => answer.rates[currency] !== undefined && !answer.stale.includes(currency))) {
+          for (const key of RATE_READERS) void queryClient.invalidateQueries({ queryKey: [...key] });
+        }
+        return answer;
+      },
+    })
+    .then((answer) => {
+      // A currency the server did not answer for is asked again the next time a screen reads it, as before.
+      if (answer.stale.length > 0 || answer.missing.length > 0) queryClient.removeQueries({ queryKey, exact: true });
+      return answer;
+    });
+  // Nothing stored to show it at: wait, exactly as `useResolveRates` does.
+  if (stored.missing.length > 0) return mergeRates(stored, await fresh);
+  fresh.catch((error: unknown) => console.warn('The day’s exchange rates were not fetched', error));
+  return stored;
+}
+
+/** The stored rates with the fetched ones laid over them: what one `resolveRates` with a fetcher would have answered. */
+function mergeRates(stored: ResolvedRates, fresh: ResolvedRates): ResolvedRates {
+  const rates = { ...stored.rates, ...fresh.rates };
+  const fetchedOk = (currency: string) => fresh.rates[currency] !== undefined && !fresh.stale.includes(currency);
+  return {
+    rates,
+    stale: [...new Set([...stored.stale.filter((currency) => !fetchedOk(currency)), ...fresh.stale])].sort(),
+    missing: fresh.missing,
+  };
 }
 
 export const isActive = (a: AccountRow) => a.archivedAt === null;

@@ -131,6 +131,8 @@ import { ReportPage } from '../features/debt-plan/ReportPage';
 import type { ReportPeriod } from '../features/debt-plan/report-view';
 import { SchedulePage } from '../features/debt-plan/SchedulePage';
 import { Layout } from './Layout';
+import { DevicesPage } from '../features/devices/DevicesPage';
+import { DevicePage } from '../features/devices/DevicePage';
 
 /** The card page's old tabs, still read from a link made before they became pages of their own. */
 export interface CardSearch {
@@ -584,6 +586,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
   // ?section= names a section of the wide screen's Settings (Mac Settings A); a phone's Account page reads none.
   createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage, validateSearch: settingsSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/devices', component: DevicesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/devices/$deviceId', component: DevicePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/month-start', component: MonthStartPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share', component: SharePage }),

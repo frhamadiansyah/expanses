@@ -1,0 +1,345 @@
+import { expenseLines } from '@expanses/core';
+import { addPhoto, createAccount, createDatabase, createWorkspace, type Database, listAccounts, MemoryKeyStore, MemoryTransport, migrate, postTransaction, requestSignerOf, SyncNotReadyError } from '@expanses/db';
+import { createNodeExecutor } from '@expanses/db/node';
+import { sql } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { hydratePrefs, mirrorPref, setPrefDatabase } from '../lib/synced-prefs';
+import { keepPlan, LINK_FAILED_KEY, LINK_PLAN_KEY, type SelfPhotoFiles, SelfService, thisDeviceInfo } from './self-service';
+import { SyncService } from './sync-service';
+
+vi.setConfig({ testTimeout: 120_000 });
+
+/*
+ * Link my devices in the app (Drop 3): the open finishing a link under way, the seat rule keeping household sharing
+ * off a linked device that is not the seat, and the choices kept in localStorage reaching the other devices.
+ * Two devices in memory, invented data (a made-up bank and shop).
+ */
+
+class MemoryStorage {
+  private readonly map = new Map<string, string>();
+  getItem(key: string) {
+    return this.map.has(key) ? this.map.get(key)! : null;
+  }
+  setItem(key: string, value: string) {
+    this.map.set(key, String(value));
+  }
+  removeItem(key: string) {
+    this.map.delete(key);
+  }
+  clear() {
+    this.map.clear();
+  }
+}
+
+let storage: MemoryStorage;
+beforeEach(() => {
+  storage = new MemoryStorage();
+  vi.stubGlobal('localStorage', storage);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setPrefDatabase(null);
+});
+
+/** Photo files in memory, as a device's photo folder. */
+function photoFiles(): SelfPhotoFiles & { files: Map<string, Uint8Array> } {
+  const files = new Map<string, Uint8Array>();
+  return {
+    files,
+    readPhotoBytes: async (name) => files.get(name) ?? null,
+    putPhotoBytes: async (name, bytes) => {
+      if (files.has(name)) return false;
+      files.set(name, bytes);
+      return true;
+    },
+  };
+}
+
+async function device(relay: MemoryTransport, info = thisDeviceInfo('Mozilla/5.0 (iPhone)')) {
+  const database = createDatabase(createNodeExecutor());
+  await migrate(database);
+  const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+  const keyStore = new MemoryKeyStore();
+  const photos = photoFiles();
+  const self = new SelfService({ database, keyStore, info, photos, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+  return { database, ws, keyStore, self, photos };
+}
+
+/** The whole link as the two sheets drive it, ending with the new device's data replaced and its next open done. */
+async function link(relay: MemoryTransport, phone: Awaited<ReturnType<typeof device>>, mac: Awaited<ReturnType<typeof device>>): Promise<SelfService> {
+  const { sessionId, code } = await phone.self.startLinking();
+  await mac.self.joinWithCode(code);
+  await phone.self.checkLinking(sessionId);
+  await mac.self.checkJoining(sessionId);
+  await phone.self.checkLinking(sessionId);
+  await phone.self.allowLinking(sessionId);
+  expect(await mac.self.checkJoining(sessionId)).toEqual({ stage: 'allowed' });
+  const { plan, bytes } = await mac.self.fetchCopy(sessionId);
+  keepPlan(plan);
+  await mac.database.importBytes(bytes);
+  // The reload: a fresh service on the replaced database, the same keys.
+  const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, photos: mac.photos, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+  await reopened.prepare();
+  return reopened;
+}
+
+describe('the open after a link', () => {
+  it('makes the copy this device’s own, forgets the plan, and the two devices then sync', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const bank = (await createAccount(phone.database, phone.ws, { name: 'Test Bank', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    const mac = await device(relay, thisDeviceInfo('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0)'));
+    storage.setItem('expanses.dev-sample-loaded', '1');
+    const self = await link(relay, phone, mac);
+    expect(self.joinOutcome).toBe('linked');
+    expect(storage.getItem(LINK_PLAN_KEY)).toBeNull();
+    expect(storage.getItem('expanses.dev-sample-loaded')).toBeNull();
+    expect(await mac.database.db.values(sql`SELECT name FROM accounts WHERE id = ${bank}`)).toEqual([['Test Bank']]);
+    await self.refresh();
+    expect(self.status().devices.map((d) => [d.name, d.thisDevice])).toEqual([
+      ['iPhone', false],
+      ['Mac', true],
+    ]);
+  });
+
+  it('with the old data still here (the replace never happened), drops the plan and changes nothing', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const mac = await device(relay);
+    const { sessionId, code } = await phone.self.startLinking();
+    await mac.self.joinWithCode(code);
+    await phone.self.checkLinking(sessionId);
+    await mac.self.checkJoining(sessionId);
+    await phone.self.checkLinking(sessionId);
+    await phone.self.allowLinking(sessionId);
+    const { plan } = await mac.self.fetchCopy(sessionId);
+    keepPlan(plan);
+    const before = await mac.database.exportBytes();
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBe('failed');
+    expect(storage.getItem(LINK_PLAN_KEY)).toBeNull();
+    expect(storage.getItem(LINK_FAILED_KEY)).toBe('1');
+    expect(Buffer.from(await mac.database.exportBytes()).equals(Buffer.from(before))).toBe(true);
+    // It left the group's relay book it had claimed a place in: no ghost device stays behind.
+    expect(relay.peek(plan.relayBookId)!.devices.get(plan.deviceId)!.removedAt).toBeDefined();
+  });
+
+  it('a read that fails at the open keeps the plan for the next one and runs nothing as this device meanwhile', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const mac = await device(relay);
+    const { sessionId, code } = await phone.self.startLinking();
+    await mac.self.joinWithCode(code);
+    await phone.self.checkLinking(sessionId);
+    await mac.self.checkJoining(sessionId);
+    await phone.self.checkLinking(sessionId);
+    await phone.self.allowLinking(sessionId);
+    const { plan, bytes } = await mac.self.fetchCopy(sessionId);
+    keepPlan(plan);
+    await mac.database.importBytes(bytes);
+    const failing = vi.spyOn(mac.database.db, 'values').mockRejectedValueOnce(new Error('database is locked'));
+    const stuck = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await expect(stuck.prepare()).rejects.toThrow('database is locked');
+    failing.mockRestore();
+    expect(stuck.joinOutcome).toBe('incomplete');
+    expect(storage.getItem(LINK_PLAN_KEY)).not.toBeNull();
+    expect(storage.getItem(LINK_FAILED_KEY)).toBeNull();
+    expect(relay.peek(plan.relayBookId)!.devices.get(plan.deviceId)!.removedAt).toBeUndefined();
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBe('linked');
+  });
+});
+
+describe('taking the copy', () => {
+  async function allowed() {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    await createAccount(phone.database, phone.ws, { name: 'Test Bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const mac = await device(relay, thisDeviceInfo('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0)'));
+    const { sessionId, code } = await phone.self.startLinking();
+    await mac.self.joinWithCode(code);
+    await phone.self.checkLinking(sessionId);
+    await mac.self.checkJoining(sessionId);
+    await phone.self.checkLinking(sessionId);
+    await phone.self.allowLinking(sessionId);
+    const book = (await (await phone.self.engine()).group())!.relayBookId;
+    const macId = (await mac.self.engine()).deviceId;
+    return { relay, phone, mac, sessionId, book, macId };
+  }
+
+  it('photos that cannot be held stop it before any plan is kept: no false "did not finish", no ghost device', async () => {
+    const { relay, mac, sessionId, book, macId } = await allowed();
+    const before = await mac.database.exportBytes();
+    const replace = vi.fn(async () => undefined);
+    await expect(mac.self.takeCopy(sessionId, { holdPhotos: async () => Promise.reject(new Error('Nothing was restored')), replace })).rejects.toThrow('Nothing was restored');
+    expect(replace).not.toHaveBeenCalled();
+    expect(storage.getItem(LINK_PLAN_KEY)).toBeNull();
+    expect(relay.peek(book)!.devices.get(macId)!.removedAt).toBeDefined();
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBeNull();
+    expect(storage.getItem(LINK_FAILED_KEY)).toBeNull();
+    expect(Buffer.from(await mac.database.exportBytes()).equals(Buffer.from(before))).toBe(true);
+  });
+
+  it('a replace that fails before it took forgets the plan and leaves the relay book', async () => {
+    const { relay, mac, sessionId, book, macId } = await allowed();
+    await expect(mac.self.takeCopy(sessionId, { holdPhotos: async () => [], replace: async () => Promise.reject(new Error('disk full')) })).rejects.toThrow('disk full');
+    expect(storage.getItem(LINK_PLAN_KEY)).toBeNull();
+    expect(relay.peek(book)!.devices.get(macId)!.removedAt).toBeDefined();
+  });
+
+  it('a replace that took and then failed keeps its plan: the next open finishes the link', async () => {
+    const { relay, mac, sessionId, book, macId } = await allowed();
+    await expect(
+      mac.self.takeCopy(sessionId, {
+        holdPhotos: async () => [],
+        replace: async (bytes) => {
+          await mac.database.importBytes(bytes);
+          throw new Error('the reload did not happen');
+        },
+      }),
+    ).rejects.toThrow('the reload did not happen');
+    expect(storage.getItem(LINK_PLAN_KEY)).not.toBeNull();
+    expect(relay.peek(book)!.devices.get(macId)!.removedAt).toBeUndefined();
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBe('linked');
+  });
+});
+
+describe('receipt photos', () => {
+  it('follow the figures: the iPhone sends its photo, the Mac fetches it, and its blobs go once both hold it', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const bank = (await createAccount(phone.database, phone.ws, { name: 'Test Bank', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    const groceries = (await listAccounts(phone.database, phone.ws)).find((a) => a.name === 'Groceries')!.id;
+    const id = await postTransaction(phone.database, phone.ws, { occurredOn: '2026-11-19', description: 'Test grocer', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 61_000, currency: 'IDR' }) });
+    const picture = Uint8Array.from({ length: 900_000 }, (_, i) => (i * 7) % 251); // invented bytes, two blobs' worth
+    phone.photos.files.set('test-receipt.jpg', picture);
+    await addPhoto(phone.database, phone.ws, { transactionId: id, fileName: 'test-receipt.jpg', mime: 'image/jpeg', byteSize: picture.length });
+    const mac = await device(relay, thisDeviceInfo('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0)'));
+    const macSelf = await link(relay, phone, mac);
+    await macSelf.refresh();
+    await phone.self.refresh();
+    await phone.self.syncNow(); // sends the photo
+    await macSelf.syncNow(); // fetches it
+    for (let round = 0; round < 3 && mac.photos.files.size === 0; round += 1) {
+      // The iPhone may have let the blobs go before it knew the Mac: it sends the file again once it does.
+      await phone.self.syncNow();
+      await macSelf.syncNow();
+    }
+    expect(macSelf.status().photosMissing).toBe(0);
+    expect(mac.photos.files.get('test-receipt.jpg')).toEqual(picture);
+    await phone.self.syncNow(); // hears the Mac holds it: the blobs go
+    const book = (await (await phone.self.engine()).group())!.relayBookId;
+    expect(relay.peek(book)!.blobs.size).toBe(0);
+    expect(await phone.database.db.values(sql`SELECT manifest_json FROM self_photos`)).toEqual([[null]]);
+    macSelf.stop();
+    phone.self.stop();
+  });
+});
+
+describe('a copy not yet made this device’s own', () => {
+  it('keeps the link and household sharing off — the copy’s shared workspace refuses a write — until an open finishes it', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const groceries = (await listAccounts(phone.database, phone.ws)).find((a) => a.name === 'Groceries')!.id;
+    const bank = (await createAccount(phone.database, phone.ws, { name: 'Test Bank', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    const bookId = (await phone.database.db.values<[string]>(sql`SELECT id FROM books LIMIT 1`))[0]![0];
+    await phone.database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, 'test-relay', 1, 'test-member', 'active', '2026-11-01T00:00:00Z')`);
+    const mac = await device(relay);
+    const { sessionId, code } = await phone.self.startLinking();
+    await mac.self.joinWithCode(code);
+    await phone.self.checkLinking(sessionId);
+    await mac.self.checkJoining(sessionId);
+    await phone.self.checkLinking(sessionId);
+    await phone.self.allowLinking(sessionId);
+    const { plan, bytes } = await mac.self.fetchCopy(sessionId);
+    keepPlan(plan);
+    await mac.database.importBytes(bytes);
+
+    // The reload, with this device's keys out of reach (a locked keychain): the copy cannot be made its own.
+    const locked = { getOrCreateDevice: () => Promise.reject(new Error('keychain locked')), hasDevice: async () => true };
+    const stuck = new SelfService({ database: mac.database, keyStore: locked, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await expect(stuck.prepare()).rejects.toThrow('keychain locked');
+    expect(stuck.joinOutcome).toBe('incomplete');
+    await expect(stuck.engine()).rejects.toThrow('Linking is not finished');
+    expect(storage.getItem(LINK_PLAN_KEY)).not.toBeNull();
+    // What the open does then: household sharing held off; the copy's shared workspace refuses a write.
+    const sync = new SyncService({ database: mac.database, keyStore: mac.keyStore, transportFor: (keys) => relay.as(requestSignerOf(keys)), shareRecords: null });
+    sync.holdOff();
+    await sync.prepare();
+    expect(sync.elsewhere).toBe(true);
+    await expect(
+      postTransaction(mac.database, phone.ws, { occurredOn: '2026-11-20', description: 'Test shop', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 9_000, currency: 'IDR' }) }),
+    ).rejects.toBeInstanceOf(SyncNotReadyError);
+    expect(await mac.database.db.values(sql`SELECT count(*) FROM sync_outbox`)).toEqual([[0]]);
+    expect(await mac.database.db.values(sql`SELECT state FROM shared_books`)).toEqual([['active']]);
+
+    // The next open, keys at hand, finishes it.
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBe('linked');
+  });
+});
+
+describe('the seat', () => {
+  it('household sharing does not run on a linked device that is not the seat; its shared workspace changes there all the same', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const groceries = (await listAccounts(phone.database, phone.ws)).find((a) => a.name === 'Groceries')!.id;
+    const bank = (await createAccount(phone.database, phone.ws, { name: 'Test Bank', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    const bookId = (await phone.database.db.values<[string]>(sql`SELECT id FROM books LIMIT 1`))[0]![0];
+    await phone.database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, 'test-relay', 1, 'test-member', 'active', '2026-11-01T00:00:00Z')`);
+    const mac = await device(relay);
+    await link(relay, phone, mac);
+    const sync = new SyncService({ database: mac.database, keyStore: mac.keyStore, transportFor: (keys) => relay.as(requestSignerOf(keys)), shareRecords: null });
+    await sync.prepare();
+    expect(sync.elsewhere).toBe(true);
+    // The copied bookkeeping is left exactly as the seat wrote it: never turned to "needs a new invite" here.
+    expect(await mac.database.db.values(sql`SELECT state FROM shared_books`)).toEqual([['active']]);
+    // The Mac's data is now the iPhone's: its workspace too. The purchase is the Mac's to send to the seat, not to the household.
+    await postTransaction(mac.database, phone.ws, { occurredOn: '2026-11-20', description: 'Test shop', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 9_000, currency: 'IDR' }) });
+    expect(await mac.database.db.values(sql`SELECT count(*) FROM sync_outbox`)).toEqual([[0]]);
+  });
+});
+
+describe('the choices kept on the device', () => {
+  async function bare(): Promise<Database> {
+    const database = createDatabase(createNodeExecutor());
+    await migrate(database);
+    return database;
+  }
+
+  it('a choice written here goes into settings for the other devices; one from another device wins at the next read', async () => {
+    const database = await bare();
+    setPrefDatabase(database);
+    storage.setItem('health.ratio-settings', '{"months":6}');
+    mirrorPref('health.ratio-settings', '{"months":6}');
+    mirrorPref('wallet.view', 'grid'); // a view choice stays on the device
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await database.db.values(sql`SELECT key, value FROM settings WHERE key LIKE 'pref.%'`)).toEqual([['pref.health.ratio-settings', '{"months":6}']]);
+    await database.db.run(sql`UPDATE settings SET value = '{"months":3}' WHERE key = 'pref.health.ratio-settings'`);
+    await hydratePrefs(database, storage);
+    expect(storage.getItem('health.ratio-settings')).toBe('{"months":3}');
+  });
+
+  it('a choice made before this build, kept only on the device, goes into settings once', async () => {
+    const database = await bare();
+    storage.setItem('expanses.currency.favorites', '["IDR","SGD"]');
+    await hydratePrefs(database, storage);
+    expect(await database.db.values(sql`SELECT value FROM settings WHERE key = 'pref.expanses.currency.favorites'`)).toEqual([['["IDR","SGD"]']]);
+  });
+});
+
+describe('what this device is called', () => {
+  it('by its kind', () => {
+    expect(thisDeviceInfo('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)')).toMatchObject({ name: 'iPhone', kind: 'phone' });
+    expect(thisDeviceInfo('Mozilla/5.0 (iPad; CPU OS 18_0)')).toMatchObject({ name: 'iPad', kind: 'tablet' });
+    expect(thisDeviceInfo('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0)', 0)).toMatchObject({ name: 'Mac', kind: 'mac' });
+    expect(thisDeviceInfo('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0)', 5)).toMatchObject({ name: 'iPad', kind: 'tablet' });
+  });
+});

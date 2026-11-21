@@ -21,10 +21,10 @@ import {
   type ValuationRow,
   sumToBase,
 } from '@expanses/core';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
-import { accounts } from '../schema';
+import { accounts, entries, transactions } from '../schema';
 import { assetProfiles, prices, valuations } from '../schema-assets';
 import { debtProfiles } from '../schema-debts';
 import { notPlaceholder, sharingTablesExist } from '../sync/placeholder';
@@ -88,8 +88,39 @@ const lastDayOf = (month: string): string => {
   return date.toISOString().slice(0, 10);
 };
 
-/** What every asset account is worth on a date, with where the number came from. */
-export async function assetValuesAt(database: Database, ws: WorkspaceContext, date: string): Promise<AssetValueRow[]> {
+/**
+ * What `assetValuesAt` reads that does not depend on the date: the asset accounts, their profiles, trades, prices,
+ * estimates and links, each grouped by account once. A series values every month from one read of these instead of
+ * reading them all again for each month.
+ */
+interface AssetInputs {
+  /** Every asset account of the workspace, archived ones too, in the order the sheet lists them. */
+  rows: (typeof accounts.$inferSelect)[];
+  parents: Set<string>;
+  soldOn: Map<string, string>;
+  profileByAccount: Map<string, typeof assetProfiles.$inferSelect>;
+  debtCodeByAccount: Map<string, { accountId: string; personName: string | null; coretaxCode: string | null }>;
+  tradesByAccount: Map<string, Awaited<ReturnType<typeof listTrades>>>;
+  pricesByAccount: Map<string, PriceRow[]>;
+  valuationsByAccount: Map<string, ValuationRow[]>;
+  securityOf: Map<string, string>;
+  pricesBySecurity: Map<string, PriceRow[]>;
+}
+
+/** Groups rows by a key, each group in the rows' own order. */
+function groupBy<T, V>(rows: readonly T[], key: (row: T) => string, value: (row: T) => V): Map<string, V[]> {
+  const groups = new Map<string, V[]>();
+  for (const row of rows) {
+    const k = key(row);
+    const group = groups.get(k);
+    if (group) group.push(value(row));
+    else groups.set(k, [value(row)]);
+  }
+  return groups;
+}
+
+/** Reads what every asset is valued from. Null when the workspace has no asset account that could be valued at all. */
+async function readAssetInputs(database: Database, ws: WorkspaceContext): Promise<AssetInputs | null> {
   const assetSubtypes = BALANCE_SUBTYPES.asset as readonly string[];
   const hidePlaceholders = await sharingTablesExist(database.db);
   const rows = await database.db
@@ -103,10 +134,8 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
   const parents = pocketParentIds(rows);
   // A sold asset (0092) is valued no more from the day it was sold; before that day its history stands as it was.
   const soldOn = await soldOnByAccount(database.db, ws);
-  const assetsAccounts = rows.filter(
-    (row) => row.archivedAt === null && assetSubtypes.includes(row.subtype) && !parents.has(row.id) && !((soldOn.get(row.id) ?? '9999-99-99') <= date),
-  );
-  if (assetsAccounts.length === 0) return [];
+  // No account that is open, an asset and no parent: nothing on any date, and nothing more worth reading.
+  if (!rows.some((row) => row.archivedAt === null && assetSubtypes.includes(row.subtype) && !parents.has(row.id))) return null;
 
   const profiles = await database.db.select().from(assetProfiles).where(eq(assetProfiles.workspaceId, ws.workspaceId));
   const profileByAccount = new Map(profiles.map((profile) => [profile.accountId, profile]));
@@ -120,30 +149,51 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
     .from(debtProfiles)
     .where(eq(debtProfiles.workspaceId, ws.workspaceId));
   const debtCodeByAccount = new Map(debtRows.map((row) => [row.accountId, row]));
-  const balances = await nativeBalances(database, ws, date);
   const trades = await listTrades(database, ws);
-  const tradesByAccount = new Map<string, typeof trades>();
-  for (const trade of trades) tradesByAccount.set(trade.accountId, [...(tradesByAccount.get(trade.accountId) ?? []), trade]);
+  const tradesByAccount = groupBy(trades, (trade) => trade.accountId, (trade) => trade);
   const priceRows = await database.db.select().from(prices).where(eq(prices.workspaceId, ws.workspaceId));
   // In the order they were saved (rowid), so two saved in the same millisecond still keep it.
   const valuationRows = await database.db.select().from(valuations).where(eq(valuations.workspaceId, ws.workspaceId)).orderBy(sql`rowid`);
   // A holding with a security is valued from the security's prices alone (spec §3.1); the rest from its own.
   const securityOf = new Map((await listHoldingLinks(database, ws)).filter((link) => link.securityId).map((link) => [link.accountId, link.securityId!]));
   const securityPriceRows = securityOf.size > 0 ? await allSecurityPrices(database, ws) : [];
+  const valuationsByAccount = groupBy(valuationRows, (row) => row.accountId, (row) => row);
+  return {
+    rows,
+    parents,
+    soldOn,
+    profileByAccount,
+    debtCodeByAccount,
+    tradesByAccount,
+    pricesByAccount: groupBy(priceRows, (row) => row.accountId, (row) => ({ onDate: row.onDate, priceMicro: row.priceMicro })),
+    // Oldest saved first, so of two values for the same day the one saved last is the one that counts.
+    valuationsByAccount: new Map(
+      [...valuationsByAccount].map(([accountId, list]) => [
+        accountId,
+        list.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, createdAt: row.createdAt })),
+      ]),
+    ),
+    securityOf,
+    pricesBySecurity: groupBy(securityPriceRows, (row) => row.securityId, (row) => ({ onDate: row.onDate, priceMicro: row.priceMicro })),
+  };
+}
 
+/** Every asset's value on `date` from inputs already read and the ledger's balances on that date. */
+function assetValuesFrom(inputs: AssetInputs | null, ws: WorkspaceContext, date: string, balances: Record<string, number>): AssetValueRow[] {
+  if (!inputs) return [];
+  const assetSubtypes = BALANCE_SUBTYPES.asset as readonly string[];
+  const { rows, parents, soldOn, profileByAccount, debtCodeByAccount, tradesByAccount, pricesByAccount, valuationsByAccount, securityOf, pricesBySecurity } = inputs;
+  const assetsAccounts = rows.filter(
+    (row) => row.archivedAt === null && assetSubtypes.includes(row.subtype) && !parents.has(row.id) && !((soldOn.get(row.id) ?? '9999-99-99') <= date),
+  );
   return assetsAccounts.map((account) => {
     const profile = profileByAccount.get(account.id);
     const mode: ValuationMode = profile ? presetFor(profile.assetKind).valuationMode : account.valuationMode;
-    const position: Position | undefined = mode === 'market' ? positionAfter(tradesByAccount.get(account.id) ?? [], date) : undefined;
+    const trades = tradesByAccount.get(account.id) ?? [];
+    const position: Position | undefined = mode === 'market' ? positionAfter(trades, date) : undefined;
     const securityId = securityOf.get(account.id);
-    const accountPrices: PriceRow[] = securityId
-      ? securityPriceRows.filter((row) => row.securityId === securityId).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }))
-      : priceRows.filter((row) => row.accountId === account.id).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }));
-    // Oldest saved first, so of two values for the same day the one saved last is the one that counts.
-    const accountValuations: ValuationRow[] = valuationRows
-      .filter((row) => row.accountId === account.id)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis, createdAt: row.createdAt }));
+    const accountPrices: PriceRow[] = (securityId ? pricesBySecurity.get(securityId) : pricesByAccount.get(account.id)) ?? [];
+    const accountValuations: ValuationRow[] = valuationsByAccount.get(account.id) ?? [];
     const value = assetValueAt(
       {
         accountId: account.id,
@@ -154,7 +204,7 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
         prices: accountPrices,
         valuations: accountValuations,
         // Tracked by money: the last typed value (or past NAV) moved by the buys and sells since.
-        ...(mode === 'amount' ? byMoneyInputs(tradesByAccount.get(account.id) ?? [], accountPrices, accountValuations, date) : {}),
+        ...(mode === 'amount' ? byMoneyInputs(trades, accountPrices, accountValuations, date) : {}),
       },
       date,
     );
@@ -169,9 +219,44 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
       person: debtCodeByAccount.get(account.id)?.personName ?? null,
       unitsMicro: position ? position.unitsMicro : null,
       stale: isStaleValue(value, date),
-      everSold: (tradesByAccount.get(account.id) ?? []).some((trade) => trade.kind === 'sell' && trade.occurredOn <= date),
+      everSold: trades.some((trade) => trade.kind === 'sell' && trade.occurredOn <= date),
     };
   });
+}
+
+/** What every asset account is worth on a date, with where the number came from. */
+export async function assetValuesAt(database: Database, ws: WorkspaceContext, date: string): Promise<AssetValueRow[]> {
+  const inputs = await readAssetInputs(database, ws);
+  return assetValuesFrom(inputs, ws, date, inputs ? await nativeBalances(database, ws, date) : {});
+}
+
+/**
+ * The ledger's balances on each of `dates`, from one pass over it: what `nativeBalances` gives for each date, without
+ * adding up the whole ledger once a date. Each entry is counted in the first date on or after its day, and each
+ * date's balance is the running total of those up to it. An account with no entry by a date is left out, as
+ * `nativeBalances` leaves it out.
+ */
+export async function nativeBalancesOn(database: Database, ws: WorkspaceContext, dates: readonly string[]): Promise<Map<string, Record<string, number>>> {
+  const sorted = [...new Set(dates)].sort();
+  const result = new Map<string, Record<string, number>>();
+  if (sorted.length === 0) return result;
+  const bucket = sql.join(
+    sorted.map((date, index) => sql`when ${transactions.occurredOn} <= ${date} then ${index}`),
+    sql` `,
+  );
+  const rows = await database.db
+    .select({ accountId: entries.accountId, bucket: sql<number>`case ${bucket} end`, total: sql<number>`sum(${entries.amountMinor})` })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .where(and(eq(entries.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), lte(transactions.occurredOn, sorted[sorted.length - 1]!)))
+    .groupBy(entries.accountId, sql`2`);
+  const byBucket = groupBy(rows, (row) => String(row.bucket), (row) => row);
+  const running: Record<string, number> = {};
+  sorted.forEach((date, index) => {
+    for (const row of byBucket.get(String(index)) ?? []) running[row.accountId] = (running[row.accountId] ?? 0) + Number(row.total);
+    result.set(date, { ...running });
+  });
+  return result;
 }
 
 /**
@@ -265,9 +350,29 @@ function emptyAssets(): Record<SheetSectionKey, number> {
   return held;
 }
 
+/** The open debts' accounts, as net worth reads them: each one's balance is what is still owed. */
+async function liabilityAccounts(database: Database, ws: WorkspaceContext): Promise<{ id: string; currency: string | null; subtype: AccountSubtype }[]> {
+  return database.db
+    .select({ id: accounts.id, currency: accounts.currency, subtype: accounts.subtype })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'liability'), isNull(accounts.archivedAt)));
+}
+
 /** Assets at their value minus what is still owed, both through `sumToBase`: every rate, or no figure. */
 export async function netWorthAt(database: Database, ws: WorkspaceContext, date: string, ratesToBase: Record<string, number>): Promise<NetWorth> {
-  const values = await assetValuesAt(database, ws, date);
+  const inputs = await readAssetInputs(database, ws);
+  const balances = await nativeBalances(database, ws, date);
+  return netWorthFrom(assetValuesFrom(inputs, ws, date, balances), await liabilityAccounts(database, ws), balances, ws, ratesToBase);
+}
+
+/** `netWorthAt` from what it reads: the assets' values on the date, the debts' accounts and the ledger on the date. */
+function netWorthFrom(
+  values: readonly AssetValueRow[],
+  rows: readonly { id: string; currency: string | null; subtype: AccountSubtype }[],
+  balances: Record<string, number>,
+  ws: WorkspaceContext,
+  ratesToBase: Record<string, number>,
+): NetWorth {
   // A trip balance below zero is money this person owes the group (shared events §5): counted as a payable, never as
   // an asset worth less than nothing. Net worth is the same figure either way; what it is made of is not.
   const owing = values.filter((row) => row.subtype === 'event_balance' && row.valueMinor < 0);
@@ -275,17 +380,11 @@ export async function netWorthAt(database: Database, ws: WorkspaceContext, date:
   const assets = sumToBase({ amounts: held.map((row) => ({ minor: row.valueMinor, currency: row.currency })), baseCurrency: ws.baseCurrency, ratesToBase });
 
   const liabilitySubtypes = BALANCE_SUBTYPES.liability as readonly string[];
-  const rows = await database.db
-    .select({ id: accounts.id, currency: accounts.currency, subtype: accounts.subtype })
-    .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'liability'), isNull(accounts.archivedAt)));
-  const balances = await nativeBalances(database, ws, date);
   const owed = [
     ...rows.filter((row) => liabilitySubtypes.includes(row.subtype)).map((row) => ({ minor: -(balances[row.id] ?? 0), currency: row.currency ?? ws.baseCurrency })),
     ...owing.map((row) => ({ minor: -row.valueMinor, currency: row.currency })),
   ];
   const liabilities = sumToBase({ amounts: owed, baseCurrency: ws.baseCurrency, ratesToBase });
-
   /*
    * The same two lists, kept apart instead of added up. `toBase` rather than `sumToBase`, because a stack is a shape:
    * one family that cannot be converted leaves a gap in the shape, and a shape with a gap in it is not the money. The
@@ -348,7 +447,11 @@ export interface NetWorthPoint extends NetWorth {
   onDate: string;
 }
 
-/** Net worth at the end of each month given as YYYY-MM, oldest first. Computed, never stored. */
+/**
+ * Net worth at the end of each month given as YYYY-MM, oldest first. Computed, never stored: what everything is valued
+ * from is read once, and the ledger is added up once for every month together, so a five-year line costs about what
+ * one month does — each point exactly what `netWorthAt` gives on its day.
+ */
 export async function netWorthSeries(
   database: Database,
   ws: WorkspaceContext,
@@ -357,13 +460,15 @@ export async function netWorthSeries(
   today: string = isoDate(),
 ): Promise<NetWorthPoint[]> {
   const currentMonth = monthOf(today);
-  const points: NetWorthPoint[] = [];
-  for (const month of months) {
-    const onDate = month === currentMonth ? today : lastDayOf(month);
-    const worth = await netWorthAt(database, ws, onDate, ratesToBase);
-    points.push({ month, onDate, ...worth });
-  }
-  return points;
+  const days = months.map((month) => ({ month, onDate: month === currentMonth ? today : lastDayOf(month) }));
+  if (days.length === 0) return [];
+  const inputs = await readAssetInputs(database, ws);
+  const debts = await liabilityAccounts(database, ws);
+  const ledger = await nativeBalancesOn(database, ws, days.map((day) => day.onDate));
+  return days.map(({ month, onDate }) => {
+    const balances = ledger.get(onDate) ?? {};
+    return { month, onDate, ...netWorthFrom(assetValuesFrom(inputs, ws, onDate, balances), debts, balances, ws, ratesToBase) };
+  });
 }
 
 export interface SheetInputs {
@@ -383,7 +488,9 @@ export async function sheetInputsAt(
   date: string,
   ratesToBase: Record<string, number> = {},
 ): Promise<SheetInputs> {
-  const values = await assetValuesAt(database, ws, date);
+  // The ledger is added up once and read by both sides: the assets' balances and the debts'.
+  const balances = await nativeBalances(database, ws, date);
+  const values = assetValuesFrom(await readAssetInputs(database, ws), ws, date, balances);
   const missing = new Set<string>();
   // A trip balance below zero is a payable (shared events §5), as in `netWorthAt`.
   const owing = values.filter((row) => row.subtype === 'event_balance' && row.valueMinor < 0);
@@ -403,7 +510,6 @@ export async function sheetInputsAt(
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'liability'), isNull(accounts.archivedAt)))
     // Placed accounts (Reorder cards) first, the never-placed (0) after them by name, as on Wallet.
     .orderBy(sql`case when ${accounts.sortOrder} = 0 and ${accounts.parentId} is null then 1 else 0 end`, asc(accounts.sortOrder), asc(accounts.name));
-  const balances = await nativeBalances(database, ws, date);
 
   const installments = await installmentTotals(database, ws, date);
   /*

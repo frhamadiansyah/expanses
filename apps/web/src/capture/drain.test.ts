@@ -1,5 +1,5 @@
 import type { CaptureLine, RawCapture } from '@expanses/core';
-import { createDatabase, createDraft, createWorkspace, listDrafts, listSources, migrate, sourceFor } from '@expanses/db';
+import { addCard, createCardAccount, createDatabase, createDraft, createWorkspace, listDrafts, listSources, migrate, sourceFor } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
 import { drainCaptures, drainNow, lastDrain, pickPhotos, scanReceipt, type CaptureBridge } from './drain';
@@ -487,6 +487,117 @@ describe('a drain puts right a Maybank email an older build queued as money in',
       expect((await listDrafts(database, ws))[0]).toMatchObject({ kind: 'expense', amountMinor: 31_500 });
       expect((await listSources(database)).map((one) => one.label)).toEqual(['Maybank']);
       expect((await drainCaptures(database, ws, bridge([]), '2026-11-13')).reread).toBe(0);
+    } finally {
+      close();
+    }
+  });
+});
+
+/*
+ * The owner's report of 2026-11-18, end to end: a credit card purchase email handed over by the Shortcuts Email trigger
+ * ("Log notification": Title = Subject, Body = Body, App = Sender) and drained into the queue. Its sender came through
+ * as something no Maybank domain could be read from. Invented throughout.
+ */
+describe('a credit card purchase email drained from the phone', () => {
+  const LINES = [
+    'Hi Pemegang Kartu Kredit Maybank,',
+    'Anda baru saja melakukan transaksi dengan',
+    'Maybank Kartu Kredit',
+    'Nomor Kartu',
+    'Jenis Kartu',
+    'Merchant',
+    '**** **** **** 4321',
+    'VISA',
+    'Grab* A-ZZ9EXAMPLE01',
+    'Waktu Transaksi',
+    'Mata Uang',
+    'Jumlah',
+    '02 Nov 26 09:41',
+    'IDR',
+    '57,300',
+    'Status',
+    'Sukses/Approved',
+    'Apabila Anda tidak melakukan transaksi',
+    'segera hubungi Maybank Customer Care',
+    '1500611 atau +622100000000 (dari luar negeri)',
+  ];
+  const email = (body: string, app: string | null): RawCapture => ({
+    id: 'mail-2026-11-18',
+    kind: 'notification',
+    capturedAt: '2026-11-18T13:16:00+07:00',
+    app,
+    title: null,
+    body,
+    lines: [],
+    imageFile: null,
+  });
+
+  async function withCard() {
+    const made = await setup();
+    const card = await createCardAccount(made.database, made.ws, { name: 'Maybank Visa', subtype: 'credit_card', currency: 'IDR' });
+    const cardId = await addCard(made.database, made.ws, { accountId: card.id, last4: '4321' });
+    return { ...made, card: card.id, cardId };
+  }
+
+  it.each([
+    ['as shown', LINES.join('\n'), 'notifikasi@kartu.example.com'],
+    ['with its card’s "Kredit" on a line of its own', LINES.join('\n').replace(/Kartu Kredit/g, 'Kartu\nKredit'), 'notifikasi@kartu.example.com'],
+    ['with blank lines and indents between the cells', LINES.map((line) => `  ${line}`).join('\n\n'), 'Maybank Kartu Kredit'],
+    ['with no sender at all', LINES.join('\n').replace(/Kartu Kredit/g, 'Kartu \nKredit'), null],
+  ])('is an expense on the card ending in its digits, %s', async (_, body, app) => {
+    const { database, ws, card, cardId, close } = await withCard();
+    try {
+      const result = await drainCaptures(database, ws, bridge([email(body, app)]), '2026-11-18');
+      expect(counts(result)).toEqual({ drafts: 1, merged: 0, skipped: 0 });
+      const [draft] = await listDrafts(database, ws);
+      expect(draft).toMatchObject({ kind: 'expense', amountMinor: 57_300, currency: 'IDR', accountId: card, cardId, description: 'Grab* A-ZZ9EXAMPLE01', occurredOn: '2026-11-02' });
+    } finally {
+      close();
+    }
+  });
+
+  it('comes from a source named Maybank when the sender holds the bank’s domain', async () => {
+    const { database, ws, close } = await withCard();
+    try {
+      await drainCaptures(database, ws, bridge([email(LINES.join('\n'), 'Maybank Kartu Kredit <notifikasi@maybank.co.id>, balasan@mailer.example.com')]), '2026-11-18');
+      expect((await listSources(database)).map((one) => one.label)).toEqual(['Maybank']);
+    } finally {
+      close();
+    }
+  });
+
+  it('is put right on the next drain when the build before queued it as money in, once', async () => {
+    const { database, ws, card, cardId, close } = await withCard();
+    try {
+      const mail = email(LINES.join('\n').replace(/Kartu Kredit/g, 'Kartu\nKredit'), 'notifikasi@kartu.example.com');
+      const source = await sourceFor(database.db, mail);
+      // As the build before this one wrote it: money in on the card's account, no card chosen, read as received.
+      await createDraft(database, ws, {
+        source: 'notification',
+        kind: 'income',
+        occurredOn: '2026-11-02',
+        description: 'Grab* A-ZZ9EXAMPLE01',
+        amountMinor: -57_300,
+        currency: 'IDR',
+        accountId: card,
+        sourceId: source.id,
+        captureIds: [mail.id],
+        externalRef: `capture:${mail.id}`,
+        rawPayload: mail.body,
+        reading: {
+          skipped: null,
+          amount: { value: { minor: 57_300, currency: 'IDR' }, confidence: 90, line: null },
+          occurredAt: { value: '2026-11-02T09:41', confidence: 90, line: null },
+          type: { value: 'received', confidence: 85, line: null },
+          name: { value: 'Grab* A-ZZ9EXAMPLE01', confidence: 90, line: null },
+          accountHint: '4321',
+          paymentMethod: null,
+        },
+      });
+
+      expect((await drainCaptures(database, ws, bridge([]), '2026-11-21')).reread).toBe(1);
+      expect((await listDrafts(database, ws))[0]).toMatchObject({ kind: 'expense', amountMinor: 57_300, accountId: card, cardId, description: 'Grab* A-ZZ9EXAMPLE01', status: 'pending' });
+      expect((await drainCaptures(database, ws, bridge([]), '2026-11-21')).reread).toBe(0);
     } finally {
       close();
     }

@@ -29,7 +29,7 @@ import { applyChangeSet } from '../../src/sync/apply';
 import { encodeHlc } from '../../src/sync/hlc';
 import { itemIdOf, receivedItems } from '../../src/sync/net-worth/summaries';
 import type { ChangeSet } from '../../src/sync/types';
-import { categoryOf, headOf, Household, skipsOf, type Device } from './household';
+import { categoryOf, headOf, Household, projectBook, skipsOf, type Device } from './household';
 
 /*
  * The Joint account switch (0097). Rina holds a bank account she shares with the household, and turns Joint on. Andi
@@ -299,6 +299,11 @@ describe('equal rights on a joint row', () => {
     const [bal] = await s.rina.database.db.values<[number]>(sql`SELECT COALESCE(sum(e.amount_minor), 0) FROM entries e JOIN transactions t ON t.id = e.transaction_id WHERE e.account_id = ${s.rina.bank} AND t.status = 'posted'`);
     const [opening] = await s.rina.database.db.values<[number]>(sql`SELECT COALESCE(sum(e.amount_minor), 0) FROM entries e JOIN transactions t ON t.id = e.transaction_id JOIN accounts a ON a.id = e.account_id WHERE e.account_id = ${s.rina.bank} AND t.status = 'posted' AND t.description NOT IN ('Groceries', 'Water', 'Rina’s words', 'Andi’s words')`);
     expect(Number(bal![0]) - Number(opening![0])).toBe(row - 50_000_00);
+    // Andi paid, from Rina's joint account, whoever edited last: both phones read the purchase alike, payer and all.
+    const payer = async (d: Device) => (await d.database.db.values<[string, string | null]>(sql`SELECT paid_by, paid_from_owner FROM sync_lineage WHERE lineage_id = ${byAndi}`))[0];
+    expect(await payer(s.rina)).toEqual([s.andi.memberId, s.rina.memberId]);
+    expect(await payer(s.andi)).toEqual([s.andi.memberId, s.rina.memberId]);
+    expect(await projectBook(s.andi.database, s.bookId)).toEqual(await projectBook(s.rina.database, s.bookId));
     expect(await skipsOf(s.rina.database)).toEqual([]);
     expect(await skipsOf(s.andi.database)).toEqual([]);
   });

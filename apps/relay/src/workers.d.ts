@@ -13,6 +13,8 @@ interface DurableObjectStorage {
   put<T>(key: string, value: T): Promise<void>;
   put<T>(entries: Record<string, T>): Promise<void>;
   list<T = unknown>(options?: { prefix?: string; start?: string; end?: string; limit?: number }): Promise<Map<string, T>>;
+  delete(key: string): Promise<boolean>;
+  delete(keys: string[]): Promise<number>;
 }
 
 interface DurableObjectState {

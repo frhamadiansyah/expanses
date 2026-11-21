@@ -123,7 +123,9 @@ import instalmentCategory from '../migrations/0122_instalment_category.sql?raw';
 import planSpreads from '../migrations/0123_plan_spreads.sql?raw';
 import planPaidSoFar from '../migrations/0124_plan_paid_so_far.sql?raw';
 import exchangeFeeOnly from '../migrations/0125_exchange_fee_only.sql?raw';
+import selfSync from '../migrations/0126_self_sync.sql?raw';
 import type { Database } from './database';
+import { dropSelfTriggers, installSelfCapture, selfCaptureOn } from './self/triggers';
 
 export interface Migration {
   version: number;
@@ -256,6 +258,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 123, name: 'plan_spreads', sql: planSpreads },
   { version: 124, name: 'plan_paid_so_far', sql: planPaidSoFar },
   { version: 125, name: 'exchange_fee_only', sql: exchangeFeeOnly },
+  { version: 126, name: 'self_sync', sql: selfSync },
 ];
 
 /** The highest version this build of the app knows how to produce. */
@@ -337,17 +340,27 @@ export async function migrate(
   const done = new Set(recorded.keys());
   const todo = [...migrations].sort((a, b) => a.version - b.version).filter((m) => !done.has(m.version));
   const applied: number[] = [];
-  for (const m of todo) {
-    options.onProgress?.(applied.length, todo.length, m.name, m.version);
-    const drop = renamed.has(m.version) ? `DELETE FROM schema_migrations WHERE version = ${m.version};\n` : '';
-    const script = `BEGIN IMMEDIATE;\n${drop}${m.sql}\nINSERT INTO schema_migrations (version, name, applied_at) VALUES (${m.version}, '${m.name}', '${new Date().toISOString()}');\nCOMMIT;`;
-    try {
-      await database.execScript(script);
-    } catch (error) {
-      await database.execScript('ROLLBACK').catch(() => undefined);
-      throw error;
+  // Link my devices (§3.2): a migration is run by every device on its own rows, so nothing it writes is captured, and a
+  // column a capture trigger names could not be dropped. The triggers go first and are made again, from the new
+  // schema, once every migration has run.
+  const capturing = todo.length > 0 && (await selfCaptureOn(database));
+  if (capturing) await dropSelfTriggers(database);
+  try {
+    for (const m of todo) {
+      options.onProgress?.(applied.length, todo.length, m.name, m.version);
+      const drop = renamed.has(m.version) ? `DELETE FROM schema_migrations WHERE version = ${m.version};\n` : '';
+      const script = `BEGIN IMMEDIATE;\n${drop}${m.sql}\nINSERT INTO schema_migrations (version, name, applied_at) VALUES (${m.version}, '${m.name}', '${new Date().toISOString()}');\nCOMMIT;`;
+      try {
+        await database.execScript(script);
+      } catch (error) {
+        await database.execScript('ROLLBACK').catch(() => undefined);
+        throw error;
+      }
+      applied.push(m.version);
     }
-    applied.push(m.version);
+  } finally {
+    // Back on even when a migration failed and rolled back: the app may still open on the schema it had.
+    if (capturing) await installSelfCapture(database);
   }
   // A last call with the finished count, so a watching screen can show the run complete rather than stopping a step short.
   if (todo.length) options.onProgress?.(todo.length, todo.length, todo[todo.length - 1]!.name, todo[todo.length - 1]!.version);

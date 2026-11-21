@@ -789,17 +789,27 @@ export function readCapture(
     if (table.declined) return SKIPPED('declined', accountHint, paymentMethod);
     const head = unitsOf({ ...capture, body: capture.body!.split('\n').slice(0, table.end + 1).join('\n') });
     /*
-     * The direction is what the title and the table say. When they name none, the few lines right under the table
-     * are the email's own words about this money — "Pengembalian dana berhasil", "This refund has been credited" —
-     * and a refund, money in or a top-up they name is the answer. Past those, a table with a card's number or a
-     * merchant is a purchase: further down is the footer, whose "kredit" or "pengembalian dana" is an advert, not this
-     * money. Any other table is read whole, so "Dana telah masuk" under the figures is still money arriving.
+     * The direction is what the title and the table say, and then the few lines right under the table — the email's
+     * own words about this money ("Pengembalian dana berhasil", "This refund has been credited"). Further down is the
+     * footer, whose "kredit" or "pengembalian dana" is an advert, not this money.
+     *
+     * One rule for a card purchase — a table with the card's number or a merchant: it is spending, and only a refund,
+     * a reversal or a top-up named there makes it anything else. Its words of money arriving are not read: the
+     * "Kredit" of "Kartu Kredit" is the card's name however the email breaks or spaces it, and it was read as money in.
+     *
+     * Any other table takes a refund, money in or a top-up named there, and is otherwise read whole, so "Dana telah
+     * masuk" under the figures is still money arriving.
      */
-    let type = typeOf(head, words, false);
-    if (type.confidence < 85) {
-      const under = typeOf(unitsOf({ ...capture, title: null, body: linesUnder(capture.body!, table.end, 3) }), words, false);
-      if (under.confidence >= 85 && under.value !== 'spent') type = { value: under.value, confidence: 85, line: null };
-      else type = table.purchase ? { value: 'spent', confidence: 70, line: null } : typeOf(all, words, false);
+    const named = typeOf(head, words, false);
+    const under = typeOf(unitsOf({ ...capture, title: null, body: linesUnder(capture.body!, table.end, 3) }), words, false);
+    let type: Field<MoveType>;
+    if (table.purchase) {
+      const back = [named, under].find((said) => said.value === 'refund' || said.value === 'topup');
+      type = back ? { value: back.value, confidence: 85, line: null } : named.value === 'spent' && named.confidence >= 85 ? named : { value: 'spent', confidence: 70, line: null };
+    } else if (named.confidence >= 85) {
+      type = named;
+    } else {
+      type = under.confidence >= 85 && under.value !== 'spent' ? { value: under.value, confidence: 85, line: null } : typeOf(all, words, false);
     }
     return {
       skipped: null,

@@ -1,10 +1,10 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { createAccount, listAccounts, personalBook, postTransaction, postTransactionTx, renameAccount, saveBudget, voidTransactionTx } from '../../src/index';
+import { createAccount, listAccounts, personalBook, postTransaction, postTransactionTx, renameAccount, runSharedBookRepairs, saveBudget, saveCategoryNeed, voidTransactionTx } from '../../src/index';
 import { setupDb } from '../helpers';
-import { withCapturePaused } from '../../src/sync/capture';
-import { installCaptureTriggers, privateLeaks, uncapturedWrites, watchGone, watchPausedWrites } from './capture-harness';
+import { thirdMarksCrossedKey, withCapturePaused } from '../../src/sync/capture';
+import { afterSchemaChange, beforeSchemaChange, installCaptureTriggers, privateLeaks, uncapturedWrites, watchGone, watchPausedWrites } from './capture-harness';
 import { shareBookForTest } from './sync-helpers';
 
 async function watchedBook() {
@@ -100,6 +100,21 @@ describe('the capture harness (§6.4)', () => {
     expect(await uncapturedWrites(database, book.id)).toEqual([`accounts ${groceries.id}: name changed with no category op`]);
   });
 
+  it('counts what apply took in to another book (a net-worth group log) for none of the watched book’s writes', async () => {
+    const { database, book, groceries } = await watchedBook();
+    watchPausedWrites(database);
+    const applied = { v: 1 as const, hlc: `${'9'.repeat(15)}1-remote`, member: 'member-dewi', ops: [{ entity: 'category', id: groceries.id, op: 'upsert' as const, fields: { name: 'Pasar' } }] };
+    // A write with no op, and then the same value arriving in another book's log: still named.
+    await database.db.run(sql`UPDATE accounts SET name = 'Pasar' WHERE id = ${groceries.id}`);
+    await database.transaction((tx) => withCapturePaused(tx, async () => undefined, applied, 'group-log-book'));
+    expect(await uncapturedWrites(database, book.id)).toEqual([`accounts ${groceries.id}: name changed with no category op`]);
+    // The same value arriving in the watched book's own log is what the row ends as on every phone: quiet.
+    const inBook = { ...applied, hlc: `${'9'.repeat(15)}2-remote`, ops: [{ ...applied.ops[0]!, fields: { name: 'Pasar 2' } }] };
+    await database.db.run(sql`UPDATE accounts SET name = 'Pasar 2' WHERE id = ${groceries.id}`);
+    await database.transaction((tx) => withCapturePaused(tx, async () => undefined, inBook, book.id));
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+  });
+
   it('is quiet about writes to the book before it is shared', async () => {
     const t = await setupDb();
     const book = await personalBook(t.database, t.ws);
@@ -110,6 +125,90 @@ describe('the capture harness (§6.4)', () => {
     await shareBookForTest(t.database, book.id);
     await t.database.db.run(sql`UPDATE accounts SET name = 'After' WHERE id = ${groceries.id}`);
     expect(await uncapturedWrites(t.database, book.id)).toEqual([`accounts ${groceries.id}: name changed with no category op`]);
+  });
+});
+
+describe('a Debts & savings mark held behind its version gate (0119)', () => {
+  /**
+   * Another phone in the book, at an app version, and the book's two members (the repairs run only for a book with
+   * members): what apply writes when their ops arrive, so not watched.
+   */
+  async function otherPhone(database: Awaited<ReturnType<typeof watchedBook>>['database'], bookId: string, version: string) {
+    watchPausedWrites(database);
+    await database.transaction((tx) =>
+      withCapturePaused(tx, async () => {
+        await tx.run(sql`
+          INSERT INTO book_members (book_id, member_id, name, role, joined_at)
+          VALUES (${bookId}, 'member-me', 'Fandri', 'owner', '2026-11-01T00:00:00Z'), (${bookId}, 'member-dewi', 'Dewi', 'member', '2026-11-01T00:00:00Z')
+          ON CONFLICT DO NOTHING`);
+        await tx.run(sql`
+          INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at, app_version)
+          VALUES (${bookId}, 'd-dewi', 'member-dewi', 'Phone', '{}', '{}', '2026-11-01T00:00:00Z', NULL, ${version})
+          ON CONFLICT DO UPDATE SET app_version = excluded.app_version`);
+      }),
+    );
+  }
+  const markOps = async (database: Awaited<ReturnType<typeof watchedBook>>['database']) =>
+    (await database.db.values<[string]>(sql`SELECT entry_json FROM sync_outbox`)).filter(([json]) => json.includes('debts_savings'));
+
+  it('is quiet while the mark is held: no other phone, or one on 0.5.3', async () => {
+    const { database, ws, book, groceries } = await watchedBook();
+    await saveCategoryNeed(database, ws, groceries.id, 'debts_savings');
+    expect(await markOps(database)).toEqual([]);
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+    await otherPhone(database, book.id, '0.5.3');
+    await saveCategoryNeed(database, ws, groceries.id, 'lifestyle');
+    await saveCategoryNeed(database, ws, groceries.id, 'debts_savings');
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+  });
+
+  it('is quiet once the other phone updates while R7 still has it to send to, and after R7 sends', async () => {
+    const { database, ws, book, groceries } = await watchedBook();
+    await otherPhone(database, book.id, '0.5.3');
+    await saveCategoryNeed(database, ws, groceries.id, 'debts_savings');
+    await otherPhone(database, book.id, '0.5.4');
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+    await saveCategoryNeed(database, ws, groceries.id, 'lifestyle');
+    await otherPhone(database, book.id, '0.5.3');
+    await saveCategoryNeed(database, ws, groceries.id, 'debts_savings');
+    await otherPhone(database, book.id, '0.5.4');
+    expect((await runSharedBookRepairs(database, book.id)).thirdMarks).toBe(1);
+    expect(await markOps(database)).toHaveLength(1);
+    expect(await uncapturedWrites(database, book.id)).toEqual([]);
+  });
+
+  it('names a held mark that never went though every phone can store it and R7 says it has sent to them all', async () => {
+    const { database, ws, book, groceries } = await watchedBook();
+    await otherPhone(database, book.id, '0.5.3');
+    await saveCategoryNeed(database, ws, groceries.id, 'debts_savings');
+    await otherPhone(database, book.id, '0.5.4');
+    // An R7 that records the phone as sent to, and sends nothing.
+    await database.db.run(sql`INSERT INTO settings (key, value) VALUES (${thirdMarksCrossedKey(book.id)}, '["d-dewi"]')`);
+    expect(await uncapturedWrites(database, book.id)).toEqual([`category_needs ${groceries.id}: need changed with no category_need op`]);
+  });
+
+  it('names any other mark sent nowhere, held gate or not', async () => {
+    const { database, book, groceries } = await watchedBook();
+    await database.db.run(sql`INSERT INTO category_needs (category_account_id, workspace_id, need) SELECT ${groceries.id}, workspace_id, 'lifestyle' FROM books WHERE id = ${book.id}`);
+    expect(await uncapturedWrites(database, book.id)).toEqual([`category_needs ${groceries.id}: need changed with no category_need op`]);
+  });
+});
+
+describe('a watched table whose columns a test changes (an older build stood for)', () => {
+  it('lets a column the triggers name be dropped and added back, and keeps watching the table', async () => {
+    const { database, book } = await watchedBook();
+    const alter = async (script: string) => {
+      const tables = await beforeSchemaChange(database, script);
+      await database.execScript(script);
+      await afterSchemaChange(database, book.id, tables);
+    };
+    await expect(database.execScript('ALTER TABLE nw_pending DROP COLUMN ring_json')).rejects.toThrow(/ring_json/);
+    await alter('ALTER TABLE nw_pending DROP COLUMN ring_json; ALTER TABLE nw_pending DROP COLUMN ring_devices_json;');
+    await database.db.run(sql`INSERT INTO nw_pending (book_id, member_id, count) VALUES (${book.id}, 'member-me', 2)`);
+    expect(await uncapturedWrites(database, book.id)).toEqual([`nw_pending member-me: count changed with no nw_pending op`]);
+    await alter('ALTER TABLE nw_pending ADD COLUMN ring_json TEXT; ALTER TABLE nw_pending ADD COLUMN ring_devices_json TEXT;');
+    await database.db.run(sql`UPDATE nw_pending SET ring_json = '{}' WHERE book_id = ${book.id}`);
+    expect(await uncapturedWrites(database, book.id)).toEqual([`nw_pending member-me: ring_json changed with no nw_pending op`]);
   });
 });
 
