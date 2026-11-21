@@ -3,7 +3,7 @@ import { afterEach, expect, vi } from 'vitest';
 import type { Database } from '../../src/database';
 import type * as Workspaces from '../../src/repos/workspaces';
 import { configureCapture } from '../../src/sync/capture';
-import { installCaptureTriggers, lastSealedSeq, privateLeaks, uncapturedWrites, watchGone, watchPausedWrites } from './capture-harness';
+import { afterSchemaChange, beforeSchemaChange, installCaptureTriggers, lastSealedSeq, privateLeaks, uncapturedWrites, watchGone, watchPausedWrites } from './capture-harness';
 
 /*
  * The capture run's setup file (vitest.capture.config.ts, `npm run test:capture`; spec §6.4). The first workspace each
@@ -56,10 +56,13 @@ async function shareFirstBook(database: Database, workspaceId: string): Promise<
   watched.set(database, bookId);
   // A test's own raw SQL (a fixture: "archive this row", "age this date") is not a repository write: what it writes
   // is dropped from the watch. No repository writes data through execScript; only migrations use it.
+  // One that changes a watched table's columns (an older build simulated) has the table's triggers made again around it.
   const execScript = database.execScript.bind(database);
   database.execScript = async (script: string) => {
     const [mark] = await database.db.values<[number]>(sql`SELECT coalesce(max(seq), 0) FROM temp.__writes`).catch(() => [[0] as [number]]);
+    const altered = await beforeSchemaChange(database, script);
     await execScript(script);
+    await afterSchemaChange(database, bookId, altered);
     await database.db.run(sql`DELETE FROM temp.__writes WHERE seq > ${mark?.[0] ?? 0}`).catch(() => undefined);
   };
 }

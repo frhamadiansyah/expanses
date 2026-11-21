@@ -6,7 +6,7 @@ import type { ChangeLogEntry } from '../../src/sync/seal';
 import { bookSplitsExist, filedInBook } from '../../src/repos/book-splits';
 import { exactForTransactionTx } from '../../src/repos/exact-column';
 import { viewMember } from '../../src/sync/authority';
-import { configureCapture, localDeviceId, planSpreadWaitsTx, projectPurchase } from '../../src/sync/capture';
+import { configureCapture, localDeviceId, paidFromOf, planSpreadWaitsTx, projectPurchase, thirdMarksCrossedKey, thirdMarkWaitsTx } from '../../src/sync/capture';
 import { parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
 import type { ChangeSet, Op } from '../../src/sync/types';
 
@@ -54,7 +54,8 @@ const changedNames = (columns: readonly string[]) => columns.map((c) => `CASE WH
 /**
  * The columns each watched table had when its triggers went in, per database: one stopped at an older version (a
  * migration test) has not got every synced column yet (0091's currency, say), and its triggers and checks name only
- * those it has. Triggers are made once, so a later migrate() on the handle does not widen them.
+ * those it has. A later script that alters a watched table (a migrate() on the handle, a test dropping a column to
+ * stand for an older build) has that table's triggers and columns made again (`afterSchemaChange`).
  */
 const presentColumns = new WeakMap<Database, Map<string, ReadonlySet<string>>>();
 
@@ -177,11 +178,39 @@ export async function installCaptureTriggers(database: Database, bookId: string)
   await database.execScript(ddl.join('\n'));
 }
 
+/**
+ * A test that changes a watched table's columns under the watch (an older build simulated by dropping a column, its
+ * update by adding it back): SQLite refuses to drop or rename a column a trigger names, so the table's triggers go
+ * first (`beforeSchemaChange`), and once the script has run they are made again from the columns the table has now
+ * (`afterSchemaChange`) — the watch goes on, as narrow or as wide as the table. Returns the tables the script alters.
+ */
+export async function beforeSchemaChange(database: Database, script: string): Promise<string[]> {
+  const altered = [...script.matchAll(/ALTER\s+TABLE\s+(?:main\.)?["`]?(\w+)["`]?\s+(DROP|RENAME|ADD)\b/gi)];
+  const narrowed = [...new Set(altered.filter((m) => m[2]!.toUpperCase() !== 'ADD').map((m) => m[1]!))];
+  if (narrowed.length) {
+    await database.execScript(narrowed.flatMap((t) => ['ins', 'upd', 'del'].map((k) => `DROP TRIGGER IF EXISTS temp.__capture_${t}_${k};`)).join('\n'));
+  }
+  // A table rebuilt under its name (`ALTER TABLE x_new RENAME TO x`, as migrations change a CHECK) is a table altered too.
+  const renamedTo = [...script.matchAll(/RENAME\s+TO\s+["`]?(\w+)["`]?/gi)].map((m) => m[1]!);
+  return [...new Set([...altered.map((m) => m[1]!), ...renamedTo])];
+}
+
+export async function afterSchemaChange(database: Database, bookId: string, tables: readonly string[]): Promise<void> {
+  if (tables.length === 0) return;
+  const present = presentColumns.get(database);
+  for (const t of tables) present?.delete(t);
+  await database.execScript(tables.flatMap((t) => ['ins', 'upd', 'del'].map((k) => `DROP TRIGGER IF EXISTS temp.__capture_${t}_${k};`)).join('\n'));
+  await installCaptureTriggers(database, bookId);
+}
+
 interface SealedOp {
   rowid: number;
   hlc: string;
   op: Op;
 }
+
+/** The `temp.__sealed` book of a change-set apply took in: never a book id, so `privateLeaks` passes it over. */
+const appliedIn = (bookId: string | undefined) => `applied:${bookId ?? ''}`;
 
 /**
  * Every op this device's peers will end up with since the watch began, by `entity\0id`, each with the seq it was
@@ -194,9 +223,9 @@ async function outboxOps(database: Database, watchedBookId: string): Promise<Map
   const out = new Map<string, SealedOp[]>();
   for (const [rowid, bookId, entryJson, changeJson] of rows) {
     // Another shared book's outbox (a net-worth group log beside the workspace, joint-net-worth §4) accounts for none of
-    // the watched book's writes: its member and device rows share their keys with the workspace's. Apply's rows carry no
-    // book ('') and are kept.
-    if (bookId !== '' && bookId !== watchedBookId) continue;
+    // the watched book's writes: its member and device rows share their keys with the workspace's. Nor does what apply
+    // took in to another book. Apply's rows of an unnamed book ('applied:') are kept.
+    if (!(bookId === watchedBookId || bookId === appliedIn(watchedBookId) || bookId === appliedIn(undefined))) continue;
     // The outbox keeps plaintext change-sets (sealed only at drain), and apply records the one it takes in.
     const changeSet = JSON.parse((changeJson ?? entryJson)!) as ChangeSet;
     for (const op of changeSet.ops) {
@@ -218,16 +247,18 @@ export function watchPausedWrites(database: Database): void {
   const watching = async (tx: Db) => (await tx.values(sql`SELECT 1 FROM temp.sqlite_master WHERE name = '__apply_paused'`)).length > 0;
   configureCapture(database, {
     pausedWrites: {
-      begin: async (tx: Db, changeSet?: ChangeSet) => {
+      // Kept under the book it was applied in, as an applied row ('applied:' + book): a net-worth group log's member
+      // rows share their keys with the workspace's, and account for none of the workspace's writes.
+      begin: async (tx: Db, changeSet?: ChangeSet, bookId?: string) => {
         if (!(await watching(tx))) return;
         await tx.run(sql`INSERT INTO temp.__apply_paused (x) VALUES (1)`);
-        if (changeSet) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`);
+        if (changeSet) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES (${appliedIn(bookId)}, NULL, ${JSON.stringify(changeSet)})`);
       },
       end: async (tx: Db) => {
         if (await watching(tx)) await tx.run(sql`DELETE FROM temp.__apply_paused`);
       },
-      applied: async (tx: Db, changeSet: ChangeSet) => {
-        if (await watching(tx)) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES ('', NULL, ${JSON.stringify(changeSet)})`);
+      applied: async (tx: Db, changeSet: ChangeSet, bookId?: string) => {
+        if (await watching(tx)) await tx.run(sql`INSERT INTO temp.__sealed (book_id, entry_json, change_json) VALUES (${appliedIn(bookId)}, NULL, ${JSON.stringify(changeSet)})`);
       },
     },
   });
@@ -264,6 +295,20 @@ async function latestCarrier(database: Database, bookId: string, after: readonly
   return best;
 }
 
+/**
+ * Among `after` (in hlc order), the op carrying a row entity's `field` at the latest clock — the clock it names the field
+ * at (`fieldClock`), a resend's own older one included. On a tie the later op in order takes it, as it always has here:
+ * with no resend among them, that is the last op naming the field.
+ */
+function rowCarrier(after: readonly SealedOp[], field: string): SealedOp | undefined {
+  let best: SealedOp | undefined;
+  for (const sealed of after) {
+    if (sealed.op.op !== 'upsert' || !purchaseNames(sealed.op).includes(field)) continue;
+    if (!best || fieldClock(sealed, field) >= fieldClock(best, field)) best = sealed;
+  }
+  return best;
+}
+
 const names = (op: Op): string[] => (op.op === 'upsert' ? (op.changed ?? Object.keys(op.fields)) : []);
 
 /**
@@ -271,6 +316,30 @@ const names = (op: Op): string[] => (op.op === 'upsert' ? (op.changed ?? Object.
  * clock it went at, fix round 3) — judged by that clock (`latestCarrier`), so a newer change still wins over it.
  */
 const purchaseNames = (op: Op): string[] => (op.op === 'upsert' ? [...new Set([...names(op), ...Object.keys(op.clocks ?? {})])] : []);
+
+/**
+ * Whether this phone's Debts & savings marks are still owed to the book's log (0119): held while another phone cannot
+ * store one (`thirdMarkWaitsTx`, the capture run's book has no other phone at all), or, once none is behind, while some
+ * other phone is missing from R7's sent-to list — R7's next pass sends every mark at the clock it was held at. With
+ * every phone on that list, R7 has nothing more to send, and an unsent mark is a miss.
+ */
+async function thirdMarkOwed(database: Database, bookId: string): Promise<boolean> {
+  const self = await localDeviceId(database.db).catch(() => null);
+  if (self === null) return false;
+  if (await thirdMarkWaitsTx(database.db, bookId, self)) return true;
+  const others = (
+    await database.db.values<[string]>(sql`SELECT device_id FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL AND device_id <> ${self}`)
+  ).map(([id]) => id);
+  const [row] = await database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${thirdMarksCrossedKey(bookId)}`);
+  let crossed: unknown = [];
+  try {
+    crossed = row ? JSON.parse(row[0]) : [];
+  } catch {
+    crossed = [];
+  }
+  const sent = new Set(Array.isArray(crossed) ? crossed : []);
+  return others.some((id) => !sent.has(id));
+}
 
 /** Whether an op sealed after `mark` carries `field` (an upsert naming it) — or, with no field, is any upsert. */
 function carries(ops: readonly SealedOp[] | undefined, mark: number, field: string | null): boolean {
@@ -335,6 +404,7 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
   // A plan_spread (0123) is held from the log by design while no other phone can read one (`planSpreadWaitsTx`; the
   // capture run's book has no other phone): its clocks are kept as if sent, and R9 sends it later. Not a miss.
   const plansHeld = await planSpreadWaitsTx(database.db, bookId, await localDeviceId(database.db)).catch(() => false);
+  const marksHeld = await thirdMarkOwed(database, bookId);
   for (const w of firstWrite.values()) {
     const entity = SHARED_ENTITIES.find((e) => e.kind === 'row' && e.table === w.table) as RowEntity;
     if (entity.entity === 'plan_spread' && plansHeld) continue;
@@ -367,14 +437,22 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     const problems: string[] = [];
     for (const column of columns.filter((c) => fieldOf.has(c))) {
       const field = fieldOf.get(column)!;
-      const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && names(op).includes(field));
+      // The op whose word on the field is latest by the clock it carries it at, as for a purchase: a repair's resend at the
+      // field's own clock (R7's held Debts & savings marks: `changed: []` and `clocks`) is a word on it, and an older
+      // word that reached this phone first does not outrank it (§7.3 rule 1).
+      const carrier = rowCarrier(after, field);
       if (!direct.has(column)) {
         // A derived field (a bill's payer): its value is not the column's, so only a change without an op is a miss.
         if (!carrier && (!before || JSON.stringify(before[column]) !== JSON.stringify(now[column]))) problems.push(`${column} changed with no ${entity.entity} op`);
         continue;
       }
+      // A Debts & savings mark (0119) is held from the log by design (`thirdMarkWaitsTx`), its clocks kept as if sent, and
+      // R7 sends it once every other phone can store it: not a miss while it is held, or while R7 has a phone still to
+      // send it to. Once R7 has sent to every phone, a mark the outbox does not carry is a miss again.
+      const heldMark = entity.entity === 'category_need' && field === 'need' && now[column] === 'debts_savings' && marksHeld;
       if (carrier) {
         const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
+        if (heldMark && said !== now[column]) continue;
         // An own role edit the log refused (two owners stepping down at once, the last owner is never demoted): apply
         // put the row back to the authority view's role, emitting nothing, as peers never took the edit in (apply.ts
         // `reconcileMembersTx`). The log decided it, before the refused op: not a miss (wave 3 merge review round 1).
@@ -383,12 +461,15 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
           if (view && view.role === now[column] && view.roleHlc < carrier.hlc) continue;
         }
         if (JSON.stringify(said) !== JSON.stringify(now[column])) problems.push(`${column} is ${JSON.stringify(now[column])} but the outbox says ${JSON.stringify(said)}`);
+      } else if (heldMark) {
+        continue;
       } else if (!before || JSON.stringify(before[column]) !== JSON.stringify(now[column])) {
         problems.push(`${column} changed with no ${entity.entity} op`);
       }
     }
+    const heldInsert = entity.entity === 'category_need' && now.need === 'debts_savings' && marksHeld;
     if (problems.length) misses.push(`${w.table} ${w.key}: ${problems.join('; ')}`);
-    else if (!before && !carries(entityOps, w.mark, null)) misses.push(`${w.table} ${w.key}: inserted with no ${entity.entity} op`);
+    else if (!before && !heldInsert && !carries(entityOps, w.mark, null)) misses.push(`${w.table} ${w.key}: inserted with no ${entity.entity} op`);
   }
 
   // Purchases.
@@ -430,7 +511,9 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
 
     if (lineagesChecked.has(lineageId)) continue;
     lineagesChecked.add(lineageId);
-    const [lineage] = await database.db.values<[string | null, string, string]>(sql`SELECT head_transaction_id, paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`);
+    const [lineage] = await database.db.values<[string | null, string, string, string | null, string | null]>(
+      sql`SELECT head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item FROM sync_lineage WHERE lineage_id = ${lineageId}`,
+    );
     // Forward from its first row, up to a row that starts a lineage of its own. A lineage whose first row is gone from
     // this phone (a row kept in Personal when its copy was erased heads the copy's lineage there, sync gaps G5) is
     // followed from its head.
@@ -460,8 +543,11 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     const [member] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`);
     if (expected !== null && member) {
       const since = Math.min(...writes.filter((x) => x.key === w.key || x.key === expected).map((x) => x.mark));
-      // Read as the lineage knows it: a purchase another member paid carries the payer's label, not the placeholder's name.
-      const projected = (await projectPurchase(database.db, expected, member[0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
+      // Read as the lineage knows it, as capture does (`lineageRowOf`): a purchase another member paid carries the payer's
+      // label, not the placeholder's name, and one they paid from this member's own item (a joint account, Paid with)
+      // carries that item, which keeps the payer theirs when this member edits the row.
+      const paidFrom = paidFromOf(lineage[3], lineage[4]);
+      const projected = (await projectPurchase(database.db, expected, member[0], { paidBy: lineage[1], paidLabel: lineage[2], paidFrom })) as unknown as Record<string, unknown>;
       const after = (ops.get(`purchase\u0000${lineageId}`) ?? []).filter(({ rowid }) => rowid > since);
       for (const field of Object.keys(projected)) {
         // The op whose word on the field is latest, by the clock it carries the field at: a field resent at its own older
@@ -492,7 +578,7 @@ export async function privateLeaks(database: Database, afterSeq = 0): Promise<st
   let rows: [string, string][];
   try {
     rows = await database.db.values<[string, string]>(
-      sql`SELECT book_id, entry_json FROM temp.__sealed WHERE seq > ${afterSeq} AND book_id <> '' AND entry_json IS NOT NULL ORDER BY seq`,
+      sql`SELECT book_id, entry_json FROM temp.__sealed WHERE seq > ${afterSeq} AND book_id NOT LIKE 'applied:%' AND entry_json IS NOT NULL ORDER BY seq`,
     );
   } catch (error) {
     if (watchGone(error)) return [];
