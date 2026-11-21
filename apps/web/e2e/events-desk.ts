@@ -52,7 +52,7 @@ export async function deskPay(page: Page, eventUrl: string, cost: string, option
   await planTab(page);
   await page.getByRole('button', { name: `Pay ${cost}`, exact: true }).click();
   const form = addForm(page);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, options.paidWith);
   await form.getByRole('button', { name: 'Clear amount' }).click();
   await openAmount(form);

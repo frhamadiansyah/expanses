@@ -25,10 +25,10 @@ test('a second card joins the same statement, and a purchase records which one',
   // One card, so Paid with is one row and there is nothing left to ask.
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('radio', { name: 'Credit cards' }).click();
-  await expect(page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Mandiri Bonvoy', exact: true })).toHaveCount(1);
-  await expect(page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /Mandiri Bonvoy ····/ })).toHaveCount(0);
+  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Payment method' }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('radio', { name: 'Credit cards' }).click();
+  await expect(page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'Mandiri Bonvoy', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /Mandiri Bonvoy ····/ })).toHaveCount(0);
 
   // The supplementary card: same account, same statement, its own digits.
   await openTheCard(page);
@@ -74,8 +74,8 @@ test('a card is edited from its row: new digits and whose card show on the page 
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Paid with' }).click();
-  const paidWith = page.getByRole('dialog', { name: 'Paid with' });
+  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Payment method' }).click();
+  const paidWith = page.getByRole('dialog', { name: 'Payment method' });
   await paidWith.getByRole('radio', { name: 'Credit cards' }).click();
   await expect(paidWith.getByRole('button', { name: 'Mandiri Bonvoy ···· 9915', exact: true })).toBeVisible();
 });

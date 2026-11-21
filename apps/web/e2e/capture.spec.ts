@@ -31,7 +31,7 @@ test('a notification becomes a draft the owner files, and recording it leaves a 
   await expect(paidWith).toHaveText('Which account?');
   await expect(page.getByRole('button', { name: 'Record TOKO KOPI' })).toBeDisabled();
   await paidWith.click();
-  await choosePayment(page, 'Everyday bank', 'Paid with');
+  await choosePayment(page, 'Everyday bank', 'Payment method');
   await pickDraftCategory(page, 'TOKO KOPI', 'Groceries');
   await page.getByRole('button', { name: 'Record TOKO KOPI' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);

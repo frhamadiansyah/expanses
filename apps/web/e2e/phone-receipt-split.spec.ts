@@ -16,7 +16,7 @@ test('With → By receipt: read a bill, tag who had what, and the form comes bac
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await page.goto('/transactions/new');
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();

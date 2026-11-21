@@ -41,7 +41,7 @@ test('Show, Filter and the Amount header narrow and sort the table, and Clear pu
   await page.getByRole('button', { name: /^Filter/ }).click();
   const menu = page.getByRole('dialog', { name: 'Filter' });
   await menu.getByLabel('Find a category or account').fill('jago');
-  await menu.getByRole('group', { name: 'Paid with' }).getByRole('button', { name: /Jago/ }).click();
+  await menu.getByRole('group', { name: 'Payment method' }).getByRole('button', { name: /Jago/ }).click();
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText('Superindo');
   await expect(page.getByRole('button', { name: /^Filter · 1/ })).toBeVisible();

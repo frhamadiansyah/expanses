@@ -243,7 +243,7 @@ export async function recordIntoEvent(
   const event = page.url();
   await page.getByRole('button', { name: 'Add spending', exact: true }).click();
   const form = addForm(page);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, tx.paidWith ?? 'BCA Tahapan');
   await openAmount(form);
   await fillAmount(page, form, tx.amount);
@@ -266,7 +266,7 @@ export async function buyItNow(page: Page, options: { paid?: string; paidWith?: 
   const name = ((await page.getByTestId('item-identity').getByRole('heading').textContent()) ?? '').trim();
   await page.getByRole('button', { name: /^(Pay now|Add payment)$/ }).click();
   const form = addForm(page);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, options.paidWith ?? 'BCA Tahapan');
   if (options.paid !== undefined) {
     await form.getByRole('button', { name: 'Clear amount' }).click();

@@ -288,7 +288,7 @@ export const recordTickedLabel = (count: number) => (count > 0 ? `Record ${count
 export const discardedLine = (count: number) => `Discarded ${count} waiting ${count === 1 ? 'row' : 'rows'}`;
 
 /** Under Record N: "1 missing a date, amount or Paid with is skipped" (a blank category skips nothing). */
-export const skippedLine = (count: number) => `${count} missing a date, amount or Paid with ${count === 1 ? 'is' : 'are'} skipped`;
+export const skippedLine = (count: number) => `${count} missing a date, amount or payment method ${count === 1 ? 'is' : 'are'} skipped`;
 
 /** The waiting rows picked, under their total: "10 waiting rows · 1 Aug – 12 Sep 2026" (a date not read is left out). */
 export function waitingSpan(dates: readonly string[]): string {

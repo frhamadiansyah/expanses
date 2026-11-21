@@ -76,9 +76,9 @@ test('on Cashflow, holding ＋ opens One line over the list; Return saves the ro
     // Emptied first: a pick (the suggestion's paid-with) lasts only while the line it was made on does.
     await field(page).fill('');
     await field(page).fill('parkir 10rb');
-    const paid = preview(page).getByRole('button', { name: 'Paid with', exact: true });
+    const paid = preview(page).getByRole('button', { name: 'Payment method', exact: true });
     await expect(paid).toHaveAttribute('data-missing', 'true');
-    await expect(paid).toHaveText('Paid with?');
+    await expect(paid).toHaveText('Payment method?');
     await field(page).fill('parkir 10rb nusa');
     await preview(page).getByRole('button', { name: 'Category', exact: true }).click();
     await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Parking & tolls', exact: true }).click();
@@ -101,7 +101,7 @@ test('on Cashflow, holding ＋ opens One line over the list; Return saves the ro
 
   await test.step('the next line keeps the paid-with, and saves on top', async () => {
     await field(page).fill('kopi 20rb');
-    await expect(preview(page).getByRole('button', { name: 'Paid with', exact: true })).toHaveText('Bank Nusa?');
+    await expect(preview(page).getByRole('button', { name: 'Payment method', exact: true })).toHaveText('Bank Nusa?');
     await page.screenshot({ path: test.info().outputPath('hold-4-next.png') });
     await field(page).press('Enter');
     await expect(page.getByTestId('transaction-row').filter({ hasText: 'Kopi' })).toHaveCount(1);
@@ -163,13 +163,13 @@ test('Card look: a blocked blue key saves nothing and shakes the missing part; t
 
   await test.step('nothing pays: the arrow is grey and inert, and the blue key saves nothing', async () => {
     await field(page).fill('kopi kenangan 38rb');
-    await expect(preview(page).getByRole('button', { name: 'Paid with', exact: true })).toHaveAttribute('data-missing', 'true');
+    await expect(preview(page).getByRole('button', { name: 'Payment method', exact: true })).toHaveAttribute('data-missing', 'true');
     await expect(send(page)).toBeDisabled();
     await expect(send(page)).toHaveAttribute('data-blocked', 'true');
     const grey = await arrowColour(page);
     await field(page).press('Enter');
     await expect(page.getByTestId('line-composer')).toHaveClass(/line-shake/);
-    await expect(preview(page).getByRole('button', { name: 'Paid with', exact: true })).toBeVisible();
+    await expect(preview(page).getByRole('button', { name: 'Payment method', exact: true })).toBeVisible();
     await expect(field(page)).toBeFocused();
     await expect(field(page)).toHaveValue('kopi kenangan 38rb');
     await expect(page.getByTestId('transaction-row').filter({ hasText: 'Kopi Kenangan' })).toHaveCount(0);
@@ -198,9 +198,9 @@ test('Card look: a part fixed from the preview row opens its picker above the ca
   await expect(send(page)).toBeDisabled();
 
   await test.step('Paid with: the sheet is fully clickable, the row shows the pick, the arrow is live', async () => {
-    await preview(page).getByRole('button', { name: 'Paid with', exact: true }).click();
+    await preview(page).getByRole('button', { name: 'Payment method', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: /Bank Nusa/ }).first().click();
-    await expect(preview(page).getByRole('button', { name: 'Paid with', exact: true })).toContainText('Bank Nusa');
+    await expect(preview(page).getByRole('button', { name: 'Payment method', exact: true })).toContainText('Bank Nusa');
     await expect(field(page)).toBeFocused();
     await expect(field(page)).toHaveValue('kopi kenangan 38rb');
     await expect(send(page)).toBeEnabled();
@@ -240,7 +240,7 @@ test('Plain look: a bare bar; a blocked blue key shows the amber hint, shakes it
 
   await test.step('the blue key: nothing saved, focus kept, the amber hint names what is missing and shakes', async () => {
     await field(page).press('Enter');
-    await expect(page.getByTestId('line-lacking')).toHaveText('Paid with?');
+    await expect(page.getByTestId('line-lacking')).toHaveText('Payment method?');
     await expect(page.getByTestId('line-lacking')).toHaveClass(/line-shake-self/);
     await expect(field(page)).toBeFocused();
     await expect(page.getByTestId('transaction-row').filter({ hasText: 'Kopi Kenangan' })).toHaveCount(0);

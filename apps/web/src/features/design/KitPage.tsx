@@ -104,7 +104,7 @@ const COLUMNS: RecordColumn<Purchase>[] = [
   { key: 'date', heading: 'Date', cell: (row) => row.occurredOn },
   { key: 'merchant', heading: 'Merchant', cell: (row) => row.merchant },
   { key: 'where', heading: 'What it was', cell: (row) => row.where },
-  { key: 'card', heading: 'Paid with', cell: (row) => row.card },
+  { key: 'card', heading: 'Payment method', cell: (row) => row.card },
   { key: 'points', heading: 'Points', numeric: true, cell: (row) => new Intl.NumberFormat('id-ID').format(row.points) },
   { key: 'amount', heading: 'Amount', numeric: true, cell: (row) => <Figure tone="alarm">{rp(row.minor)}</Figure> },
 ];

@@ -33,8 +33,8 @@ test('a card purchase’s peek is its receipt: Instalments None, Turn into insta
   await expect(peek.getByTestId('peek-title')).toHaveText('Laptop');
   await expect(peek.getByTestId('peek-amount')).toHaveText(/^Rp\s12\.000\.000$/);
   // The receipt's lines, in its order: what paid, the total — then its Instalments row.
-  await expect(peek.locator('dt')).toContainText(['Category', 'Paid with', 'Total']);
-  await expect(peek.locator('div', { has: page.locator('dt', { hasText: /^Paid with$/ }) })).toContainText('Kartu Biru ···· 4417');
+  await expect(peek.locator('dt')).toContainText(['Category', 'Payment method', 'Total']);
+  await expect(peek.locator('div', { has: page.locator('dt', { hasText: /^Payment method$/ }) })).toContainText('Kartu Biru ···· 4417');
   const instalments = peek.getByTestId('receipt-instalments');
   await expect(instalments).toContainText('None');
   // Never the phone's page: the address stays Cashflow's.

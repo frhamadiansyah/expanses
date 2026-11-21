@@ -87,7 +87,7 @@ test('a table becomes rows on a phone, and the hidden columns are not on screen'
   await expect(group.getByRole('button', { name: /Superindo/ })).toBeVisible();
   // The phone row keeps the title and the one figure; the other columns wait behind the chevron.
   await expect(group.getByText('SPBU 34-12907 Pondok Indah')).toHaveCount(0);
-  await expect(group.getByText('Paid with')).toHaveCount(0);
+  await expect(group.getByText('Payment method')).toHaveCount(0);
 });
 
 /**
@@ -101,7 +101,7 @@ test('a table with nothing to open keeps every column at phone width, and scroll
   const table = group.getByRole('table');
   await expect(table).toBeVisible();
   await expect(table.getByRole('columnheader')).toHaveCount(6);
-  for (const heading of ['Date', 'Merchant', 'What it was', 'Paid with', 'Points', 'Amount']) {
+  for (const heading of ['Date', 'Merchant', 'What it was', 'Payment method', 'Points', 'Amount']) {
     await expect(table.getByRole('columnheader', { name: heading })).toBeVisible();
   }
   await expect(table.getByRole('cell', { name: 'SPBU 34-12907 Pondok Indah' })).toBeAttached();

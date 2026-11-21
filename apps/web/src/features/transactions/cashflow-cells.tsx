@@ -224,7 +224,7 @@ export function useCashflowCells({
       />
     ) : (
       <PaymentSheet
-        title={`Paid with, for ${picking.ids.length} rows`}
+        title={`Payment method, for ${picking.ids.length} rows`}
         options={paymentOptions(money, cards)}
         accounts={[...accounts]}
         cards

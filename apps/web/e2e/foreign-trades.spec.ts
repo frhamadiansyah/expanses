@@ -52,7 +52,7 @@ test('a USD buy from Jenius asks which goal paid for the rupiah that left, not t
   await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
   await addUsdStock(page);
   await openTradeForm(page, 'buy', 'AAPL');
-  await pickTradeCash(page, tradeForm(page), 'Paid with', 'Jenius');
+  await pickTradeCash(page, tradeForm(page), 'Payment method', 'Jenius');
   await page.getByLabel('Shares', { exact: true }).pressSequentially('2');
   await page.getByLabel(/What it cost, before fees/).pressSequentially('418,50');
   await page.getByLabel('Charged in IDR').pressSequentially('6.800.000');

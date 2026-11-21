@@ -297,8 +297,8 @@ describe('the waiting rows, the typing row and Record', () => {
     expect(skipped).toBe(3);
     // A picked recorded row is no waiting row: neither recorded here nor skipped.
     expect(recordable(['a', 'tx1'], waiting, accounts, '2026-11-18', 'IDR')).toMatchObject({ skipped: 0 });
-    expect(skippedLine(1)).toBe('1 missing a date, amount or Paid with is skipped');
-    expect(skippedLine(2)).toBe('2 missing a date, amount or Paid with are skipped');
+    expect(skippedLine(1)).toBe('1 missing a date, amount or payment method is skipped');
+    expect(skippedLine(2)).toBe('2 missing a date, amount or payment method are skipped');
   });
 
   it('Record all is every waiting row that can be recorded, and says how many stay', () => {

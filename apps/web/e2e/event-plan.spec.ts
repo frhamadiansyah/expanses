@@ -299,7 +299,7 @@ test('an item is bought at the real price, and one receipt can answer three', as
   await expect(buying.getByLabel('Amount', { exact: true })).toHaveValue('7500000');
   await expect(buying.getByRole('button', { name: /^Category/ })).toContainText('Food and beverage');
   await expect(buying.getByRole('button', { name: 'Event', exact: true })).toContainText('Newborn');
-  await buying.getByRole('button', { name: /^Paid with/ }).click();
+  await buying.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   await buying.getByLabel('Amount', { exact: true }).fill('7200000');
   await saveButton(buying).click();
@@ -728,7 +728,7 @@ test('buying something for nothing is refused before a rupiah is written', async
   await openWholePlan(page);
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await page.getByRole('button', { name: 'Pay now' }).click();
-  await buying.getByRole('button', { name: /^Paid with/ }).click();
+  await buying.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   await buying.getByRole('button', { name: 'Clear amount' }).click();
   await buying.getByLabel('Amount', { exact: true }).fill('0');

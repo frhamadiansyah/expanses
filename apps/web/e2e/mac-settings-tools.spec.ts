@@ -51,12 +51,12 @@ test('the sidebar’s Settings opens Settings, and each section shows its own ro
 
   // Defaults: Paid with for new spending, saved as it is chosen.
   await section(page, 'Defaults').click();
-  const paidWith = page.getByLabel('Paid with for new spending');
+  const paidWith = page.getByLabel('Payment method for new spending');
   await expect(paidWith.locator('option:checked')).toHaveText('None');
   await paidWith.selectOption({ label: 'Bank Satu' });
   await expect(paidWith).toBeEnabled();
   await page.reload();
-  await expect(page.getByLabel('Paid with for new spending').locator('option:checked')).toHaveText('Bank Satu');
+  await expect(page.getByLabel('Payment method for new spending').locator('option:checked')).toHaveText('Bank Satu');
 
   await section(page, 'Categories').click();
   await expect(page.getByTestId('settings-categories').getByRole('link', { name: /^Expense categories/ })).toContainText(/\d+ categories/);

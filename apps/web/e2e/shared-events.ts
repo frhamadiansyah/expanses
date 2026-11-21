@@ -112,8 +112,8 @@ export interface SharedSpend {
 export async function recordSharedSpend(page: Page, spend: SharedSpend) {
   const card = sharedCard(page);
   await expect(card).toBeVisible({ timeout: 30_000 });
-  await card.getByRole('button', { name: /^Paid with/ }).click();
-  await choosePayment(page, spend.paidWith, 'Paid with');
+  await card.getByRole('button', { name: /^Payment method/ }).click();
+  await choosePayment(page, spend.paidWith, 'Payment method');
   if (spend.currency) {
     await card.getByRole('button', { name: 'Currency' }).click();
     await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: new RegExp(`^${spend.currency}\\b`) }).first().click();

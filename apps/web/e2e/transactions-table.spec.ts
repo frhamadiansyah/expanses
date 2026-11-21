@@ -24,7 +24,7 @@ test('rows are typed into the table, and the next purchase at the same shop gues
 
   await typing.getByLabel('Row description').fill('Superindo');
   await typing.getByLabel('Row amount (IDR)').fill('450.000');
-  await pick(typing, 'Row paid with', 'bca');
+  await pick(typing, 'Row payment method', 'bca');
   await pick(typing, 'Row category', 'groceries');
   await typing.getByLabel('Row description').press('Enter');
 
@@ -32,7 +32,7 @@ test('rows are typed into the table, and the next purchase at the same shop gues
   await expect(recorded).toHaveCount(1);
   await expect(recorded).toContainText('Superindo');
   // The account carries down to the next row; the category is worked out from the shop.
-  await expect(typing.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
+  await expect(typing.getByLabel('Row payment method')).toHaveValue('BCA Tahapan');
   await typing.getByLabel('Row description').fill('SUPERINDO Kebayoran');
   await typing.getByLabel('Row amount (IDR)').focus();
   await expect(typing.getByLabel('Row category')).toHaveValue('Groceries');
@@ -53,7 +53,7 @@ test('an unfinished row waits as not recorded, and is finished in place', async 
   await expect(waiting).toHaveCount(1);
   // It waits here, in Cashflow's table, and in Review: This month's To review counts it.
   await expect(page.getByTestId('month-review')).toHaveText('1');
-  await pick(waiting, 'Row paid with', 'bca');
+  await pick(waiting, 'Row payment method', 'bca');
   await pick(waiting, 'Row category', 'pharm');
   await recordRow(page, 'Apotek K24');
 
@@ -66,7 +66,7 @@ test('a recorded row is corrected cell by cell on its account’s table, and sav
   const typing = page.getByTestId('typing-row');
   await typing.getByLabel('Row description').fill('Superindo');
   await typing.getByLabel('Row amount (IDR)').fill('450000');
-  await pick(typing, 'Row paid with', 'bca');
+  await pick(typing, 'Row payment method', 'bca');
   await pick(typing, 'Row category', 'groceries');
   await typing.getByRole('button', { name: 'Record' }).click();
   await expect(page.getByTestId('transaction-row')).toHaveCount(1);
@@ -91,7 +91,7 @@ test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) =
   // In the wide table's visible order (Date, Note, Category, Paid with, Amount), which is the order a paste is read in.
   const sheet = ['1/9\tGrab to office\t\tBCA Tahapan\t32.000', '2/9\tStarbucks\t\tBCA\t58.000'].join('\n');
   // The cells read pasted names against the accounts, which are still loading while the cells wait (disabled).
-  await expect(page.getByTestId('typing-row').getByLabel('Row paid with')).toBeEnabled();
+  await expect(page.getByTestId('typing-row').getByLabel('Row payment method')).toBeEnabled();
   await page.getByTestId('typing-row').getByLabel('Row description').evaluate((input, text) => {
     const data = new DataTransfer();
     data.setData('text/plain', text);
@@ -100,14 +100,14 @@ test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) =
 
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
   const grab = page.getByTestId('not-recorded-row').filter({ has: page.locator('input[value="Grab to office"]') });
-  await expect(grab.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
+  await expect(grab.getByLabel('Row payment method')).toHaveValue('BCA Tahapan');
   await expect(page.getByTestId('typing-row').getByLabel('Row description')).toHaveValue('');
   await expect(grab.getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?32\.000$/);
 });
 
 /** Pastes text into the typing row's Note cell, as ⌘V from a spreadsheet does. */
 async function pasteInto(page: Page, text: string) {
-  await expect(page.getByTestId('typing-row').getByLabel('Row paid with')).toBeEnabled();
+  await expect(page.getByTestId('typing-row').getByLabel('Row payment method')).toBeEnabled();
   await page.getByTestId('typing-row').getByLabel('Row description').evaluate((input, sheet) => {
     const data = new DataTransfer();
     data.setData('text/plain', sheet);
@@ -132,7 +132,7 @@ test('rows pasted in the table’s own column order land in the right cells, wai
   await page.clock.setSystemTime(new Date('2026-11-18T12:00:00'));
   await setUp(page);
   // How to paste is said on the typing row's hover: it says nothing under itself.
-  await expect(page.getByTestId('typing-row')).toHaveAttribute('title', /paste from a spreadsheet: Date · Note · Category · Paid with · Amount \(or with a header row, any order\)/);
+  await expect(page.getByTestId('typing-row')).toHaveAttribute('title', /paste from a spreadsheet: Date · Note · Category · Payment method · Amount \(or with a header row, any order\)/);
 
   // Date, Note, Category, Paid with, Amount — as Sheets copies it, a Notion date and the money's name included. Invented.
   const sheet = [
@@ -144,7 +144,7 @@ test('rows pasted in the table’s own column order land in the right cells, wai
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
   const pasar = draftRow(page, 'Pasar Santa');
   await expect(pasar.getByLabel('Row category')).toHaveValue('Groceries');
-  await expect(pasar.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
+  await expect(pasar.getByLabel('Row payment method')).toHaveValue('BCA Tahapan');
   await expect(pasar.getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?64\.500$/);
   await expect(pasar.getByLabel('Row date')).toHaveValue('17 Nov');
   const warung = draftRow(page, 'Warung Tegal');
@@ -183,7 +183,7 @@ test('a receipt opens from the table: Cashflow’s row by a click, an account’
   const typing = page.getByTestId('typing-row');
   await typing.getByLabel('Row description').fill('Superindo');
   await typing.getByLabel('Row amount (IDR)').fill('450000');
-  await pick(typing, 'Row paid with', 'bca');
+  await pick(typing, 'Row payment method', 'bca');
   await pick(typing, 'Row category', 'groceries');
   await typing.getByRole('button', { name: 'Record' }).click();
   await expect(page.getByTestId('transaction-row')).toHaveCount(1);

@@ -92,8 +92,8 @@ test('a bond bought with the card turned into 6: the statement bills 1 of 6, Cas
   await page.getByLabel('Name', { exact: true }).fill('ORI031');
   await page.getByLabel('Par value', { exact: true }).fill('6000000');
   await page.getByLabel('Purchase value', { exact: true }).fill('6000000');
-  await page.getByRole('button', { name: /^Paid with/ }).click();
-  await choosePayment(page, 'Mitra Visa', 'Paid with');
+  await page.getByRole('button', { name: /^Payment method/ }).click();
+  await choosePayment(page, 'Mitra Visa', 'Payment method');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
 

@@ -270,7 +270,7 @@ export function guessHint(mark: PasteMark | undefined): string | null {
 /** What a remembered Paid with cell says on hover and to a reader. */
 export function paidHint(mark: PasteMark | undefined): string | null {
   if (!mark?.paidGuessed || !mark.paid) return null;
-  return isLinkKey(mark.paid) ? 'Paid with remembered for this Notion link' : `Paid with guessed from an earlier paste of “${mark.paid}”`;
+  return isLinkKey(mark.paid) ? 'Payment method remembered for this Notion link' : `Payment method guessed from an earlier paste of “${mark.paid}”`;
 }
 
 /*

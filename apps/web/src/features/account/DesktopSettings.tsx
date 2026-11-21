@@ -78,13 +78,13 @@ function DeskDefaults() {
       <div className="mb-[12px] empty:hidden">
         <ErrorBox error={error ?? stored.error} />
       </div>
-      <DeskGroup title="New spending" footer="Where Paid with starts on a new transaction in this workspace. Choosing another for one purchase does not change it.">
+      <DeskGroup title="New spending" footer="The payment method a new transaction starts with in this workspace. Choosing another for one purchase does not change it.">
         <DeskRow
           lead={<DeskIcon icon={WalletCards} tint="#ff9500" />}
-          title="Paid with"
+          title="Payment method"
           right={
             <select
-              aria-label="Paid with for new spending"
+              aria-label="Payment method for new spending"
               value={current}
               disabled={!ready || !stored.isSuccess || busy}
               onChange={(event) => void choose(event.target.value)}

@@ -43,9 +43,9 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
   // The holding is chosen by hand: the row names none yet while every other row is already there.
   await expect(form.getByRole('button', { name: 'Investment' })).not.toContainText('Bought');
-  await expect(form.getByLabel('Paid with')).toBeVisible();
+  await expect(form.getByLabel('Payment method')).toBeVisible();
   await chooseInvestment(form, { index: 0 });
-  await expect(form.getByLabel('Paid with')).toBeVisible();
+  await expect(form.getByLabel('Payment method')).toBeVisible();
   await expect(form.getByText('A credit card works')).toHaveCount(0);
   await expect(form.getByText('Units are recorded')).toHaveCount(0);
   await expect(form.getByLabel('Received into')).toHaveCount(0);
@@ -53,9 +53,9 @@ test('phone: Trade keeps Net worth on the bar, has Buy and Sell tabs, and the + 
   await expect(form.getByRole('radio', { name: 'Sell' })).toBeChecked();
   await expect(form.getByLabel('Received into')).toBeVisible();
   await expect(form.getByLabel(/^Proceeds, before fees/)).toBeVisible();
-  await expect(form.getByLabel('Paid with')).toHaveCount(0);
+  await expect(form.getByLabel('Payment method')).toHaveCount(0);
   await form.getByRole('radio', { name: 'Buy' }).click();
-  await expect(form.getByLabel('Paid with')).toBeVisible();
+  await expect(form.getByLabel('Payment method')).toBeVisible();
 
   // The + opens the normal Add form on Expense, with the three tabs and no trade rows.
   await bar.getByRole('button', { name: 'Add a transaction' }).click();
@@ -80,12 +80,12 @@ test('phone: a share kept at a broker pays from, and is paid into, that broker o
   await form.getByRole('radio', { name: 'Buy' }).click();
   await chooseInvestment(form, 'BBCA · Stockbit Sekuritas');
   // The broker's cash is already chosen: nothing to pick.
-  await expect(form.getByLabel('Paid with')).toContainText('Stockbit Sekuritas');
+  await expect(form.getByLabel('Payment method')).toContainText('Stockbit Sekuritas');
   // A holding with no broker lets it go: the Stockbit cash does not stay stuck on Paid with.
   await chooseInvestment(form, 'Antam gold bars');
-  await expect(form.getByLabel('Paid with')).not.toContainText('Stockbit Sekuritas');
+  await expect(form.getByLabel('Payment method')).not.toContainText('Stockbit Sekuritas');
   await chooseInvestment(form, 'BBCA · Stockbit Sekuritas');
-  await expect(form.getByLabel('Paid with')).toContainText('Stockbit Sekuritas');
+  await expect(form.getByLabel('Payment method')).toContainText('Stockbit Sekuritas');
   await form.getByRole('radio', { name: 'Sell' }).click();
   await expect(form.getByLabel('Received into')).toContainText('Stockbit Sekuritas');
 });

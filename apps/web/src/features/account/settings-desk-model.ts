@@ -37,7 +37,7 @@ export const SETTINGS_SECTIONS: readonly SectionInfo[] = [
     tint: '#5ac8fa',
     rows: ['iCloud', 'Back up to iCloud', 'Back up now', 'Restore from iCloud', 'Backup file', 'Download backup', 'Restore from a file', 'Photos', 'Download photos', 'Restore photos', 'Safety copies'],
   },
-  { key: 'defaults', name: 'Defaults', tint: '#ff9500', rows: ['Paid with', 'Default paid with', 'New spending'] },
+  { key: 'defaults', name: 'Defaults', tint: '#ff9500', rows: ['Payment method', 'Default payment method', 'Paid with', 'New spending'] },
   { key: 'categories', name: 'Categories', tint: '#af52de', rows: ['Expense categories', 'Income categories', 'Sets'] },
   { key: 'activity', name: 'Activity', tint: '#8e8e93', rows: ['What was changed', 'Undo'] },
   // The iPhone's own (Capture reads its notifications and screenshots; the widget is its home screen's): a wide iPhone

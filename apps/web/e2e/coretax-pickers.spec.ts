@@ -59,8 +59,8 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const payer = page.getByRole('dialog', { name: 'Paid with' });
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const payer = page.getByRole('dialog', { name: 'Payment method' });
   await expect(payer).toContainText('BCA Tahapan');
   await expect(payer).not.toContainText('Deposito BCA 6 bulan');
   await payer.getByRole('button', { name: 'Close' }).click();

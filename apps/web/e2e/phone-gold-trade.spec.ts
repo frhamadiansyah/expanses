@@ -53,7 +53,7 @@ test('phone: every row of the sheet reads at one size, and the details open unde
   const grams = sheet.getByLabel('Grams', { exact: true });
   expect(await size(grams)).toBe('17px');
   expect(await size(sheet.getByLabel('Total paid', { exact: true }))).toBe('17px');
-  expect(await size(sheet.getByRole('button', { name: /^Paid with/ }).getByText('BCA', { exact: true }))).toBe('17px');
+  expect(await size(sheet.getByRole('button', { name: /^Payment method/ }).getByText('BCA', { exact: true }))).toBe('17px');
   expect(await size(sheet.getByTestId('trade-holding').getByText('UBS gold bars', { exact: true }))).toBe('17px');
 
   // Where the first box sits in the sheet, measured from the holding's line above Grams.

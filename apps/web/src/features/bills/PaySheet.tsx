@@ -175,7 +175,7 @@ export function PaySheet({
               </option>
             ))}
           </SelectRow>
-          <SelectRow label="Paid with" id="pay-with" value={payer} onChange={(e) => setPayer(e.target.value)}>
+          <SelectRow label="Payment method" id="pay-with" value={payer} onChange={(e) => setPayer(e.target.value)}>
             {wallets.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}

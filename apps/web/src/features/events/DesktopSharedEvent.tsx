@@ -253,7 +253,7 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
                   <th className={cx(TH, 'pl-[14px]')}>Date</th>
                   <th className={TH}>Note</th>
                   <th className={TH}>Category</th>
-                  <th className={TH}>Paid with</th>
+                  <th className={TH}>Payment method</th>
                   <th className={cx(TH, 'pr-[14px] text-right')}>Amount</th>
                 </tr>
               </thead>

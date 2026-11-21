@@ -234,9 +234,9 @@ export function QuickRowEditor({
   const paid = (
     <CellCombo
       key="paid"
-      label="Row paid with"
+      label="Row payment method"
       dense={dense}
-      placeholder={layout === 'desk' ? hint('Paid with') : 'Name or last digits'}
+      placeholder={layout === 'desk' ? hint('Payment method') : 'Name or last digits'}
       value={paymentKey(values.accountId, values.cardId)}
       options={options.paidFor(paymentKey(values.accountId, values.cardId))}
       resolve={options.resolvePaid}

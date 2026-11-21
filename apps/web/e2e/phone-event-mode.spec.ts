@@ -43,7 +43,7 @@ async function addSpend(page: Page, o: { note: string; amount: string; paidWith:
   }
   await openAmount(form);
   await fillAmount(page, form, o.amount);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, o.paidWith);
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -190,7 +190,7 @@ test('event mode in a shared event: the Add form says who it is shared with, and
   const accountId = new URL(page.url()).pathname.split('/').pop()!;
   await page.goto(`/transactions/new?mode=expense&account=${accountId}`);
   await expect(card.getByTestId('event-chip')).toContainText('Coast week');
-  await expect(card.getByRole('button', { name: /^Paid with/ })).toContainText('Rina Bank');
+  await expect(card.getByRole('button', { name: /^Payment method/ })).toContainText('Rina Bank');
   await page.goBack();
 
   // One line: saved untagged, then moved in; the saved row opens the event's own record (fix round 1, H2 and the saved row).

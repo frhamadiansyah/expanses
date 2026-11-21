@@ -108,6 +108,7 @@ import { CardSheet } from '../cards/CardSheet';
 import { setCardAccount, sharedCard } from './set-card';
 import { draftIn } from './move-workspace';
 import { formFromTransaction, formToPost } from './tx-form';
+import { needWords } from './need-words';
 import { ratesForSave } from './tx-save';
 import { useOpenBookReadOnly, usePurchasePayers } from '../sharing/queries';
 import { payerLine, payerToShow, postedAgainstPlaceholder } from '../sharing/sharing-copy';
@@ -1114,7 +1115,7 @@ export function TransactionsPage() {
             onCancel={close}
             actions={
               <>
-                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy === row.id} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void saveDraft(row.id, values, true)}>
+                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy === row.id} title={needs.length ? `Needs ${needWords(needs)}` : 'Record this row'} onClick={() => void saveDraft(row.id, values, true)}>
                   Record
                 </Button>
                 <Button variant="ghost" className="px-2 py-1.5" aria-label="Close without saving" title="Close without saving" onClick={close}>
@@ -1204,7 +1205,7 @@ export function TransactionsPage() {
             onCancel={close}
             actions={
               <>
-                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy === tx.id} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Save the change'} onClick={() => void saveRecorded(tx.id, values)}>
+                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy === tx.id} title={needs.length ? `Needs ${needWords(needs)}` : 'Save the change'} onClick={() => void saveRecorded(tx.id, values)}>
                   Save
                 </Button>
                 <Button variant="ghost" className="px-2 py-1.5" aria-label="Cancel editing" title="Cancel" onClick={close}>

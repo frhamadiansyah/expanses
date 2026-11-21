@@ -300,6 +300,8 @@ describe('pasting rows', () => {
     const english = parsePastedRows('Paid with\tCounts as\tNote\tDate\tCategory\tAmount\nBCA\tEssential\tGrab\t2026-11-17\tTransport\t32000');
     expect(pastedCells(english, 'desk')).toEqual([{ date: '2026-11-17', description: 'Grab', category: 'Transport', paid: 'BCA', amount: '32000' }]);
     expect(pastedCells(parsePastedRows('Description\tAccount\tNominal\nGojek\tBCA\t15000'), 'row')).toEqual([{ date: '', description: 'Gojek', category: '', paid: 'BCA', amount: '15000' }]);
+    // The column's name as the typing row's hint now says it, beside the old one.
+    expect(pastedCells(parsePastedRows('Date\tNote\tCategory\tPayment method\tAmount\n2026-11-17\tGrab\tTransport\tBCA\t32000'), 'desk')).toEqual([{ date: '2026-11-17', description: 'Grab', category: 'Transport', paid: 'BCA', amount: '32000' }]);
   });
 
   it('a header with nothing under it pastes no rows', () => {

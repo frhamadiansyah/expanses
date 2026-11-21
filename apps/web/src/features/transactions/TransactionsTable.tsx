@@ -12,6 +12,7 @@ import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
 import { type PasteMark, pastedCategories, rememberedCategory, rememberedPaid } from './paste-categories';
+import { needWords } from './need-words';
 import { ReceiptLink } from './ReceiptLink';
 import { groupedAmountCell, isNotionPageLinks, isQuickEditable, NOTION_ROWS_LINE, parsePastedRows, pastedCells, paymentKey, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
 
@@ -128,8 +129,8 @@ function TickButton({ ready, on, needs, description, onToggle }: { ready: boolea
       role="checkbox"
       aria-checked={ready && on}
       aria-disabled={!ready || undefined}
-      aria-label={ready ? `Record ${name}` : `${name}: needs ${needs.join(' & ')}`}
-      title={ready ? (on ? 'Goes with Record in the header · click to leave it out' : 'Left out · click to record it with the others') : `Needs ${needs.join(' & ')}`}
+      aria-label={ready ? `Record ${name}` : `${name}: needs ${needWords(needs)}`}
+      title={ready ? (on ? 'Goes with Record in the header · click to leave it out' : 'Left out · click to record it with the others') : `Needs ${needWords(needs)}`}
       onClick={(event) => {
         if (ready) onToggle(event.shiftKey);
       }}
@@ -199,7 +200,7 @@ export function TypingRow({
     <div
       ref={frame}
       data-testid="typing-row"
-      title={desk ? 'Type a row: Tab moves along, Return records it. Or paste from a spreadsheet: Date · Note · Category · Paid with · Amount (or with a header row, any order)' : undefined}
+      title={desk ? 'Type a row: Tab moves along, Return records it. Or paste from a spreadsheet: Date · Note · Category · Payment method · Amount (or with a header row, any order)' : undefined}
       className={desk ? 'border-t border-dashed border-[var(--ph-chevron)]' : 'border-b border-slate-200 bg-slate-50/60'}
     >
       <QuickRowEditor
@@ -262,11 +263,11 @@ export function TypingRow({
         actions={
           <>
             {desk ? (
-              <button type="button" className={DESK_RECORD} disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
+              <button type="button" className={DESK_RECORD} disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needWords(needs)}` : 'Record this row'} onClick={() => void record()}>
                 Record
               </button>
             ) : (
-              <Button className="px-2.5 py-1.5" disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
+              <Button className="px-2.5 py-1.5" disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needWords(needs)}` : 'Record this row'} onClick={() => void record()}>
                 Record
               </Button>
             )}
@@ -418,7 +419,7 @@ export function EditableRow({
             // and ⌫ on the row picked.
             desk ? null : (
               <>
-                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
+                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needWords(needs)}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
                   Record
                 </Button>
                 <TwoTap busy={busy} label="Discard" onConfirm={() => void handlers.dismissDraft(row.id)} />
@@ -426,7 +427,7 @@ export function EditableRow({
             )
           ) : dirty ? (
             <>
-              <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Save the change'} onClick={save}>
+              <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needWords(needs)}` : 'Save the change'} onClick={save}>
                 Save
               </Button>
               <Button variant="ghost" className="px-2 py-1.5" aria-label="Undo changes" title="Undo changes" onClick={() => setValues(initial)}>
@@ -542,7 +543,7 @@ export function TransactionsTable({
           <span className="px-2">Date</span>
           <span className="px-2">Description</span>
           <span className="px-2 text-right">Amount</span>
-          <span className="px-2">Paid with</span>
+          <span className="px-2">Payment method</span>
           <span className="px-2">Category</span>
           <span />
         </div>

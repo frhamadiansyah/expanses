@@ -46,7 +46,7 @@ async function buy(page: Page, p: { card: string; description: string; category:
   // settled in — the pair the card's rules read. There is no second "Original amount" field any more.
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, p.card);
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: new RegExp(`^${p.original[0]} `) }).first().click();

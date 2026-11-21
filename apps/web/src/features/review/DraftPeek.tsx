@@ -149,7 +149,7 @@ export function DraftPeek({
           ),
         },
     {
-      label: transfer ? 'From' : draft.kind === 'income' ? 'Received into' : 'Paid with',
+      label: transfer ? 'From' : draft.kind === 'income' ? 'Received into' : 'Payment method',
       value: (
         <PickField label="Change account" disabled={!open} onClick={() => onPick('money')}>
           {paid ? (

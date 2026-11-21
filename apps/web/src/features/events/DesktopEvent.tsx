@@ -388,7 +388,7 @@ function TransactionsTable({
           <th className={cx(TH, 'pl-[14px]')}>Date</th>
           <th className={TH}>Note</th>
           <th className={TH}>Category</th>
-          <th className={TH}>Paid with</th>
+          <th className={TH}>Payment method</th>
           <th className={cx(TH, 'pr-[14px] text-right')}>Amount</th>
         </tr>
       </thead>
@@ -571,8 +571,8 @@ function PaidWithBox({ rows, totalMinor, currency }: { rows: { name: string; min
     );
   }
   return (
-    <section className={cx(BOX, 'flex-1')} aria-label="Paid with" data-testid="paid-with">
-      <BoxHead title="Paid with" note={`${rows.length} ${rows.length === 1 ? 'account' : 'accounts'}`} />
+    <section className={cx(BOX, 'flex-1')} aria-label="Payment method" data-testid="paid-with">
+      <BoxHead title="Payment method" note={`${rows.length} ${rows.length === 1 ? 'account' : 'accounts'}`} />
       <dl>
         {lines}
         <BoxRow label={<span className="font-semibold">Total</span>} testId="paid-with-total">

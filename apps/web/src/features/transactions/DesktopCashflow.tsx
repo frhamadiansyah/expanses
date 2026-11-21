@@ -183,7 +183,7 @@ function FilterMenu({
             className="mb-1 h-[26px] w-full rounded-[6px] bg-[var(--ph-fill)] px-2 text-[12.5px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
           />
           <MenuList title="Category" options={categoryOptions.filter((option) => !option.value || match(option))} value={filters.cat} onPick={(value) => setFilter('cat', value)} />
-          <MenuList title="Paid with" options={paidOptions.filter((option) => !option.value || match(option))} value={filters.paid} onPick={(value) => setFilter('paid', value)} />
+          <MenuList title="Payment method" options={paidOptions.filter((option) => !option.value || match(option))} value={filters.paid} onPick={(value) => setFilter('paid', value)} />
           <div className="mt-1 border-t border-[var(--ph-hair)] pt-1">
             <label className={check}>
               <input type="checkbox" checked={filters.showDeleted} onChange={(event) => setFilter('showDeleted', event.target.checked)} />
@@ -794,7 +794,7 @@ export function DesktopCashflow({
                   type="button"
                   data-testid="record-ticked"
                   disabled={recordingMany || ticked.length === 0}
-                  title={ticked.length > 0 ? 'Record the rows ticked' : allWaiting.ready.length > 0 ? 'Tick a row to record it' : 'Each waiting row still needs a date, amount or Paid with'}
+                  title={ticked.length > 0 ? 'Record the rows ticked' : allWaiting.ready.length > 0 ? 'Tick a row to record it' : 'Each waiting row still needs a date, amount or payment method'}
                   onClick={() => void recordMany({ ready: ticked, skipped: 0 })}
                   className="self-center rounded-[6px] bg-[var(--ph-ink)] px-[11px] py-[3px] text-[12px] font-medium whitespace-nowrap text-[var(--ph-surface)] disabled:bg-[var(--ph-chevron)] disabled:text-white"
                 >
@@ -813,7 +813,7 @@ export function DesktopCashflow({
                 </button>
                 <span className="px-2 py-[7px]">Note</span>
                 <span className="px-2 py-[7px]">Category</span>
-                <span className="px-2 py-[7px]">Paid with</span>
+                <span className="px-2 py-[7px]">Payment method</span>
                 <button type="button" aria-sort={ariaSort('amount')} onClick={() => sortBy('amount')} className="px-2 py-[7px] text-right hover:text-[var(--ph-ink)]">
                   Amount{sortMark('amount')}
                 </button>

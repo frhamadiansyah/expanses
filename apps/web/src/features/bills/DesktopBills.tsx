@@ -304,7 +304,7 @@ export function DesktopBills() {
                       {cols.category && <th className="w-[132px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Category</th>}
                       <th className="w-[62px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Due</th>
                       <th className="w-[104px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] text-right font-semibold">Amount</th>
-                      {cols.paidWith && <th className="w-[120px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Paid with</th>}
+                      {cols.paidWith && <th className="w-[120px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Payment method</th>}
                       <th className="w-[140px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Status</th>
                     </tr>
                   </thead>

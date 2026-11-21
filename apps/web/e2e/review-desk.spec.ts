@@ -27,7 +27,7 @@ async function answeredSource(page: Page) {
   await page.goto('/review');
   await inject(page, [notice({ id: 'note-seed', body: 'Pembayaran Rp1.000 berhasil. Merchant: SEED SHOP', capturedAt: '2026-09-30T08:00:00+07:00' })]);
   await row(page, 'SEED SHOP').getByRole('button', { name: 'Account for SEED SHOP' }).click();
-  await choosePayment(page, 'Everyday bank', 'Paid with');
+  await choosePayment(page, 'Everyday bank', 'Payment method');
   await expect(row(page, 'SEED SHOP').getByRole('button', { name: 'Account for SEED SHOP' })).toHaveText('Everyday bank');
 }
 
@@ -55,7 +55,7 @@ test('a missing account is filled in place, the row turns ready (a blank categor
 
   // The account, in the phone's Paid with sheet, in place: a date, an amount and Paid with, so the row turns ready.
   await kopi.getByRole('button', { name: 'Account for TOKO KOPI' }).click();
-  await choosePayment(page, 'Everyday bank', 'Paid with');
+  await choosePayment(page, 'Everyday bank', 'Payment method');
   await expect(count(page, 'review-need-account')).toHaveText('0');
   await expect(kopi).toHaveAttribute('data-ready', 'true');
   await expect(kopi.getByRole('button', { name: 'Record TOKO KOPI' })).toBeEnabled();

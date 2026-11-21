@@ -365,6 +365,7 @@ const HEADER_NAMES: Record<string, PastedColumn> = {
   'sub-category': 'category',
   'sub-categories': 'category',
   'paid with': 'paid',
+  'payment method': 'paid',
   account: 'paid',
   akun: 'paid',
   card: 'paid',

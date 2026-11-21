@@ -691,7 +691,7 @@ export function ReviewPage() {
             },
             {
               key: 'account',
-              heading: 'Paid with',
+              heading: 'Payment method',
               cell: (draft) => (
                 <Select
                   aria-label={`Account for ${draft.description}`}

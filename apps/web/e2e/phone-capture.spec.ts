@@ -59,7 +59,7 @@ test('a capture asks which account it is once, and the app remembers', async ({ 
   const record = page.getByRole('button', { name: 'Record', exact: true });
   await expect(record).toBeDisabled();
   await form.getByRole('button', { name: 'Which account is this?' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /Everyday bank/ }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /Everyday bank/ }).click();
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await record.click();
@@ -71,7 +71,7 @@ test('a capture asks which account it is once, and the app remembers', async ({ 
   await page.getByTestId('draft-row').filter({ hasText: 'SOTO BETAWI' }).click();
   const second = page.getByRole('form', { name: 'Review SOTO BETAWI' });
   await expect(second.getByText('Which account is this?')).toHaveCount(0);
-  await expect(second.getByRole('button', { name: 'Paid with' })).toContainText('Everyday bank');
+  await expect(second.getByRole('button', { name: 'Payment method' })).toContainText('Everyday bank');
 });
 
 test('a capture of a merchant recorded before arrives filed under its category', async ({ page }) => {
@@ -111,7 +111,7 @@ test('correcting the merchant teaches the source, and the next screenshot is rea
   const form = page.getByRole('form', { name: 'Review Pay' });
   await form.getByLabel('Note').fill('TOKO KOPI MAKMUR');
   await form.getByRole('button', { name: 'Which account is this?' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /Pay wallet/ }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /Pay wallet/ }).click();
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
 

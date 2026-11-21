@@ -55,7 +55,7 @@ async function buy(page: Page, p: Purchase) {
   // The MCC lives under "Add more details" now, on a screen of its own — §4's row, not a fold-out on the card.
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, p.card);
   await form.getByLabel('Amount', { exact: true }).fill(p.amount);
   await form.getByRole('button', { name: 'Category' }).click();

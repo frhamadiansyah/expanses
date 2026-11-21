@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function pasteInto(page: Page, text: string) {
-  await expect(page.getByTestId('typing-row').getByLabel('Row paid with')).toBeEnabled();
+  await expect(page.getByTestId('typing-row').getByLabel('Row payment method')).toBeEnabled();
   await page.getByTestId('typing-row').getByLabel('Row description').evaluate((input, plain) => {
     const data = new DataTransfer();
     data.setData('text/plain', plain);
@@ -182,7 +182,7 @@ test('Record N records the complete ones of those picked and says how many it sk
   const picked = page.getByTestId('cashflow-selection');
   await expect(picked.getByTestId('peek-title')).toHaveText('3 selected');
   await expect(picked.getByTestId('record-many')).toHaveText('Record 2');
-  await expect(picked.getByTestId('record-skipped')).toHaveText('1 missing a date, amount or Paid with is skipped');
+  await expect(picked.getByTestId('record-skipped')).toHaveText('1 missing a date, amount or payment method is skipped');
   // Only waiting rows picked: none of the recorded rows' actions.
   await expect(picked.getByRole('button', { name: 'Add to event' })).toHaveCount(0);
   await picked.getByTestId('record-many').click();
@@ -207,8 +207,8 @@ test('a row typed into the last row is recorded into the list above it, and the 
     await typing.getByLabel('Row category').press('Enter');
     // What paid carries down to the next row: picked once.
     if (note === 'Roti Contoh') {
-      await typing.getByLabel('Row paid with').fill('Bank Contoh');
-      await typing.getByLabel('Row paid with').press('Enter');
+      await typing.getByLabel('Row payment method').fill('Bank Contoh');
+      await typing.getByLabel('Row payment method').press('Enter');
     }
     await typing.getByLabel('Row amount (IDR)').fill(amount);
     await typing.getByLabel('Row amount (IDR)').press('Enter');
@@ -253,7 +253,7 @@ test('Tab moves along the typing row, past Amount keeps it waiting and starts a 
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
   const typing = page.getByTestId('typing-row');
-  await expect(typing.getByLabel('Row paid with')).toBeEnabled();
+  await expect(typing.getByLabel('Row payment method')).toBeEnabled();
   // Date › Note › Category › Paid with › Amount, and ⇧Tab back; Tab in an open list takes its highlighted choice.
   await typing.getByLabel('Row date').focus();
   await page.keyboard.press('Tab');
@@ -264,15 +264,15 @@ test('Tab moves along the typing row, past Amount keeps it waiting and starts a 
   await page.keyboard.type('Restaurants');
   await expect(typing.getByRole('listbox')).toBeVisible();
   await page.keyboard.press('Tab');
-  await expect(typing.getByLabel('Row paid with')).toBeFocused();
+  await expect(typing.getByLabel('Row payment method')).toBeFocused();
   await expect(typing.getByLabel('Row category')).toHaveValue('Restaurants');
   await page.keyboard.type('Bank Contoh');
   await page.keyboard.press('Tab');
   await expect(typing.getByLabel('Row amount (IDR)')).toBeFocused();
-  await expect(typing.getByLabel('Row paid with')).toHaveValue('Bank Contoh');
+  await expect(typing.getByLabel('Row payment method')).toHaveValue('Bank Contoh');
   await page.keyboard.type('15000');
   await page.keyboard.press('Shift+Tab');
-  await expect(typing.getByLabel('Row paid with')).toBeFocused();
+  await expect(typing.getByLabel('Row payment method')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(typing.getByLabel('Row amount (IDR)')).toBeFocused();
   // Tab past Amount: the row waits with its Record, and a fresh row's Date takes the typing, the day and Paid with carried.
@@ -291,7 +291,7 @@ test('Tab moves along the typing row, past Amount keeps it waiting and starts a 
   await expect(typing.getByRole('listbox')).toBeVisible();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Tab');
-  await expect(typing.getByLabel('Row paid with')).toBeFocused();
+  await expect(typing.getByLabel('Row payment method')).toBeFocused();
   await expect(typing.getByLabel('Row category')).not.toHaveValue('');
   await page.keyboard.press('Tab');
   await page.keyboard.type('42000');
@@ -332,7 +332,7 @@ test('Record N records the waiting rows ticked — each that can be recorded sta
   // The box header's one black Record N, counting the rows ticked; the dashed circle says what is missing on hover.
   const all = page.getByTestId('record-ticked');
   await expect(all).toHaveText('Record 3');
-  await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('title', 'Needs paid with');
+  await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('title', 'Needs a payment method');
   await page.screenshot({ path: test.info().outputPath('record-all.png') });
   // A click leaves a row out, and puts it back; a dashed circle takes no tick.
   await tickOf(page, 'Kedai Contoh').click();
@@ -452,7 +452,7 @@ test('a click on the first waiting row and ⇧-click on the last picks every wai
   await expect(picked.getByTestId('selection-note')).toHaveText('4 waiting rows · 1 Aug – 12 Sep 2026');
   // Apotek Contoh has no Paid with; Kedai Teh Contoh's blank category records under Uncategorised.
   await expect(picked.getByTestId('record-many')).toHaveText('Record 3');
-  await expect(picked.getByTestId('record-skipped')).toHaveText('1 missing a date, amount or Paid with is skipped');
+  await expect(picked.getByTestId('record-skipped')).toHaveText('1 missing a date, amount or payment method is skipped');
   await page.screenshot({ path: test.info().outputPath('range-picked.png') });
 
   // ⌘-click takes one out.

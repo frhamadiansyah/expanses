@@ -71,7 +71,7 @@ test('a yearly bill saves up in a savings account, and is paid by card from the 
   // Pay it by credit card: the card is paid from the savings account too.
   await page.getByRole('button', { name: /^Pay/ }).first().click();
   const sheet = page.getByRole('dialog', { name: 'Pay Car insurance' });
-  await sheet.getByLabel('Paid with').selectOption({ label: 'Visa Gold' });
+  await sheet.getByLabel('Payment method').selectOption({ label: 'Visa Gold' });
   const toggle = sheet.getByRole('checkbox', { name: 'Pay the card from the fund' });
   await expect(toggle).toBeChecked();
   await sheet.getByRole('button', { name: 'Record payment' }).click();

@@ -324,7 +324,7 @@ export function DesktopReview({
                   <th className={TH}>Description</th>
                   <th className={cx(TH, 'w-[100px] text-right')}>Amount</th>
                   <th className={cx(TH, 'w-[150px]')}>Category</th>
-                  {cols.paidWith && <th className={cx(TH, 'w-[150px]')}>Paid with</th>}
+                  {cols.paidWith && <th className={cx(TH, 'w-[150px]')}>Payment method</th>}
                   <th className={cx(TH, cols.discard ? 'w-[146px]' : 'w-[76px]')}>
                     <span className="sr-only">Actions</span>
                   </th>
@@ -759,7 +759,7 @@ function Picker({
   const expense = draft.kind === 'expense';
   return (
     <PaymentSheet
-      title={draft.kind === 'transfer' ? 'From' : draft.kind === 'income' ? 'Received into' : 'Paid with'}
+      title={draft.kind === 'transfer' ? 'From' : draft.kind === 'income' ? 'Received into' : 'Payment method'}
       options={paymentOptions(money, expense ? [...cards] : [], draft.accountId ?? '')}
       accounts={[...accounts]}
       chosenAccountId={draft.accountId ?? ''}

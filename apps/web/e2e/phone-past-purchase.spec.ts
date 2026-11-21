@@ -20,7 +20,7 @@ async function fillExpense(page: Page, date: string, note = 'Noodle Stall') {
   const form = addForm(page);
   await openAmount(form);
   await fillAmount(page, form, '41000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'Dompet Satu');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
@@ -126,7 +126,7 @@ test('an account opened at nothing counts from the day it was added', async ({ p
   const form = addForm(page);
   await openAmount(form);
   await fillAmount(page, form, '41000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'GoPay Nol');
   await form.getByLabel('Date').fill('2026-09-10');
   await expect(form.getByRole('button', { name: 'Past purchase' })).toHaveAttribute('aria-pressed', 'true');
@@ -154,7 +154,7 @@ test('an account opened at nothing shows its As of, and moving it back moves whe
   const form = addForm(page);
   await openAmount(form);
   await fillAmount(page, form, '41000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'GoPay Nol');
   await form.getByLabel('Date').fill('2026-09-10');
   await expect(form.getByRole('button', { name: 'Past purchase' })).toHaveAttribute('aria-pressed', 'false');

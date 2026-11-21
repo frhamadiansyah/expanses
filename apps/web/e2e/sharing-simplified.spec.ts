@@ -116,8 +116,8 @@ test('three steps, one list: a shared account marked owned together from its ico
   await expect(andi.getByText('Rina Pocket')).toHaveCount(0);
   await andi.goto('/transactions');
   await andi.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  await addForm(andi).getByRole('button', { name: /^Paid with/ }).click();
-  const paidWith = andi.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA 0917, Rina’s, shared', exact: true });
+  await addForm(andi).getByRole('button', { name: /^Payment method/ }).click();
+  const paidWith = andi.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'BCA 0917, Rina’s, shared', exact: true });
   await expect(paidWith).toContainText('owned together');
   await expect(paidWith.getByTestId('owned-together-mark')).toBeVisible();
   await shot(andi, info, '7-andi-paid-with');

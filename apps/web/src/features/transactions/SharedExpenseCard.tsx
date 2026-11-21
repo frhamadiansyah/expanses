@@ -263,9 +263,9 @@ export function SharedExpenseCard({
                     <CreditCard size={15} />
                   </RowGlyph>
                 }
-                label="Paid with"
+                label="Payment method"
                 value={paying?.cardId ? paying.accountName : editing ? (account?.name ?? '') : chosenPayment(payable, amountForm)}
-                caption={paying?.cardId ? `···· ${paying.last4 ?? '????'}` : 'Paid with'}
+                caption={paying?.cardId ? `···· ${paying.last4 ?? '????'}` : 'Payment method'}
                 // The account a payment came from stays with it (R5): an edit changes the money, not where it came from.
                 disabled={!!editing}
                 chevron={!editing}
@@ -364,7 +364,7 @@ export function SharedExpenseCard({
       )}
       {sheet === 'money' && (
         <PaymentSheet
-          title="Paid with"
+          title="Payment method"
           options={payable}
           accounts={accounts}
           chosenAccountId={draft.accountId}

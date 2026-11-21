@@ -22,7 +22,7 @@ async function typeRow(page: Page, description: string, amount: string, category
   const typing = page.getByTestId('typing-row');
   await typing.getByLabel('Row description').fill(description);
   await pick(typing, 'Row category', category);
-  await pick(typing, 'Row paid with', 'bca');
+  await pick(typing, 'Row payment method', 'bca');
   await typing.getByLabel('Row amount (IDR)').fill(amount);
   await typing.getByLabel('Row amount (IDR)').press('Enter');
   await expect(page.getByTestId('transaction-row').filter({ hasText: description })).toHaveCount(1);

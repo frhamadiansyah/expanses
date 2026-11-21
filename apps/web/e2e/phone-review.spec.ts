@@ -68,7 +68,7 @@ test('the queue is rows, and a tap opens the Add form that records one', async (
   await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible();
   await expect(form.getByLabel('Date')).toHaveValue('2026-09-09');
   await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('250.000');
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA Tahapan');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await page.getByRole('button', { name: 'Record', exact: true }).click();
@@ -255,7 +255,7 @@ test('a row pasted into Cashflowâ€™s table on a wide screen waits in the phoneâ€
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/transactions');
   const typing = page.getByTestId('typing-row');
-  await expect(typing.getByLabel('Row paid with')).toBeEnabled();
+  await expect(typing.getByLabel('Row payment method')).toBeEnabled();
   await typing.getByLabel('Row description').evaluate((input) => {
     const data = new DataTransfer();
     data.setData('text/plain', '2026-10-16\tToko Contoh\tGroceries\tBCA Tahapan\t21.000');

@@ -31,9 +31,9 @@ export async function cardForSpending(page: Page) {
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = await addForm(page);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
-  const paidWith = page.getByRole('dialog', { name: 'Paid with' });
-  await paidWith.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
+  const paidWith = page.getByRole('dialog', { name: 'Payment method' });
+  await paidWith.getByRole('radiogroup', { name: 'Payment method: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
   await expect(paidWith.getByText('Daily Card').first()).toBeVisible();
   await expect(paidWith.getByText('Rare Card')).toHaveCount(0);
 

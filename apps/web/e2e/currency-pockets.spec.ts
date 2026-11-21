@@ -311,8 +311,8 @@ test('the parent is offered nowhere money is chosen; its pockets are, and a pock
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const payer = page.getByRole('dialog', { name: 'Paid with' });
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const payer = page.getByRole('dialog', { name: 'Payment method' });
   // The account is one row that opens its pockets under it (account tree, 12 Nov) — never a choice of its own.
   const parent = payer.getByRole('button', { name: 'Bank One Valas Plus', exact: true });
   await expect(parent).toHaveAttribute('aria-expanded', 'false');

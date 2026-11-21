@@ -178,7 +178,7 @@ describe('Notion links remembered on this device', () => {
     expect(rememberedCategory(CARD, store)).toBeNull();
     expect(learnt.fills).toEqual([{ id: 'p2', values: blank({ categoryId: 'cafe', accountId: 'bonvoy', cardId: 'c2' }) }]);
     expect(learnt.marks).toEqual({ p2: { paid: CARD, paidGuessed: 'bonvoy:c2' } });
-    expect(paidHint(learnt.marks.p2)).toBe('Paid with remembered for this Notion link');
+    expect(paidHint(learnt.marks.p2)).toBe('Payment method remembered for this Notion link');
     const [later] = await pastedCategories([{ cells: linked(undefined, CARD), values: blank({ categoryId: 'cafe' }) }], ctxOf(store));
     expect(later!.values).toEqual(blank({ categoryId: 'cafe', accountId: 'bonvoy', cardId: 'c2' }));
     // A way to pay no longer offered is not filled in.
@@ -313,7 +313,7 @@ describe('Notion links remembered on this device', () => {
     keepMarks({ n1: row!.mark }, new Set(), store);
     learnFromSaved('n1', blank({ categoryId: 'cafe', accountId: 'bca' }), true, [], store);
     expect(rememberedPaid('kartu biru', store)).toBe('bca');
-    expect(paidHint({ paid: 'Kartu Biru', paidGuessed: 'bca' })).toBe('Paid with guessed from an earlier paste of “Kartu Biru”');
+    expect(paidHint({ paid: 'Kartu Biru', paidGuessed: 'bca' })).toBe('Payment method guessed from an earlier paste of “Kartu Biru”');
   });
 
   it('a name kept before accents and “&” were folded is still known', () => {

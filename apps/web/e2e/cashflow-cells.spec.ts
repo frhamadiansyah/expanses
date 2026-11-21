@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 
 /** Pastes into the typing row's Note cell as ⌘V does, with the HTML a copy carries when it carries some. */
 async function pasteInto(page: Page, text: string, html = '') {
-  await expect(page.getByTestId('typing-row').getByLabel('Row paid with')).toBeEnabled();
+  await expect(page.getByTestId('typing-row').getByLabel('Row payment method')).toBeEnabled();
   await page.getByTestId('typing-row').getByLabel('Row description').evaluate(
     (input, { text: plain, html: rich }) => {
       const data = new DataTransfer();
@@ -228,11 +228,11 @@ test('a Notion copy reads right: its header names, YYYY/MM/DD dates, a card by i
   // A waiting row says its date as a recorded row does: no year in this one.
   await expect(toko.getByLabel('Row date')).toHaveValue('3 Oct');
   await expect(toko.getByLabel('Row category')).toHaveValue('Groceries');
-  await expect(toko.getByLabel('Row paid with')).toHaveValue('Kartu Contoh');
+  await expect(toko.getByLabel('Row payment method')).toHaveValue('Kartu Contoh');
   await expect(toko.getByLabel('Row amount (IDR)')).toHaveValue(money('123.400'));
-  await expect(draftRow(page, 'Kedai Kopi Senja').getByLabel('Row paid with')).toHaveValue('Kartu Contoh');
+  await expect(draftRow(page, 'Kedai Kopi Senja').getByLabel('Row payment method')).toHaveValue('Kartu Contoh');
   // Digits no card or account shows: the cell stays to be filled, never guessed.
-  await expect(draftRow(page, 'Parkir Mal').getByLabel('Row paid with')).toHaveValue('');
+  await expect(draftRow(page, 'Parkir Mal').getByLabel('Row payment method')).toHaveValue('');
   await expect(tickOf(page, 'Toko Sumber Rejeki')).toHaveAttribute('data-tick', 'on');
   await expect(tickOf(page, 'Kedai Kopi Senja')).toHaveAttribute('data-tick', 'on');
   await expect(tickOf(page, 'Parkir Mal')).toHaveAttribute('data-tick', 'missing');
@@ -293,7 +293,7 @@ test('a Notion relation’s page links are picked once and remembered: the other
   // No address is put into a cell.
   for (const note of ['Pasar Contoh', 'Kios Contoh', 'Toko Contoh']) {
     await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('');
-    await expect(draftRow(page, note).getByLabel('Row paid with')).toHaveValue('');
+    await expect(draftRow(page, note).getByLabel('Row payment method')).toHaveValue('');
   }
   await expect(page.locator('input[value*="notion"]')).toHaveCount(0);
 
@@ -310,11 +310,11 @@ test('a Notion relation’s page links are picked once and remembered: the other
   await expect(links).toHaveText('2 Notion links to pick');
 
   // Paid with, the same way.
-  await pasar.getByLabel('Row paid with').fill('Bank Contoh');
-  await pasar.getByLabel('Row paid with').press('Enter');
+  await pasar.getByLabel('Row payment method').fill('Bank Contoh');
+  await pasar.getByLabel('Row payment method').press('Enter');
   await page.getByRole('heading', { name: 'Cashflow' }).click();
-  await expect(kios.getByLabel('Row paid with')).toHaveValue('Bank Contoh');
-  await expect(kios.getByLabel('Row paid with')).toHaveAttribute('title', 'Paid with remembered for this Notion link');
+  await expect(kios.getByLabel('Row payment method')).toHaveValue('Bank Contoh');
+  await expect(kios.getByLabel('Row payment method')).toHaveAttribute('title', 'Payment method remembered for this Notion link');
   await expect(links).toHaveText('1 Notion link to pick');
 
   // The rows discarded (✕, twice), then pasted again: the known links fill in on their own.
@@ -327,7 +327,7 @@ test('a Notion relation’s page links are picked once and remembered: the other
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
   for (const note of ['Pasar Contoh', 'Kios Contoh']) {
     await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('Groceries');
-    await expect(draftRow(page, note).getByLabel('Row paid with')).toHaveValue('Bank Contoh');
+    await expect(draftRow(page, note).getByLabel('Row payment method')).toHaveValue('Bank Contoh');
   }
   await expect(links).toHaveText('1 Notion link to pick');
   await expect(tickOf(page, 'Pasar Contoh')).toHaveAttribute('data-tick', 'on');
@@ -387,7 +387,7 @@ test('a pasted card or account not in cicis yet stays on its rows, is added from
   await expect(buah.getByTestId('paid-pending')).toHaveText('•• 5512');
   await expect(teh.getByTestId('paid-pending')).toHaveText('•• 5512');
   await expect(parkir.getByTestId('paid-pending')).toHaveText('Jago');
-  await expect(buah.getByLabel('Row paid with')).toHaveAttribute('title', 'Not in cicis yet');
+  await expect(buah.getByLabel('Row payment method')).toHaveAttribute('title', 'Not in cicis yet');
   for (const note of ['Toko Buah Contoh', 'Kedai Teh Contoh', 'Parkir Contoh']) await expect(tickOf(page, note)).toHaveAttribute('data-tick', 'missing');
   // Kept over a reload.
   await page.reload();
@@ -400,7 +400,7 @@ test('a pasted card or account not in cicis yet stays on its rows, is added from
   await nav.getByRole('link', { name: /^Cashflow/ }).click();
 
   // The cell's picker: what to add first, with the rows waiting for it, then the ways to pay already there.
-  await buah.getByLabel('Row paid with').click();
+  await buah.getByLabel('Row payment method').click();
   const list = page.getByRole('listbox');
   await expect(list.getByRole('option')).toHaveText([/^＋ Add a credit card ending 5512\s*2 rows$/, '＋ Add a debit card or account ending 5512', /^Bank Contoh/]);
   await list.getByRole('option', { name: /Add a credit card ending 5512/ }).click();
@@ -413,28 +413,28 @@ test('a pasted card or account not in cicis yet stays on its rows, is added from
   await peek.getByRole('button', { name: 'Add card' }).click();
   await expect(peek).toHaveCount(0);
   // Both rows naming 5512 fill in and can be recorded; Jago still waits.
-  await expect(buah.getByLabel('Row paid with')).toHaveValue('Kartu Baru');
-  await expect(teh.getByLabel('Row paid with')).toHaveValue('Kartu Baru');
+  await expect(buah.getByLabel('Row payment method')).toHaveValue('Kartu Baru');
+  await expect(teh.getByLabel('Row payment method')).toHaveValue('Kartu Baru');
   await expect(buah.getByTestId('paid-pending')).toHaveCount(0);
   await expect(tickOf(page, 'Toko Buah Contoh')).toHaveAttribute('data-tick', 'on');
   await expect(tickOf(page, 'Kedai Teh Contoh')).toHaveAttribute('data-tick', 'on');
   await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('data-tick', 'missing');
 
   // A name works the same way: an account named Jago.
-  await parkir.getByLabel('Row paid with').click();
+  await parkir.getByLabel('Row payment method').click();
   await expect(page.getByRole('listbox').getByRole('option').first()).toHaveText(/^＋ Add an account named Jago\s*1 row$/);
   await page.getByRole('option', { name: /Add an account named Jago/ }).click();
   await expect(peek.getByRole('heading')).toContainText('New account');
   await expect(peek.getByLabel('Name')).toHaveValue('Jago');
   await peek.getByRole('button', { name: 'Add account' }).click();
   await expect(peek).toHaveCount(0);
-  await expect(parkir.getByLabel('Row paid with')).toHaveValue('Jago');
+  await expect(parkir.getByLabel('Row payment method')).toHaveValue('Jago');
   await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('data-tick', 'on');
 
   // A later paste naming 5512 (any mask) or Jago matches what was added.
   await pasteInto(page, ['2026-09-20\tToko Lagi Contoh\tGroceries\txxxx 5512\t10.000', '2026-09-21\tParkir Lagi Contoh\tParking\tjago\t5.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(5);
-  await expect(draftRow(page, 'Toko Lagi Contoh').getByLabel('Row paid with')).toHaveValue('Kartu Baru');
-  await expect(draftRow(page, 'Parkir Lagi Contoh').getByLabel('Row paid with')).toHaveValue('Jago');
+  await expect(draftRow(page, 'Toko Lagi Contoh').getByLabel('Row payment method')).toHaveValue('Kartu Baru');
+  await expect(draftRow(page, 'Parkir Lagi Contoh').getByLabel('Row payment method')).toHaveValue('Jago');
   await expect(tickOf(page, 'Toko Lagi Contoh')).toHaveAttribute('data-tick', 'on');
 });
