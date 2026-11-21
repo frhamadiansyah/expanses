@@ -1608,11 +1608,12 @@ export function TransactionsPage() {
         if (tx && payerShown(tx)) return payerLine(payerShown(tx)!);
         if (tx && onPlaceholder(tx)) return null;
         // A table column has room for the account's name beside the card's digits ("BCA Visa 4417"), not the digits alone.
+        // The digits stand at the cell's right edge, lined up row under row; a long name is cut before them (owner, 21 Nov).
         return (
-          <>
-            {row.accountLabel}
-            {row.last4 && <span className="ml-1 text-[11px] tabular-nums">{row.last4}</span>}
-          </>
+          <span className="flex w-full min-w-0 items-baseline gap-1">
+            <span className="min-w-0 flex-1 truncate">{row.accountLabel}</span>
+            {row.last4 && <span className="shrink-0 text-[11px] tabular-nums">{row.last4}</span>}
+          </span>
         );
       },
       editable,
