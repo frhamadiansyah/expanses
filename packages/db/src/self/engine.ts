@@ -133,6 +133,8 @@ export class SelfError extends Error {
 export const selfBookId = (relayBookId: string) => `self:${relayBookId}`;
 const COPY_TTL_MS = 24 * 60 * 60 * 1000;
 const SEEN_EVERY_MS = 5 * 60 * 1000;
+/** A device let in whose own row has not arrived after this long never finished joining. */
+export const UNFINISHED_JOIN_MS = 3 * 24 * 60 * 60 * 1000;
 
 interface SourceSession {
   nonce: string;
@@ -300,6 +302,8 @@ export class SelfEngine {
     await this.transport.allowLink(sessionId, { ...welcome, sig: bytesToBase64Url(welcomeSig) });
     // It gave its data: from now on it never takes another device's, even before the new device's row arrives.
     await this.database.db.run(sql`INSERT OR REPLACE INTO self_state (key, value) VALUES ('gave', '1')`);
+    // Until the new device's own row arrives, it is a join under way: one that never finishes is taken off the relay.
+    await this.database.db.run(sql`INSERT OR REPLACE INTO self_state (key, value) VALUES (${`joining:${joiner.deviceId}`}, ${new Date(this.now()).toISOString()})`);
     this.sourcing.delete(sessionId);
   }
 
@@ -396,6 +400,7 @@ export class SelfEngine {
       if (pulled.unlinked || pulled.held) return { sent: 0, ...pulled };
       const sent = await this.send();
       const again = await this.pull();
+      await this.forgetUnfinishedJoins(group.relayBookId);
       return { sent, applied: pulled.applied + again.applied, ...(again.held ? { held: again.held } : {}), ...(again.unlinked ? { unlinked: true as const } : {}) };
     } catch (error) {
       if (removedFromBook(error)) {
@@ -423,6 +428,25 @@ export class SelfEngine {
    */
   async abandonJoin(relayBookId: string): Promise<void> {
     await this.transport.removeDevice(relayBookId, this.deviceId).catch(() => undefined);
+  }
+
+  /**
+   * Devices this one let in whose own row never arrived: past `UNFINISHED_JOIN_MS` the join will not finish (its copy
+   * ran out long before), so the device is taken off the relay — it no longer holds back the log's pruning or a place.
+   */
+  private async forgetUnfinishedJoins(relayBookId: string): Promise<void> {
+    const rows = await this.database.db.values<[string, string]>(sql`SELECT key, value FROM self_state WHERE key LIKE 'joining:%'`);
+    for (const [key, since] of rows) {
+      const deviceId = key.slice('joining:'.length);
+      const arrived = (await this.database.db.values(sql`SELECT 1 FROM self_devices WHERE device_id = ${deviceId}`)).length > 0;
+      if (!arrived && this.now() - Date.parse(since) < UNFINISHED_JOIN_MS) continue;
+      if (!arrived) {
+        await this.transport.removeDevice(relayBookId, deviceId).catch((error: unknown) => {
+          if (!(error instanceof SyncTransportError && error.status === 404)) throw error;
+        });
+      }
+      await this.database.db.run(sql`DELETE FROM self_state WHERE key = ${key}`);
+    }
   }
 
   private async send(): Promise<number> {

@@ -8,7 +8,7 @@ import { SyncTransportError } from '../../src/sync/types';
 import { bytesToBase64Url, sha256Hex } from '../../src/sync/relay-signing';
 import { sealKeyFor } from '../../src/sync/crypto';
 import { LATEST_VERSION } from '../../src/migrations';
-import { SelfEngine, selfBookId, type SelfDeviceInfo } from '../../src/self/engine';
+import { SelfEngine, selfBookId, type SelfDeviceInfo, UNFINISHED_JOIN_MS } from '../../src/self/engine';
 import type { LinkView } from '../../src/self/link-hub';
 import type { SelfTransport } from '../../src/self/transport';
 import { dumpForSelf } from '../../src/self/dump';
@@ -245,6 +245,59 @@ describe('the welcome the new device takes', () => {
     expect(String((refused as Error).message)).toContain('Update cicis on this device first');
     expect((await newer.devices()).map((d) => d.name)).toEqual(['iPhone']);
     expect(await dumpForSelf(mac!.database)).toEqual(before);
+  });
+});
+
+describe('a join that does not finish', () => {
+  async function allowed(now?: () => number) {
+    const relay = new MemoryTransport();
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }], relay);
+    const phoneEngine = now ? new SelfEngine(phone!.database, phone!.transport, phone!.keys, phone!.info, now) : phone!.engine;
+    const { sessionId, code } = await phoneEngine.startLinking();
+    await mac!.engine.joinWithCode(code);
+    await phoneEngine.checkLinking(sessionId);
+    await mac!.engine.checkJoining(sessionId);
+    await phoneEngine.checkLinking(sessionId);
+    await phoneEngine.allowLinking(sessionId);
+    const plan = await mac!.engine.acceptLink(sessionId); // claimed: the Mac holds a place on the relay
+    return { relay, phone: phone!, phoneEngine, mac: mac!, plan };
+  }
+  const activeOn = (relay: MemoryTransport, book: string) => [...relay.peek(book)!.devices.entries()].filter(([, d]) => d.removedAt === undefined).map(([id]) => id);
+
+  it('is taken back by the new device: it leaves the relay, and the log is pruned past it again', async () => {
+    const { relay, phone, phoneEngine, mac, plan } = await allowed();
+    expect(activeOn(relay, plan.relayBookId)).toContain(mac.keys.deviceId);
+    await phoneEngine.sync();
+    await phoneEngine.sync();
+    await renameAccount(phone.database, phone.ws, (await listAccounts(phone.database, phone.ws)).find((a) => a.name === 'Test Bank')!.id, 'Test Bank (renamed)');
+    await phoneEngine.sync();
+    expect(relay.peek(plan.relayBookId)!.seq).toBeGreaterThan(plan.startSeq);
+    expect(relay.peek(plan.relayBookId)!.prunedThrough).toBe(plan.startSeq); // held for the Mac
+    await mac.engine.abandonJoin(plan.relayBookId);
+    expect(activeOn(relay, plan.relayBookId)).toEqual([phone.keys.deviceId]);
+    await phoneEngine.sync();
+    await phoneEngine.sync();
+    expect(relay.peek(plan.relayBookId)!.prunedThrough).toBe(relay.peek(plan.relayBookId)!.seq);
+  });
+
+  it('is taken off the relay by the linking device once three days pass without the new device’s row', async () => {
+    let now = Date.parse('2026-11-21T08:00:00Z');
+    const { relay, phone, phoneEngine, mac, plan } = await allowed(() => now);
+    await phoneEngine.sync();
+    expect(activeOn(relay, plan.relayBookId)).toContain(mac.keys.deviceId);
+    now += UNFINISHED_JOIN_MS + 60_000;
+    await phoneEngine.sync();
+    expect(activeOn(relay, plan.relayBookId)).toEqual([phone.keys.deviceId]);
+    expect(await phone.database.db.values(sql`SELECT key FROM self_state WHERE key LIKE 'joining:%'`)).toEqual([]);
+  });
+
+  it('one that did finish is simply forgotten by the linking device', async () => {
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    await link(phone!, mac!);
+    await mac!.engine.sync();
+    await phone!.engine.sync();
+    expect(await phone!.database.db.values(sql`SELECT key FROM self_state WHERE key LIKE 'joining:%'`)).toEqual([]);
+    expect((await phone!.engine.devices()).filter((d) => d.removedAt === null)).toHaveLength(2);
   });
 });
 

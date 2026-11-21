@@ -32,8 +32,9 @@ const WIPED: readonly string[] = Object.entries(SELF_TABLES)
 /** Whether this database is the plan's copy and not yet made this device's: what the app checks at open. */
 export async function planWaitsHere(database: Database, plan: JoinPlan): Promise<'waiting' | 'done' | 'not-the-copy'> {
   try {
-    const [row] = await database.db.values<[string, string]>(sql`SELECT relay_book_id, device_id FROM self_group WHERE id = 1`);
-    if (!row || row[0] !== plan.relayBookId) return 'not-the-copy';
+    const [row] = await database.db.values<[string, string, string]>(sql`SELECT relay_book_id, device_id, state FROM self_group WHERE id = 1`);
+    // An unlinked device's own old data, even from this very group, is never the copy (the copy is of an active device).
+    if (!row || row[0] !== plan.relayBookId || row[2] !== 'active') return 'not-the-copy';
     return row[1] === plan.deviceId ? 'done' : 'waiting';
   } catch {
     return 'not-the-copy';

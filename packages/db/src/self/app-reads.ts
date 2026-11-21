@@ -6,9 +6,16 @@ import type { Database } from '../database';
  */
 
 /** What this device holds now, for the new device's warning before a link replaces it. */
-export async function heldHere(database: Database): Promise<{ workspaces: number; transactions: number; shared: string[] }> {
-  const workspaces = Number((await database.db.values<[number]>(sql`SELECT count(*) FROM books WHERE archived_at IS NULL`))[0]![0]);
-  const transactions = Number((await database.db.values<[number]>(sql`SELECT count(*) FROM transactions WHERE status = 'posted'`))[0]![0]);
+export async function heldHere(database: Database): Promise<{ workspaces: number; transactions: number; shared: string[]; empty: boolean }> {
+  const count = async (query: ReturnType<typeof sql>) => Number((await database.db.values<[number]>(query))[0]![0]);
+  const workspaces = await count(sql`SELECT count(*) FROM books WHERE archived_at IS NULL`);
+  const transactions = await count(sql`SELECT count(*) FROM transactions WHERE status = 'posted'`);
+  // Nothing of the owner's here: no transaction of any kind, no account or card, one workspace at most — a fresh install,
+  // the only data a link may replace without a backup file first.
+  const empty =
+    (await count(sql`SELECT count(*) FROM transactions`)) === 0 &&
+    (await count(sql`SELECT count(*) FROM accounts WHERE kind IN ('asset', 'liability')`)) === 0 &&
+    (await count(sql`SELECT count(*) FROM books`)) <= 1;
   let shared: string[] = [];
   try {
     shared = (
@@ -19,7 +26,7 @@ export async function heldHere(database: Database): Promise<{ workspaces: number
   } catch {
     // a database from before household sharing shares nothing
   }
-  return { workspaces, transactions, shared };
+  return { workspaces, transactions, shared, empty };
 }
 
 /** The synced choices (`settings` under `pref.`), by their localStorage key. */

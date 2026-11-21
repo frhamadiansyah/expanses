@@ -158,6 +158,8 @@ export class SelfService {
     const where = await planWaitsHere(this.database, plan);
     if (where === 'not-the-copy') {
       forgetPlan();
+      // The link will not finish: this device leaves the group's relay book it claimed a place in.
+      await (await this.engine()).abandonJoin(plan.relayBookId).catch(() => undefined);
       try {
         localStorage.setItem(LINK_FAILED_KEY, '1');
       } catch {
@@ -347,6 +349,33 @@ export class SelfService {
 
   async checkJoining(sessionId: string): Promise<JoinStage> {
     return (await this.engine()).checkJoining(sessionId);
+  }
+
+  /**
+   * After Allow, on the new device: the copy is fetched, the photos here held from the clean-up, the plan kept, and
+   * only then is the data replaced (`replace`). When any step fails before the replace took, the plan is forgotten and
+   * this device leaves the group's relay book again: no ghost device holds a place or the log's pruning. A replace
+   * that did take keeps its plan, for the next open to finish.
+   */
+  async takeCopy(
+    sessionId: string,
+    steps: { onProgress?: (done: number, total: number) => void; onReplacing?: () => void; holdPhotos: () => Promise<unknown>; replace: (bytes: Uint8Array) => Promise<void> },
+  ): Promise<void> {
+    const engine = await this.engine();
+    const plan = await engine.acceptLink(sessionId);
+    try {
+      const bytes = await engine.downloadPlanCopy(plan, steps.onProgress);
+      steps.onReplacing?.();
+      await steps.holdPhotos();
+      keepPlan(plan);
+      await steps.replace(bytes);
+    } catch (error) {
+      if ((await planWaitsHere(this.database, plan).catch(() => 'not-the-copy' as const)) === 'not-the-copy') {
+        forgetPlan();
+        await engine.abandonJoin(plan.relayBookId);
+      }
+      throw error;
+    }
   }
 
   /** After Allow: the plan and the copy. This device's data is untouched until the caller replaces it. */

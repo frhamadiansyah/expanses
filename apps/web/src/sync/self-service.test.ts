@@ -121,6 +121,66 @@ describe('the open after a link', () => {
     expect(storage.getItem(LINK_PLAN_KEY)).toBeNull();
     expect(storage.getItem(LINK_FAILED_KEY)).toBe('1');
     expect(Buffer.from(await mac.database.exportBytes()).equals(Buffer.from(before))).toBe(true);
+    // It left the group's relay book it had claimed a place in: no ghost device stays behind.
+    expect(relay.peek(plan.relayBookId)!.devices.get(plan.deviceId)!.removedAt).toBeDefined();
+  });
+});
+
+describe('taking the copy', () => {
+  async function allowed() {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    await createAccount(phone.database, phone.ws, { name: 'Test Bank', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const mac = await device(relay, thisDeviceInfo('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0)'));
+    const { sessionId, code } = await phone.self.startLinking();
+    await mac.self.joinWithCode(code);
+    await phone.self.checkLinking(sessionId);
+    await mac.self.checkJoining(sessionId);
+    await phone.self.checkLinking(sessionId);
+    await phone.self.allowLinking(sessionId);
+    const book = (await (await phone.self.engine()).group())!.relayBookId;
+    const macId = (await mac.self.engine()).deviceId;
+    return { relay, phone, mac, sessionId, book, macId };
+  }
+
+  it('photos that cannot be held stop it before any plan is kept: no false "did not finish", no ghost device', async () => {
+    const { relay, mac, sessionId, book, macId } = await allowed();
+    const before = await mac.database.exportBytes();
+    const replace = vi.fn(async () => undefined);
+    await expect(mac.self.takeCopy(sessionId, { holdPhotos: async () => Promise.reject(new Error('Nothing was restored')), replace })).rejects.toThrow('Nothing was restored');
+    expect(replace).not.toHaveBeenCalled();
+    expect(storage.getItem(LINK_PLAN_KEY)).toBeNull();
+    expect(relay.peek(book)!.devices.get(macId)!.removedAt).toBeDefined();
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBeNull();
+    expect(storage.getItem(LINK_FAILED_KEY)).toBeNull();
+    expect(Buffer.from(await mac.database.exportBytes()).equals(Buffer.from(before))).toBe(true);
+  });
+
+  it('a replace that fails before it took forgets the plan and leaves the relay book', async () => {
+    const { relay, mac, sessionId, book, macId } = await allowed();
+    await expect(mac.self.takeCopy(sessionId, { holdPhotos: async () => [], replace: async () => Promise.reject(new Error('disk full')) })).rejects.toThrow('disk full');
+    expect(storage.getItem(LINK_PLAN_KEY)).toBeNull();
+    expect(relay.peek(book)!.devices.get(macId)!.removedAt).toBeDefined();
+  });
+
+  it('a replace that took and then failed keeps its plan: the next open finishes the link', async () => {
+    const { relay, mac, sessionId, book, macId } = await allowed();
+    await expect(
+      mac.self.takeCopy(sessionId, {
+        holdPhotos: async () => [],
+        replace: async (bytes) => {
+          await mac.database.importBytes(bytes);
+          throw new Error('the reload did not happen');
+        },
+      }),
+    ).rejects.toThrow('the reload did not happen');
+    expect(storage.getItem(LINK_PLAN_KEY)).not.toBeNull();
+    expect(relay.peek(book)!.devices.get(macId)!.removedAt).toBeUndefined();
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBe('linked');
   });
 });
 

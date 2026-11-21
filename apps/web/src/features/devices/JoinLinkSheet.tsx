@@ -8,7 +8,6 @@ import { NO_SNAPSHOTS, type SnapshotStore } from '../../db/open';
 import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
 import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
-import { keepPlan } from '../../sync/self-service';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, TextRow } from '../../ui/native';
 import { setLastBackupAt } from '../backup/backupState';
@@ -52,11 +51,14 @@ export function JoinLinkSheet({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<Step>({ kind: 'code' });
   const [error, setError] = useState<unknown>(null);
   const deviceName = self.info.name;
-  const holdsData = (held.data?.transactions ?? 0) > 0 || (held.data?.workspaces ?? 0) > 1;
+  // A backup file first unless there is truly nothing here (a fresh install); until that is known, nothing starts.
+  const holdsData = held.data ? !held.data.empty : true;
+  const ready = held.isSuccess;
   const sharing = held.data?.shared ?? [];
 
   const start = async () => {
     setError(null);
+    if (!ready) return;
     try {
       if (holdsData) {
         // The backup file first, before anything is asked of the relay: this device's data, as it is now.
@@ -82,21 +84,24 @@ export function JoinLinkSheet({ onClose }: { onClose: () => void }) {
   const replace = async (sessionId: string) => {
     setStep({ kind: 'fetching', progress: '0%' });
     try {
-      const { plan, bytes } = await self.fetchCopy(sessionId, (done, total) => setStep({ kind: 'fetching', progress: partsLine(done, total) }));
-      setStep({ kind: 'replacing' });
-      // The plan is kept outside the database before anything is replaced: the next open finishes from it.
-      keepPlan(plan);
-      // The photos here are kept beyond the clean-up that runs after the replace (the copy does not name them).
-      await holdPhotosOrRefuse();
-      const store: SnapshotStore = safety?.snapshots ?? NO_SNAPSHOTS;
-      await restoreSnapshot({
-        snapshots: { ...store, read: async () => bytes },
-        file: 'link-copy.sqlite3',
-        source: 'Link to another device',
-        live: () => database.exportBytes(),
-        restore: (copy) => {
-          self.halt();
-          return sync.whileReplacing(() => database.importBytes(copy));
+      // The photos here are held from the clean-up that runs after the replace (the copy does not name them), then
+      // the plan is kept outside the database, then the data is replaced: the next open finishes from the plan.
+      await self.takeCopy(sessionId, {
+        onProgress: (done, total) => setStep({ kind: 'fetching', progress: partsLine(done, total) }),
+        onReplacing: () => setStep({ kind: 'replacing' }),
+        holdPhotos: () => holdPhotosOrRefuse(),
+        replace: async (bytes) => {
+          const store: SnapshotStore = safety?.snapshots ?? NO_SNAPSHOTS;
+          await restoreSnapshot({
+            snapshots: { ...store, read: async () => bytes },
+            file: 'link-copy.sqlite3',
+            source: 'Link to another device',
+            live: () => database.exportBytes(),
+            restore: (copy) => {
+              self.halt();
+              return sync.whileReplacing(() => database.importBytes(copy));
+            },
+          });
         },
       });
       window.location.reload();
@@ -120,7 +125,7 @@ export function JoinLinkSheet({ onClose }: { onClose: () => void }) {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (/^\d{6}$/.test(code.replace(/\s/g, ''))) void start();
+              if (ready && /^\d{6}$/.test(code.replace(/\s/g, ''))) void start();
             }}
           >
             <p className="mb-3 text-center text-[14px] text-[var(--ph-ink-3)]">Type the code shown on the other device, under Account › Devices › Link another device.</p>
@@ -128,7 +133,7 @@ export function JoinLinkSheet({ onClose }: { onClose: () => void }) {
               <TextRow label="Code" data-testid="join-link-code" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value.replace(/[^\d\s]/g, '').slice(0, 7))} autoFocus />
             </InsetGroup>
             <InsetGroup wide>
-              <InsetRow action testId="join-link-go" title={holdsData ? 'Save backup and link' : 'Link'} disabled={!/^\d{6}$/.test(code.replace(/\s/g, ''))} onClick={() => void start()} />
+              <InsetRow action testId="join-link-go" title={holdsData ? 'Save backup and link' : 'Link'} disabled={!ready || !/^\d{6}$/.test(code.replace(/\s/g, ''))} onClick={() => void start()} />
             </InsetGroup>
           </form>
         )}
