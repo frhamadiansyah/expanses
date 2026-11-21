@@ -216,8 +216,8 @@ test('a Notion copy reads right: its header names, YYYY/MM/DD dates, a card by i
   await pasteInto(page, notion);
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
   const toko = draftRow(page, 'Toko Sumber Rejeki');
-  // A waiting row says its year: it waits whatever month is on show.
-  await expect(toko.getByLabel('Row date')).toHaveValue('3 Oct 2026');
+  // A waiting row says its date as a recorded row does: no year in this one.
+  await expect(toko.getByLabel('Row date')).toHaveValue('3 Oct');
   await expect(toko.getByLabel('Row category')).toHaveValue('Groceries');
   await expect(toko.getByLabel('Row paid with')).toHaveValue('Kartu Contoh');
   await expect(toko.getByLabel('Row amount (IDR)')).toHaveValue(money('123.400'));

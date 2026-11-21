@@ -99,8 +99,6 @@ interface DeskLayout {
   striped?: boolean;
   /** Picked with ⌘-click (Record N): the accent, as a picked recorded row. */
   selected?: boolean;
-  /** A waiting row (typed or pasted, any month): its date says its year. */
-  waiting?: boolean;
   /**
    * A press on the row with ⌘ (Ctrl off a Mac) or ⇧ held: picks it (⌘ adds or takes it out, ⇧ every row from the last
    * one clicked to this one) rather than typing in it.
@@ -143,9 +141,23 @@ export function TypingRow({
   const record = async () => {
     if (needs.length === 0 ? await handlers.recordTyped(values) : await handlers.keepTyped(values)) reset();
   };
+  const frame = useRef<HTMLDivElement>(null);
+  // The desk's Tab past Amount keeps the row as it is, waiting with its Record, and the fresh row's Date takes the typing.
+  const keepAndGoOn = () => {
+    if (!touched || busy) return false;
+    void handlers.keepTyped(values).then((ok) => {
+      if (!ok) return;
+      reset();
+      const date = frame.current?.querySelector<HTMLInputElement>('input[aria-label="Row date"]');
+      date?.focus();
+      date?.select();
+    });
+    return true;
+  };
 
   return (
     <div
+      ref={frame}
       data-testid="typing-row"
       title={desk ? 'Type a row: Tab moves along, Return records it. Or paste from a spreadsheet: Date · Note · Category · Paid with · Amount (or with a header row, any order)' : undefined}
       className={desk ? 'border-t border-dashed border-[var(--ph-chevron)]' : 'border-b border-slate-200 bg-slate-50/60'}
@@ -163,6 +175,7 @@ export function TypingRow({
         className="p-0.5"
         onSubmit={() => touched && !busy && void record()}
         onCancel={reset}
+        onTabOut={desk ? keepAndGoOn : undefined}
         onDescriptionBlur={() => {
           const description = values.description.trim();
           if (!description || values.categoryId) return;
@@ -276,7 +289,7 @@ export function EditableRow({
   pickedCell?: CellColumn | null;
 }) {
   const isDraft = row.kind === 'draft';
-  const read = isDraft ? quickFromDraft(row.draft!, today, accounts, { withYear: !!desk?.waiting }) : quickFromTransaction(row.tx!, today);
+  const read = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);
   // The desk's table prints a waiting row's figure grouped, as every row beside it is ("320.000", not "320000").
   const initial = desk ? groupedAmountCell(read, currencyOf(read, accounts, baseCurrency)) : read;
   const [values, setValuesState] = useState(initial);

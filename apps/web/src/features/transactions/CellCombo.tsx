@@ -144,7 +144,9 @@ export function CellCombo({
       event.preventDefault();
       event.stopPropagation();
       take(items[index]);
-    } else if (event.key === 'Tab' && open && query) {
+    } else if (event.key === 'Tab' && open && items[index] && (query ? true : query === null && 'option' in items[index]!)) {
+      // Tab takes the highlighted choice, typed toward or reached with the arrows, and goes on to the next cell. An
+      // "add" is never started by Tab, nor is a cell just cleared filled again.
       take(items[index]);
     } else if (event.key === 'Escape' && (open || query !== null)) {
       event.stopPropagation();

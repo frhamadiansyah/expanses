@@ -135,11 +135,11 @@ test('rows pasted in the table’s own column order land in the right cells, wai
   await expect(pasar.getByLabel('Row category')).toHaveValue('Groceries');
   await expect(pasar.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
   await expect(pasar.getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?64\.500$/);
-  await expect(pasar.getByLabel('Row date')).toHaveValue('17 Nov 2026');
+  await expect(pasar.getByLabel('Row date')).toHaveValue('17 Nov');
   const warung = draftRow(page, 'Warung Tegal');
   await expect(warung.getByLabel('Row category')).toHaveValue('Restaurants');
   await expect(warung.getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?38\.000$/);
-  await expect(warung.getByLabel('Row date')).toHaveValue('16 Nov 2026');
+  await expect(warung.getByLabel('Row date')).toHaveValue('16 Nov');
   // A category it cannot find is left empty, never guessed; its Record still records it, under Uncategorised.
   await expect(draftRow(page, 'Something odd').getByLabel('Row category')).toHaveValue('');
   await expect(draftRow(page, 'Something odd').getByRole('button', { name: 'Record Something odd' })).toBeEnabled();

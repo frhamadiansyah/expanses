@@ -828,7 +828,6 @@ export function DesktopCashflow({
                       baseCurrency={baseCurrency}
                       handlers={deskHandlers}
                       desk={{
-                        waiting: true,
                         striped: (rows.length + index) % 2 === 1,
                         selected: picked.has(row.id),
                         // ⌘-click adds the row or takes it out; ⇧-click picks every row from the last one clicked.

@@ -25,7 +25,7 @@ export const DESK_GRID = 'grid grid-cols-[var(--desk-cols)] items-center gap-px'
  * whole.
  */
 export const DESK_COLUMNS = {
-  // Date holds a waiting row's whole "13 Sep 2026".
+  // Date holds another year's whole "13 Sep 2025", a waiting row's or a recorded one's.
   wide: '6.5rem minmax(0,2fr) minmax(0,1.7fr) minmax(0,1.2fr) 8rem 6rem',
   peek: '6.25rem minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,1fr) 7.25rem 5.75rem',
 } as const;
@@ -137,6 +137,7 @@ export function QuickRowEditor({
   paidPending,
   cellRow,
   pickedCell,
+  onTabOut,
 }: {
   values: QuickValues;
   onChange: (patch: Partial<QuickValues>) => void;
@@ -167,6 +168,11 @@ export function QuickRowEditor({
   cellRow?: string;
   /** The column of this row's cell in a range of blue cells, if one is. */
   pickedCell?: CellColumn | null;
+  /**
+   * The desk's Tab on the last cell (Amount): true when the row took it (the typing row keeps itself as waiting and
+   * starts a fresh one). Otherwise Tab goes on to the next row's Date, as a spreadsheet does.
+   */
+  onTabOut?: () => boolean;
 }) {
   const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
     if (onPaste?.(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'))) event.preventDefault();
@@ -283,6 +289,7 @@ export function QuickRowEditor({
       : [date, description, amount, paid, category, ends];
   return (
     <div
+      data-quick-row={layout === 'desk' || undefined}
       className={cx(layout === 'desk' ? DESK_GRID : ROW_GRID, className ?? 'rounded-lg bg-white p-0.5 ring-2 ring-slate-900')}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && (event.target as HTMLElement).tagName === 'INPUT') {
@@ -291,10 +298,35 @@ export function QuickRowEditor({
         } else if (event.key === 'Escape') {
           event.preventDefault();
           onCancel();
+        } else if (event.key === 'Tab' && layout === 'desk' && !event.altKey && !event.metaKey && !event.ctrlKey) {
+          // Date › Note › Category › Paid with › Amount is the cells' own order; past either end, the next or last row's.
+          const label = (event.target as HTMLElement).getAttribute('aria-label') ?? '';
+          const out = !event.shiftKey && label.startsWith('Row amount');
+          const back = event.shiftKey && label === 'Row date';
+          if (!out && !back) return;
+          if (out && onTabOut?.()) {
+            event.preventDefault();
+            return;
+          }
+          const next = neighbourCell(event.currentTarget, out ? 1 : -1);
+          if (!next) return;
+          event.preventDefault();
+          next.focus();
+          next.select();
         }
       }}
     >
       {cells}
     </div>
   );
+}
+
+/**
+ * The cell a desk row's Tab goes to past its ends: the next row's Date, or with ⇧ the row before's Amount. Rows typed in
+ * place are the waiting rows and the typing row, in the order the table shows them; null past the last (or first).
+ */
+function neighbourCell(row: HTMLElement, step: 1 | -1): HTMLInputElement | null {
+  const rows = [...document.querySelectorAll<HTMLElement>('[data-quick-row]')];
+  const other = rows[rows.indexOf(row) + step];
+  return other?.querySelector<HTMLInputElement>(step === 1 ? 'input[aria-label="Row date"]' : 'input[aria-label^="Row amount"]') ?? null;
 }
