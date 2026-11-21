@@ -1,5 +1,5 @@
 import { activeNetWorthGroup, getJointAccount, getShareSetting, itemIdOf, jointAccountIds, jointAccountRows, paidWithItems, pendingHidden, reviewedFor, reviewItems, sharingDetail } from '@expanses/db';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -10,10 +10,28 @@ import { jointWithPockets } from './joint-pockets';
  * every sync run: a partner's confirm, a new proposal or a dissolved group arrives with a run, not with a local write.
  */
 
+/** The clients with a re-read already asked for in this turn of the event loop. */
+const rereading = new WeakSet<QueryClient>();
+
+/**
+ * Every hook below listens, so one screen has half a dozen listeners, and each of them dropping `net-worth` on its own
+ * started every read under it again and again within the same moment — each new start cancelling the one before it,
+ * which the database still worked through to the end (Net worth's group was read seven times on one open). They are
+ * one re-read now: the first listener asks, the rest of that turn join it.
+ */
+export function rereadNetWorth(queryClient: QueryClient): void {
+  if (rereading.has(queryClient)) return;
+  rereading.add(queryClient);
+  queueMicrotask(() => {
+    rereading.delete(queryClient);
+    void queryClient.invalidateQueries({ queryKey: ['net-worth'] });
+  });
+}
+
 function useRereadOnSync() {
   const { sync } = useApp();
   const queryClient = useQueryClient();
-  useEffect(() => sync.subscribe(() => void queryClient.invalidateQueries({ queryKey: ['net-worth'] })), [sync, queryClient]);
+  useEffect(() => sync.subscribe(() => rereadNetWorth(queryClient)), [sync, queryClient]);
 }
 
 /** The workspace's net-worth group as this device derives it; null before this device has an engine. */

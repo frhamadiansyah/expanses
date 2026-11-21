@@ -1,4 +1,5 @@
 import { LATEST_VERSION, type SqlExecutor } from '@expanses/db';
+import { forgetLastFigures } from '../features/networth/last-figures';
 import { type FatalKind, fatalKind, fatalReason, messageOf } from './fatal';
 import type { CheckedSnapshot } from './live-health';
 import type { RecoveryReason } from './open';
@@ -323,6 +324,8 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
     snapshotBytes: () => outlastingTransactions(async () => (await call({ op: 'snapshot' })) as Uint8Array),
     checkedSnapshot: (since) => outlastingTransactions(async () => (await call({ op: 'checked-snapshot', since })) as CheckedSnapshot),
     importBytes: async (bytes) => {
+      // Net worth's last figures were the replaced database's: the next open waits for the new one's.
+      forgetLastFigures();
       const copy = bytes.slice();
       // What this build knows goes with the file, so the engine can refuse one written by a newer build
       // before it becomes the live database rather than after.

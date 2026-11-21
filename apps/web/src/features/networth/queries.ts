@@ -37,15 +37,16 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { withShownNames } from '../../lib/account-name';
-import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
+import { isMoneyAccount, useAccounts, useRatesBehind } from '../../lib/queries';
 import { useActiveNetWorthGroup, useJointAccountIds } from '../sharing/net-worth-queries';
 import { groupItems, jointRows, type JointRows, jointStatus, type JointStatus, type ReceivedItem } from './joint-rows';
 
-export function useAssetValues(date?: string) {
+export function useAssetValues(date?: string, options: { enabled?: boolean } = {}) {
   const { database, ws } = useApp();
   const onDate = date ?? isoDate();
   return useQuery({
     queryKey: ['asset-values', ws.workspaceId, onDate],
+    enabled: options.enabled ?? true,
     // An account at a bank is listed by the name every screen shows it by ("Mandiri Xpresi"); `typedName` is what is stored.
     queryFn: async () => {
       const [values, accounts] = await Promise.all([assetValuesAt(database, ws, onDate), listAccounts(database, ws, { includeArchived: true })]);
@@ -152,20 +153,29 @@ export function useTemplateBuys(month: string) {
   return useQuery({ queryKey: ['template-buys', ws.workspaceId, month], queryFn: () => templateBuysIn(database, ws, month) });
 }
 
-/** Rates for every currency the workspace holds money in, fetched or manual, as the dashboard does. */
-function useMoneyCurrencies(): string[] {
+/**
+ * Rates for every currency the workspace holds money in, fetched or manual, as the dashboard does. `ready` once the
+ * accounts are read: before then the list is empty, and a figure worked out from it is worked out again a moment later
+ * with the currencies in it — on a large household the whole line twice, the first time for nothing.
+ */
+function useMoneyCurrencies(): { currencies: string[]; ready: boolean } {
   const { ws } = useApp();
   const accounts = useAccounts();
-  return [...new Set((accounts.data ?? []).filter(isMoneyAccount).map((account) => account.currency ?? ws.baseCurrency))];
+  return { currencies: [...new Set((accounts.data ?? []).filter(isMoneyAccount).map((account) => account.currency ?? ws.baseCurrency))], ready: accounts.isSuccess };
 }
 
-export function useNetWorthSeries(months: string[]) {
+/**
+ * `enabled: false` holds the line back: Net worth asks for it only once its figure and sheet are in, because every
+ * read waits its turn on the one database, and a line read beside the sheet made the sheet wait for most of the line.
+ */
+export function useNetWorthSeries(months: string[], options: { enabled?: boolean } = {}) {
   const { database, ws } = useApp();
-  const resolveRates = useResolveRates();
-  const currencies = useMoneyCurrencies();
+  const resolveRates = useRatesBehind();
+  const { currencies, ready } = useMoneyCurrencies();
   const today = isoDate();
   return useQuery({
     queryKey: ['net-worth-series', ws.workspaceId, months.join(','), currencies.join(',')],
+    enabled: ready && (options.enabled ?? true),
     queryFn: async () => {
       const rates = await resolveRates(currencies, today);
       return netWorthSeries(database, ws, months, rates.rates, today);
@@ -179,11 +189,12 @@ export function useNetWorthSeries(months: string[]) {
 
 export function useSheet(date?: string) {
   const { database, ws } = useApp();
-  const resolveRates = useResolveRates();
-  const currencies = useMoneyCurrencies();
+  const resolveRates = useRatesBehind();
+  const { currencies, ready } = useMoneyCurrencies();
   const onDate = date ?? isoDate();
   return useQuery({
     queryKey: ['sheet-inputs', ws.workspaceId, onDate, currencies.join(',')],
+    enabled: ready,
     queryFn: async () => {
       const rates = await resolveRates(currencies, onDate);
       return sheetInputsAt(database, ws, onDate, rates.rates);
@@ -356,7 +367,7 @@ export function useJointSheet(date?: string): {
   error: unknown;
 } {
   const { ws } = useApp();
-  const resolveRates = useResolveRates();
+  const resolveRates = useRatesBehind();
   const onDate = date ?? isoDate();
   const shared = useSharedNetWorth();
   const own = useSheet(onDate);
