@@ -1,5 +1,5 @@
 import { expenseLines } from '@expanses/core';
-import { addPhoto, createAccount, createDatabase, createWorkspace, type Database, listAccounts, MemoryKeyStore, MemoryTransport, migrate, postTransaction, requestSignerOf, SeatElsewhereError } from '@expanses/db';
+import { addPhoto, createAccount, createDatabase, createWorkspace, type Database, listAccounts, MemoryKeyStore, MemoryTransport, migrate, postTransaction, requestSignerOf } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -157,7 +157,7 @@ describe('receipt photos', () => {
 });
 
 describe('the seat', () => {
-  it('household sharing does not run on a linked device that is not the seat, and its shared workspace is view-only', async () => {
+  it('household sharing does not run on a linked device that is not the seat; its shared workspace changes there all the same', async () => {
     const relay = new MemoryTransport();
     const phone = await device(relay);
     const groceries = (await listAccounts(phone.database, phone.ws)).find((a) => a.name === 'Groceries')!.id;
@@ -171,10 +171,9 @@ describe('the seat', () => {
     expect(sync.elsewhere).toBe(true);
     // The copied bookkeeping is left exactly as the seat wrote it: never turned to "needs a new invite" here.
     expect(await mac.database.db.values(sql`SELECT state FROM shared_books`)).toEqual([['active']]);
-    await expect(
-      // The Mac's data is now the iPhone's: its workspace too.
-      postTransaction(mac.database, phone.ws, { occurredOn: '2026-11-20', description: 'Test shop', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 9_000, currency: 'IDR' }) }),
-    ).rejects.toBeInstanceOf(SeatElsewhereError);
+    // The Mac's data is now the iPhone's: its workspace too. The purchase is the Mac's to send to the seat, not to the household.
+    await postTransaction(mac.database, phone.ws, { occurredOn: '2026-11-20', description: 'Test shop', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 9_000, currency: 'IDR' }) });
+    expect(await mac.database.db.values(sql`SELECT count(*) FROM sync_outbox`)).toEqual([[0]]);
   });
 });
 

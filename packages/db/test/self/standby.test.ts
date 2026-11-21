@@ -1,7 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
-import { createDatabase, inBook, listAccounts, migrate, postTransaction } from '../../src/index';
+import { createDatabase, inBook, listAccounts, migrate, postTransaction, replaceTransaction } from '../../src/index';
 import { createNodeExecutor } from '../../src/node';
 import { SyncEngine } from '../../src/sync/engine';
 import { generateDevice, requestSignerOf } from '../../src/sync/keys';
@@ -32,7 +32,7 @@ const has = async (database: Device['database'], description: string) =>
   (await database.db.values(sql`SELECT 1 FROM transactions WHERE description = ${description} AND status = 'posted'`)).length > 0;
 
 describe('a linked Mac standing by in a shared workspace', () => {
-  it('takes over from the lost iPhone: Budi gets what the iPhone never sent, and the Mac and Budi go on in step', async () => {
+  it('changes it through the iPhone, then takes over from the lost iPhone: Budi gets what the iPhone never sent, and the Mac and Budi go on in step', async () => {
     const household = new Household();
     const dewi = await household.device('Dewi');
     const budi = await household.device('Budi');
@@ -78,6 +78,28 @@ describe('a linked Mac standing by in a shared workspace', () => {
     expect(await standbyWanted(dewi.database, dewi.deviceId)).toEqual([]);
     // Standing by is not syncing: the Mac's household bookkeeping is the seat's, untouched by it.
     expect(await macDatabase.db.values(sql`SELECT state FROM shared_books WHERE book_id = ${bookId}`)).toEqual([['active']]);
+
+    // Drop 6: a purchase recorded on the Mac in the shared workspace reaches Budi through the iPhone, the seat.
+    const macBankEarly = (await listAccounts(macDatabase, dewi.ws)).find((a) => a.name === 'Dewi Bank')!.id;
+    await spend({ database: macDatabase, ws: dewi.ws }, macBankEarly, 23_000, 'Test cafe (Mac, via the iPhone)');
+    await macSelf.sync();
+    await phoneSelf.sync();
+    await dewi.engine.syncOnce(bookId);
+    await budi.engine.syncOnce(bookId);
+    expect(await has(budi.database, 'Test cafe (Mac, via the iPhone)')).toBe(true);
+    // An edit of it on the Mac reaches Budi the same way.
+    const [[cafe]] = (await macDatabase.db.values<[string]>(sql`SELECT id FROM transactions WHERE description = 'Test cafe (Mac, via the iPhone)' AND status = 'posted'`)) as [[string]];
+    const groceriesHere = (await listAccounts(macDatabase, dewi.ws)).find((a) => a.name === 'Groceries')!.id;
+    await replaceTransaction(macDatabase, dewi.ws, cafe, {
+      occurredOn: '2026-11-20',
+      description: 'Test cafe (renamed on Mac)',
+      lines: expenseLines({ categoryAccountId: groceriesHere, paymentAccountId: macBankEarly, amountMinor: 23_000, currency: 'IDR' }),
+    });
+    await macSelf.sync();
+    await phoneSelf.sync();
+    await dewi.engine.syncOnce(bookId);
+    await budi.engine.syncOnce(bookId);
+    expect(await has(budi.database, 'Test cafe (renamed on Mac)')).toBe(true);
 
     // The iPhone records a purchase, sends it to the Mac through the owner's channel, and is lost before Budi hears.
     await spend(dewi, dewi.bank, 88_000, 'Test bakery (never sent)');

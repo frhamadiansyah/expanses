@@ -61,14 +61,14 @@ export function sharesHere(deviceName: string, names: readonly string[]): string
   return `This ${deviceName} shares ${namesOf(names)} with someone, so it shows a code instead of typing one. Link from it: Account › Devices › Link another device.`;
 }
 
-/** A shared workspace on a linked device that is not the seat (owner answer 1). */
+/** A shared workspace on a linked device that is not the seat: it changes here, and reaches the household through the seat. */
 export function seatTitle(seatName: string): string {
-  return `Changed on ${seatName}`;
+  return `Shared through the ${seatName}`;
 }
 
 export function seatBody(workspace: string, partners: readonly string[], seatName: string): string {
   const withWhom = partners.length > 0 ? ` with ${namesOf(partners)}` : '';
-  return `${workspace} is shared${withWhom} from the ${seatName}. Here it can be looked at; adding and editing happen on the ${seatName}.`;
+  return `${workspace} is shared${withWhom} from the ${seatName}. Changes made here reach them once the ${seatName} has synced.`;
 }
 
 export function partsLine(done: number, total: number): string {

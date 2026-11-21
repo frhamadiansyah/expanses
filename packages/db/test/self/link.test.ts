@@ -12,7 +12,7 @@ import type { SelfTransport } from '../../src/self/transport';
 import { dumpForSelf } from '../../src/self/dump';
 import { setupDb } from '../helpers';
 import { completeLinkedCopy, JoinRefused, planWaitsHere } from '../../src/self/join';
-import { SeatElsewhereError } from '../../src/sync/capture';
+import { configureCapture } from '../../src/sync/capture';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -318,19 +318,22 @@ describe('replacing the new device’s data', () => {
 });
 
 describe('the seat', () => {
-  it('a workspace shared with someone else is view-only on the linked Mac; its private workspaces are not', async () => {
+  it('a workspace shared with someone else changes on the linked Mac too, and nothing of it goes to the household from the Mac', async () => {
     const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
     // The iPhone shares Personal with another person (as household sharing leaves it: an active shared_books row).
     const bookId = (await phone!.database.db.values<[string]>(sql`SELECT id FROM books ORDER BY created_at LIMIT 1`))[0]![0];
     await phone!.database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, 'test-relay', 1, 'test-member', 'active', '2026-11-01T00:00:00Z')`);
     await link(phone!, mac!);
+    // The iPhone's household engine, as the app makes it before anything else (its device id for capture).
+    configureCapture(phone!.database, { deviceId: phone!.keys.deviceId });
     const groceries = (await listAccounts(mac!.database, mac!.ws)).find((a) => a.name === 'Groceries')!.id;
     const bank = (await listAccounts(mac!.database, mac!.ws)).find((a) => a.name === 'Test Bank')!.id;
-    await expect(
-      postTransaction(mac!.database, mac!.ws, { occurredOn: '2026-11-19', description: 'Test shop', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 12_000, currency: 'IDR' }) }),
-    ).rejects.toBeInstanceOf(SeatElsewhereError);
-    // An account is the owner's, in no workspace: it changes on the Mac as anywhere.
-    await renameAccount(mac!.database, mac!.ws, bank, 'Test Bank Renamed On Mac');
-    expect(await mac!.database.db.values(sql`SELECT name FROM accounts WHERE id = ${bank}`)).toEqual([['Test Bank Renamed On Mac']]);
+    await postTransaction(mac!.database, mac!.ws, { occurredOn: '2026-11-19', description: 'Test shop (Mac)', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 12_000, currency: 'IDR' }) });
+    expect(await mac!.database.db.values(sql`SELECT count(*) FROM sync_outbox`)).toEqual([[0]]);
+    await mac!.engine.sync();
+    await phone!.engine.sync();
+    expect(await phone!.database.db.values(sql`SELECT description FROM transactions WHERE description = 'Test shop (Mac)'`)).toEqual([['Test shop (Mac)']]);
+    // On the seat it went into the household's outbox, as if it had been recorded there.
+    expect(Number((await phone!.database.db.values<[number]>(sql`SELECT count(*) FROM sync_outbox WHERE book_id = ${bookId}`))[0]![0])).toBeGreaterThan(0);
   });
 });

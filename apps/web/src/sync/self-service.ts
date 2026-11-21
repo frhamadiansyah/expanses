@@ -242,7 +242,7 @@ export class SelfService {
       devices: await engine.devices(),
       lastSyncedAt: this.now(),
       lastError: null,
-      held: result.held ? (result.held.reason === 'newer-version' ? 'newer-version' : `clash:${result.held.key}`) : null,
+      held: result.held ? (result.held.reason === 'clash' ? `clash:${result.held.key}` : result.held.reason) : null,
       photosMissing,
     };
     if (result.applied > 0 || result.unlinked) for (const listener of this.appliedListeners) listener();

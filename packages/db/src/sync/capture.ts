@@ -337,9 +337,10 @@ export class CaptureSession {
       this.books = rows.filter((r) => r[3] === 'active').map(([bookId, memberId, epoch]) => ({ bookId, memberId, epoch: Number(epoch) }));
       this.unshared = new Set(rows.filter((r) => r[3] === 'unshared').map(([bookId]) => bookId));
       if (this.books.length > 0 && (await seatIsElsewhere(this.tx))) {
-        // Link my devices (§3.4): another of the owner's devices keeps these in step; here they are view-only.
+        // Link my devices (§3.4, Drop 6): another of the owner's devices keeps these in step with the household. A write
+        // here is made as anywhere else, sent through the owner's channel, and the seat shares it from there; nothing
+        // is captured for the household on this device.
         this.elsewhere = new Set(this.books.map((b) => b.bookId));
-        for (const bookId of this.elsewhere) this.unshared.add(bookId);
         this.books = [];
       }
     } catch {

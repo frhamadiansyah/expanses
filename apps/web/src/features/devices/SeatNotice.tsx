@@ -6,9 +6,8 @@ import { seatBody, seatTitle } from './devices-copy';
 import { useSelfStatus } from './use-self';
 
 /**
- * Link my devices (owner answer 1): above every screen of a workspace shared with someone else, on a linked device
- * that is not the one keeping it shared — view-only here; adding and editing happen on that device. Capture refuses a
- * write all the same (`SeatElsewhereError`); the screen says so before anyone tries.
+ * Link my devices (Drop 6): above every screen of a workspace shared with someone else, on a linked device that is not
+ * the one keeping it shared. It changes here as anywhere; what changes reaches the household once that device syncs.
  */
 export function SeatNotice() {
   const { ws, sync } = useApp();

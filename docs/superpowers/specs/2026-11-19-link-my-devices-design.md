@@ -350,6 +350,32 @@ Tests use two or three in-memory devices (`MemoryTransport`, `MemoryKeyStore`) a
 The owner should link for real (her phone with Rumah) only from Drop 5: before it, losing the phone means sharing Rumah
 again with today's resilience flows.
 
+### 6.1 Drops 3–6 as built (2026-11-21)
+
+- **Drop 3** — Allow syncs, exports and uploads the copy; the invite carries `startSeq` and the relay holds the log after
+  it until the new device claims. The new device saves a backup file (Downloads / share sheet), keeps a safety copy,
+  holds its photos, keeps the plan in localStorage and replaces its data (`restoreSnapshot`); the next open's
+  `SelfService.prepare` runs `completeLinkedCopy` before household sharing starts. A copy that never arrived is
+  refused and the data left as it is ("Linking did not finish"). Seat = `settings 'self.seat'` (the device that made
+  the group); elsewhere, `SyncService` never runs and capture sends nothing to the household. Devices screens per the
+  two mockups (2026-11-19, 2026-11-21 — rendered and checked before building). Seven localStorage choices are mirrored
+  into `settings` (`pref.*`). No QR yet: the app has no camera scanner (the code is typed); device names are the
+  device's kind (iPhone, iPad, Mac) — no plugin reads a device's own name.
+- **Drop 4** — receipt photos (`self_photos`, `self_photo_have`): sent as sealed blobs after the figures, fetched by
+  devices that lack them, let go when every linked device holds them, sent again for a device linked later or away
+  more than a week. Draft pictures (the iPhone's capture folder) stay on the device that read them.
+- **Drop 5** — standby: the seat invites the other linked devices into each workspace it shares as an owner
+  (`self_standby`); each claims (`SyncEngine.claimStandby`: keys, introduction, nothing of the seat's bookkeeping
+  written). Unlink of the seat from another device makes it the seat and runs `takeOverAsSeat` (whole log again, the
+  lost seat's unsent changes out, the lost device removed and the key rotated). Not covered: net-worth group logs and
+  shared events' books (they follow their own rules; after a takeover they need an invite as today), and the
+  husband's own linked devices (his seat is not an owner, so no standby: an owner invites, as today).
+- **Drop 6** — on the seat, what another linked device changed in a shared workspace is applied inside household
+  capture (entity rows by `withCapture`, purchases by the ledger's capture doors) and goes to the household; a change
+  the household refuses (read-only, frozen, owner-only) is kept on every owner device and said in Activity ("A change
+  made on another device was not shared"); while the seat's sharing is not ready the change waits (held). The
+  view-only notice became "Shared through the iPhone — changes made here reach them once the iPhone has synced".
+
 ## 7. Risks
 
 1. **Automatic writers** that make rows with fresh random ids, or caches that are not pure, would double or unbalance

@@ -249,7 +249,7 @@ async function eventsOf(db: Db, ws: WorkspaceContext): Promise<AuditEvent[]> {
       OR (entity = 'transaction' AND action IN ('post', 'void') AND payload_json LIKE '%"syncAuthor"%')
       OR (entity = 'account' AND action = 'rename')
       OR (entity = 'book' AND action = 'delete')
-      OR (entity = 'linked' AND action = 'maybe_duplicate'))
+      OR (entity = 'linked' AND action IN ('maybe_duplicate', 'not_shared')))
     ORDER BY created_at DESC, rowid DESC LIMIT ${SCAN}`);
   return rows.map(([id, action, entity, entityId, payloadJson, createdAt]) => ({
     id,
@@ -320,6 +320,10 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
 
   if (event.src === 'account') {
     return { ...base, kind: 'rename', group: 'accounts', title: 'Account renamed', subtitle: typeof event.payload.name === 'string' ? `Now ${event.payload.name}` : '', who: null, state: 'cannot' };
+  }
+  if (event.src === 'linked' && event.op === 'not_shared') {
+    // Link my devices, Drop 6: a change made on another of the owner's devices that the household would not take.
+    return { ...base, kind: 'other', group: 'transactions', title: 'A change made on another device was not shared', subtitle: 'It is on every linked device; the household did not get it', who: null, state: 'cannot' };
   }
   if (event.src === 'linked') {
     // Link my devices, rule 5: two of the owner's devices recorded one statement line or bank message each.

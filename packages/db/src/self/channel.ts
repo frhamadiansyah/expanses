@@ -3,6 +3,9 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { LATEST_VERSION } from '../migrations';
 import { voidTransactionTx } from '../repos/ledger';
+import { AuthorityError } from '../sync/authority';
+import { BookReadOnlyError, SyncNotReadyError, capturePostedTx, captureCardChangingTx, captureVoidingTx, LastOwnerError, MemberNameError, seatIsElsewhere, withCapture, withCapturePaused } from '../sync/capture';
+import { OP_ID_SEPARATOR, SHARED_ENTITIES, type RowEntity } from '../sync/shared-entities';
 import { compareHlc, decodeHlc, localTick, receiveHlc } from '../sync/hlc';
 import { stableId } from './stable-id';
 import { CLASH_RULES, type ClashRule, isUniqueFailure, uniqueKeysOf, type UniqueKey } from './clashes';
@@ -47,7 +50,7 @@ export interface SelfChangeSet {
 }
 
 export interface SelfNote {
-  kind: 'merged' | 'maybe-duplicate' | 'edited-twice' | 'edited-twice-kept-both' | 'missing-row';
+  kind: 'merged' | 'maybe-duplicate' | 'edited-twice' | 'edited-twice-kept-both' | 'missing-row' | 'not-shared';
   table: string;
   pk: string;
   other?: string;
@@ -55,7 +58,7 @@ export interface SelfNote {
 
 export type SelfApplyResult =
   | { status: 'applied'; notes: SelfNote[] }
-  | { status: 'held'; reason: 'newer-version'; schema: number }
+  | { status: 'held'; reason: 'newer-version' | 'household-not-ready'; schema: number }
   | { status: 'held'; reason: 'clash'; key: string; table: string; pk: string; other: string; why: string };
 
 /* ------------------------------------------------------------------------------------------------------ schema */
@@ -212,6 +215,30 @@ interface Run {
   notes: SelfNote[];
   /** Transactions this change-set made, for rule 4. */
   made: string[];
+  /**
+   * On the seat (Drop 6): what another of the owner's devices changed in a workspace shared with someone else is also
+   * captured for the household, as if it had been written here. Off on every other device, and on the retry after a
+   * household refusal.
+   */
+  share: boolean;
+}
+
+/** The household entities kept in each table (shared-entities.ts), for capturing what an apply writes (Drop 6). */
+const ROW_ENTITIES: ReadonlyMap<string, RowEntity[]> = (() => {
+  const out = new Map<string, RowEntity[]>();
+  for (const entity of SHARED_ENTITIES) if (entity.kind === 'row') out.set(entity.table, [...(out.get(entity.table) ?? []), entity]);
+  return out;
+})();
+
+/** The purchase's tables other than `transactions`: a change to one is a change to the purchase it belongs to. */
+const PURCHASE_PARTS = new Set(['entries', 'transaction_flags', 'bill_payments', 'book_transactions', 'book_transaction_splits', 'transaction_line_excluded', 'purchase_spreads']);
+
+/** A refusal household sharing gives a write it will not share: the owner's devices keep it, the household does not get it. */
+function householdRefusal(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 5; e = (e as { cause?: unknown }).cause, depth += 1) {
+    if (e instanceof BookReadOnlyError || e instanceof AuthorityError || e instanceof LastOwnerError || e instanceof MemberNameError) return true;
+  }
+  return false;
 }
 
 /** What waits to be sent, oldest first, with each row's id so it is dropped only once the relay has it. */
@@ -242,12 +269,43 @@ export async function applySelfChangeSet(database: Database, changeSet: SelfChan
   if (changeSet.schema > LATEST_VERSION) return { status: 'held', reason: 'newer-version', schema: changeSet.schema };
   await collectSelfChanges(database, deviceId);
   try {
+    return await applyOnce(database, changeSet, true);
+  } catch (error) {
+    if (error instanceof Hold) return error.result;
+    // The seat's household sharing is not ready (its engine did not start this time): the change waits, and goes to the
+    // household with everything after it once sharing is ready — never applied here without it.
+    if (error instanceof SyncNotReadyError || (error as { cause?: unknown })?.cause instanceof SyncNotReadyError) {
+      return { status: 'held', reason: 'household-not-ready', schema: changeSet.schema };
+    }
+    if (!householdRefusal(error)) throw error;
+    // The household would not take part of it (a workspace no longer shared, a frozen one, an act only an owner may
+    // do): the owner's devices still hold it as it was made, and the household does not get it — said in Activity.
+    const result = await applyOnce(database, changeSet, false).catch((again: unknown) => {
+      if (again instanceof Hold) return again.result;
+      throw again;
+    });
+    if (result.status === 'applied') {
+      await noteNotSharedTx(database, changeSet, error instanceof Error ? error.message : String(error));
+      return { ...result, notes: [...result.notes, { kind: 'not-shared', table: '', pk: '' }] };
+    }
+    return result;
+  }
+}
+
+async function applyOnce(database: Database, changeSet: SelfChangeSet, share: boolean): Promise<SelfApplyResult> {
+  {
     return await database.transaction(async (tx) => {
       await tx.run(sql`INSERT OR REPLACE INTO self_state (key, value) VALUES ('quiet', '1')`);
       await tx.run(sql`PRAGMA defer_foreign_keys = ON`);
       await receiveHlc(tx, changeSet.hlc);
-      const run: Run = { tx, hlc: changeSet.hlc, notes: [], made: [] };
-      for (const op of changeSet.ops) await applyOp(run, op);
+      // Only the seat shares, and only while some workspace here is shared with someone.
+      const shares = share && !(await seatIsElsewhere(tx)) && (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE name = 'shared_books'`)).length > 0 && (await tx.values(sql`SELECT 1 FROM shared_books WHERE state = 'active' LIMIT 1`)).length > 0;
+      const run: Run = { tx, hlc: changeSet.hlc, notes: [], made: [], share: shares };
+      const apply = async () => {
+        for (const op of changeSet.ops) await applyOp(run, op);
+      };
+      if (shares) await apply();
+      else await withCapturePaused(tx, apply);
       await settleTwiceEdited(run);
       for (const note of run.notes) {
         await tx.run(sql`INSERT INTO self_notes (at, kind, tbl, pk, other_pk) VALUES (${new Date().toISOString()}, ${note.kind}, ${note.table}, ${note.pk}, ${note.other ?? null})`);
@@ -255,10 +313,15 @@ export async function applySelfChangeSet(database: Database, changeSet: SelfChan
       await tx.run(sql`DELETE FROM self_state WHERE key = 'quiet'`);
       return { status: 'applied' as const, notes: run.notes };
     });
-  } catch (error) {
-    if (error instanceof Hold) return error.result;
-    throw error;
   }
+}
+
+/** Activity's line on every device (written after the apply, so it is sent): a change kept off the household. */
+async function noteNotSharedTx(database: Database, changeSet: SelfChangeSet, why: string): Promise<void> {
+  const [ws] = await database.db.values<[string]>(sql`SELECT id FROM workspaces ORDER BY created_at LIMIT 1`);
+  if (!ws) return;
+  await database.db.run(sql`INSERT OR IGNORE INTO audit_log (id, workspace_id, action, entity, entity_id, payload_json, created_at)
+    VALUES (${await stableId(changeSet.hlc, 'linked:not-shared')}, ${ws[0]}, 'not_shared', 'linked', ${changeSet.hlc}, ${JSON.stringify({ why })}, ${new Date(decodeHlc(changeSet.hlc).ms).toISOString()})`);
 }
 
 async function aliasOf(db: Db, table: string, pk: string): Promise<string> {
@@ -299,7 +362,41 @@ async function parentAlias(db: Db, parent: string, value: unknown): Promise<unkn
   return target === pkText([value]) ? value : (JSON.parse(target) as unknown[])[0];
 }
 
+/**
+ * On the seat, an op whose table holds household entities is applied inside household capture, as the write would be
+ * had it been made here: an entity row's before and after (`withCapture`), a purchase's lineage (the ledger's doors).
+ */
 async function applyOp(run: Run, op: SelfOp): Promise<void> {
+  if (!run.share) return applyOpNow(run, op);
+  const key = (columns: readonly string[], row: Record<string, unknown> | null) => (row ? columns.map((c) => String(row[c] ?? '')).join(OP_ID_SEPARATOR) : undefined);
+  const meta = await tableMeta(run.tx, op.t);
+  if (!meta) return applyOpNow(run, op);
+  const pk = JSON.parse(await aliasOf(run.tx, op.t, pkText(op.k))) as unknown[];
+  const before = await readRow(run.tx, meta, pk);
+  if (op.t === 'transactions') {
+    const id = String(pk[0]);
+    if (before && op.c?.status === 'void' && before.status === 'posted') await captureVoidingTx(run.tx, id);
+    await applyOpNow(run, op);
+    const after = await readRow(run.tx, meta, pk);
+    if (after && !before && after.status === 'posted') await capturePostedTx(run.tx, id, null, (after.replaces_transaction_id as string | null) ?? null);
+    else if (after && before) await captureCardChangingTx(run.tx, id);
+    return;
+  }
+  if (PURCHASE_PARTS.has(op.t)) {
+    await applyOpNow(run, op);
+    const row = (await readRow(run.tx, meta, pk)) ?? before;
+    const transactionId = row?.transaction_id;
+    if (typeof transactionId === 'string') await captureCardChangingTx(run.tx, transactionId);
+    return;
+  }
+  const entities = ROW_ENTITIES.get(op.t);
+  if (!entities) return applyOpNow(run, op);
+  const merged = { ...(before ?? {}), ...(op.c ?? {}), ...Object.fromEntries(meta.keys.map((k, i) => [k, pk[i]])) };
+  const targets = entities.map((entity) => ({ entity: entity.entity, id: key(entity.keyColumns, merged) }));
+  await withCapture(run.tx, targets, () => applyOpNow(run, op));
+}
+
+async function applyOpNow(run: Run, op: SelfOp): Promise<void> {
   const kind = SELF_TABLES[op.t];
   if (kind !== 'replicate' && kind !== 'seat') return; // never a device's own table
   const meta = await tableMeta(run.tx, op.t);
