@@ -1,4 +1,12 @@
 import {
+  clearSentPhoto,
+  markPhotoHeld,
+  photosEveryoneHolds,
+  photosMissingHere,
+  photosToFetch,
+  photosToSend,
+  recordSentPhoto,
+  SyncTransportError,
   completeLinkedCopy,
   type Database,
   type DeviceKeys,
@@ -75,7 +83,18 @@ export interface SelfStatus {
   held: string | null;
   /** The device keeping shared workspaces in step (§3.4). */
   seatId: string | null;
+  /** Receipt photos named here whose files have not arrived yet (Drop 4: they follow the figures). */
+  photosMissing: number;
 }
+
+/** The slice of the photo store the group needs: a file's bytes, and putting a file that arrived. */
+export interface SelfPhotoFiles {
+  readPhotoBytes(fileName: string): Promise<Uint8Array | null>;
+  putPhotoBytes(fileName: string, bytes: Uint8Array): Promise<boolean>;
+}
+
+/** A photo's blobs are kept on the relay just under its week, so a slow device has the most time to fetch them. */
+const PHOTO_TTL_MS = 7 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000;
 
 export interface SelfServiceOptions {
   database: Database;
@@ -84,6 +103,8 @@ export interface SelfServiceOptions {
   info?: SelfDeviceInfo;
   intervalMs?: number;
   now?: () => number;
+  /** The photo files beside the database; none (a test of figures alone) sends and fetches no photo. */
+  photos?: SelfPhotoFiles | null;
 }
 
 export class SelfService {
@@ -93,11 +114,12 @@ export class SelfService {
   readonly info: SelfDeviceInfo;
   private readonly intervalMs: number | undefined;
   private readonly now: () => number;
+  private readonly photos: SelfPhotoFiles | null;
   private made: Promise<SelfEngine> | undefined;
   private scheduler: SyncScheduler | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly appliedListeners = new Set<() => void>();
-  private state: SelfStatus = { group: null, devices: [], lastSyncedAt: null, lastError: null, held: null, seatId: null };
+  private state: SelfStatus = { group: null, devices: [], lastSyncedAt: null, lastError: null, held: null, seatId: null, photosMissing: 0 };
   /** What `prepare` found of a link under way: finished here, or a copy that never arrived. */
   joinOutcome: 'linked' | 'failed' | null = null;
   private halted = false;
@@ -110,6 +132,7 @@ export class SelfService {
     this.info = options.info ?? thisDeviceInfo();
     this.intervalMs = options.intervalMs;
     this.now = options.now ?? Date.now;
+    this.photos = options.photos ?? null;
   }
 
   engine(): Promise<SelfEngine> {
@@ -203,6 +226,7 @@ export class SelfService {
     if (this.halted) return;
     const engine = await this.engine();
     const result: SelfSyncResult = await engine.sync();
+    const photosMissing = result.unlinked ? this.state.photosMissing : await this.syncPhotos(engine);
     this.state = {
       ...this.state,
       group: await engine.group(),
@@ -210,6 +234,7 @@ export class SelfService {
       lastSyncedAt: this.now(),
       lastError: null,
       held: result.held ? (result.held.reason === 'newer-version' ? 'newer-version' : `clash:${result.held.key}`) : null,
+      photosMissing,
     };
     if (result.applied > 0 || result.unlinked) for (const listener of this.appliedListeners) listener();
     if (result.unlinked) {
@@ -219,13 +244,52 @@ export class SelfService {
     this.emit();
   }
 
+  /**
+   * Receipt photos (Drop 4), after the figures: files this device lacks are fetched, files only it holds are sent, and
+   * the blobs of files every device holds go from the relay. A batch a run, so a big library never holds up the
+   * figures. Answers how many files are still missing here.
+   */
+  private async syncPhotos(engine: SelfEngine): Promise<number> {
+    const me = engine.deviceId;
+    if (!this.photos) return photosMissingHere(this.database, me);
+    for (const { fileName, manifest } of await photosToFetch(this.database, me)) {
+      if (!(await this.photos.readPhotoBytes(fileName))) {
+        try {
+          await this.photos.putPhotoBytes(fileName, await engine.downloadCopy(manifest));
+        } catch {
+          continue; // gone from the relay, or not whole: a device that holds it sends it again
+        }
+      }
+      await markPhotoHeld(this.database, fileName, me);
+    }
+    for (const fileName of await photosToSend(this.database, this.now(), me)) {
+      const bytes = await this.photos.readPhotoBytes(fileName);
+      if (!bytes) continue;
+      try {
+        await recordSentPhoto(this.database, fileName, await engine.uploadCopy(bytes, undefined, PHOTO_TTL_MS), me, this.now());
+      } catch (error) {
+        // The relay holds as much as it takes for now: the rest go once devices have fetched what is there.
+        if (error instanceof SyncTransportError && error.status === 413) break;
+        throw error;
+      }
+    }
+    for (const { fileName, manifest } of await photosEveryoneHolds(this.database, me)) {
+      await engine.deleteCopy(manifest);
+      await clearSentPhoto(this.database, fileName);
+    }
+    return photosMissingHere(this.database, me);
+  }
+
   /** "Something was written here": the group syncs now, behind the screen. */
   nudge(): void {
     void this.scheduler?.trigger();
   }
 
+  /** A whole run that starts now: a run already under way is waited for first, then one more. */
   async syncNow(): Promise<void> {
-    if (this.scheduler) await this.scheduler.trigger();
+    if (!this.scheduler) return;
+    await this.scheduler.trigger();
+    await this.scheduler.trigger();
   }
 
   status(): SelfStatus {

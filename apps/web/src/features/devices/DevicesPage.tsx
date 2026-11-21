@@ -15,6 +15,7 @@ import {
   LINK_TO_ANOTHER,
   LINK_TO_ANOTHER_SUB,
   linkedDevices,
+  photosLine,
   UNLINKED_BODY,
   UNLINKED_TITLE,
   workspaceLine,
@@ -89,7 +90,7 @@ export function DevicesPage() {
             }}
           />
         )}
-        <InsetGroup wide header={unlinked ? 'This device' : 'This data is on'}>
+        <InsetGroup wide header={unlinked ? 'This device' : 'This data is on'} footer={!unlinked && status.photosMissing > 0 ? photosLine(status.photosMissing) : undefined}>
           {[
             <InsetRow key="me" icon={deviceIcon(thisRow?.kind ?? self.info.kind)} title={thisRow?.name ?? self.info.name} subtitle={thisRow ? deviceLine(thisRow, now) : others.length === 0 ? 'this device · only copy' : 'this device'} chevron={false} testId="device-this" />,
             ...(unlinked ? [] : others).map((d) => (

@@ -1,10 +1,10 @@
 import { expenseLines } from '@expanses/core';
-import { createAccount, createDatabase, createWorkspace, type Database, listAccounts, MemoryKeyStore, MemoryTransport, migrate, postTransaction, requestSignerOf, SeatElsewhereError } from '@expanses/db';
+import { addPhoto, createAccount, createDatabase, createWorkspace, type Database, listAccounts, MemoryKeyStore, MemoryTransport, migrate, postTransaction, requestSignerOf, SeatElsewhereError } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hydratePrefs, mirrorPref, setPrefDatabase } from '../lib/synced-prefs';
-import { keepPlan, LINK_FAILED_KEY, LINK_PLAN_KEY, SelfService, thisDeviceInfo } from './self-service';
+import { keepPlan, LINK_FAILED_KEY, LINK_PLAN_KEY, type SelfPhotoFiles, SelfService, thisDeviceInfo } from './self-service';
 import { SyncService } from './sync-service';
 
 vi.setConfig({ testTimeout: 120_000 });
@@ -41,13 +41,28 @@ afterEach(() => {
   setPrefDatabase(null);
 });
 
+/** Photo files in memory, as a device's photo folder. */
+function photoFiles(): SelfPhotoFiles & { files: Map<string, Uint8Array> } {
+  const files = new Map<string, Uint8Array>();
+  return {
+    files,
+    readPhotoBytes: async (name) => files.get(name) ?? null,
+    putPhotoBytes: async (name, bytes) => {
+      if (files.has(name)) return false;
+      files.set(name, bytes);
+      return true;
+    },
+  };
+}
+
 async function device(relay: MemoryTransport, info = thisDeviceInfo('Mozilla/5.0 (iPhone)')) {
   const database = createDatabase(createNodeExecutor());
   await migrate(database);
   const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
   const keyStore = new MemoryKeyStore();
-  const self = new SelfService({ database, keyStore, info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
-  return { database, ws, keyStore, self };
+  const photos = photoFiles();
+  const self = new SelfService({ database, keyStore, info, photos, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+  return { database, ws, keyStore, self, photos };
 }
 
 /** The whole link as the two sheets drive it, ending with the new device's data replaced and its next open done. */
@@ -63,7 +78,7 @@ async function link(relay: MemoryTransport, phone: Awaited<ReturnType<typeof dev
   keepPlan(plan);
   await mac.database.importBytes(bytes);
   // The reload: a fresh service on the replaced database, the same keys.
-  const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+  const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, photos: mac.photos, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
   await reopened.prepare();
   return reopened;
 }
@@ -106,6 +121,38 @@ describe('the open after a link', () => {
     expect(storage.getItem(LINK_PLAN_KEY)).toBeNull();
     expect(storage.getItem(LINK_FAILED_KEY)).toBe('1');
     expect(Buffer.from(await mac.database.exportBytes()).equals(Buffer.from(before))).toBe(true);
+  });
+});
+
+describe('receipt photos', () => {
+  it('follow the figures: the iPhone sends its photo, the Mac fetches it, and its blobs go once both hold it', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const bank = (await createAccount(phone.database, phone.ws, { name: 'Test Bank', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    const groceries = (await listAccounts(phone.database, phone.ws)).find((a) => a.name === 'Groceries')!.id;
+    const id = await postTransaction(phone.database, phone.ws, { occurredOn: '2026-11-19', description: 'Test grocer', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 61_000, currency: 'IDR' }) });
+    const picture = Uint8Array.from({ length: 900_000 }, (_, i) => (i * 7) % 251); // invented bytes, two blobs' worth
+    phone.photos.files.set('test-receipt.jpg', picture);
+    await addPhoto(phone.database, phone.ws, { transactionId: id, fileName: 'test-receipt.jpg', mime: 'image/jpeg', byteSize: picture.length });
+    const mac = await device(relay, thisDeviceInfo('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0)'));
+    const macSelf = await link(relay, phone, mac);
+    await macSelf.refresh();
+    await phone.self.refresh();
+    await phone.self.syncNow(); // sends the photo
+    await macSelf.syncNow(); // fetches it
+    for (let round = 0; round < 3 && mac.photos.files.size === 0; round += 1) {
+      // The iPhone may have let the blobs go before it knew the Mac: it sends the file again once it does.
+      await phone.self.syncNow();
+      await macSelf.syncNow();
+    }
+    expect(macSelf.status().photosMissing).toBe(0);
+    expect(mac.photos.files.get('test-receipt.jpg')).toEqual(picture);
+    await phone.self.syncNow(); // hears the Mac holds it: the blobs go
+    const book = (await (await phone.self.engine()).group())!.relayBookId;
+    expect(relay.peek(book)!.blobs.size).toBe(0);
+    expect(await phone.database.db.values(sql`SELECT manifest_json FROM self_photos`)).toEqual([[null]]);
+    macSelf.stop();
+    phone.self.stop();
   });
 });
 

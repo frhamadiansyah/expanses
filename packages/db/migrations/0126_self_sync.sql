@@ -84,3 +84,19 @@ CREATE TABLE self_devices (
   last_synced_at TEXT,
   removed_at TEXT
 );
+
+-- Receipt photos (Drop 4). A photo's file lives beside the database on each device; its bytes travel as sealed blobs
+-- on the relay, and these two tables, sent to every device, say where: which device sent a file and the manifest to
+-- fetch it by (its one-off key inside — the self channel is sealed end to end), and which devices hold it already.
+-- Once every linked device holds a file, its blobs go from the relay (manifest_json becomes NULL).
+CREATE TABLE self_photos (
+  file_name TEXT PRIMARY KEY,
+  manifest_json TEXT,
+  sent_by TEXT NOT NULL,
+  sent_at TEXT NOT NULL
+);
+CREATE TABLE self_photo_have (
+  file_name TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  PRIMARY KEY (file_name, device_id)
+);

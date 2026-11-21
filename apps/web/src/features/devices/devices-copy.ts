@@ -75,3 +75,8 @@ export function partsLine(done: number, total: number): string {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return `${pct}%`;
 }
+
+/** While receipt photos follow the figures (mockup: "Photos of receipts after the figures"). */
+export function photosLine(missing: number): string {
+  return missing === 1 ? '1 photo of a receipt still to arrive.' : `${missing} photos of receipts still to arrive.`;
+}

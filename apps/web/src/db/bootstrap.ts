@@ -23,6 +23,7 @@ import {
 import { deviceSyncLog, noteSkippedCopy } from '../sync/sync-log-device';
 import { SyncService } from '../sync/sync-service';
 import { SelfService } from '../sync/self-service';
+import { photos } from '../photos/store';
 import { hydratePrefs, setPrefDatabase } from '../lib/synced-prefs';
 import { type OpenResult, type OpenStage, openSafely, type RecoveryReason, type Safety, say } from './open';
 import { opfsSnapshots } from './snapshots';
@@ -122,7 +123,7 @@ export async function openAppDb(
   // Sharing failures are kept on the device (expanses-safety/sync-log.json), outside the database: never synced.
   // Link my devices first (spec §4.2): a copy that just replaced this device's data is made this device's own before
   // anything reads it — household sharing then sees which device keeps shared workspaces in step.
-  const self = new SelfService({ database, ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
+  const self = new SelfService({ database, photos, ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
   await self.prepare().catch((error: unknown) => console.warn('Linking could not finish', error));
   const sync = new SyncService({ database, log: deviceSyncLog(), ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
   await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));

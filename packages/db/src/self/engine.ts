@@ -485,13 +485,13 @@ export class SelfEngine {
   /* ------------------------------------------------------------------------------------------- the copy */
 
   /** Bytes (a copy of this device's data) sealed under a one-off key, as blobs of at most 700 KB, kept 24 hours. */
-  async uploadCopy(bytes: Uint8Array, onProgress?: (done: number, total: number) => void): Promise<CopyManifest> {
+  async uploadCopy(bytes: Uint8Array, onProgress?: (done: number, total: number) => void, ttlMs: number = COPY_TTL_MS): Promise<CopyManifest> {
     const group = await this.group();
     if (!group || group.state !== 'active') throw new SelfError('NOT_LINKED', 'This device is not linked to other devices');
     const key = randomBytes(32);
     const room = MAX_BLOB_BYTES - 12 - 16; // iv and tag
     const hashes: string[] = [];
-    const expiresAt = new Date(this.now() + COPY_TTL_MS).toISOString();
+    const expiresAt = new Date(this.now() + ttlMs).toISOString();
     for (let at = 0, part = 0; at < bytes.length || part === 0; at += room, part += 1) {
       const iv = randomBytes(12);
       const ct = await aesGcmEncrypt(key, iv, bytes.subarray(at, at + room), utf8(`copy:${part}`));
