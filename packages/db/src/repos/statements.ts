@@ -324,6 +324,30 @@ export async function cardStatementLines(database: Database, ws: WorkspaceContex
   return (await billedLines(database.db, ws, cardAccountId)).filter((line) => !line.balancing);
 }
 
+/** A payment onto a card, as the statement's paid ✓ names it: how much went onto the card, and where it came from. */
+export interface CardPaymentSource {
+  amountMinor: number;
+  /** The account the money left, the largest when there were several; null for none (money back, an adjustment). */
+  fromName: string | null;
+}
+
+/**
+ * How much a payment put onto the card, and from which account, for the bubble a paid ✓ opens ("Rp 9.498.000 from BCA
+ * Tahapan"). Null when the transaction put nothing onto this card, or is not posted.
+ */
+export async function cardPaymentSource(database: Database, ws: WorkspaceContext, cardAccountId: string, paymentTransactionId: string): Promise<CardPaymentSource | null> {
+  const onCard = await database.db.values<[number | null]>(sql`
+    SELECT SUM(e.amount_minor) FROM entries e JOIN transactions t ON t.id = e.transaction_id
+    WHERE t.id = ${paymentTransactionId} AND t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND e.account_id = ${cardAccountId}`);
+  const amountMinor = Number(onCard[0]?.[0] ?? 0);
+  if (amountMinor <= 0) return null;
+  const from = await database.db.values<[string]>(sql`
+    SELECT a.name FROM entries e JOIN accounts a ON a.id = e.account_id
+    WHERE e.transaction_id = ${paymentTransactionId} AND e.account_id <> ${cardAccountId} AND e.amount_minor < 0 AND a.kind IN ('asset', 'liability')
+    ORDER BY e.amount_minor, e.rowid LIMIT 1`);
+  return { amountMinor, fromName: from[0]?.[0] ?? null };
+}
+
 /**
  * Whether a line can carry the paid-off mark (`setSettledBeforeApp`), or already does: a purchase there is still
  * something to pay for, or money back (a refund) whose credit was used up — left standing, it would sit on the card as

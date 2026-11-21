@@ -127,6 +127,15 @@
   /* A setting off its rest, shown only as a dot on the control that holds it (Cashflow's ⋯): iOS's system blue. */
   --ph-dot: #007aff;
 
+  /* The small dark bubble a paid ✓ opens (statement): dark on a light ground, with a muted second line and a lifted red. */
+  --ph-bubble: #1c1c1e;
+  --ph-bubble-ink: #ffffff;
+  --ph-bubble-ink-2: #c7c7cc;
+  --ph-bubble-alarm: #ff6961;
+  --ph-bubble-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  /* The faint green ring round a paid ✓ while its bubble is open. */
+  --ph-up-ring: rgb(36 138 61 / 0.22);
+
   /*
    * Whose an item is, in a household's Net worth (joint-net-worth §8.2; owner rings, 12 Nov): the ring round a row's
    * icon circle. Each member picks one (`RING_COLOURS`, in this order); one who never picks has the colour of their
@@ -198,6 +207,14 @@
 
     /* The off-its-rest dot, as iOS lifts its blue for a dark ground. */
     --ph-dot: #0a84ff;
+
+    /* On black the bubble is lifted, not darker: a raised grey with a hairline of light. */
+    --ph-bubble: #3a3a3c;
+    --ph-bubble-ink: #ffffff;
+    --ph-bubble-ink-2: #c7c7cc;
+    --ph-bubble-alarm: #ff6961;
+    --ph-bubble-shadow: 0 8px 24px rgb(0 0 0 / 0.6), 0 0 0 0.5px rgb(255 255 255 / 0.12);
+    --ph-up-ring: rgb(48 209 88 / 0.3);
 
     /* The owner rings as iOS lifts the same hues for a dark ground. */
     --owner-blue: #0a84ff;
