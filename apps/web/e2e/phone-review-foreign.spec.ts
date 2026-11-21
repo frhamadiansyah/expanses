@@ -71,7 +71,8 @@ test('a purchase abroad is read in its own currency, and records as what the car
   await expect(page.getByText('≈ IDR', { exact: true })).toBeVisible();
 
   const record = page.getByRole('button', { name: 'Record', exact: true });
-  await expect(record).toBeDisabled();
+  // The form's ✓ follows the one record rule too: with the charge in, a blank category would record under Uncategorised.
+  await expect(record).toBeEnabled();
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await expect(record).toBeEnabled();
