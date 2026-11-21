@@ -39,6 +39,8 @@ describe('covering a statement’s purchases with its lump payments, oldest firs
     // Rp 3.000 of the first payment and the rest of the second: the second completes it.
     expect(cover.get('shop')!.credit!.key).toBe('second');
     expect(cover.get('dinner')!.credit!.key).toBe('second');
+    // How many payments went into each: the one split across both counts two.
+    expect(['market', 'ride', 'shop', 'dinner'].map((key) => cover.get(key)!.credits)).toEqual([1, 1, 2, 1]);
   });
 
   it('takes the pool from the latest credits: earlier ones went to the older bill', () => {
@@ -79,6 +81,9 @@ describe('covering a statement’s purchases with its lump payments, oldest firs
     const cover = coverOldestFirst({ charges: [charge('one', '2026-10-01', 150_000), charge('two', '2026-10-02', 200_000)], poolMinor: 350_000, credits });
     expect(cover.get('one')).toMatchObject({ whole: true, credit: null });
     expect(cover.get('two')).toMatchObject({ whole: true, credit: { key: 'y' } });
+    // Credit carried from before counts as no payment; the two listed both went into the second purchase.
+    expect(cover.get('one')!.credits).toBe(0);
+    expect(cover.get('two')!.credits).toBe(2);
   });
 
   it('leaves the sum covered plus the sum left equal to what the purchases add up to', () => {

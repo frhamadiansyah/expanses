@@ -32,6 +32,8 @@ export interface ChargeCover {
    * when nothing covers it, or when that part of the pool is not one of the credits given (credit carried from before).
    */
   credit: CoverCredit | null;
+  /** How many of the credits given went into its cover: more than one, and no single payment paid for it. */
+  credits: number;
 }
 
 const byDate = <T extends { on: string }>(items: readonly T[]) => [...items].sort((a, b) => a.on.localeCompare(b.on));
@@ -70,16 +72,18 @@ export function coverOldestFirst(input: { charges: readonly CoverCharge[]; poolM
     const amount = Math.max(0, charge.amountMinor);
     let covered = 0;
     let last: CoverCredit | null = null;
+    const from = new Set<string>();
     while (covered < amount && pool > 0 && source < sources.length) {
-      const from = sources[source]!;
-      const take = Math.min(from.minor, amount - covered);
+      const at = sources[source]!;
+      const take = Math.min(at.minor, amount - covered);
       covered += take;
-      from.minor -= take;
+      at.minor -= take;
       pool -= take;
-      last = from.credit;
-      if (from.minor === 0) source += 1;
+      last = at.credit;
+      if (at.credit && take > 0) from.add(at.credit.key);
+      if (at.minor === 0) source += 1;
     }
-    out.set(charge.key, { coveredMinor: covered, leftMinor: amount - covered, whole: amount > 0 && covered === amount, credit: covered > 0 ? last : null });
+    out.set(charge.key, { coveredMinor: covered, leftMinor: amount - covered, whole: amount > 0 && covered === amount, credit: covered > 0 ? last : null, credits: from.size });
   }
   return out;
 }
