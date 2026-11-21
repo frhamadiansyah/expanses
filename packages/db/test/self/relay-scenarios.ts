@@ -111,6 +111,11 @@ export async function blobs(make: MakeParty): Promise<void> {
   await refused(stranger.transport.getBlob(bookId, hash), 401);
   await owner.transport.deleteBlob(bookId, hash);
   await refused(owner.transport.getBlob(bookId, hash), 404);
+  // A household book holds no blobs: a member of one can neither put, read nor delete one there.
+  const { bookId: household } = await owner.transport.createBook(owner.keys.public);
+  await refused(owner.transport.putBlob(household, hash, bytesToBase64Url(bytes), expiresAt), 400);
+  await refused(owner.transport.getBlob(household, hash), 400);
+  await refused(owner.transport.deleteBlob(household, hash), 400);
 }
 
 /** A self book drops what every active device has acked; a household book is never pruned. */

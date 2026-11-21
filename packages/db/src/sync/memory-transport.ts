@@ -3,7 +3,7 @@ import { deviceIdOf, inviteSignedByAnOwner, MAX_CLOCK_SKEW_MS, requestSigningByt
 import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SealedFor, SequencedEntry, SyncTransport } from './types';
 import { SyncTransportError } from './types';
 import { LinkHub, LinkRefusal, type LinkStore, type LinkView } from '../self/link-hub';
-import { MAX_BLOB_BYTES, MAX_BLOB_TTL_MS, MAX_BOOK_BLOB_BYTES, type SelfTransport } from '../self/transport';
+import { MAX_BLOB_BYTES, MAX_BLOB_TTL_MS, MAX_BOOK_BLOB_BYTES, MAX_BOOK_BLOBS, type SelfTransport } from '../self/transport';
 import { base64UrlToBytes, sha256Hex } from './relay-signing';
 
 /*
@@ -208,8 +208,7 @@ export class MemoryTransport {
   }
 
   async putBlob(bookId: string, hash: string, data: string, expiresAt: string, actorDeviceId: string): Promise<void> {
-    const state = this.memberBook(bookId, actorDeviceId);
-    this.requireMember(state, actorDeviceId);
+    const state = this.selfBlobBook(bookId, actorDeviceId);
     let bytes: Uint8Array;
     try {
       bytes = base64UrlToBytes(data);
@@ -221,22 +220,29 @@ export class MemoryTransport {
     const until = Date.parse(expiresAt);
     if (!Number.isFinite(until) || until > Date.now() + MAX_BLOB_TTL_MS) throw new SyncTransportError(400, 'a blob is kept a week at most');
     for (const [key, blob] of state.blobs) if (blob.expiresAt <= Date.now()) state.blobs.delete(key);
-    const used = [...state.blobs.values()].reduce((total, blob) => total + blob.size, 0);
-    if (used + bytes.length > MAX_BOOK_BLOB_BYTES) throw new SyncTransportError(413, 'this book holds too much already');
+    const others = [...state.blobs.entries()].filter(([h]) => h !== hash);
+    const used = others.reduce((total, [, blob]) => total + blob.size, 0);
+    if (used + bytes.length > MAX_BOOK_BLOB_BYTES || others.length >= MAX_BOOK_BLOBS) throw new SyncTransportError(413, 'this book holds too much already');
     state.blobs.set(hash, { data, expiresAt: until, size: bytes.length });
   }
 
-  async getBlob(bookId: string, hash: string, actorDeviceId: string): Promise<string> {
+  /** Blobs are the owner's own book's only (link my devices): a household book holds none. */
+  private selfBlobBook(bookId: string, actorDeviceId: string): BookState {
     const state = this.memberBook(bookId, actorDeviceId);
     this.requireMember(state, actorDeviceId);
+    if (!state.self) throw new SyncTransportError(400, 'only a self book holds blobs');
+    return state;
+  }
+
+  async getBlob(bookId: string, hash: string, actorDeviceId: string): Promise<string> {
+    const state = this.selfBlobBook(bookId, actorDeviceId);
     const blob = state.blobs.get(hash);
     if (!blob || blob.expiresAt <= Date.now()) throw new SyncTransportError(404, 'no such blob');
     return blob.data;
   }
 
   async deleteBlob(bookId: string, hash: string, actorDeviceId: string): Promise<void> {
-    const state = this.memberBook(bookId, actorDeviceId);
-    this.requireMember(state, actorDeviceId);
+    const state = this.selfBlobBook(bookId, actorDeviceId);
     state.blobs.delete(hash);
   }
 

@@ -12,6 +12,8 @@ import type { LinkView } from './link-hub';
 export const MAX_BLOB_BYTES = 700 * 1024;
 /** All of one book's blobs together. */
 export const MAX_BOOK_BLOB_BYTES = 256 * 1024 * 1024;
+/** Blobs one book keeps at once: the relay's index of them stays one small value. */
+export const MAX_BOOK_BLOBS = 1000;
 /** How long a blob may be kept at most. */
 export const MAX_BLOB_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 

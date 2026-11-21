@@ -1,7 +1,7 @@
 import { inviteSignedByAnOwner } from '../../../packages/db/src/sync/relay-signing';
 import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SequencedEntry } from '../../../packages/db/src/sync/types';
 import { verifyEntitlement } from './entitlement';
-import { MAX_BLOB_BYTES, MAX_BLOB_TTL_MS, MAX_BOOK_BLOB_BYTES } from '../../../packages/db/src/self/transport';
+import { MAX_BLOB_BYTES, MAX_BLOB_TTL_MS, MAX_BOOK_BLOB_BYTES, MAX_BOOK_BLOBS } from '../../../packages/db/src/self/transport';
 import { base64UrlToBytes, sha256Hex } from '../../../packages/db/src/sync/relay-signing';
 
 /*
@@ -18,6 +18,7 @@ import { base64UrlToBytes, sha256Hex } from '../../../packages/db/src/sync/relay
  *   invite:<inviteId>          InviteRecord & { claimedAt? }
  *   ack:<deviceId>             seq — a self book's (link my devices): how far that device has applied the log
  *   blob:<hash>                { data, expiresAt, size } — the copy a new device starts from, its photos
+ *   blobs                      { [hash]: [size, expiresAt] } — every blob kept, small, so a put never lists the data
  */
 
 export const MAX_ENTRY_BYTES = 128 * 1024;
@@ -74,6 +75,7 @@ const seenKey = (deviceId: string, hlc: string) => `seen:${deviceId}:${hlc}`;
 const inviteKey = (inviteId: string) => `invite:${inviteId}`;
 const ackKey = (deviceId: string) => `ack:${deviceId}`;
 const blobKey = (hash: string) => `blob:${hash}`;
+const BLOB_INDEX = 'blobs';
 
 interface StoredBlob {
   data: string;
@@ -124,8 +126,20 @@ export class Book {
     await this.store.put({ meta: { ...latest, prunedThrough: floor } });
   }
 
-  async putBlob(hash: string, data: string, expiresAt: string, actor: string): Promise<void> {
+  /** The blob index: each kept blob's size and expiry, one small value (at most `MAX_BOOK_BLOBS` of them). */
+  private async blobIndex(): Promise<Record<string, [number, number]>> {
+    return (await this.store.get<Record<string, [number, number]>>(BLOB_INDEX)) ?? {};
+  }
+
+  /** Blobs are the owner's own book's only (link my devices): a household book holds none. */
+  private async requireSelfMember(actor: string): Promise<Meta> {
     const meta = await this.requireMember(actor);
+    if (!meta.self) throw new RelayError(400, 'only a self book holds blobs');
+    return meta;
+  }
+
+  async putBlob(hash: string, data: string, expiresAt: string, actor: string): Promise<void> {
+    const meta = await this.requireSelfMember(actor);
     let bytes: Uint8Array;
     try {
       bytes = base64UrlToBytes(data);
@@ -136,34 +150,33 @@ export class Book {
     if ((await sha256Hex(bytes)) !== hash) throw new RelayError(400, 'blob does not match its hash');
     const until = Date.parse(expiresAt);
     if (!Number.isFinite(until) || until > this.now().getTime() + MAX_BLOB_TTL_MS) throw new RelayError(400, 'a blob is kept a week at most');
-    let used = meta.blobBytes ?? 0;
-    const expired: string[] = [];
-    for (const [key, blob] of await this.store.list<StoredBlob>({ prefix: 'blob:' })) {
-      if (blob.expiresAt <= this.now().getTime()) {
-        expired.push(key);
-        used -= blob.size;
-      }
-    }
-    for (let i = 0; i < expired.length; i += 128) await this.store.delete(expired.slice(i, i + 128));
-    const before = await this.store.get<StoredBlob>(blobKey(hash));
-    if (before && !expired.includes(blobKey(hash))) used -= before.size;
-    if (used + bytes.length > MAX_BOOK_BLOB_BYTES) throw new RelayError(413, 'this book holds too much already');
-    await this.store.put({ [blobKey(hash)]: { data, expiresAt: until, size: bytes.length }, meta: { ...meta, blobBytes: Math.max(0, used) + bytes.length } });
+    // What the book holds, from the index alone: the expired go (index and data), the rest counts.
+    const index = await this.blobIndex();
+    const expired = Object.keys(index).filter((h) => index[h]![1] <= this.now().getTime());
+    for (const h of expired) delete index[h];
+    for (let i = 0; i < expired.length; i += 128) await this.store.delete(expired.slice(i, i + 128).map(blobKey));
+    delete index[hash];
+    const used = Object.values(index).reduce((total, [size]) => total + size, 0);
+    if (used + bytes.length > MAX_BOOK_BLOB_BYTES || Object.keys(index).length >= MAX_BOOK_BLOBS) throw new RelayError(413, 'this book holds too much already');
+    index[hash] = [bytes.length, until];
+    await this.store.put({ [blobKey(hash)]: { data, expiresAt: until, size: bytes.length }, [BLOB_INDEX]: index, meta: { ...meta, blobBytes: used + bytes.length } });
   }
 
   async getBlob(hash: string, actor: string): Promise<{ data: string }> {
-    await this.requireMember(actor);
+    await this.requireSelfMember(actor);
     const blob = await this.store.get<StoredBlob>(blobKey(hash));
     if (!blob || blob.expiresAt <= this.now().getTime()) throw new RelayError(404, 'no such blob');
     return { data: blob.data };
   }
 
   async deleteBlob(hash: string, actor: string): Promise<void> {
-    const meta = await this.requireMember(actor);
-    const blob = await this.store.get<StoredBlob>(blobKey(hash));
-    if (!blob) return;
+    const meta = await this.requireSelfMember(actor);
+    const index = await this.blobIndex();
+    const entry = index[hash];
     await this.store.delete([blobKey(hash)]);
-    await this.store.put({ meta: { ...meta, blobBytes: Math.max(0, (meta.blobBytes ?? 0) - blob.size) } });
+    if (!entry) return;
+    delete index[hash];
+    await this.store.put({ [BLOB_INDEX]: index, meta: { ...meta, blobBytes: Math.max(0, (meta.blobBytes ?? 0) - entry[0]) } });
   }
 
   /** 404 no book, 410 deleted — `MemoryTransport.requireBook`. */
