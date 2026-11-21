@@ -312,3 +312,4 @@ export { seatIsElsewhere, SeatElsewhereError } from './sync/capture';
 export { linkQrText, parseLinkCode } from './self/link-crypto';
 export { heldHere, putSyncedPref, syncedPrefRows } from './self/app-reads';
 export { clearSentPhoto, markPhotoHeld, PHOTO_RESEND_AFTER_MS, photosEveryoneHolds, photosMissingHere, photosToFetch, photosToSend, recordSentPhoto } from './self/photos';
+export { becomeSeat, dropStandbyOffer, markStandbyDone, offerStandby, standbyBooks, standbyOffers, standbyWanted, type StandbyWanted } from './self/standby';

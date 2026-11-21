@@ -69,6 +69,7 @@ const REPLICATE: readonly string[] = [
   'self_devices', // the Devices list: each device writes its own row
   'self_photos', // where each receipt photo's bytes can be fetched (Drop 4)
   'self_photo_have', // which devices hold each photo's file
+  'self_standby', // the seat's invites making the other devices standby members of shared books (Drop 5)
   'accounts',
   'asset_acquired',
   'asset_profiles',

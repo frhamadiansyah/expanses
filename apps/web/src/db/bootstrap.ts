@@ -23,6 +23,7 @@ import {
 import { deviceSyncLog, noteSkippedCopy } from '../sync/sync-log-device';
 import { SyncService } from '../sync/sync-service';
 import { SelfService } from '../sync/self-service';
+import { standbyStep } from '../sync/standby-step';
 import { photos } from '../photos/store';
 import { hydratePrefs, setPrefDatabase } from '../lib/synced-prefs';
 import { type OpenResult, type OpenStage, openSafely, type RecoveryReason, type Safety, say } from './open';
@@ -127,6 +128,8 @@ export async function openAppDb(
   await self.prepare().catch((error: unknown) => console.warn('Linking could not finish', error));
   const sync = new SyncService({ database, log: deviceSyncLog(), ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
   await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
+  // Link my devices, Drop 5: the owner's devices stand by in shared workspaces, and one takes over if the seat is lost.
+  self.connect({ afterRun: (engine) => standbyStep(sync, engine, self.info.name, self.info.name), takeOver: (lost) => sync.takeOver(lost) });
   // The choices kept on the device that also go to the owner's other devices (lib/synced-prefs.ts).
   setPrefDatabase(database);
   await hydratePrefs(database).catch((error: unknown) => console.warn('Choices could not be read across devices', error));

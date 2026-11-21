@@ -1,4 +1,5 @@
 import {
+  becomeSeat,
   clearSentPhoto,
   markPhotoHeld,
   photosEveryoneHolds,
@@ -120,6 +121,8 @@ export class SelfService {
   private readonly listeners = new Set<() => void>();
   private readonly appliedListeners = new Set<() => void>();
   private state: SelfStatus = { group: null, devices: [], lastSyncedAt: null, lastError: null, held: null, seatId: null, photosMissing: 0 };
+  /** Household sharing beside this group (Drop 5): its standby step after each run, its takeover when the seat goes. */
+  private household: { afterRun: (engine: SelfEngine) => Promise<void>; takeOver: (lost: string) => Promise<void> } | null = null;
   /** What `prepare` found of a link under way: finished here, or a copy that never arrived. */
   joinOutcome: 'linked' | 'failed' | null = null;
   private halted = false;
@@ -179,6 +182,11 @@ export class SelfService {
     this.joinOutcome = 'linked';
   }
 
+  /** Household sharing joins in (bootstrap): standby after each run, and taking over when the seat is unlinked from here. */
+  connect(household: { afterRun: (engine: SelfEngine) => Promise<void>; takeOver: (lost: string) => Promise<void> }): void {
+    this.household = household;
+  }
+
   async start(): Promise<void> {
     await this.refresh();
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisible);
@@ -227,6 +235,7 @@ export class SelfService {
     const engine = await this.engine();
     const result: SelfSyncResult = await engine.sync();
     const photosMissing = result.unlinked ? this.state.photosMissing : await this.syncPhotos(engine);
+    if (!result.unlinked) await this.household?.afterRun(engine).catch((error: unknown) => console.warn('Standing by in shared workspaces failed', error));
     this.state = {
       ...this.state,
       group: await engine.group(),
@@ -348,8 +357,18 @@ export class SelfService {
     return { plan, bytes };
   }
 
+  /**
+   * Unlink a lost or sold device. When it was the seat (§3.4), this device becomes the seat and takes over every shared
+   * workspace it stands by in (Drop 5), so the household goes on.
+   */
   async unlink(deviceId: string): Promise<void> {
-    await (await this.engine()).unlink(deviceId);
+    const engine = await this.engine();
+    const wasSeat = (await engine.seat()) === deviceId;
+    await engine.unlink(deviceId);
+    if (wasSeat) {
+      await becomeSeat(this.database, engine.deviceId);
+      await this.household?.takeOver(deviceId);
+    }
     await this.refresh();
   }
 }

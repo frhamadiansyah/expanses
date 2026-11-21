@@ -100,3 +100,14 @@ CREATE TABLE self_photo_have (
   device_id TEXT NOT NULL,
   PRIMARY KEY (file_name, device_id)
 );
+
+-- Standby (Drop 5): the seat's invite for another of the owner's devices to each shared book, so that device can take
+-- over if the seat is lost. Written by the seat, sent to every device (sealed end to end); the device it is for claims
+-- it once (self_state 'standby:<relay book>').
+CREATE TABLE self_standby (
+  relay_book_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  code TEXT NOT NULL,
+  made_at TEXT NOT NULL,
+  PRIMARY KEY (relay_book_id, device_id)
+);

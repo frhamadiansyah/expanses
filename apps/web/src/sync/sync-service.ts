@@ -1,5 +1,6 @@
 import {
   seatIsElsewhere,
+  standbyBooks,
   type BookSyncStatus as EngineBookStatus,
   type CreatedInvite,
   BookError,
@@ -162,7 +163,7 @@ class ObservedTransport implements SyncTransport {
 }
 
 export class SyncService {
-  private readonly database: Database;
+  readonly database: Database;
   private readonly keyStore: () => KeyStore;
   private readonly transportFor: (device: DeviceKeys) => SyncTransport;
   private readonly appliedListeners = new Set<() => void>();
@@ -366,6 +367,20 @@ export class SyncService {
       scheduler.start();
     }
     this.emit();
+  }
+
+  /**
+   * Link my devices, Drop 5: the seat was unlinked from this device, which now keeps the shared workspaces in step. Each
+   * one it stands by in is taken over (the whole log again, what the lost seat never sent, the lost seat removed).
+   */
+  async takeOver(lost: string): Promise<void> {
+    this.elsewhere = false;
+    const engine = await this.engine();
+    for (const bookId of await standbyBooks(this.database, engine.deviceId)) {
+      await engine.takeOverAsSeat(bookId, lost).catch((error: unknown) => this.note('takeover', bookId, { error }));
+    }
+    await this.refresh();
+    this.onApplied();
   }
 
   /** "I just wrote something": every shared book syncs now, behind the screen. */
