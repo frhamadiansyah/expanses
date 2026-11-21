@@ -126,12 +126,13 @@ export function draftPatch(form: FormDraft, draft: Pick<DraftRow, 'currency' | '
 }
 
 /**
- * Whether the ✓ may record: an account, a category (or a different To for a transfer), a figure — and, for a figure in
- * a currency the account does not hold, what the account was charged.
+ * Whether the ✓ may record: an account (and a different To for a transfer), a figure — and, for a figure in a currency
+ * the account does not hold, what the account was charged. A blank category is no bar (one record rule with Cashflow and
+ * the queue's swipe, owner 2026-11-21): money out or in recorded with none is filed under the book's Uncategorised.
  */
 export function canRecord(form: FormDraft, draft: Pick<DraftRow, 'currency'>, accounts: readonly AccountRow[]): boolean {
   if (form.mode === 'trade' || !form.moneyId) return false;
-  if (form.mode === 'transfer' ? !form.toId || form.toId === form.moneyId : !form.categoryId) return false;
+  if (form.mode === 'transfer' && (!form.toId || form.toId === form.moneyId)) return false;
   if (figure(form, draft, accounts) === null) return false;
   try {
     chargedFigure(form, accounts);

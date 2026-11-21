@@ -181,6 +181,32 @@ test('a swipe on a capture with no category records it under Uncategorised, wher
   await expect(page.getByText('REFUND UNIQLO').first()).toBeVisible();
 });
 
+test('the form’s own Record takes a capture with no category too, filed under Uncategorised; Undo blanks it again', async ({ page }) => {
+  await addCard(page);
+  await capture(page, 'BCA Visa (IDR)', CARD_CSV);
+
+  await page.goto('/review');
+  const refund = row(page, 'REFUND UNIQLO');
+  await refund.click();
+  const form = page.getByRole('form', { name: 'Review REFUND UNIQLO' });
+  // One record rule with the swipe (owner 2026-11-21): Paid with and a figure are there, so ✓ lights with no category.
+  await expect(form.getByRole('button', { name: 'Category' })).toContainText('Choose later');
+  const record = page.getByRole('button', { name: 'Record', exact: true });
+  await expect(record).toBeEnabled();
+  await record.click();
+  await expect(toast(page)).toContainText('Recorded REFUND UNIQLO');
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await expect(refund).toContainText('Choose category');
+
+  await refund.click();
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  await expect(toast(page)).toContainText('Recorded REFUND UNIQLO');
+  await page.goto('/transactions');
+  await expect(page.getByTestId('needs-category-card')).toContainText('1 needs a category');
+});
+
 const sms = (id: string, shop: string, amount: string, time: string) =>
   notice({
     id,

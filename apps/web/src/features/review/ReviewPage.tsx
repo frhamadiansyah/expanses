@@ -374,6 +374,8 @@ export function ReviewPage() {
       await learnFromCorrection(database, draft.id, field, value).catch(() => undefined);
     }
     await editDraft(database, ws, draft.id, patch);
+    // No category on the form: filed under the book's Uncategorised just before it is confirmed, as the swipe files it.
+    if (form.mode !== 'transfer' && !patch.categoryAccountId) await fileUncategorised({ id: draft.id, kind: form.mode === 'income' ? 'income' : 'expense' });
     // Into a shared event the draft is recorded with no tag, then moved (fix round 1, H2): a move refused or failed
     // leaves an ordinary purchase in its workspace, seen, never one tagged to the event and not in it.
     const tag = postTag(form.eventId, !!form.eventId && !!sharedSummaries[form.eventId]);

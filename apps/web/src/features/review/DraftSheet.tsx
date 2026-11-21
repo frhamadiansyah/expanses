@@ -76,6 +76,8 @@ export function DraftSheet({
         prefill,
         saveLabel: 'Record',
         canSubmit: (form) => canRecord(form, draft, accounts),
+        // A blank category records under Uncategorised (`recordForm`), so the picker offers No category and says Choose later.
+        categoryLater: true,
         onSubmit: (form, setAside) => onRecord(form, { setAside }),
         accountAsk:
           ask && source

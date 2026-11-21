@@ -131,11 +131,14 @@ describe('draftPatch', () => {
 });
 
 describe('canRecord', () => {
-  it('needs an account and a category for spending and income', () => {
+  it('needs an account for spending and income; a blank category records (under Uncategorised)', () => {
     const row = draft();
     expect(canRecord(formOf(row), row, ACCOUNTS)).toBe(true);
     expect(canRecord(formOf(row, { moneyId: '' }), row, ACCOUNTS)).toBe(false);
-    expect(canRecord(formOf(row, { categoryId: '' }), row, ACCOUNTS)).toBe(false);
+    // One record rule with the swipe (owner 2026-11-21): Paid with and a figure, the category filed under Uncategorised.
+    expect(canRecord(formOf(row, { categoryId: '' }), row, ACCOUNTS)).toBe(true);
+    expect(canRecord(formOf(row, { categoryId: '', moneyId: '' }), row, ACCOUNTS)).toBe(false);
+    expect(canRecord(formOf(row, { categoryId: '', amount: '' }), row, ACCOUNTS)).toBe(false);
     expect(canRecord(formOf(row, { mode: 'income' }), row, ACCOUNTS)).toBe(true);
   });
 
