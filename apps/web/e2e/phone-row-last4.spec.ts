@@ -24,7 +24,7 @@ test('a foreign card purchase is two lines on each side, the card named "4417"',
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'Nusa Voyager Travel');
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
@@ -80,7 +80,7 @@ test('a foreign purchase that earns cashback shows the foreign amount alone unde
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'Nusa Voyager Travel');
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'EUR Euro' }).first().click();
@@ -147,8 +147,8 @@ test('a wallet with phone digits shows "5521" on its rows, and is never offered 
   // Paid with offers the wallet as itself, with no card on it.
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const sheet = page.getByRole('dialog', { name: /^(Paid with|Received into|From)$/ });
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const sheet = page.getByRole('dialog', { name: /^(Payment method|Received into|From)$/ });
   await expect(sheet.getByRole('button', { name: 'Kantong Biru', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: /5521/ })).toHaveCount(0);
   // On Wallet it is a card of its own kind — an e-wallet, drawn by the app — never a credit card with digits.

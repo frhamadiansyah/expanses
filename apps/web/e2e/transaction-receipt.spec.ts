@@ -49,7 +49,7 @@ test('the ⓘ on a row opens the receipt, and the row itself still edits in plac
   await expect(page.getByRole('heading', { name: 'Superindo' })).toBeVisible();
 
   // The figure, not the word: what the card was charged, beside the account that was charged.
-  const paidWith = page.locator('div', { hasText: /^Paid with/ }).last();
+  const paidWith = page.locator('div', { hasText: /^Payment method/ }).last();
   await expect(paidWith).toContainText('BCA Visa');
   const total = page.locator('div', { hasText: /^Total/ }).last();
   await expect(total).toContainText('500.000');
@@ -217,7 +217,7 @@ test('a split bill says which figure is the share and which is the bill', async 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const split = page.getByRole('dialog', { name: 'Add a transaction' });
-  await split.getByRole('button', { name: 'Paid with' }).click();
+  await split.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Visa');
   await split.getByLabel('Amount', { exact: true }).fill('400000');
   await split.getByRole('button', { name: 'Category' }).click();

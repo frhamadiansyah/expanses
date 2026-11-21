@@ -68,7 +68,7 @@ test('the queue is rows, and a tap opens the Add form that records one', async (
   await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible();
   await expect(form.getByLabel('Date')).toHaveValue('2026-09-09');
   await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('250.000');
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA Tahapan');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await page.getByRole('button', { name: 'Record', exact: true }).click();

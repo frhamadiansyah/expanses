@@ -90,7 +90,7 @@ test('Cashback & Rewards is offered only for money back into a credit card, and 
   // A purchase on the card: not offered.
   await openAmount(form);
   await typeAmount(page, '75000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Visa');
   await form.getByRole('button', { name: /^Category/ }).click();
   await expect(sheet.getByRole('button', { name: 'Household', exact: true })).toBeVisible();

@@ -16,8 +16,8 @@ test('Paid with stays on after a transaction is edited and saved', async ({ page
   await expect(rows).toHaveCount(2);
 
   await historyMenu(page).click();
-  await page.getByRole('menuitem', { name: /^Paid with/ }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Jenius Utama', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Payment method/ }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'Jenius Utama', exact: true }).click();
   await expect(rows).toHaveCount(1);
 
   await rows.first().click();

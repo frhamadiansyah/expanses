@@ -349,7 +349,7 @@ async function addGold(page: Page) {
 async function buyGold(page: Page, grams: string, cost: string, goal: string | null) {
   // The gold's own Buy opens its sheet on its page; the goal is behind its "Add more details".
   const sheet = await openShortTrade(page, 'buy', 'Antam gold bars');
-  await pickTradeCash(page, sheet, 'Paid with', 'Jenius');
+  await pickTradeCash(page, sheet, 'Payment method', 'Jenius');
   await sheet.getByLabel('Grams', { exact: true }).pressSequentially(grams);
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially(cost);
   if (goal) {
@@ -405,7 +405,7 @@ test('spending on an event from Jenius asks', async ({ page }) => {
   // Add spending is the Add screen with the event set, so it asks the question the Add screen always asks.
   await page.getByRole('button', { name: 'Add spending', exact: true }).click();
   const form = addForm(page);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'Jenius');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Food and beverage', exact: true }).click();
@@ -442,7 +442,7 @@ async function typeRow(page: Page, description: string, amount: string) {
   const typing = page.getByTestId('typing-row');
   await typing.getByLabel('Row description').pressSequentially(description);
   await typing.getByLabel('Row amount (IDR)').pressSequentially(amount);
-  for (const [label, text] of [['Row paid with', 'jenius'], ['Row category', 'groceries']] as const) {
+  for (const [label, text] of [['Row payment method', 'jenius'], ['Row category', 'groceries']] as const) {
     const cell = typing.getByLabel(label);
     // The cell waits (disabled) while the accounts and categories it offers are still loading; typing sooner is lost.
     await expect(cell).toBeEnabled();

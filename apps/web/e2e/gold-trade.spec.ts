@@ -19,7 +19,7 @@ test('Buy gold bars: grams and the receipt’s total, and the holding gains both
   const holding = page.getByTestId('trade-holding');
   await expect(holding).toHaveText(GOLD);
   // Paid with first, as Expense: the bank is chosen already.
-  await expect(sheet.getByRole('button', { name: /^Paid with/ })).toContainText('BCA');
+  await expect(sheet.getByRole('button', { name: /^Payment method/ })).toContainText('BCA');
   await expect(page.getByRole('button', { name: 'Record buy' })).toBeDisabled();
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9850000');
@@ -109,7 +109,7 @@ test('a past purchase is recorded with no account moving: Paid with reads Past p
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9850000');
   await openTradeDetails(sheet);
   await sheet.getByLabel('Past purchase', { exact: true }).click();
-  await expect(sheet.getByRole('button', { name: /^Paid with/ })).toContainText('Past purchase');
+  await expect(sheet.getByRole('button', { name: /^Payment method/ })).toContainText('Past purchase');
   await page.getByRole('button', { name: 'Record buy' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('asset-grid')).toContainText('17 g');
@@ -156,11 +156,11 @@ test('Rate that day is asked only when the money account is in another currency,
   const sheet = page.getByRole('dialog');
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9800000');
-  await pickTradeCash(page, sheet, 'Paid with', 'BCA');
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   await openTradeDetails(sheet);
   await expect(sheet.getByLabel('Rate that day')).toHaveCount(0);
 
-  await pickTradeCash(page, sheet, 'Paid with', 'Dollar Saver');
+  await pickTradeCash(page, sheet, 'Payment method', 'Dollar Saver');
   const rate = sheet.getByLabel('Rate that day');
   await expect(rate).toBeVisible();
   // Not saved until the rate is typed.

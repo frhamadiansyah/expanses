@@ -14,7 +14,7 @@ test('With is one sideways row of people: pick, filter, and add a new name from 
   await closeDetails(more, sheet);
   await openAmount(form);
   await fillAmount(page, form, '90000');
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();

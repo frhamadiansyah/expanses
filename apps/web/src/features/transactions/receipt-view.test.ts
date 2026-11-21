@@ -49,7 +49,7 @@ describe('what a receipt says', () => {
       ],
     });
     expect(said(lines)).toEqual([
-      ['Paid with', 'BCA KrisFlyer ···· 1467'],
+      ['Payment method', 'BCA KrisFlyer ···· 1467'],
       ['Total', 'Rp 400.000'],
       ['Points earned', '1.200 KrisFlyer miles'],
       ['Owed by Andi, Putri and Chika', 'Rp 300.000'],
@@ -60,7 +60,7 @@ describe('what a receipt says', () => {
 
   it('leaves out a line it has nothing to say about', () => {
     const lines = receiptLines({ tx: dinner(), accounts, cards: [card], currency: 'IDR', points: null, owed: [] });
-    expect(lines.map((line) => line.label)).toEqual(['Paid with', 'Total']);
+    expect(lines.map((line) => line.label)).toEqual(['Payment method', 'Total']);
     // No points, nobody owing, no event, no channel, no foreign currency, no bill month: two lines, not nine empties.
     expect(lines.some((line) => line.value === '' || line.value === '—')).toBe(false);
   });
@@ -76,7 +76,7 @@ describe('what a receipt says', () => {
       eventName: 'Bali holiday',
     });
     expect(said(lines)).toEqual([
-      ['Paid with', 'BCA KrisFlyer ···· 1467'],
+      ['Payment method', 'BCA KrisFlyer ···· 1467'],
       ['Total', 'Rp 400.000'],
       ['Event', 'Bali holiday'],
       ['Channel', 'Offline'],
@@ -169,7 +169,7 @@ describe('the figures a receipt has to get right', () => {
       owed: [],
     });
     expect(said(transfer)).toEqual([
-      ['Paid with', 'BCA Tahapan'],
+      ['Payment method', 'BCA Tahapan'],
       ['Into', 'BCA KrisFlyer ···· 1467'],
       ['Total', 'Rp 400.000'],
       ['Bill month', 'September 2026'],
@@ -208,7 +208,7 @@ describe('the figures a receipt has to get right', () => {
     });
     // Two decimals for SGD, none for IDR: the exponent comes from the currency, never from the workspace.
     expect(said(abroad)).toEqual([
-      ['Paid with', 'BCA KrisFlyer ···· 1467'],
+      ['Payment method', 'BCA KrisFlyer ···· 1467'],
       ['Total', 'Rp 400.000'],
       ['Original amount', 'SGD 35,50'],
     ]);
@@ -218,16 +218,16 @@ describe('the figures a receipt has to get right', () => {
     // The supplementary was used; the primary's 1467 must not appear on it.
     const supplementary: CardRow = { id: 'card-2', accountId: 'acct-card', last4: '9021', holderName: 'Putri', isPrimary: false };
     const lines = receiptLines({ tx: dinner({ cardId: 'card-2' }), accounts, cards: [card, supplementary], currency: 'IDR', points: null, owed: [] });
-    expect(valueOf(lines, 'Paid with')).toBe('BCA KrisFlyer ···· 9021');
+    expect(valueOf(lines, 'Payment method')).toBe('BCA KrisFlyer ···· 9021');
   });
 
   it('names a card since removed by its digits, and says it was removed', () => {
     const removed: CardRow = { ...card, archived: true };
     const lines = receiptLines({ tx: dinner(), accounts, cards: [removed], currency: 'IDR', points: null, owed: [] });
-    expect(valueOf(lines, 'Paid with')).toBe('BCA KrisFlyer ···· 1467 · removed card');
+    expect(valueOf(lines, 'Payment method')).toBe('BCA KrisFlyer ···· 1467 · removed card');
     // A card still in use, read from the same list, says nothing of the kind.
     const kept = receiptLines({ tx: dinner(), accounts, cards: [{ ...card, archived: false }], currency: 'IDR', points: null, owed: [] });
-    expect(valueOf(kept, 'Paid with')).toBe('BCA KrisFlyer ···· 1467');
+    expect(valueOf(kept, 'Payment method')).toBe('BCA KrisFlyer ···· 1467');
   });
 
   it('names the goal a transfer funds, because the list already does', () => {
@@ -270,7 +270,7 @@ describe('a purchase in a shared workspace (household sharing spec §11)', () =>
       payer: { paidBy: 'm-dewi', paidLabel: 'Mandiri Visa ···· 9001', payerName: 'Dewi', mine: false, paidFrom: null },
     });
     expect(said(lines)).toEqual([
-      ['Paid with', 'Mandiri Visa ···· 9001'],
+      ['Payment method', 'Mandiri Visa ···· 9001'],
       ['Paid by', 'Dewi'],
       ['Total', 'Rp 250.000'],
     ]);
@@ -279,7 +279,7 @@ describe('a purchase in a shared workspace (household sharing spec §11)', () =>
   it('says You on your own purchase, with the label your device gave it', () => {
     const lines = receiptLines({ tx: dinner(), accounts, cards: [card], currency: 'IDR', points: null, owed: [], payer: { paidBy: 'm-me', paidLabel: 'BCA KrisFlyer ···· 1467', payerName: 'Fandri', mine: true, paidFrom: null } });
     expect(said(lines).slice(0, 2)).toEqual([
-      ['Paid with', 'BCA KrisFlyer ···· 1467'],
+      ['Payment method', 'BCA KrisFlyer ···· 1467'],
       ['Paid by', 'Me'],
     ]);
   });
@@ -540,7 +540,7 @@ describe('a transfer between currencies (owner, 17 Nov 2026)', () => {
   it('reads one Rate row, the market under it, in place of Cost and Withdrawn; nothing says it counts', () => {
     const lines = receiptLines({ tx: exchange(), accounts: banks, cards: [], currency: 'IDR', points: null, owed: [], withdrawal, today: '2026-11-17', ratesToBase: { GBP: 21_000 } });
     expect(lineOf(lines, 'Rate')).toEqual({ value: 'Rp 20.700 per GBP', detail: 'market 21.000 · −1,4 %' });
-    expect(lines.map((line) => line.label)).toEqual(['Paid with', 'Into', 'Total', 'Rate']);
+    expect(lines.map((line) => line.label)).toEqual(['Payment method', 'Into', 'Total', 'Rate']);
     expect(JSON.stringify(lines)).not.toMatch(/exchange|recorded as|spending|income/i);
   });
 

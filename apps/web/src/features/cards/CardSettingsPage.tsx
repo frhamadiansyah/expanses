@@ -250,7 +250,7 @@ export function CardSettingsPage() {
           <SwitchRow
             label="For spending"
             checked={spendingSwitchOn(card)}
-            info="Off keeps the card out of Wallet and Paid with. It stays in Assets and Debts, and its own page keeps working."
+            info="Off keeps the card out of Wallet and the payment method list. It stays in Assets and Debts, and its own page keeps working."
             onChange={(on) => void run(() => setAccountForSpending(database, ws, card.id, on))}
           />
         )}

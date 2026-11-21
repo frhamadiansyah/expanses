@@ -93,7 +93,7 @@ export function DefaultPaidWithPage() {
         actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !changed || busy, run: () => void save() }]}
       />
       <ErrorBox error={error ?? stored.error ?? holdStored.error ?? lookStored.error} />
-      <InsetGroup footer="Where Paid with starts on a new transaction. Choosing another for one purchase does not change it.">
+      <InsetGroup footer="The payment method a new transaction starts with. Choosing another for one purchase does not change it.">
         <InsetRow title="None" label="None" chevron={false} value={tick(shown === '')} onClick={() => setTicked('')} />
       </InsetGroup>
       {money.length > 0 && <InsetGroup header="Money">{money.map(rowFor)}</InsetGroup>}

@@ -65,8 +65,8 @@ export async function forSpendingOff(page: Page) {
 
   // Not offered under Paid with…
   const form = await openAdd(page);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
-  const paidWith = page.getByRole('dialog', { name: 'Paid with' });
+  await form.getByRole('button', { name: /^Payment method/ }).click();
+  const paidWith = page.getByRole('dialog', { name: 'Payment method' });
   await expect(paidWith.getByRole('button', { name: 'Everyday', exact: true })).toBeVisible();
   await expect(paidWith.getByRole('button', { name: 'Rainy day', exact: true })).toHaveCount(0);
   await paidWith.getByRole('button', { name: 'Everyday', exact: true }).click();

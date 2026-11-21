@@ -45,8 +45,8 @@ describe('what each Buy / sell row says', () => {
 
   it('says where the money comes from when buying, and where it lands when selling', () => {
     const buy = payRowText('buy');
-    expect(buy.label).toBe('Paid with');
-    expect(buy.caption).toBe('Paid with');
+    expect(buy.label).toBe('Payment method');
+    expect(buy.caption).toBe('Payment method');
     expect(buy.hint).toBeUndefined();
     // Received into, as the Income form says it (owner, 13 Nov 2026) — not Proceeds into, To or Money account.
     const sell = payRowText('sell');

@@ -81,7 +81,7 @@ test('Spend and Receive on a bank with pockets open the Add screen with the pock
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
   const form = addForm(page);
   await expect(form.getByRole('radio', { name: 'Expense', exact: true })).toBeChecked();
-  await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('Valas Plus · IDR');
+  await expect(form.getByRole('button', { name: /^Payment method/ })).toContainText('Valas Plus · IDR');
   // Receive and Transfer are the tabs: the pocket stays the account on the one it fits.
   await form.getByRole('radio', { name: 'Income', exact: true }).click();
   await expect(form.getByRole('button', { name: /^Received into/ })).toContainText('Valas Plus · IDR');
@@ -137,7 +137,7 @@ test('Record opens a new transaction already paid with the account', async ({ pa
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense.*account=/);
   const form = addForm(page);
   await expect(form.getByRole('radio', { name: 'Expense', exact: true })).toBeChecked();
-  await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('Everyday');
+  await expect(form.getByRole('button', { name: /^Payment method/ })).toContainText('Everyday');
   // Back from the Add screen is the account's page.
   await page.goBack();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);

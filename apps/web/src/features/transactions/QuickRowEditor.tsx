@@ -145,7 +145,7 @@ export function QuickRowEditor({
         className={cx(CELL, 'tabular text-right', missing('amount') && MISSING)}
       />
       <CellCombo
-        label="Row paid with"
+        label="Row payment method"
         placeholder="Name or last digits"
         value={paymentKey(values.accountId, values.cardId)}
         options={options.paidFor(paymentKey(values.accountId, values.cardId))}

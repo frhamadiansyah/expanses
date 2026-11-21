@@ -41,8 +41,8 @@ test('the list narrows by what paid, beside the sort, and the menu takes it off 
   // The filter is a control of the list itself now: the icon beside the sort it shares a row with, offering only
   // what can pay — the account's own row is a choice, a locked deposit would not be.
   await historyMenu(page).click();
-  await page.getByRole('menuitem', { name: /^Paid with/ }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /BCA Tahapan/ }).click();
+  await page.getByRole('menuitem', { name: /^Payment method/ }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /BCA Tahapan/ }).click();
 
   // The sort and filter menu closes once a choice is made.
   await expect(page.getByTestId('sort-filter-menu')).toHaveCount(0);
@@ -51,7 +51,7 @@ test('the list narrows by what paid, beside the sort, and the menu takes it off 
   await expect(page.getByTestId('filter-on')).toBeVisible();
   await expect(page.getByText('Lunch')).toBeVisible();
   await historyMenu(page).click();
-  await expect(page.getByRole('menuitem', { name: /^Paid with/ })).toContainText('BCA Tahapan');
+  await expect(page.getByRole('menuitem', { name: /^Payment method/ })).toContainText('BCA Tahapan');
   await page.getByRole('menuitem', { name: 'Reset' }).click();
   await expect(page.getByTestId('filter-on')).toHaveCount(0);
 });

@@ -413,7 +413,7 @@ export function PaymentSheet({
       }}
       compact
       placeholder="Search"
-      label={`Search ${title}`}
+      label={`Search ${title.charAt(0).toLowerCase()}${title.slice(1)}`}
     />
   );
 

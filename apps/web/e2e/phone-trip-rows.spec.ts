@@ -54,7 +54,7 @@ async function addTripSpend(page: Page, o: { note: string; amount: string; paidW
   await expect(form.getByTestId('event-chip')).toBeVisible();
   await openAmount(form);
   await fillAmount(page, form, o.amount);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, o.paidWith);
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();

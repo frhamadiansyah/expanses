@@ -115,7 +115,7 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   const keypad = page.getByTestId('keypad');
   for (const digit of '85000') await keypad.getByRole('button', { name: digit, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -172,7 +172,7 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
   await expect(keypad).toBeHidden();
   await expect(amount).toHaveText('155.000');
 
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -189,7 +189,7 @@ test('tapping from the typed figure to the charged one shows the move, and the b
   await openAccount(page, { subtype: 'bank', name: 'Alipay', currency: 'CNY', balance: '1000', rate: '2270', opened: TODAY });
 
   await page.goto('/transactions/new');
-  await page.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await page.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'CNY Chinese Yuan' }).first().click();
@@ -241,7 +241,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
   await openAccount(page, { subtype: 'bank', name: 'Alipay', currency: 'CNY', balance: '1000', rate: '2270', opened: TODAY });
 
   await page.goto('/transactions/new');
-  await page.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   // No second figure while both sides are IDR: what was typed is what the account was charged.
   await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveCount(0);
@@ -314,7 +314,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
 
   // Putting the flag back where it was takes the row away with it: there is nothing left to ask.
   await page.goto('/transactions/new');
-  await page.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await page.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'CNY Chinese Yuan' }).first().click();
@@ -341,7 +341,7 @@ test('Channel, a photograph and Exclude all reach the receipt from the phone', a
   const keypad = page.getByTestId('keypad');
   for (const key of '85000') await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -382,7 +382,7 @@ test('every row on the card is big enough for a thumb', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions/new');
 
-  const rows = ['Workspace', 'Paid with', 'Category', 'Add more details'];
+  const rows = ['Workspace', 'Payment method', 'Category', 'Add more details'];
   for (const name of rows) {
     const box = (await page.getByRole('button', { name: new RegExp(`^${name}`) }).first().boundingBox())!;
     expect(box.height, `the ${name} row is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
@@ -414,8 +414,8 @@ test('Paid with adds an account as a step of its own sheet, and the transaction 
   await form.getByLabel('Note').fill('Superindo');
 
   // Not on the list yet: the list's own last row turns the same sheet into New account — no page, no second sheet.
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
   const detent = await sheet.getAttribute('data-detent');
   await sheet.getByRole('button', { name: 'Add account' }).click();
   const step = page.getByRole('dialog', { name: 'New account' });
@@ -423,7 +423,7 @@ test('Paid with adds an account as a step of its own sheet, and the transaction 
   await expect(page.getByRole('dialog')).toHaveCount(1);
   await expect(page).toHaveURL(/\/transactions/);
   await expect(step).toHaveAttribute('data-detent', detent!);
-  await expect(step.getByRole('button', { name: 'Paid with', exact: true })).toBeVisible();
+  await expect(step.getByRole('button', { name: 'Payment method', exact: true })).toBeVisible();
   const save = step.getByRole('button', { name: 'Save', exact: true });
   // Nothing to save until it has a name.
   await expect(save).toBeDisabled();
@@ -435,15 +435,15 @@ test('Paid with adds an account as a step of its own sheet, and the transaction 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByLabel('Note')).toHaveValue('Superindo');
   await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('85.000');
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('Jago');
 });
 
 test('New account offers a pocket’s currencies over the keyboard, not in a floating bubble', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  await addForm(page).getByRole('button', { name: 'Payment method' }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'Add account' }).click();
   const step = page.getByRole('dialog', { name: 'New account' });
   // The plain balance's currency is its symbol, picked from a list; a pocket's code is still typed.
   await step.getByLabel('Type').selectOption('bank');
@@ -463,8 +463,8 @@ test('New account asks no day: one Current balance row, its symbol just before i
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  await addForm(page).getByRole('button', { name: 'Payment method' }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'Add account' }).click();
   const step = page.getByRole('dialog', { name: 'New account' });
   const type = step.getByLabel('Type');
   const balance = step.getByLabel('Current balance', { exact: true });
@@ -525,8 +525,8 @@ test('a field focused in a sheet sits above the keyboard, the amount as much as 
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  await addForm(page).getByRole('button', { name: 'Payment method' }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'Add account' }).click();
   const step = page.getByRole('dialog', { name: 'New account' });
   await expect(step).toBeVisible();
 
@@ -573,19 +573,19 @@ test('‹ out of New account returns to the list, and makes nothing', async ({ p
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
   await form.getByLabel('Note').fill('Parking');
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'Add account' }).click();
   const step = page.getByRole('dialog', { name: 'New account' });
   await step.getByLabel('Name', { exact: true }).fill('Never saved');
 
-  await step.getByRole('button', { name: 'Paid with', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await step.getByRole('button', { name: 'Payment method', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Never saved' })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Add account' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(form.getByLabel('Note')).toHaveValue('Parking');
-  await expect(form.getByRole('button', { name: 'Paid with' })).not.toContainText('BCA');
+  await expect(form.getByRole('button', { name: 'Payment method' })).not.toContainText('BCA');
 });
 
 test('Paid with narrows to what is typed in its search, and says when nothing matches', async ({ page }) => {
@@ -594,9 +594,9 @@ test('Paid with narrows to what is typed in its search, and says when nothing ma
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
-  const search = sheet.getByRole('searchbox', { name: 'Search Paid with' });
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
+  const search = sheet.getByRole('searchbox', { name: 'Search payment method' });
 
   // No field on the list until ⌕ in the header asks for one.
   await expect(search).toHaveCount(0);
@@ -613,7 +613,7 @@ test('Paid with narrows to what is typed in its search, and says when nothing ma
 
   await search.fill('');
   await sheet.getByRole('button', { name: 'Jago Syariah', exact: true }).click();
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago Syariah');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('Jago Syariah');
 });
 
 test('the dock has a decimal comma for dollars and for a rupiah single amount, and keeps 00 for a rupiah transfer', async ({ page }) => {
@@ -638,7 +638,7 @@ test('the dock has a decimal comma for dollars and for a rupiah single amount, a
   await expect(keypad.getByRole('button', { name: '00', exact: true })).toHaveCount(0);
   await keypad.getByRole('button', { name: 'Close keypad' }).click();
 
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'Wise USD');
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
   await expect(keypad.getByRole('button', { name: '00', exact: true })).toHaveCount(0);
@@ -653,9 +653,9 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
-  const tabs = sheet.getByRole('radiogroup', { name: 'Paid with: which kind' });
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
+  const tabs = sheet.getByRole('radiogroup', { name: 'Payment method: which kind' });
 
   // Nothing chosen yet: Accounts, with the way to add one as the list's own last row.
   await expect(tabs.getByRole('radio', { name: 'Accounts' })).toBeChecked();
@@ -683,14 +683,14 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
   await expect(sheet).toHaveAttribute('data-detent', 'medium');
   await expect.poll(async () => (await list.boundingBox())!.y - (await sheet.boundingBox())!.y).toBe(before);
   // And the field spans the row, edge to edge with the list under it.
-  const pill = sheet.getByRole('searchbox', { name: 'Search Paid with' }).locator('xpath=..');
+  const pill = sheet.getByRole('searchbox', { name: 'Search payment method' }).locator('xpath=..');
   expect(Math.round((await pill.boundingBox())!.width)).toBe(Math.round((await list.boundingBox())!.width));
   await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
-  await sheet.getByRole('searchbox', { name: 'Search Paid with' }).fill('bca');
+  await sheet.getByRole('searchbox', { name: 'Search payment method' }).fill('bca');
   await expect(sheet.getByRole('heading', { name: 'Bank accounts' })).toBeVisible();
   await expect(sheet.getByRole('heading', { name: 'Credit cards' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Close search' }).click();
-  await expect(sheet.getByRole('searchbox', { name: 'Search Paid with' })).toHaveCount(0);
+  await expect(sheet.getByRole('searchbox', { name: 'Search payment method' })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
   await expect(tabs.getByRole('radio', { name: 'Credit cards' })).toBeChecked();
   await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
@@ -700,7 +700,7 @@ test('Paid with has tabs for accounts and cards, and its search looks across bot
 
   // Chosen by card, the sheet opens on Credit cards next time, with that card marked.
   await sheet.getByRole('button', { name: /^BCA KrisFlyer/ }).click();
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await expect(tabs.getByRole('radio', { name: 'Credit cards' })).toBeChecked();
   await expect(sheet.locator('[aria-current="true"]')).toHaveCount(1);
   await expect(sheet.getByRole('button', { name: /^BCA KrisFlyer/ })).toHaveAttribute('aria-current', 'true');
@@ -712,9 +712,9 @@ test('Add credit card on the Credit cards tab is a step of the sheet, and the ca
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
   await form.getByLabel('Note').fill('Hotel');
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
-  await sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
+  await sheet.getByRole('radiogroup', { name: 'Payment method: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
   await expect(sheet.getByText('No credit cards yet.')).toBeVisible();
   await sheet.getByRole('button', { name: 'Add credit card' }).click();
 
@@ -738,10 +738,10 @@ test('Add credit card on the Credit cards tab is a step of the sheet, and the ca
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(form.getByLabel('Note')).toHaveValue('Hotel');
   // Saved as its bank and its own name — UOB, PRVI — and shown by both, the bank once.
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UOB PRVI');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('UOB PRVI');
   // Picked as the card row is: the sheet opens on Credit cards with it marked.
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  await expect(sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' })).toBeChecked();
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  await expect(sheet.getByRole('radiogroup', { name: 'Payment method: which kind' }).getByRole('radio', { name: 'Credit cards' })).toBeChecked();
   await expect(sheet.getByRole('button', { name: /^UOB PRVI/ })).toHaveAttribute('aria-current', 'true');
 });
 
@@ -750,9 +750,9 @@ test('Paid with › Add credit card › the catalogue over the keyboard › a ca
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
-  await sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
+  await sheet.getByRole('radiogroup', { name: 'Payment method: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
   await sheet.getByRole('button', { name: 'Add credit card' }).click();
 
   const step = page.getByRole('dialog', { name: 'New credit card' });
@@ -776,7 +776,7 @@ test('Paid with › Add credit card › the catalogue over the keyboard › a ca
   await step.getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA UnionPay');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('BCA UnionPay');
 
   // Opened with no dates: the card's page has no row for them, and its settings offer the published fee beside them.
   await page.goto('/wallet');
@@ -833,8 +833,8 @@ test('a note typed out in full brings its category on leaving Note, but never ov
 test('Paid with opens at the medium detent, drags up to large and back, and closes when pulled well down', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions/new');
-  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await addForm(page).getByRole('button', { name: 'Payment method' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
   await expect(sheet).toHaveAttribute('data-detent', 'medium');
   const handle = sheet.getByTestId('sheet-drag');
   const drag = async (dy: number) => {
@@ -855,7 +855,7 @@ test('Paid with opens at the medium detent, drags up to large and back, and clos
   await page.waitForTimeout(400);
   // A tap on the header's buttons is still a tap, and opening the search leaves the sheet where it was.
   await sheet.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(sheet.getByRole('searchbox', { name: 'Search Paid with' })).toBeVisible();
+  await expect(sheet.getByRole('searchbox', { name: 'Search payment method' })).toBeVisible();
   await expect(sheet).toHaveAttribute('data-detent', 'medium');
   await sheet.getByRole('button', { name: 'Close search' }).click();
   await drag(700);

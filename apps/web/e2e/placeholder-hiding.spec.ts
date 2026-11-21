@@ -123,8 +123,8 @@ test('the Paid-with picker on the add form never offers a placeholder account', 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' }).or(page.getByRole('form', { name: 'Add a transaction' }));
-  await form.getByRole('button', { name: /^(Paid with|Received into)/ }).click();
-  const sheet = page.getByRole('dialog', { name: /^(Paid with|Received into)$/ });
+  await form.getByRole('button', { name: /^(Payment method|Received into)/ }).click();
+  const sheet = page.getByRole('dialog', { name: /^(Payment method|Received into)$/ });
   await expect(sheet.getByRole('button', { name: ORDINARY_NAME, exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: PLACEHOLDER_NAME, exact: true })).toHaveCount(0);
 });

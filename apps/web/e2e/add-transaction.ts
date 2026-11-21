@@ -80,7 +80,7 @@ export async function choosePointsCategory(form: Locator, category: string) {
  * Accounts until a card is chosen, so a card not on the open tab is found by switching to Credit cards, as a person
  * would. Received into and From have no tabs and never need the switch.
  */
-export async function choosePayment(page: Page, name: string, sheet: string | RegExp = /^(Paid with|Received into|From)$/) {
+export async function choosePayment(page: Page, name: string, sheet: string | RegExp = /^(Payment method|Received into|From)$/) {
   const dialog = page.getByRole('dialog', { name: sheet });
   const option = dialog.getByRole('button', { name, exact: true });
   const cardsTab = dialog.getByRole('radio', { name: 'Credit cards' });
@@ -95,7 +95,7 @@ export async function choosePayment(page: Page, name: string, sheet: string | Re
  * the account's name; a "(IDR)" left on it from the old picker's labels is dropped.
  */
 export async function chooseTradeMoney(form: Locator, name: string, sell = false) {
-  const label = sell ? 'Received into' : 'Paid with';
+  const label = sell ? 'Received into' : 'Payment method';
   await form.getByRole('button', { name: new RegExp(`^${label}`) }).first().click();
   await choosePayment(form.page(), name.replace(/ \([A-Z]{3}\)$/, ''), label);
 }
@@ -158,7 +158,7 @@ export async function addTransaction(
   if (tx.mode && tx.mode !== 'Expense') await form.getByRole('radio', { name: tx.mode }).click();
   await openAmount(form);
   await fillAmount(page, form, tx.amount, tx.keyByKey);
-  await form.getByRole('button', { name: /^(Paid with|Received into)/ }).click();
+  await form.getByRole('button', { name: /^(Payment method|Received into)/ }).click();
   await choosePayment(page, tx.paidWith);
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: tx.category, exact: true }).click();

@@ -106,7 +106,7 @@ test('Pay several with another account: the SGD bill is charged in that account\
   await page.getByRole('menuitem', { name: /^Pay 1 selected/ }).click();
   const sheet = page.getByRole('dialog', { name: 'Pay several' });
   await sheet.getByTestId('several-with').getByRole('button').click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /Jenius/ }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /Jenius/ }).click();
   await expect(sheet.getByTestId('several-with')).toContainText('Jenius');
   const charged = sheet.getByLabel('Charged in IDR for Life cover');
   await expect(charged).toHaveValue(/^1[.,]?500[.,]?000/);

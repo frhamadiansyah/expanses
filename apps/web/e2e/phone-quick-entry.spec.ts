@@ -18,7 +18,7 @@ test('an expense saved with its category left for later waits under Uncategorise
   const keypad = page.getByTestId('keypad');
   for (const key of '25000') await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   // No category chosen: the row offers to choose it later, and the ✓ saves anyway.
   await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Choose later');
@@ -115,7 +115,7 @@ test('typing a note fills an empty category with the one that note had last time
   const keypad = page.getByTestId('keypad');
   for (const key of '32000') await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   const category = form.getByRole('button', { name: /^Category/ });
   await expect(category).toContainText('Choose later');

@@ -229,7 +229,7 @@ export function PaySeveralSheet({
       </InsetGroup>
 
       <InsetGroup>
-        <PickerRow label="Paid with" testId="several-with" value={overrideAccount?.name ?? "Each bill's own account"} onOpen={() => setPicking(true)} />
+        <PickerRow label="Payment method" testId="several-with" value={overrideAccount?.name ?? "Each bill's own account"} onOpen={() => setPicking(true)} />
         {anyCardFromFund && <SwitchRow label="Pay the card from the fund" checked={fromFund} onChange={setFromFund} info="Moves the same amount from the fund's account to the card, and lets the fund go." />}
         <TextRow label="Paid on" id="several-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
       </InsetGroup>
@@ -308,7 +308,7 @@ function PaidWithSheet({
   const spendable = wallets.filter((account) => account.kind === 'asset');
   const cards = wallets.filter((account) => account.kind !== 'asset');
   return (
-    <Sheet grouped title="Paid with" onClose={onClose}>
+    <Sheet grouped title="Payment method" onClose={onClose}>
       <InsetGroup>
         <InsetRow title="Each bill's own account" subtitle="Keeps what each bill says" value={chosen === null ? tick : undefined} onClick={() => onPick(null)} testId="paid-with-own" />
       </InsetGroup>

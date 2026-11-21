@@ -69,7 +69,7 @@ export function unitsRowText({ useLots, lotSize, unitLabel }: { useLots: boolean
 
 /** Where the money came from, or where it landed: the Expense and Income forms' own words. */
 export function payRowText(mode: TradeSide): BuyRowText {
-  const label = mode === 'buy' ? 'Paid with' : 'Received into';
+  const label = mode === 'buy' ? 'Payment method' : 'Received into';
   return { label, caption: label };
 }
 

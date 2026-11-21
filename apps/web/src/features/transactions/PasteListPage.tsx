@@ -257,7 +257,7 @@ export function PasteListPage() {
           <FormRows>
             <FormRow
               icon={<RowGlyph>{payGlyph}</RowGlyph>}
-              label="Paid with"
+              label="Payment method"
               value={payerName}
               onClick={() => setSheet('payer')}
             />
@@ -281,7 +281,7 @@ export function PasteListPage() {
         </div>
         {sheet === 'payer' && (
           <PaymentSheet
-            title="Paid with"
+            title="Payment method"
             options={payable}
             accounts={accounts}
             chosenAccountId={payer?.accountId ?? ''}

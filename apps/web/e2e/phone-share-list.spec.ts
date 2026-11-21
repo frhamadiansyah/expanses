@@ -105,11 +105,11 @@ test('the share list: Rina ticks an account with Joint, a goal and an event; And
   });
   await expect(walletCard(andi, 'Rina Savings')).toHaveAccessibleName(/^Rina Savings, Rina’s/);
   await expect(andi.getByText('Rina Pocket')).toHaveCount(0);
-  const paidWith = andi.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Rina Savings, Rina’s, shared', exact: true });
+  const paidWith = andi.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'Rina Savings, Rina’s, shared', exact: true });
   await eventually(andi, async () => {
     await andi.goto('/transactions');
     await andi.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-    await addForm(andi).getByRole('button', { name: /^Paid with/ }).click();
+    await addForm(andi).getByRole('button', { name: /^Payment method/ }).click();
     await expect(paidWith).toContainText('owned together', { timeout: 1_000 });
   });
 

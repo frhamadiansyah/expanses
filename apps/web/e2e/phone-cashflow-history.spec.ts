@@ -55,8 +55,8 @@ test('the history header is a bold Transactions title, and Paid with offers only
   await expect(header).toHaveCSS('text-transform', 'none');
 
   await historyMenu(page).click();
-  await page.getByRole('menuitem', { name: /^Paid with/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await page.getByRole('menuitem', { name: /^Payment method/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
   await expect(sheet.getByRole('button', { name: /^BCA Tahapan/ })).toBeVisible();
   await expect(sheet.getByRole('button', { name: /^Brankas/ })).toHaveCount(0);
 });

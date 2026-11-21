@@ -13,7 +13,7 @@ test('an old card purchase already paid off is spending, and the card still owes
   const form = addForm(page);
   await openAmount(form);
   await fillAmount(page, form, '850000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Visa');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
@@ -48,7 +48,7 @@ test('a recent card purchase can be ticked paid off by hand, and the card still 
   const form = addForm(page);
   await openAmount(form);
   await fillAmount(page, form, '120000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Visa');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
