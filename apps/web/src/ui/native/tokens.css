@@ -81,10 +81,6 @@
   --ph-alarm-ink: #991b1b;
   --ph-up-panel: #ecfdf5;
   --ph-up-ink: #065f46;
-  /* A statement purchase a payment covered: a soft green ✓, apart from the solid ink one a purchase paid one by one wears. */
-  --ph-covered-fill: #dcfce7;
-  --ph-covered-edge: #86efac;
-  --ph-covered-ink: #15803d;
   /* A neutral ground for a control's chip or a highlighted row, and the ink on it. */
   --ph-tint-panel: #efeff2;
   --ph-tint-ink: #1c1c1e;
@@ -186,9 +182,6 @@
     --ph-alarm-ink: #ffb3ab;
     --ph-up-panel: #0f2f1b;
     --ph-up-ink: #7ee79b;
-    --ph-covered-fill: #12361f;
-    --ph-covered-edge: #2f7d4a;
-    --ph-covered-ink: #7ee79b;
     --ph-tint-panel: #2c2c2e;
     --ph-tint-ink: #ffffff;
     --ph-trip: #7d7aff;

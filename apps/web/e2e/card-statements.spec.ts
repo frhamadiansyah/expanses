@@ -125,7 +125,7 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   await expect(page.getByLabel('Pay Superindo')).not.toBeChecked();
 });
 
-test('the totals band splits the previous bill from what is unbilled, and names the batch paid ahead', async ({ page }) => {
+test('the totals band splits the previous bill from what is unbilled, and names the day the batch was paid', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await buy(page, 'Superindo', '450000', TODAY);
@@ -143,7 +143,10 @@ test('the totals band splits the previous bill from what is unbilled, and names 
   // Tick this cycle's purchase and pay it: the bank clears the older bill first, so that is where it lands.
   await page.getByLabel('Pay Superindo').check();
   await payStatementPurchases(page, 'BCA Tahapan');
-  await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toContainText(/paid ahead \d+ \w+/);
+  // Paid one by one: the one paid ✓, and the pay day in green words at the start of its subtitle.
+  const superindo = page.getByTestId('statement-line').filter({ hasText: 'Superindo' });
+  await expect(superindo.getByTestId('statement-paid-how')).toHaveText(/^Paid \d+ \w+$/);
+  await expect(page.getByLabel(/^Superindo, paid on/)).toBeChecked();
   await expect(page.getByTestId('statement-line').filter({ hasText: 'payment' })).toContainText('for 1 purchase');
   // Rp 450.000 of the Rp 2.000.000 previous bill is settled, and the upcoming bill drops by the same.
   await expect(band).toContainText('1.550.000');
@@ -213,11 +216,13 @@ test('a payment made with Pay covers the statement’s purchases oldest first, a
   const ride = page.getByTestId('statement-line').filter({ hasText: 'Ride to airport' });
   const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
   await expect(ride.getByTestId('statement-covered')).toBeVisible();
-  await expect(ride).toContainText(/covered by payment \d+ \w+/);
+  await expect(ride.getByTestId('statement-paid-how')).toHaveText(/^Paid with the \d+ \w+ payment$/);
   await expect(page.getByLabel('Pay Ride to airport')).toHaveCount(0);
   await expect(hotel).toContainText(/200\.000 covered, Rp\s1\.800\.000 left/);
   await expect(page.getByTestId('statement-group')).toContainText(/1 of 2 paid/i);
-  await expect(page.getByTestId('statement-legend')).toContainText('covered by a payment');
+  // The words on each row say how it was paid: no legend under the statement.
+  await expect(page.getByTestId('statement-legend')).toHaveCount(0);
+  await expect(hotel.getByTestId('statement-paid-how')).toHaveCount(0);
 
   // The covered ✓ says which payment covered it, and is not a switch.
   await ride.getByTestId('statement-covered').click();
@@ -240,6 +245,7 @@ test('a payment made with Pay covers the statement’s purchases oldest first, a
   await expect(page).toHaveURL(/\/statement\?back=1$/);
   // Paid for what was left, it is covered by the two payments together, not settled on its own.
   await expect(hotel.getByTestId('statement-covered')).toBeVisible();
+  await expect(hotel.getByTestId('statement-paid-how')).toHaveText('Paid with 2 payments');
   await expect(page.getByTestId('statement-group')).toContainText(/All paid/i);
   await expect(ride.getByTestId('statement-covered')).toBeVisible();
   await expect(page.getByTestId('statement-band')).toContainText(/Still to pay\s*Rp\s0\s*Total bill/);
@@ -309,6 +315,7 @@ test('a purchase on a closed statement is marked paid off from the statement, an
   // One line, no balancing settlement drawn, and the Pay box gives way to the ✓.
   await expect(page.getByTestId('statement-line')).toHaveCount(1);
   await expect(hotel.getByTestId('statement-paid-off')).toBeVisible();
+  await expect(hotel.getByTestId('statement-paid-how')).toHaveText('Paid before cicis');
   await expect(page.getByLabel('Pay Hotel Mulia')).toHaveCount(0);
 
   await hotel.getByTestId('statement-paid-off').click();
@@ -370,6 +377,7 @@ test('money back on the card can be marked settled before the app, so it does no
   await expect(page.getByLabel('Pay Hotel Mulia refund')).toBeHidden();
   await refund.getByRole('button', { name: 'Mark Hotel Mulia refund already settled' }).click();
   await expect(refund.getByTestId('statement-paid-off')).toBeVisible();
+  await expect(refund.getByTestId('statement-paid-how')).toHaveText('Settled');
   // No balancing line is drawn: the two lines are the purchase and the refund.
   await expect(page.getByTestId('statement-line')).toHaveCount(2);
 
