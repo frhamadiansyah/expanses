@@ -125,7 +125,7 @@ export function DesktopCard({ page }: { page: CardPage }) {
   const rowOf = new Map(buildRows(txs.data ?? [], [], accounts, []).map((row) => [row.id, row]));
   const cashbackId = (id: string | null) => !!id && isCardCashbackKey(accounts.find((account) => account.id === id)?.systemKey);
   const points = showsPointsColumn(cp) ? statementPointsOf(cp) : null;
-  const cardColumn = showsCardColumn(plastic);
+  const cardColumn = showsCardColumn(plastic, card.id);
 
   // ── ⌘-picked purchases, and the peek ───────────────────────────────────────────────────────────────────────────────
   const [picked, setPicked] = useState<string[]>([]);

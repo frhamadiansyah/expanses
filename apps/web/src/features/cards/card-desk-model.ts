@@ -15,8 +15,11 @@ export type StatementChoice = 'this' | 'last' | 'all';
 /** How many statements back the choice is; null for All, which is no one statement. */
 export const choiceBack = (choice: StatementChoice): number | null => (choice === 'this' ? 0 : choice === 'last' ? 1 : null);
 
-/** The Card column is drawn only when the account carries more than one card — a supplementary beside the primary. */
-export const showsCardColumn = (plastic: readonly Pick<CardRow, 'id'>[]): boolean => plastic.length > 1;
+/**
+ * The Card column is drawn only when the account carries more than one card — a supplementary beside the primary. One
+ * card alone (•4417) needs no column: every row is on it. Only the account's own cards count, should the list hold others.
+ */
+export const showsCardColumn = (plastic: readonly Pick<CardRow, 'id' | 'accountId'>[], accountId: string): boolean => plastic.filter((piece) => piece.accountId === accountId).length > 1;
 
 /** The miles or points column is drawn only when the card works its points out: a programme with at least one rule. */
 export const showsPointsColumn = (cp: { program?: unknown; rules: readonly unknown[] }): boolean => !!cp.program && cp.rules.length > 0;

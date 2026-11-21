@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { openAccount, openFace, walletCard } from './accounts';
-import { addForm, saveButton } from './add-transaction';
-import { chooseCardPayFrom } from './card-section';
-import { bankMonth, cardStatements, openBankPage, openCardPage } from './mac-account-pages';
+import { openAccount, openCard, openFace, walletCard } from './accounts';
+import { addForm, addTransaction, saveButton } from './add-transaction';
+import { cardPage, chooseCardPayFrom, saveCardTerms } from './card-section';
+import { bankMonth, cardStatements, openBankPage, openCardPage, TODAY } from './mac-account-pages';
 
 /*
  * The Mac account pages (owner 2026-11-20), on a wide screen: an account's and a credit card's own page, full width,
@@ -154,6 +154,28 @@ test('a credit card’s page: Outstanding as Wallet prints it, the bill, the sta
   await expect(page.getByTestId('tile-unpaid-balance')).toHaveText('Rp 231.500');
   await page.goto('/wallet');
   await expect(walletCard(page, 'Visa Kita')).toHaveAccessibleName(/231\.500/);
+});
+
+test('a credit card with one card alone (•4417) has no Card column: every row is on it', async ({ page }) => {
+  await openCard(page, { name: 'Kartu Satu', owed: '0', last4: '4417' });
+  const open = async () => {
+    await page.goto('/wallet');
+    await openFace(walletCard(page, 'Kartu Satu'));
+    await expect(page.getByRole('heading', { name: 'Kartu Satu', exact: true })).toBeVisible();
+  };
+  await open();
+  await cardPage(page, 'Settings');
+  await page.getByLabel('Billing date').fill('31');
+  await page.getByLabel('Due date').fill('15');
+  await saveCardTerms(page);
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Kopi Satu', paidWith: 'Kartu Satu', category: 'Cafe & dessert', amount: '42000', date: TODAY });
+  await open();
+  const rows = page.getByTestId('card-row');
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('Kopi Satu');
+  await expect(page.getByTestId('card-table').getByRole('columnheader', { name: 'Card', exact: true })).toHaveCount(0);
+  await expect(rows).not.toContainText('•4417');
 });
 
 test('the card’s Pay with nothing picked opens Pay credit card for the bill', async ({ page }) => {

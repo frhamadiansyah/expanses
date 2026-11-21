@@ -95,9 +95,12 @@ describe('Pay for the ⌘-picked purchases', () => {
 
 describe('the table’s columns and order', () => {
   it('draws the Card column only with more than one card on the account', () => {
-    expect(showsCardColumn([])).toBe(false);
-    expect(showsCardColumn([{ id: 'primary' }])).toBe(false);
-    expect(showsCardColumn([{ id: 'primary' }, { id: 'supplementary' }])).toBe(true);
+    expect(showsCardColumn([], 'visa')).toBe(false);
+    // One card alone (•4417): every row is on it, so no column.
+    expect(showsCardColumn([{ id: 'primary', accountId: 'visa' }], 'visa')).toBe(false);
+    expect(showsCardColumn([{ id: 'primary', accountId: 'visa' }, { id: 'supplementary', accountId: 'visa' }], 'visa')).toBe(true);
+    // Another account's card is not this account's second card.
+    expect(showsCardColumn([{ id: 'primary', accountId: 'visa' }, { id: 'other', accountId: 'master' }], 'visa')).toBe(false);
   });
 
   it('draws the miles or points column only for a card that works its points out', () => {
