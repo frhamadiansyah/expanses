@@ -7,6 +7,7 @@ import { payerLine } from '../sharing/sharing-copy';
 import type { RowBook } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import type { CellColumn } from './cell-range';
+import type { ComboAdd } from './CellCombo';
 import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
@@ -255,6 +256,7 @@ export function EditableRow({
   desk,
   guess,
   paidGuess,
+  paidPending,
   pickedCell,
 }: {
   row: ListRow;
@@ -268,6 +270,8 @@ export function EditableRow({
   guess?: { categoryId: string; hint: string } | null;
   /** Its Paid with filled in from what this device remembers (a `paymentKey`): marked so while the row still names it. */
   paidGuess?: { key: string; hint: string } | null;
+  /** Its Paid with pasted as text naming nothing in cicis yet (the desk's): kept in the cell, with what to add for it. */
+  paidPending?: { text: string | null; adds: readonly ComboAdd[] } | null;
   /** The column of this row's cell in the desk's range of blue cells, if one is. */
   pickedCell?: CellColumn | null;
 }) {
@@ -339,6 +343,7 @@ export function EditableRow({
         layout={desk ? 'desk' : 'row'}
         categoryGuessed={guess && values.categoryId === guess.categoryId ? guess.hint : null}
         paidGuessed={paidGuess && paymentKey(values.accountId, values.cardId) === paidGuess.key ? paidGuess.hint : null}
+        paidPending={values.accountId ? null : paidPending}
         cellRow={desk ? row.id : undefined}
         pickedCell={pickedCell}
         values={values}

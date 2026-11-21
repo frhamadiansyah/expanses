@@ -382,8 +382,11 @@ export function CashAccountForm({
   onCreated,
   embedded,
   kinds,
+  initial,
 }: {
   item: MoneyAccountSubtype;
+  /** Answers to start from: a pasted account's name or its number's last four digits (Cashflow's Add an account …). */
+  initial?: { name?: string; numberLast4?: string };
   /** Where saving goes instead of Accounts, given the account just made. */
   onCreated?: (accountId: string) => void;
   /** Drawn in a sheet: no heading line, no page sentence, no button — the sheet's ✓ saves it. */
@@ -400,7 +403,7 @@ export function CashAccountForm({
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const household = useShareOnAdd();
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initial?.name ?? '');
   const [balance, setBalance] = useState('');
   const [bank, setBank] = useState('');
   const [currency, setCurrency] = useState(ws.baseCurrency);
@@ -414,7 +417,7 @@ export function CashAccountForm({
   const [pockets, setPockets] = useState<PocketDraft[]>([]);
   // A wallet's phone number, by its last four digits: optional, and only ever asked of a wallet.
   const [phoneLast4, setPhoneLast4] = useState('');
-  const [numberLast4, setNumberLast4] = useState('');
+  const [numberLast4, setNumberLast4] = useState(initial?.numberLast4 ?? '');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);

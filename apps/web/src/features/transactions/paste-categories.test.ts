@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { forgetMark, guessHint, keepMarks, learnFromRecorded, learnFromSaved, nameKey, type NameStore, paidHint, pastedCategories, readMarks, rememberedCategory, rememberedPaid, unknownLinks, unknownLinksLine } from './paste-categories';
+import { addPaidChoices, fillAddedPaid, forgetMark, guessHint, keepMarks, learnFromRecorded, learnFromSaved, nameKey, type NameStore, paidHint, pastedCategories, pendingPaidLabel, pendingPaidOf, readMarks, rememberedCategory, rememberedPaid, rowsLine, unknownLinks, unknownLinksLine } from './paste-categories';
 import type { PastedCells, QuickValues } from './quick-row';
 
 const memory = (): NameStore & { data: Map<string, string> } => {
@@ -323,5 +323,81 @@ describe('Notion links remembered on this device', () => {
     store.setItem('paste-category-names', JSON.stringify({ 'makan and minum': 'cafe' }));
     expect(rememberedCategory('Makan & Minum', store)).toBe('cafe');
     expect(rememberedCategory('Makán and Minum', store)).toBe('cafe');
+  });
+});
+
+describe('a pasted Paid with not in cicis yet', () => {
+  const blankRow = (over: Partial<QuickValues> = {}): QuickValues => ({ date: '14 Sep 2026', description: 'Toko Buah Contoh', amount: '412.300', accountId: '', cardId: '', categoryId: '', ...over });
+  const ctx = (store: NameStore) => ({ remembered: () => null, history: async () => null, offered: () => true, rememberedPaid: (text: string) => rememberedPaid(text, store), offeredPaid: () => true });
+
+  it('keeps the unmatched text on its row, shown as pasted: digits as “•• 5512”, a name as typed, a link as nothing', async () => {
+    const store = memory();
+    const [digits, name] = await pastedCategories([{ cells: cells({ paid: '5512' }), values: blankRow() }, { cells: cells({ paid: 'Jago' }), values: blankRow() }], ctx(store));
+    expect(digits!.values.accountId).toBe('');
+    expect(digits!.mark).toEqual({ paid: '5512' });
+    expect(name!.mark).toEqual({ paid: 'Jago' });
+    keepMarks({ a: digits!.mark, b: name!.mark }, new Set(), store);
+    // Kept on the device: a reload reads it back.
+    expect(readMarks(store)).toEqual({ a: { paid: '5512' }, b: { paid: 'Jago' } });
+    expect(pendingPaidLabel('5512')).toBe('•• 5512');
+    expect(pendingPaidLabel('xxxx 5512')).toBe('•• 5512');
+    expect(pendingPaidLabel('Jago')).toBe('Jago');
+    expect(pendingPaidLabel('notion:abc')).toBeNull();
+    // Only while the cell names no way to pay.
+    expect(pendingPaidOf({ paid: '5512' }, { accountId: '' })).toBe('5512');
+    expect(pendingPaidOf({ paid: '5512' }, { accountId: 'bca' })).toBeNull();
+    expect(pendingPaidOf({}, { accountId: '' })).toBeNull();
+  });
+
+  it('the picker offers a credit card or a debit card’s account by the digits, an account by the name, with the rows waiting for it', () => {
+    const marks = { a: { paid: '5512' }, b: { paid: '•• 5512' }, c: { paid: 'Jago' }, d: { paid: '5512' } };
+    const waiting = [
+      { id: 'a', values: blankRow() },
+      { id: 'b', values: blankRow() },
+      { id: 'c', values: blankRow() },
+      // Already given a way to pay: no longer waiting for one.
+      { id: 'd', values: blankRow({ accountId: 'bca' }) },
+    ];
+    expect(addPaidChoices('5512', waiting, marks)).toEqual([
+      { kind: 'card', label: '＋ Add a credit card ending 5512', rows: 2, last4: '5512', name: null, text: '5512' },
+      { kind: 'account', label: '＋ Add a debit card or account ending 5512', rows: 2, last4: '5512', name: null, text: '5512' },
+    ]);
+    expect(addPaidChoices('Jago', waiting, marks)).toEqual([{ kind: 'account', label: '＋ Add an account named Jago', rows: 1, last4: null, name: 'Jago', text: 'Jago' }]);
+    expect(addPaidChoices('notion:abc', waiting, { e: { paid: 'notion:abc' } }).map((choice) => choice.label)).toEqual(['＋ Add a credit card', '＋ Add a debit card or account']);
+    expect(rowsLine(1)).toBe('1 row');
+    expect(rowsLine(2)).toBe('2 rows');
+  });
+
+  it('once added, every waiting row with that text (or the same digits, or link) fills in, and a later paste matches it', async () => {
+    const store = memory();
+    keepMarks({ a: { paid: '5512' }, b: { paid: '····5512', text: 'Makan' }, c: { paid: 'Jago' }, l1: { paid: 'notion:abc' }, l2: { paid: 'notion:abc' } }, new Set(), store);
+    const waiting = ['a', 'b', 'c', 'l1', 'l2'].map((id) => ({ id, values: blankRow() }));
+    const added = fillAddedPaid('5512', 'mandiri', waiting, store);
+    expect(added.fills).toEqual([
+      { id: 'a', values: blankRow({ accountId: 'mandiri' }) },
+      { id: 'b', values: blankRow({ accountId: 'mandiri' }) },
+    ]);
+    // The text is let go of the filled rows; what else they keep stays.
+    expect(added.marks).toEqual({ a: {}, b: { text: 'Makan' }, c: { paid: 'Jago' }, l1: { paid: 'notion:abc' }, l2: { paid: 'notion:abc' } });
+    const [later] = await pastedCategories([{ cells: cells({ paid: '5512' }), values: blankRow() }], ctx(store));
+    expect(later!.values.accountId).toBe('mandiri');
+
+    const byName = fillAddedPaid('Jago', 'jago', waiting.filter((row) => row.id === 'c'), store);
+    expect(byName.fills).toEqual([{ id: 'c', values: blankRow({ accountId: 'jago' }) }]);
+    expect(rememberedPaid('jago', store)).toBe('jago');
+
+    const byLink = fillAddedPaid('notion:abc', 'bca:c1', waiting, store);
+    expect(byLink.fills.map((fill) => [fill.id, fill.values.accountId, fill.values.cardId])).toEqual([
+      ['l1', 'bca', 'c1'],
+      ['l2', 'bca', 'c1'],
+    ]);
+    expect(rememberedPaid('notion:abc', store)).toBe('bca:c1');
+  });
+
+  it('a pick on one row fills the rows naming the same digits however they were masked', () => {
+    const store = memory();
+    keepMarks({ a: { paid: '5512' }, b: { paid: 'xxxx 5512' } }, new Set(), store);
+    const learnt = learnFromSaved('a', blankRow({ accountId: 'bca' }), false, [{ id: 'b', values: blankRow() }], store);
+    expect(learnt.fills).toEqual([{ id: 'b', values: blankRow({ accountId: 'bca' }) }]);
   });
 });

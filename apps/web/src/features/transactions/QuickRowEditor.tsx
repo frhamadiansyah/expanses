@@ -6,7 +6,7 @@ import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import type { CellColumn } from './cell-range';
-import { CellCombo, type ComboOption } from './CellCombo';
+import { CellCombo, type ComboAdd, type ComboOption } from './CellCombo';
 import { foldName, lastFourOf, matchLastFour, payerOptions, paymentKey, type QuickValues } from './quick-row';
 
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
@@ -134,6 +134,7 @@ export function QuickRowEditor({
   layout = 'row',
   categoryGuessed,
   paidGuessed,
+  paidPending,
   cellRow,
   pickedCell,
 }: {
@@ -157,6 +158,8 @@ export function QuickRowEditor({
   categoryGuessed?: string | null;
   /** Paid with was filled in from what this device remembers of a paste's cell: why, said on the cell. */
   paidGuessed?: string | null;
+  /** Paid with pasted as text that names nothing in cicis yet: shown in the cell, and what the cell offers to add. */
+  paidPending?: { text: string | null; adds: readonly ComboAdd[] } | null;
   /**
    * A desk row's id, which marks each of its cells for a range of blue cells (`useCellRange`): `data-cell` and
    * `data-cell-row` on the cell. Left out on the typing row, which is no part of a range.
@@ -231,6 +234,7 @@ export function QuickRowEditor({
       disabled={!options.ready}
       invalid={missing('paid with')}
       guessed={paidGuessed}
+      pending={paidPending}
       onChange={(key) => {
         const [accountId = '', cardId = ''] = key.split(':');
         onChange({ accountId, cardId });

@@ -1,4 +1,4 @@
-import { foldName, type PastedCells, paymentKey, type QuickValues } from './quick-row';
+import { foldName, lastFourOf, type PastedCells, paymentKey, type QuickValues } from './quick-row';
 
 /*
  * A paste's categories and Paid with (Mac Cashflow, owner 2026-11-18). A Category cell is read against the real
@@ -149,7 +149,8 @@ export function learnFromSaved(
   const teaches = (map: string, text: string | undefined, now: string, guess: string | undefined) =>
     !!text && !!now && (now !== guess || (record && !remembered(map, text, store)));
   const category = teaches(NAMES_KEY, mark.text, values.categoryId, mark.guessed?.categoryId) ? { key: nameKey(mark.text!), id: values.categoryId } : null;
-  const paid = teaches(PAID_KEY, mark.paid, paidNow, mark.paidGuessed) ? { key: nameKey(mark.paid!), id: paidNow } : null;
+  // Paid with rows are grouped as the picker groups them: "5512" and "•• 5512" name one card (`pendingPaidKey`).
+  const paid = teaches(PAID_KEY, mark.paid, paidNow, mark.paidGuessed) ? { key: pendingPaidKey(mark.paid!), id: paidNow } : null;
   if (category) remember(NAMES_KEY, mark.text!, category.id, store);
   if (paid) remember(PAID_KEY, mark.paid!, paid.id, store);
 
@@ -168,7 +169,7 @@ export function learnFromSaved(
       updated = { ...updated, guessed: { categoryId: category.id, how: 'remembered' } };
     }
     const itsPaid = cells.accountId ? paymentKey(cells.accountId, cells.cardId) : '';
-    if (paid && its.paid && nameKey(its.paid) === paid.key && itsPaid !== paid.id && (!itsPaid || itsPaid === its.paidGuessed)) {
+    if (paid && its.paid && pendingPaidKey(its.paid) === paid.key && itsPaid !== paid.id && (!itsPaid || itsPaid === its.paidGuessed)) {
       const [accountId = '', cardId = ''] = paid.id.split(':');
       cells = { ...cells, accountId, cardId };
       updated = { ...updated, paidGuessed: paid.id };
@@ -270,4 +271,102 @@ export function guessHint(mark: PasteMark | undefined): string | null {
 export function paidHint(mark: PasteMark | undefined): string | null {
   if (!mark?.paidGuessed || !mark.paid) return null;
   return isLinkKey(mark.paid) ? 'Paid with remembered for this Notion link' : `Paid with guessed from an earlier paste of “${mark.paid}”`;
+}
+
+/*
+ * A Paid with cell that names nothing in cicis yet (owner 2026-11-20, mockup 2026-11-20-paste-new-account): the pasted
+ * text stays on its row — kept in the row's mark (`paid`), on this device, until the row is recorded or discarded — and
+ * shows in the cell with a dashed line, last four digits as "•• 5512", a name as pasted; a Notion link shows nothing
+ * (an address is never put into a cell). The cell's picker offers to add it as a new card or account, and adding one
+ * fills every waiting row naming the same digits, name or link (`fillAddedPaid`).
+ */
+
+/** What groups waiting rows that name one thing: the last four digits ("5512", "•• 5512", "xxxx 5512" alike), else the name folded, else the link. */
+export function pendingPaidKey(text: string): string {
+  if (isLinkKey(text)) return text;
+  const four = lastFourOf(text);
+  return four ? `last4:${four}` : nameKey(text);
+}
+
+/** How a waiting row's unmatched Paid with reads in its cell: "•• 5512", the name as pasted, or nothing for a Notion link. */
+export function pendingPaidLabel(text: string | undefined): string | null {
+  const shown = text?.trim();
+  if (!shown || isLinkKey(shown)) return null;
+  const four = lastFourOf(shown);
+  return four ? `•• ${four}` : shown;
+}
+
+/** The pasted text a waiting row still holds for its Paid with: only while the cell names no way to pay. */
+export function pendingPaidOf(mark: PasteMark | undefined, values: Pick<QuickValues, 'accountId'>): string | null {
+  return mark?.paid && !values.accountId ? mark.paid : null;
+}
+
+/** One "＋ Add …" the Paid with picker offers for a pasted text not in cicis yet. */
+export interface AddPaidChoice {
+  kind: 'card' | 'account';
+  label: string;
+  /** The waiting rows naming it (shown on the first choice): "2 rows". */
+  rows: number;
+  /** What the new card's or account's form is filled in with. */
+  last4: string | null;
+  name: string | null;
+  /** The pasted text (or link) the rows hold. */
+  text: string;
+}
+
+export const rowsLine = (count: number) => (count === 1 ? '1 row' : `${count} rows`);
+
+/**
+ * What the picker offers for a waiting row's pasted Paid with: by last four digits, a credit card or a debit card's
+ * account ending in them; by name, an account of that name; by a Notion link, a card or an account with nothing filled
+ * in. `rows` counts the waiting rows (`waiting`, with their marks) still naming the same thing.
+ */
+export function addPaidChoices(text: string, waiting: readonly WaitingRow[], marks: Readonly<Record<string, PasteMark>>): AddPaidChoice[] {
+  const key = pendingPaidKey(text);
+  const rows = waiting.filter((row) => {
+    const pending = pendingPaidOf(marks[row.id], row.values);
+    return pending !== null && pendingPaidKey(pending) === key;
+  }).length;
+  if (isLinkKey(text)) {
+    return [
+      { kind: 'card', label: '＋ Add a credit card', rows, last4: null, name: null, text },
+      { kind: 'account', label: '＋ Add a debit card or account', rows, last4: null, name: null, text },
+    ];
+  }
+  const four = lastFourOf(text);
+  if (four) {
+    return [
+      { kind: 'card', label: `＋ Add a credit card ending ${four}`, rows, last4: four, name: null, text },
+      { kind: 'account', label: `＋ Add a debit card or account ending ${four}`, rows, last4: four, name: null, text },
+    ];
+  }
+  const name = text.trim();
+  return [{ kind: 'account', label: `＋ Add an account named ${name}`, rows, last4: null, name, text }];
+}
+
+/**
+ * A card or account just added for a pasted text (`key`, its `paymentKey`): the text is remembered as it, so a later
+ * paste naming it fills in, and every waiting row (`waiting`) still naming the same digits, name or link fills in now —
+ * `fills` are those rows' new cells, to save as drafts. Their marks let the text go: the cell names what was added.
+ */
+export function fillAddedPaid(
+  text: string,
+  key: string,
+  waiting: readonly WaitingRow[],
+  store: NameStore | null = deviceStore(),
+): { marks: Record<string, PasteMark>; fills: WaitingRow[] } {
+  remember(PAID_KEY, text, key, store);
+  const marks = readMarks(store);
+  const group = pendingPaidKey(text);
+  const [accountId = '', cardId = ''] = key.split(':');
+  const fills: WaitingRow[] = [];
+  const next: Record<string, PasteMark> = { ...marks };
+  for (const row of waiting) {
+    const pending = pendingPaidOf(marks[row.id], row.values);
+    if (pending === null || pendingPaidKey(pending) !== group) continue;
+    next[row.id] = tidy({ ...marks[row.id]!, paid: undefined, paidGuessed: undefined });
+    fills.push({ id: row.id, values: { ...row.values, accountId, cardId } });
+  }
+  writeJson(store, MARKS_KEY, next);
+  return { marks: next, fills };
 }

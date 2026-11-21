@@ -366,3 +366,67 @@ test('a pasted category is matched with accents left out and “&” as “and�
   // A misspelling stays blank.
   await expect(draftRow(page, 'Kue Contoh').getByLabel('Row category')).toHaveValue('');
 });
+
+test('a pasted card or account not in cicis yet stays on its rows, is added from the cell in the side peek, and fills every row naming it', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(page, ['2026-09-14\tToko Buah Contoh\tGroceries\t5512\t412.300', '2026-09-13\tKedai Teh Contoh\tGroceries\t····5512\t58.000', '2026-09-12\tParkir Contoh\tParking\tJago\t15.000'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  const buah = draftRow(page, 'Toko Buah Contoh');
+  const teh = draftRow(page, 'Kedai Teh Contoh');
+  const parkir = draftRow(page, 'Parkir Contoh');
+  // The pasted text stays in the cell with a dashed line, and Record stays grey until it names a way to pay.
+  await expect(buah.getByTestId('paid-pending')).toHaveText('•• 5512');
+  await expect(teh.getByTestId('paid-pending')).toHaveText('•• 5512');
+  await expect(parkir.getByTestId('paid-pending')).toHaveText('Jago');
+  await expect(buah.getByLabel('Row paid with')).toHaveAttribute('title', 'Not in cicis yet');
+  for (const note of ['Toko Buah Contoh', 'Kedai Teh Contoh', 'Parkir Contoh']) await expect(recordOf(page, note)).toBeDisabled();
+  // Kept over a reload.
+  await page.reload();
+  await expect(buah.getByTestId('paid-pending')).toHaveText('•• 5512');
+  // Review lists the same rows, its Paid with cell showing the same text.
+  const nav = page.locator('aside').getByRole('navigation', { name: 'Sections' });
+  await nav.getByRole('link', { name: /^Review/ }).click();
+  await expect(page.getByTestId('draft-row').filter({ hasText: 'Toko Buah Contoh' }).getByTestId('paid-pending')).toHaveText('•• 5512');
+  await expect(page.getByTestId('draft-row').filter({ hasText: 'Parkir Contoh' }).getByTestId('paid-pending')).toHaveText('Jago');
+  await nav.getByRole('link', { name: /^Cashflow/ }).click();
+
+  // The cell's picker: what to add first, with the rows waiting for it, then the ways to pay already there.
+  await buah.getByLabel('Row paid with').click();
+  const list = page.getByRole('listbox');
+  await expect(list.getByRole('option')).toHaveText([/^＋ Add a credit card ending 5512\s*2 rows$/, '＋ Add a debit card or account ending 5512', /^Bank Contoh/]);
+  await list.getByRole('option', { name: /Add a credit card ending 5512/ }).click();
+  const peek = page.getByTestId('new-paid-peek');
+  await expect(peek.getByRole('heading')).toContainText('New credit card');
+  await expect(peek.getByTestId('new-paid-line')).toHaveText('From the pasted rows · 2 rows wait for it');
+  await expect(peek.getByLabel('Last 4 digits')).toHaveValue('5512');
+  await expect(peek.getByRole('button', { name: 'Add card' })).toBeDisabled();
+  await peek.getByLabel('Name').fill('Kartu Baru');
+  await peek.getByRole('button', { name: 'Add card' }).click();
+  await expect(peek).toHaveCount(0);
+  // Both rows naming 5512 fill in and can be recorded; Jago still waits.
+  await expect(buah.getByLabel('Row paid with')).toHaveValue('Kartu Baru');
+  await expect(teh.getByLabel('Row paid with')).toHaveValue('Kartu Baru');
+  await expect(buah.getByTestId('paid-pending')).toHaveCount(0);
+  await expect(recordOf(page, 'Toko Buah Contoh')).toBeEnabled();
+  await expect(recordOf(page, 'Kedai Teh Contoh')).toBeEnabled();
+  await expect(recordOf(page, 'Parkir Contoh')).toBeDisabled();
+
+  // A name works the same way: an account named Jago.
+  await parkir.getByLabel('Row paid with').click();
+  await expect(page.getByRole('listbox').getByRole('option').first()).toHaveText(/^＋ Add an account named Jago\s*1 row$/);
+  await page.getByRole('option', { name: /Add an account named Jago/ }).click();
+  await expect(peek.getByRole('heading')).toContainText('New account');
+  await expect(peek.getByLabel('Name')).toHaveValue('Jago');
+  await peek.getByRole('button', { name: 'Add account' }).click();
+  await expect(peek).toHaveCount(0);
+  await expect(parkir.getByLabel('Row paid with')).toHaveValue('Jago');
+  await expect(recordOf(page, 'Parkir Contoh')).toBeEnabled();
+
+  // A later paste naming 5512 (any mask) or Jago matches what was added.
+  await pasteInto(page, ['2026-09-20\tToko Lagi Contoh\tGroceries\txxxx 5512\t10.000', '2026-09-21\tParkir Lagi Contoh\tParking\tjago\t5.000'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(5);
+  await expect(draftRow(page, 'Toko Lagi Contoh').getByLabel('Row paid with')).toHaveValue('Kartu Baru');
+  await expect(draftRow(page, 'Parkir Lagi Contoh').getByLabel('Row paid with')).toHaveValue('Jago');
+  await expect(recordOf(page, 'Toko Lagi Contoh')).toBeEnabled();
+});

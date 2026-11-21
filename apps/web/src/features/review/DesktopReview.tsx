@@ -18,6 +18,7 @@ import { PaymentSheet } from '../transactions/PaymentSheet';
 import type { CellColumn } from '../transactions/cell-range';
 import { PICKED_CELL } from '../transactions/QuickRowEditor';
 import { paymentOptions } from '../transactions/quick-row';
+import { pendingPaidLabel, pendingPaidOf, readMarks } from '../transactions/paste-categories';
 import { CAPTURE_TYPES, type CaptureType, captureTypeOf } from './capture-type';
 import { captureRowView, effectiveCategory } from './capture-view';
 import type { Correction } from './draft-form';
@@ -241,6 +242,9 @@ export function DesktopReview({
     return () => document.removeEventListener('keydown', listen);
   }, []);
 
+  // What Cashflow's paste keeps on this device of its rows (`paste-categories`): a Paid with not in cicis yet, shown as pasted.
+  const pasteMarks = readMarks();
+
   // The blue cells: a range down one column of the queue (`review-cells`); starting one puts the peek away.
   const cells = useReviewCells({
     rows,
@@ -351,6 +355,7 @@ export function DesktopReview({
                     striped={index % 2 === 1}
                     peeked={peekId === draft.id}
                     pickedCell={cells.pickedColumn(draft.id)}
+                    pendingPaid={pendingPaidLabel(pendingPaidOf(pasteMarks[draft.id], { accountId: draft.accountId ?? '' }) ?? undefined)}
                     busy={busy}
                     onPeek={() => peek(draft.id)}
                     onOpen={() => (tab === 'pending' ? actions.onOpenForm(draft) : undefined)}
@@ -533,6 +538,7 @@ function DraftTableRow({
   striped,
   peeked,
   pickedCell,
+  pendingPaid,
   busy,
   onPeek,
   onOpen,
@@ -543,6 +549,8 @@ function DraftTableRow({
   draft: DraftRow;
   /** The column of its cell in a range of blue cells, if one is. */
   pickedCell: CellColumn | null;
+  /** A row pasted in Cashflow whose Paid with names nothing in cicis yet: the pasted text ("•• 5512"), as Cashflow's cell shows it. */
+  pendingPaid: string | null;
   /** Where it stands in the queue; null for one recorded or discarded (read only). */
   state: DeskDraftState | null;
   type: CaptureType | null;
@@ -648,6 +656,11 @@ function DraftTableRow({
               <span className="truncate">
                 {paid.name}
                 {paid.last4 && <span className="ml-1 text-[11px] text-[var(--ph-ink-3)] tabular-nums">{paid.last4}</span>}
+              </span>
+            ) : pendingPaid ? (
+              // Kept as pasted, with Cashflow's dashed line: not in cicis yet.
+              <span className="truncate text-[var(--ph-ink-2)]" title="Not in cicis yet" data-testid="paid-pending">
+                <span className="border-b border-dashed border-[var(--ph-ink-3)]">{pendingPaid}</span>
               </span>
             ) : (
               <span className={WARN}>Which account?</span>

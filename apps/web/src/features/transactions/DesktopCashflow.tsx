@@ -20,7 +20,8 @@ import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { DESK_COLUMNS, DESK_GRID, PICKED_CELL, type RowOptions } from './QuickRowEditor';
 import type { CellColumn } from './cell-range';
 import { useCashflowCells } from './cashflow-cells';
-import { forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, readMarks, unknownLinks, unknownLinksLine } from './paste-categories';
+import { type AddPaidChoice, addPaidChoices, fillAddedPaid, forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, pendingPaidLabel, pendingPaidOf, readMarks, rowsLine, unknownLinks, unknownLinksLine } from './paste-categories';
+import { NewPaidPeek } from './NewPaidPeek';
 import { quickFromDraft, type QuickValues, shortDate } from './quick-row';
 import { UndoToast } from '../../ui/UndoToast';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
@@ -385,7 +386,13 @@ export function DesktopCashflow({
     if (!one) return;
     document.querySelector(`[data-row-id="${CSS.escape(one)}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [one]);
-  const peeking = selected !== undefined || many;
+  // A pasted Paid with not in cicis yet, being added from its cell's picker: today's new card or account form in the peek.
+  const [adding, setAdding] = useState<AddPaidChoice | null>(null);
+  // Picking rows opens their own peek: the form gives way, as one peek does to another.
+  useEffect(() => {
+    if (selection.ids.length > 0) setAdding(null);
+  }, [selection.ids.length]);
+  const peeking = selected !== undefined || many || adding !== null;
   useEffect(() => {
     if (!peeking) return;
     const place = () => setPeekTop(Math.max(0, bar.current?.getBoundingClientRect().bottom ?? 52));
@@ -417,6 +424,12 @@ export function DesktopCashflow({
     const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
     const covered = filtering || picking || document.querySelector('[role="dialog"]') !== null;
     const shortcut = covered ? null : pageShortcut(event);
+    // Esc lets the new card or account form go, unless a field of it is being typed in.
+    if (adding && event.key === 'Escape' && !typing && !covered) {
+      event.preventDefault();
+      setAdding(null);
+      return;
+    }
     if (shortcut === 'new' && !readOnly) {
       event.preventDefault();
       onAdd();
@@ -517,6 +530,33 @@ export function DesktopCashflow({
     const mark = marks[id];
     const hint = paidHint(mark);
     return mark?.paidGuessed && hint ? { key: mark.paidGuessed, hint } : null;
+  };
+  // A waiting row's Paid with pasted as text that names nothing here yet: kept in the cell (dashed), and its picker offers
+  // to add it — a credit card or a debit card's account by the last four digits, an account by the name (`addPaidChoices`).
+  const markedRows = () => drafts.filter((draft) => marks[draft.id]).map((draft) => ({ id: draft.id, values: quickFromDraft(draft, today, accounts) }));
+  const paidPendingOf = (row: ListRow) => {
+    const text = pendingPaidOf(marks[row.id], { accountId: row.draft?.accountId ?? '' });
+    if (!text) return null;
+    const adds = readOnly
+      ? []
+      : addPaidChoices(text, markedRows(), marks).map((choice, i) => ({
+          key: choice.kind,
+          label: choice.label,
+          // The rows waiting for it, said once, on the first choice.
+          meta: i === 0 ? rowsLine(choice.rows) : undefined,
+          onPick: () => {
+            dispatch({ type: 'close' });
+            setAdding(choice);
+          },
+        }));
+    return { text: pendingPaidLabel(text), adds };
+  };
+  // Added: the text is remembered as the new account, and every waiting row naming it fills in (`fillAddedPaid`).
+  const addedPaid = async (choice: AddPaidChoice, accountId: string) => {
+    setAdding(null);
+    const { fills } = fillAddedPaid(choice.text, accountId, markedRows());
+    setMarks(readMarks());
+    for (const fill of fills) await handlers.saveDraft(fill.id, fill.values, false);
   };
   // Notion links among the waiting pasted rows this device does not know yet: a light grey count in the box header.
   const unknown = unknownLinks(marks, new Set(drafts.map((draft) => draft.id)));
@@ -761,7 +801,7 @@ export function DesktopCashflow({
                 {rows.map((row, index) =>
                   row.kind === 'draft' ? (
                     <li key={`d:${row.id}`} className="list-none">
-                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: index % 2 === 1 }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} pickedCell={cells.pickedColumn(row.id)} />
+                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: index % 2 === 1 }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.pickedColumn(row.id)} />
                     </li>
                   ) : (
                     <DeskRow
@@ -798,6 +838,7 @@ export function DesktopCashflow({
                       }}
                       guess={guessOf(row.id)}
                       paidGuess={paidGuessOf(row.id)}
+                      paidPending={paidPendingOf(row)}
                       pickedCell={cells.pickedColumn(row.id)}
                     />
                   </li>
@@ -823,6 +864,9 @@ export function DesktopCashflow({
           onStep={(by) => dispatch({ type: 'step', by, ids: peekIds })}
           onClose={() => dispatch({ type: 'close' })}
         />
+      )}
+      {adding && !selected && !many && (
+        <NewPaidPeek key={`${adding.kind}:${adding.text}`} top={peekTop} choice={adding} onClose={() => setAdding(null)} onCreated={(accountId) => void addedPaid(adding, accountId)} />
       )}
       {cells.picker}
       {/* Rows recorded from the waiting rows went to their own month: where, with Show › there, and Undo (option E). */}

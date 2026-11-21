@@ -283,7 +283,10 @@ export function NewCardForm({
   onCreated,
   embedded,
   lead,
+  initial,
 }: {
+  /** Answers to start from: a pasted card's last four digits (Cashflow's Add a credit card ending …). */
+  initial?: { last4?: string; name?: string };
   /** A row ahead of the card's own, for a page that offers the card as one kind among others (New account's Type). */
   lead?: ReactNode;
   /** Where saving goes instead of the card's own page, given the card account just made. */
@@ -298,13 +301,13 @@ export function NewCardForm({
   const resolveRates = useResolveRates();
   const today = isoDate();
   const [entryId, setEntryId] = useState('');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initial?.name ?? '');
   // The bank half of the row: the card's issuer, a catalogue card's own bank once one is picked.
   const [bank, setBank] = useState('');
   // A hand-typed card in another currency is ordinary, and the figure is read in whichever currency is chosen.
   const [currency, setCurrency] = useState(ws.baseCurrency);
   const [manualRate, setManualRate] = useState('');
-  const [last4, setLast4] = useState('');
+  const [last4, setLast4] = useState(initial?.last4 ?? '');
   const [owed, setOwed] = useState('');
   const [limit, setLimit] = useState('');
   const [memberLevel, setMemberLevel] = useState('');
