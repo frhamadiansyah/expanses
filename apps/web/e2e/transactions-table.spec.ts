@@ -55,7 +55,7 @@ test('an unfinished row waits as not recorded, and is finished in place', async 
   await expect(page.getByTestId('month-review')).toHaveText('1');
   await pick(waiting, 'Row paid with', 'bca');
   await pick(waiting, 'Row category', 'pharm');
-  await waiting.getByRole('button', { name: 'Record Apotek K24' }).click();
+  await recordRow(page, 'Apotek K24');
 
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
   await expect(page.getByTestId('transaction-row')).toContainText('Apotek K24');
@@ -116,6 +116,17 @@ async function pasteInto(page: Page, text: string) {
 }
 
 const draftRow = (page: Page, note: string) => page.getByTestId('not-recorded-row').filter({ has: page.locator(`input[value="${note}"]`) });
+const tickOf = (page: Page, note: string) => draftRow(page, note).getByTestId('waiting-tick');
+/** Return in one of its cells records a waiting row: the desk's row has no Record button of its own (option A). */
+async function recordRow(page: Page, note: string) {
+  await draftRow(page, note).getByLabel('Row description').click();
+  await page.keyboard.press('Enter');
+}
+/** ⌘-click picks a waiting row, ⌫ discards it (option A: no ✕ on the row). */
+async function discardRow(page: Page, note: string) {
+  await draftRow(page, note).getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  await page.keyboard.press('Backspace');
+}
 
 test('rows pasted in the table’s own column order land in the right cells, wait above the typing row, and are recorded one by one', async ({ page }) => {
   await page.clock.setSystemTime(new Date('2026-11-18T12:00:00'));
@@ -142,10 +153,10 @@ test('rows pasted in the table’s own column order land in the right cells, wai
   await expect(warung.getByLabel('Row date')).toHaveValue('16 Nov');
   // A category it cannot find is left empty, never guessed; its Record still records it, under Uncategorised.
   await expect(draftRow(page, 'Something odd').getByLabel('Row category')).toHaveValue('');
-  await expect(draftRow(page, 'Something odd').getByRole('button', { name: 'Record Something odd' })).toBeEnabled();
+  await expect(tickOf(page, 'Something odd')).toHaveAttribute('data-tick', 'on');
 
-  await pasar.getByRole('button', { name: 'Record Pasar Santa' }).click();
-  await warung.getByRole('button', { name: 'Record Warung Tegal' }).click();
+  await recordRow(page, 'Pasar Santa');
+  await recordRow(page, 'Warung Tegal');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await expect(page.getByTestId('transaction-row')).toHaveCount(2);
 
@@ -155,9 +166,8 @@ test('rows pasted in the table’s own column order land in the right cells, wai
   await expect(draftRow(page, 'Kios buah').getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?25\.000$/);
   await expect(draftRow(page, 'Kios buah').getByLabel('Row category')).toHaveValue('Groceries');
   await expect(page.locator('input[value="Note"]')).toHaveCount(0);
-  // ✕ (twice) discards a waiting row.
-  await draftRow(page, 'Kios sayur').getByRole('button', { name: 'Discard' }).click();
-  await draftRow(page, 'Kios sayur').getByRole('button', { name: 'Click again to discard' }).click();
+  // ⌘-click picks a waiting row and ⌫ discards it.
+  await discardRow(page, 'Kios sayur');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
 });
 

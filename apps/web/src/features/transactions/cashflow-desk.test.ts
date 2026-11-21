@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
-import { clickAction, countsAs, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, waitingOrder, waitingSpan } from './cashflow-desk-model';
+import { clickAction, countsAs, discardedLine, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, peekKey, recordable, recordedToast, recordTickedLabel, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, tickClick, waitingOrder, waitingSpan } from './cashflow-desk-model';
 import type { ListRow } from './list-model';
 import { PeekRow } from './ReceiptPeek';
 import { kindWord, peekFigure, receiptPeekLines } from './receipt-peek-model';
@@ -359,5 +359,33 @@ describe('the waiting rows, the typing row and Record', () => {
     expect(orderNote(DESK_SORT)).toBe('oldest at the top · new rows at the bottom');
     expect(orderNote({ key: 'date', dir: 'desc' })).toBe('newest at the top · new rows at the bottom');
     expect(orderNote({ key: 'amount', dir: 'desc' })).toBe('largest at the top · new rows at the bottom');
+  });
+});
+
+describe('the waiting rows’ circles (option A, owner 2026-11-21)', () => {
+  const order = ['a', 'b', 'c', 'd', 'e'];
+  // c misses its Paid with: it takes no tick.
+  const ready = new Set(['a', 'b', 'd', 'e']);
+  const click = (unticked: Set<string>, id: string, anchor: string | null = null, shift = false) => tickClick(unticked, { order, ready, anchor, id, shift });
+
+  it('starts every row that can be recorded ticked; a click turns its own circle and nothing else', () => {
+    expect([...click(new Set(), 'b')]).toEqual(['b']);
+    expect([...click(new Set(['b']), 'b')]).toEqual([]);
+    expect([...click(new Set(), 'c')]).toEqual([]);
+  });
+
+  it('⇧-click turns every ready circle from the last one clicked, to what the clicked one becomes, either way round', () => {
+    expect([...click(new Set(), 'e', 'a', true)].sort()).toEqual(['a', 'b', 'd', 'e']);
+    expect([...click(new Set(['a', 'b', 'd', 'e']), 'b', 'e', true)].sort()).toEqual(['a']);
+    // Without an anchor, or without ⇧, only the one clicked.
+    expect([...click(new Set(), 'd', null, true)]).toEqual(['d']);
+    expect([...click(new Set(), 'd', 'a', false)]).toEqual(['d']);
+  });
+
+  it('says the header button and the discard toast', () => {
+    expect(recordTickedLabel(0)).toBe('Record');
+    expect(recordTickedLabel(3)).toBe('Record 3');
+    expect(discardedLine(1)).toBe('Discarded 1 waiting row');
+    expect(discardedLine(2)).toBe('Discarded 2 waiting rows');
   });
 });

@@ -48,7 +48,17 @@ const draftRow = (page: Page, note: string) => page.getByTestId('not-recorded-ro
 /** A waiting row's figure, read as the recorded rows print it ("Rp 31.000") while its cell is not typed in. */
 const money = (figure: string) => new RegExp(`^Rp\\s?${figure.replace(/\./g, '\\.')}$`);
 /** A waiting row's own Record: black once complete, disabled (grey) while a cell is blank. */
-const recordOf = (page: Page, note: string) => draftRow(page, note).getByRole('button', { name: `Record ${note}` });
+const tickOf = (page: Page, note: string) => draftRow(page, note).getByTestId('waiting-tick');
+/** Return in one of its cells records a waiting row: the desk's row has no Record button of its own (option A). */
+async function recordRow(page: Page, note: string) {
+  await draftRow(page, note).getByLabel('Row description').click();
+  await page.keyboard.press('Enter');
+}
+/** ⌘-click picks a waiting row, ⌫ discards it (option A: no ✕ on the row). */
+async function discardRow(page: Page, note: string) {
+  await draftRow(page, note).getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  await page.keyboard.press('Backspace');
+}
 const cellOf = (row: Locator, column: string) => row.locator(`[data-cell="${column}"]`);
 
 /** Drags from one cell down to another in the same column: the blue range between them. */
@@ -65,7 +75,7 @@ test('three pasted rows with no category get one, picked once for the range, and
   await pasteInto(page, ['2026-10-14\tPasar Lama\t\tBank Contoh\t41.500', '2026-10-15\tKios Sayur\t\tBank Contoh\t17.250', '2026-10-16\tToko Beras\t\tBank Contoh\t96.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
   // A blank category does not hold Record back (the row would be recorded under Uncategorised).
-  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(recordOf(page, note)).toBeEnabled();
+  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(tickOf(page, note)).toHaveAttribute('data-tick', 'on');
 
   // The rows wait in the order pasted: Pasar Lama, Kios Sayur, Toko Beras. A drag down the Category cells picks the three
   // (⇧-click picks rows; once two cells are blue, ⇧-click in their column stretches them).
@@ -82,7 +92,7 @@ test('three pasted rows with no category get one, picked once for the range, and
   await page.getByRole('dialog', { name: 'Category for 3 rows' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await expect(page.getByTestId('cell-change')).toContainText('Changed 3 cells');
   for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('Groceries');
-  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(recordOf(page, note)).toBeEnabled();
+  for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await expect(tickOf(page, note)).toHaveAttribute('data-tick', 'on');
 
   // ⌘-click picks the three; the peek's Record 3 records them together, into the month on show.
   for (const note of ['Pasar Lama', 'Kios Sayur', 'Toko Beras']) await draftRow(page, note).getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
@@ -132,8 +142,8 @@ test('a range of recorded rows changes them by their own edit, never clears them
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
   await pasteInto(page, ['2026-10-16\tToko A\tGroceries\tBank Contoh\t11.000', '2026-10-15\tToko B\tGroceries\tBank Contoh\t12.000'].join('\n'));
-  await recordOf(page, 'Toko A').click();
-  await recordOf(page, 'Toko B').click();
+  await recordRow(page, 'Toko A');
+  await recordRow(page, 'Toko B');
   await expect(page.getByTestId('transaction-row')).toHaveCount(2);
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
 
@@ -188,8 +198,7 @@ test('pasted rows wait in Cashflow and in Review alike: counted by both, recorde
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Toko C' })).toHaveCount(1);
   await expect(page.getByTestId('month-review')).toHaveText('1');
   // ✕ (twice) in Cashflow discards it from Review too.
-  await draftRow(page, 'Toko D').getByRole('button', { name: 'Discard' }).click();
-  await draftRow(page, 'Toko D').getByRole('button', { name: 'Click again to discard' }).click();
+  await discardRow(page, 'Toko D');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
   await expect(page.getByTestId('month-review')).toHaveText('0');
   await expect(nav.getByRole('link', { name: /^Review/ })).toHaveText('Review');
@@ -224,9 +233,9 @@ test('a Notion copy reads right: its header names, YYYY/MM/DD dates, a card by i
   await expect(draftRow(page, 'Kedai Kopi Senja').getByLabel('Row paid with')).toHaveValue('Kartu Contoh');
   // Digits no card or account shows: the cell stays to be filled, never guessed.
   await expect(draftRow(page, 'Parkir Mal').getByLabel('Row paid with')).toHaveValue('');
-  await expect(recordOf(page, 'Toko Sumber Rejeki')).toBeEnabled();
-  await expect(recordOf(page, 'Kedai Kopi Senja')).toBeEnabled();
-  await expect(recordOf(page, 'Parkir Mal')).toBeDisabled();
+  await expect(tickOf(page, 'Toko Sumber Rejeki')).toHaveAttribute('data-tick', 'on');
+  await expect(tickOf(page, 'Kedai Kopi Senja')).toHaveAttribute('data-tick', 'on');
+  await expect(tickOf(page, 'Parkir Mal')).toHaveAttribute('data-tick', 'missing');
 });
 
 test('Notion’s whole rows (page links, no cells) are not pasted as notes: a line says how to copy cells', async ({ page }) => {
@@ -245,13 +254,13 @@ test('a paste’s empty category is guessed from the place’s last purchase, an
   await pasteInto(page, ['2026-10-10\tWarung Bu Sri\tRestaurants\tBank Contoh\t22.000', '2026-10-11\tKantin Kantor\tMakan\tBank Contoh\t19.000'].join('\n'));
   // "Makan" is no category's name: left blank, never guessed.
   await expect(draftRow(page, 'Kantin Kantor').getByLabel('Row category')).toHaveValue('');
-  await recordOf(page, 'Warung Bu Sri').click();
+  await recordRow(page, 'Warung Bu Sri');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   // Picked for that row and recorded: "Makan" is remembered as Restaurants on this device.
   const kantin = draftRow(page, 'Kantin Kantor');
   await kantin.getByLabel('Row category').fill('Restaurants');
   await kantin.getByLabel('Row category').press('Enter');
-  await kantin.getByRole('button', { name: 'Record Kantin Kantor' }).click();
+  await recordRow(page, 'Kantin Kantor');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
 
   await pasteInto(page, ['2026-10-12\tWarung Bu Sri\t\tBank Contoh\t24.000', '2026-10-13\tKantin Lantai 3\tmakan\tBank Contoh\t18.000', '2026-10-14\tToko Baru Sekali\t\tBank Contoh\t9.000'].join('\n'));
@@ -310,8 +319,7 @@ test('a Notion relation’s page links are picked once and remembered: the other
 
   // The rows discarded (✕, twice), then pasted again: the known links fill in on their own.
   for (const note of ['Pasar Contoh', 'Kios Contoh', 'Toko Contoh']) {
-    await draftRow(page, note).getByRole('button', { name: 'Discard' }).click();
-    await draftRow(page, note).getByRole('button', { name: 'Click again to discard' }).click();
+    await discardRow(page, note);
   }
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
   await expect(links).toHaveCount(0);
@@ -322,9 +330,9 @@ test('a Notion relation’s page links are picked once and remembered: the other
     await expect(draftRow(page, note).getByLabel('Row paid with')).toHaveValue('Bank Contoh');
   }
   await expect(links).toHaveText('1 Notion link to pick');
-  await expect(recordOf(page, 'Pasar Contoh')).toBeEnabled();
-  await expect(recordOf(page, 'Kios Contoh')).toBeEnabled();
-  await expect(recordOf(page, 'Toko Contoh')).toBeDisabled();
+  await expect(tickOf(page, 'Pasar Contoh')).toHaveAttribute('data-tick', 'on');
+  await expect(tickOf(page, 'Kios Contoh')).toHaveAttribute('data-tick', 'on');
+  await expect(tickOf(page, 'Toko Contoh')).toHaveAttribute('data-tick', 'missing');
 });
 
 test('a row recorded with its place’s history guess teaches its Notion link, and the other waiting row with that link fills in', async ({ page }) => {
@@ -332,7 +340,7 @@ test('a row recorded with its place’s history guess teaches its Notion link, a
   await page.goto('/transactions');
   // History for the first place only: one purchase there recorded as Restaurants.
   await pasteInto(page, '2026-10-08\tWarung Pak Darmo\tRestaurants\tBank Contoh\t27.000');
-  await recordOf(page, 'Warung Pak Darmo').click();
+  await recordRow(page, 'Warung Pak Darmo');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
 
   // Two places sharing one invented category link, not known on this device yet.
@@ -347,12 +355,12 @@ test('a row recorded with its place’s history guess teaches its Notion link, a
   await expect(page.getByTestId('links-to-pick')).toHaveText('1 Notion link to pick');
 
   // Recorded as it shows: the guess is the owner's yes, so the link is learnt and the other row fills in at once.
-  await recordOf(page, 'Warung Pak Darmo').click();
+  await recordRow(page, 'Warung Pak Darmo');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await expect(bakso.getByLabel('Row category')).toHaveValue('Restaurants');
   await expect(bakso.getByLabel('Row category')).toHaveAttribute('title', 'Category remembered for this Notion link');
   await expect(page.getByTestId('links-to-pick')).toHaveCount(0);
-  await expect(recordOf(page, 'Gerobak Bakso Contoh')).toBeEnabled();
+  await expect(tickOf(page, 'Gerobak Bakso Contoh')).toHaveAttribute('data-tick', 'on');
 });
 
 test('a pasted category is matched with accents left out and “&” as “and”, and nothing looser', async ({ page }) => {
@@ -380,7 +388,7 @@ test('a pasted card or account not in cicis yet stays on its rows, is added from
   await expect(teh.getByTestId('paid-pending')).toHaveText('•• 5512');
   await expect(parkir.getByTestId('paid-pending')).toHaveText('Jago');
   await expect(buah.getByLabel('Row paid with')).toHaveAttribute('title', 'Not in cicis yet');
-  for (const note of ['Toko Buah Contoh', 'Kedai Teh Contoh', 'Parkir Contoh']) await expect(recordOf(page, note)).toBeDisabled();
+  for (const note of ['Toko Buah Contoh', 'Kedai Teh Contoh', 'Parkir Contoh']) await expect(tickOf(page, note)).toHaveAttribute('data-tick', 'missing');
   // Kept over a reload.
   await page.reload();
   await expect(buah.getByTestId('paid-pending')).toHaveText('•• 5512');
@@ -408,9 +416,9 @@ test('a pasted card or account not in cicis yet stays on its rows, is added from
   await expect(buah.getByLabel('Row paid with')).toHaveValue('Kartu Baru');
   await expect(teh.getByLabel('Row paid with')).toHaveValue('Kartu Baru');
   await expect(buah.getByTestId('paid-pending')).toHaveCount(0);
-  await expect(recordOf(page, 'Toko Buah Contoh')).toBeEnabled();
-  await expect(recordOf(page, 'Kedai Teh Contoh')).toBeEnabled();
-  await expect(recordOf(page, 'Parkir Contoh')).toBeDisabled();
+  await expect(tickOf(page, 'Toko Buah Contoh')).toHaveAttribute('data-tick', 'on');
+  await expect(tickOf(page, 'Kedai Teh Contoh')).toHaveAttribute('data-tick', 'on');
+  await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('data-tick', 'missing');
 
   // A name works the same way: an account named Jago.
   await parkir.getByLabel('Row paid with').click();
@@ -421,12 +429,12 @@ test('a pasted card or account not in cicis yet stays on its rows, is added from
   await peek.getByRole('button', { name: 'Add account' }).click();
   await expect(peek).toHaveCount(0);
   await expect(parkir.getByLabel('Row paid with')).toHaveValue('Jago');
-  await expect(recordOf(page, 'Parkir Contoh')).toBeEnabled();
+  await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('data-tick', 'on');
 
   // A later paste naming 5512 (any mask) or Jago matches what was added.
   await pasteInto(page, ['2026-09-20\tToko Lagi Contoh\tGroceries\txxxx 5512\t10.000', '2026-09-21\tParkir Lagi Contoh\tParking\tjago\t5.000'].join('\n'));
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(5);
   await expect(draftRow(page, 'Toko Lagi Contoh').getByLabel('Row paid with')).toHaveValue('Kartu Baru');
   await expect(draftRow(page, 'Parkir Lagi Contoh').getByLabel('Row paid with')).toHaveValue('Jago');
-  await expect(recordOf(page, 'Toko Lagi Contoh')).toBeEnabled();
+  await expect(tickOf(page, 'Toko Lagi Contoh')).toHaveAttribute('data-tick', 'on');
 });

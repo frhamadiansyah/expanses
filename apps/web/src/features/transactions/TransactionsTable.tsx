@@ -1,6 +1,6 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow, PurchasePayer, TransactionView } from '@expanses/db';
-import { Lock, RotateCcw, X } from 'lucide-react';
+import { Check, Lock, RotateCcw, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button, cx } from '../../ui';
 import { payerLine } from '../sharing/sharing-copy';
@@ -33,6 +33,8 @@ export interface TableHandlers {
   saveDraft: (id: string, values: QuickValues, record: boolean, onRecorded?: (transactionId: string) => void) => Promise<boolean>;
   /** Takes recorded drafts back to waiting: each one's transaction voided, the draft reopened (the desk toast's Undo). */
   unrecord?: (recorded: readonly { draftId: string; transactionId: string }[]) => Promise<boolean>;
+  /** The desk's ⌫ toast's Undo: the waiting rows discarded wait again, as they were. */
+  undiscard?: (draftIds: readonly string[]) => Promise<boolean>;
   dismissDraft: (id: string) => Promise<boolean>;
   deleteRecorded: (id: string) => Promise<boolean>;
   /** Whether this row may be copied into a new one: the one rule the swipe, the receipt and the route share. */
@@ -71,7 +73,7 @@ const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof Quick
 const currencyOf = (values: QuickValues, accounts: readonly AccountRow[], base: string) => accounts.find((a) => a.id === values.accountId)?.currency ?? base;
 
 /** Deleting asks twice, in place. */
-function TwoTap({ busy, label, onConfirm, compact = false }: { busy: boolean; label: string; onConfirm: () => void; compact?: boolean }) {
+function TwoTap({ busy, label, onConfirm }: { busy: boolean; label: string; onConfirm: () => void }) {
   const [armed, setArmed] = useState(false);
   return (
     <button
@@ -83,12 +85,11 @@ function TwoTap({ busy, label, onConfirm, compact = false }: { busy: boolean; la
       onClick={() => (armed ? onConfirm() : setArmed(true))}
       className={cx(
         'inline-flex items-center justify-center text-xs font-medium',
-        // The desk's ✕ is as small as its Record, so the two fit the last column even beside the peek.
-        compact ? 'h-[24px] min-w-[24px] shrink-0 rounded-[5px] px-1' : 'h-8 rounded-lg px-2',
+        'h-8 rounded-lg px-2',
         armed ? 'bg-red-700 text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-red-700',
       )}
     >
-      {armed ? 'Sure?' : <X size={compact ? 14 : 16} aria-hidden />}
+      {armed ? 'Sure?' : <X size={16} aria-hidden />}
     </button>
   );
 }
@@ -106,6 +107,45 @@ interface DeskLayout {
   onPick?: (keys: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => void;
   /** A plain press on the row: the rows picked step aside while it is typed in, and a ⇧-click reaches from here. */
   onPress?: () => void;
+  /**
+   * A waiting row's circle (option A, owner 2026-11-21): `off` when unticked; a click (⇧ for a range) turns it. A row
+   * that cannot be recorded draws it dashed and takes no tick.
+   */
+  tick?: { off: boolean; onToggle: (shift: boolean) => void };
+}
+
+/**
+ * A waiting row's circle in the desk's first column: blue with a tick while it goes with the header's Record N, an
+ * empty blue ring once unticked, dashed grey while a date, amount or Paid with is missing (its hover says which).
+ */
+function TickButton({ ready, on, needs, description, onToggle }: { ready: boolean; on: boolean; needs: readonly string[]; description: string; onToggle: (shift: boolean) => void }) {
+  const name = description || 'row';
+  return (
+    <button
+      type="button"
+      data-testid="waiting-tick"
+      data-tick={ready ? (on ? 'on' : 'off') : 'missing'}
+      role="checkbox"
+      aria-checked={ready && on}
+      aria-disabled={!ready || undefined}
+      aria-label={ready ? `Record ${name}` : `${name}: needs ${needs.join(' & ')}`}
+      title={ready ? (on ? 'Goes with Record in the header · click to leave it out' : 'Left out · click to record it with the others') : `Needs ${needs.join(' & ')}`}
+      onClick={(event) => {
+        if (ready) onToggle(event.shiftKey);
+      }}
+      className="flex h-[22px] w-[22px] items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]"
+    >
+      <span
+        aria-hidden
+        className={cx(
+          'flex h-[15px] w-[15px] items-center justify-center rounded-full',
+          !ready ? 'border-[1.5px] border-dashed border-[var(--ph-ink-3)]' : on ? 'bg-[var(--mac-accent)] text-white' : 'border-[1.5px] border-[var(--mac-accent)]',
+        )}
+      >
+        {ready && on && <Check size={10} strokeWidth={3} />}
+      </span>
+    </button>
+  );
 }
 
 export function TypingRow({
@@ -327,7 +367,7 @@ export function EditableRow({
             cx(
               desk.selected
                 ? // White on the accent, as a picked recorded row; the category's mark on white, or it sinks into the blue.
-                  'bg-[var(--mac-accent)] text-white [&_[aria-label=Discard]]:text-white [&_[data-cell]]:text-white [&_[data-testid=category-mark]]:bg-white! [&_input:focus]:text-[var(--ph-ink)]'
+                  'bg-[var(--mac-accent)] text-white [&_[data-tick]>span]:border-white [&_[data-tick=on]>span]:bg-white [&_[data-tick=on]>span]:text-[var(--mac-accent)] [&_[data-cell]]:text-white [&_[data-testid=category-mark]]:bg-white! [&_input:focus]:text-[var(--ph-ink)]'
                 : cx('text-[var(--ph-ink)]', desk.striped && 'bg-[var(--mac-zebra)]'),
             )
           : cx('border-b border-slate-100', isDraft && 'bg-amber-50/70 shadow-[inset_3px_0_0_#f59e0b]', !isDraft && dirty && 'bg-indigo-50/60 shadow-[inset_3px_0_0_#6366f1]'),
@@ -359,6 +399,11 @@ export function EditableRow({
         paidPending={values.accountId ? null : paidPending}
         cellRow={desk ? row.id : undefined}
         pickedCell={pickedCell}
+        lead={
+          isDraft && desk?.tick ? (
+            <TickButton ready={needs.length === 0 && !busy} on={!desk.tick.off} needs={needs} description={values.description} onToggle={desk.tick.onToggle} />
+          ) : undefined
+        }
         values={values}
         onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
         needs={isDraft || dirty ? needs : []}
@@ -369,18 +414,16 @@ export function EditableRow({
         onCancel={() => setValues(initial)}
         actions={
           isDraft ? (
-            <>
-              {desk ? (
-                <button type="button" className={cx(DESK_RECORD, desk.selected && 'outline outline-1 outline-white/70')} disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
-                  Record
-                </button>
-              ) : (
+            // The desk's waiting row has no buttons of its own (option A): its circle and the header's Record N, Return,
+            // and ⌫ on the row picked.
+            desk ? null : (
+              <>
                 <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
                   Record
                 </Button>
-              )}
-              <TwoTap busy={busy} label="Discard" compact={!!desk} onConfirm={() => void handlers.dismissDraft(row.id)} />
-            </>
+                <TwoTap busy={busy} label="Discard" onConfirm={() => void handlers.dismissDraft(row.id)} />
+              </>
+            )
           ) : dirty ? (
             <>
               <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Save the change'} onClick={save}>

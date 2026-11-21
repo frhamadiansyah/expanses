@@ -260,6 +260,33 @@ export function recordable<T extends { id: string; draft?: DraftRow | null }>(
   return { ready, skipped: chosen.length - ready.length };
 }
 
+/**
+ * The waiting rows' circles (Mac Cashflow waiting rows, option A, owner 2026-11-21): a row that can be recorded starts
+ * ticked, so only the ones unticked are kept. A click turns its own circle; a ⇧-click every circle from the last one
+ * clicked to it, each as the clicked one now is. A row that cannot be recorded (a date, amount or Paid with missing)
+ * takes no tick.
+ */
+export function tickClick(unticked: ReadonlySet<string>, at: { order: readonly string[]; ready: ReadonlySet<string>; anchor: string | null; id: string; shift: boolean }): Set<string> {
+  const next = new Set(unticked);
+  if (!at.ready.has(at.id)) return next;
+  const on = unticked.has(at.id);
+  const from = at.shift && at.anchor ? at.order.indexOf(at.anchor) : -1;
+  const to = at.order.indexOf(at.id);
+  const span = from >= 0 && to >= 0 ? at.order.slice(Math.min(from, to), Math.max(from, to) + 1) : [at.id];
+  for (const id of span) {
+    if (!at.ready.has(id)) continue;
+    if (on) next.delete(id);
+    else next.add(id);
+  }
+  return next;
+}
+
+/** The header's one button: "Record 3" for the rows ticked, "Record" (grey) while none is. */
+export const recordTickedLabel = (count: number) => (count > 0 ? `Record ${count}` : 'Record');
+
+/** The toast after ⌫: "Discarded 1 waiting row", "Discarded 3 waiting rows". */
+export const discardedLine = (count: number) => `Discarded ${count} waiting ${count === 1 ? 'row' : 'rows'}`;
+
 /** Under Record N: "1 missing a date, amount or Paid with is skipped" (a blank category skips nothing). */
 export const skippedLine = (count: number) => `${count} missing a date, amount or Paid with ${count === 1 ? 'is' : 'are'} skipped`;
 

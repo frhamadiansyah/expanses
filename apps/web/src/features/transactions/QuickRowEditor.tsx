@@ -13,21 +13,21 @@ import { foldName, lastFourOf, matchLastFour, payerOptions, paymentKey, type Qui
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
 
 /**
- * The wide screen's Cashflow table (Mac Cashflow D): Date, Note, Category, Paid with, Amount, then what the row can
- * do (what a category counts as is the peek's to say, not a column's). The typing row lays its cells out in this order too, so Tab moves along the columns as they read. The
+ * The wide screen's Cashflow table (Mac Cashflow D): a waiting row's circle (option A, 2026-11-21), Date, Note,
+ * Category, Paid with, Amount, then what the row can do (what a category counts as is the peek's to say, not a column's). The typing row lays its cells out in this order too, so Tab moves along the columns as they read. The
  * columns themselves are the table's to say (`--desk-cols`, one of `DESK_COLUMNS`), so every row narrows at once.
  */
 export const DESK_GRID = 'grid grid-cols-[var(--desk-cols)] items-center gap-px';
 
 /**
- * The table's columns: `wide` across the box; `peek` while the side peek takes the right of the page. Note and
- * Category get the room first, Amount is as wide as a figure and no wider, and the last column holds Record and its ✕
- * whole.
+ * The table's columns: `wide` across the box; `peek` while the side peek takes the right of the page. A narrow first one
+ * for a waiting row's circle; Note and Category get the room first, Amount is as wide as a figure and no wider, and the
+ * last column holds the typing row's Record whole.
  */
 export const DESK_COLUMNS = {
   // Date holds another year's whole "13 Sep 2025", a waiting row's or a recorded one's.
-  wide: '6.5rem minmax(0,2fr) minmax(0,1.7fr) minmax(0,1.2fr) 8rem 6rem',
-  peek: '6.25rem minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,1fr) 7.25rem 5.75rem',
+  wide: '1.75rem 6.5rem minmax(0,2fr) minmax(0,1.7fr) minmax(0,1.2fr) 8rem 4.5rem',
+  peek: '1.75rem 6.25rem minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,1fr) 7.25rem 4.25rem',
 } as const;
 
 const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
@@ -138,6 +138,7 @@ export function QuickRowEditor({
   cellRow,
   pickedCell,
   onTabOut,
+  lead,
 }: {
   values: QuickValues;
   onChange: (patch: Partial<QuickValues>) => void;
@@ -173,6 +174,8 @@ export function QuickRowEditor({
    * starts a fresh one). Otherwise Tab goes on to the next row's Date, as a spreadsheet does.
    */
   onTabOut?: () => boolean;
+  /** The desk's first column: a waiting row's circle; blank on the typing row. */
+  lead?: ReactNode;
 }) {
   const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
     if (onPaste?.(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'))) event.preventDefault();
@@ -279,6 +282,9 @@ export function QuickRowEditor({
   const cells =
     layout === 'desk'
       ? [
+          <div key="lead" className="flex items-center justify-center">
+            {lead}
+          </div>,
           cell('date', date),
           cell('description', description),
           cell('category', category),

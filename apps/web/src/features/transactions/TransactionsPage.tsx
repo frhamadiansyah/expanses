@@ -1063,6 +1063,11 @@ export function TransactionsPage() {
       }
     });
 
+  const undiscard = (draftIds: readonly string[]) =>
+    run('undiscard', async () => {
+      for (const draftId of draftIds) await reopenDraft(database, ws, draftId);
+    });
+
   /** Deleting asks twice, in place: the first press arms the button, the second deletes. */
   function twoTap(id: string, label: string, armedLabel: string, work: () => Promise<unknown>) {
     return (
@@ -1383,6 +1388,7 @@ export function TransactionsPage() {
     saveRecorded,
     saveDraft,
     unrecord,
+    undiscard,
     dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
     deleteRecorded: (id) => run(id, () => deleteTransaction(database, ws, id)),
     canDuplicate: (tx) => duplicable(tx) && !readOnly && !elsewhereOf(tx.id),

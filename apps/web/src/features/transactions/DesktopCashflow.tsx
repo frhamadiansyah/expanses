@@ -12,7 +12,7 @@ import { CategoryIcon, useCategoryMarkColour } from '../categories/CategoryIcon'
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
-import { clickAction, deskAmount, monthFigures, orderNote, pageShortcut, peekKey, recordable, recordedToast, ringLegend, type Selection, type SelectionAction, skippedLine, waitingOrder, waitingSpan } from './cashflow-desk-model';
+import { clickAction, deskAmount, discardedLine, monthFigures, orderNote, pageShortcut, peekKey, recordable, recordedToast, recordTickedLabel, ringLegend, type Selection, type SelectionAction, skippedLine, tickClick, waitingOrder, waitingSpan } from './cashflow-desk-model';
 import { type BulkActions, type RecordMany, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
@@ -441,6 +441,18 @@ export function DesktopCashflow({
       search.current?.select();
       return;
     }
+    // ⌫ (or Delete) discards the waiting rows picked, or the one whose circle has the focus, with Undo on the toast; never
+    // while a cell is typed in, and never a recorded row (its peek's Delete asks twice).
+    if ((event.key === 'Backspace' || event.key === 'Delete') && !typing && !covered && !readOnly && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      const own = target?.closest('[data-testid="not-recorded-row"]')?.getAttribute('data-row-id');
+      const chosen = selection.ids.length > 0 ? selection.ids : own ? [own] : [];
+      const waitingIds = new Set([...rows.filter((row) => row.kind === 'draft'), ...waiting].map((row) => row.id));
+      if (chosen.length > 0 && chosen.every((id) => waitingIds.has(id))) {
+        event.preventDefault();
+        void discardWaiting(chosen);
+        return;
+      }
+    }
     // ⌘A in a field selects its text, as everywhere; on the table it picks every row listed.
     if (shortcut === 'all' && !typing) {
       event.preventDefault();
@@ -563,9 +575,33 @@ export function DesktopCashflow({
   // Record N: the waiting rows picked that can be recorded, one after another, each as its own Record records it. Record
   // all: every waiting row that can. Only a date, amount or Paid with missing leaves a row waiting (`recordable`).
   const pickedWaiting = recordable(selection.ids, waiting, accounts, today, baseCurrency);
-  const allWaiting = recordable(waiting.map((row) => row.id), waiting, accounts, today, baseCurrency);
+  // Every row not recorded yet on show: a capture or an import among its month's rows, then the rows typed or pasted here.
+  const tickable = [...rows.filter((row) => row.kind === 'draft'), ...waiting];
+  const allWaiting = recordable(tickable.map((row) => row.id), tickable, accounts, today, baseCurrency);
   const waitingPicked = waiting.filter((row) => picked.has(row.id)).length;
+  // The waiting rows' circles (option A, owner 2026-11-21): every row that can be recorded starts ticked; the header's one
+  // Record N records those still ticked. A ⇧-click on a circle turns every circle from the last one clicked.
+  const [unticked, setUnticked] = useState<ReadonlySet<string>>(() => new Set());
+  const tickAnchor = useRef<string | null>(null);
+  const readyIds = new Set(allWaiting.ready.map((row) => row.id));
+  const ticked = allWaiting.ready.filter((row) => !unticked.has(row.id));
+  const toggleTick = (id: string, shift: boolean) => {
+    const at = { order: tickable.map((row) => row.id), ready: readyIds, anchor: tickAnchor.current, id, shift };
+    setUnticked((was) => tickClick(was, at));
+    tickAnchor.current = id;
+  };
+  // ⌫'s toast: the rows discarded, put back by its Undo; a pasted row's marks are let go only once the toast has gone.
+  const [discarded, setDiscarded] = useState<string[] | null>(null);
+  const discardWaiting = async (chosen: readonly string[]) => {
+    const gone: string[] = [];
+    for (const id of chosen) if (await handlers.dismissDraft(id)) gone.push(id);
+    if (gone.length === 0) return;
+    dispatch({ type: 'close' });
+    setRecorded(null);
+    setDiscarded((was) => [...(was ?? []), ...gone]);
+  };
   const recordMany = async (which: { ready: readonly ListRow[]; skipped: number }) => {
+    setDiscarded(null);
     setRecordingMany(true);
     batch.current = [];
     try {
@@ -752,17 +788,17 @@ export function DesktopCashflow({
               <span className={NOTE} data-testid="table-note">
                 {cells.hint ?? limitNote ?? orderNote(sort)}
               </span>
-              {/* Record all (option A, owner 2026-11-18): every waiting row that can be recorded, one toast for them all. */}
-              {waiting.length > 0 && !readOnly && (
+              {/* Record N (waiting rows option A, owner 2026-11-21): the rows ticked, one toast for them all; grey at none. */}
+              {tickable.length > 0 && !readOnly && (
                 <button
                   type="button"
-                  data-testid="record-all"
-                  disabled={recordingMany || allWaiting.ready.length === 0}
-                  title={allWaiting.skipped > 0 ? skippedLine(allWaiting.skipped) : 'Record every waiting row'}
-                  onClick={() => void recordMany(allWaiting)}
+                  data-testid="record-ticked"
+                  disabled={recordingMany || ticked.length === 0}
+                  title={ticked.length > 0 ? 'Record the rows ticked' : allWaiting.ready.length > 0 ? 'Tick a row to record it' : 'Each waiting row still needs a date, amount or Paid with'}
+                  onClick={() => void recordMany({ ready: ticked, skipped: 0 })}
                   className="self-center rounded-[6px] bg-[var(--ph-ink)] px-[11px] py-[3px] text-[12px] font-medium whitespace-nowrap text-[var(--ph-surface)] disabled:bg-[var(--ph-chevron)] disabled:text-white"
                 >
-                  {allWaiting.ready.length > 0 ? `Record all ${allWaiting.ready.length}` : 'Record all'}
+                  {recordTickedLabel(ticked.length)}
                 </button>
               )}
             </span>
@@ -771,6 +807,7 @@ export function DesktopCashflow({
           <div className="overflow-x-auto border-t border-[var(--ph-hair)]">
             <div className={cx('text-[13px]', peeking ? 'min-w-[560px]' : 'min-w-[700px]')}>
               <div className={cx(DESK_GRID, 'sticky top-0 border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-0.5 text-[11px] font-semibold text-[var(--ph-ink-3)]')}>
+                <span />
                 <button type="button" aria-sort={ariaSort('date')} onClick={() => sortBy('date')} className="px-2 py-[7px] text-left hover:text-[var(--ph-ink)]">
                   Date{sortMark('date')}
                 </button>
@@ -801,7 +838,7 @@ export function DesktopCashflow({
                 {rows.map((row, index) =>
                   row.kind === 'draft' ? (
                     <li key={`d:${row.id}`} className="list-none">
-                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: index % 2 === 1 }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.pickedColumn(row.id)} />
+                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: index % 2 === 1, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.pickedColumn(row.id)} />
                     </li>
                   ) : (
                     <DeskRow
@@ -834,6 +871,7 @@ export function DesktopCashflow({
                         onPick: (keys) => dispatch(clickAction(row.id, keys, ids)),
                         // Typing in it lets the rows picked go; a ⇧-click on another waiting row reaches from here.
                         onPress: () => dispatch({ type: 'anchor', id: row.id }),
+                        tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) },
                       }}
                       guess={guessOf(row.id)}
                       paidGuess={paidGuessOf(row.id)}
@@ -862,6 +900,26 @@ export function DesktopCashflow({
           last={at === peekIds.length - 1}
           onStep={(by) => dispatch({ type: 'step', by, ids: peekIds })}
           onClose={() => dispatch({ type: 'close' })}
+        />
+      )}
+      {/* ⌫ on waiting rows: how many went, with Undo (option A). */}
+      {discarded && (
+        <UndoToast
+          key={discarded.join(',')}
+          icon="discarded"
+          testId="discarded-toast"
+          text={discardedLine(discarded.length)}
+          wide
+          onUndo={() => {
+            const ids = discarded;
+            setDiscarded(null);
+            void handlers.undiscard?.(ids);
+          }}
+          onDone={() => {
+            for (const id of discarded) forgetMark(id);
+            setMarks(readMarks());
+            setDiscarded(null);
+          }}
         />
       )}
       {adding && !selected && !many && (
@@ -987,6 +1045,8 @@ function DeskRow({
         row.deleted && 'opacity-50',
       )}
     >
+      {/* The first column is a waiting row's circle: a recorded row has none. */}
+      <span />
       <span {...cell('date')} className={cx('truncate px-2 py-[5px] tabular-nums', grey, blue('date'))}>
         {shortDate(row.date, today)}
       </span>
@@ -1049,7 +1109,7 @@ function DeskRow({
           {formatMinor(amount.minor, row.currency)}
         </span>
       </span>
-      {/* The last column is the waiting rows' (Record, ✕): a recorded row opens its peek on a click instead. */}
+      {/* The last column is the typing row's Record: a recorded row opens its peek on a click instead. */}
       <span />
     </li>
   );

@@ -45,7 +45,7 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
   const superindo = draftRow(page, 'SUPERINDO KEBAYORAN');
   // The parser guessed Miscellaneous, which is a category, so the row is complete enough to record.
   await expect(superindo.getByLabel('Row category')).toHaveValue('Miscellaneous');
-  await expect(superindo.getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' })).toBeEnabled();
+  await expect(superindo.getByTestId('waiting-tick')).toHaveAttribute('data-tick', 'on');
 
   await page.goto('/review');
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
@@ -94,7 +94,8 @@ test('a capture is finished and recorded from the transactions list itself', asy
   await page.goto('/transactions');
   const apotek = draftRow(page, 'APOTEK K24');
   await apotek.getByLabel('Row amount (IDR)').fill('80.000');
-  await apotek.getByRole('button', { name: 'Record APOTEK K24' }).click();
+  // Return in its cells records it: the desk's waiting row has no Record button of its own.
+  await apotek.getByLabel('Row amount (IDR)').press('Enter');
 
   // Recorded, it is a row of the month like any other — and the draft beside it still waits, still counted.
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'APOTEK K24' })).toContainText('80.000');

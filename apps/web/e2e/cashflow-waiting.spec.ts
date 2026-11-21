@@ -24,7 +24,17 @@ async function pasteInto(page: Page, text: string) {
 }
 
 const draftRow = (page: Page, note: string) => page.getByTestId('not-recorded-row').filter({ has: page.locator(`input[value="${note}"]`) });
-const recordOf = (page: Page, note: string) => draftRow(page, note).getByRole('button', { name: `Record ${note}` });
+const tickOf = (page: Page, note: string) => draftRow(page, note).getByTestId('waiting-tick');
+/** Return in one of its cells records a waiting row: the desk's row has no Record button of its own (option A). */
+async function recordRow(page: Page, note: string) {
+  await draftRow(page, note).getByLabel('Row description').click();
+  await page.keyboard.press('Enter');
+}
+/** ⌘-click picks a waiting row, ⌫ discards it (option A: no ✕ on the row). */
+async function discardRow(page: Page, note: string) {
+  await draftRow(page, note).getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  await page.keyboard.press('Backspace');
+}
 const cellOf = (row: Locator, column: string) => row.locator(`[data-cell="${column}"]`);
 
 async function dragCells(page: Page, from: Locator, to: Locator) {
@@ -79,7 +89,7 @@ test('rows pasted from two months back wait just above the typing row, are fille
   );
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(4);
   // Oldest at the top; the pasted rows in the order pasted just above the typing row, which is the last row.
-  expect(await tableOrder(page)).toEqual(['Warung Pagi', 'Toko Siang', 'Kedai Contoh', 'Bioskop Contoh', 'Teh Contoh', 'Kopi Contoh', '(typing row)']);
+  await expect.poll(() => tableOrder(page)).toEqual(['Warung Pagi', 'Toko Siang', 'Kedai Contoh', 'Bioskop Contoh', 'Teh Contoh', 'Kopi Contoh', '(typing row)']);
   await expect(draftRow(page, 'Teh Contoh').getByLabel('Row date')).toHaveValue('13 Sep');
   // Not repeated in their own month's list.
   await page.getByRole('button', { name: 'Earlier period' }).click();
@@ -93,8 +103,8 @@ test('rows pasted from two months back wait just above the typing row, are fille
 
   // Black Record once the date, amount and Paid with read — a blank category does not hold it back (it records under
   // Uncategorised) — grey while one of those is blank, as the empty typing row's; the same text colours as a recorded row.
-  await expect(recordOf(page, 'Kedai Contoh')).toBeEnabled();
-  await expect(recordOf(page, 'Teh Contoh')).toBeEnabled();
+  await expect(tickOf(page, 'Kedai Contoh')).toHaveAttribute('data-tick', 'on');
+  await expect(tickOf(page, 'Teh Contoh')).toHaveAttribute('data-tick', 'on');
   await expect(page.getByTestId('typing-row').getByRole('button', { name: 'Record', exact: true })).toBeDisabled();
   const colours = await page.evaluate(() => {
     const read = (el: Element | null | undefined) => (el ? getComputedStyle(el).color : null);
@@ -106,13 +116,14 @@ test('rows pasted from two months back wait just above the typing row, are fille
       note: [read(recorded?.querySelector('[data-cell="description"]')), read(waiting?.querySelector('[data-cell="description"] input'))],
       paid: [read(recorded?.querySelector('[data-cell="paid"]')), read(waiting?.querySelector('[data-cell="paid"] input'))],
       amount: [read(recorded?.querySelector('[data-cell="amount"]')), read(waiting?.querySelector('[data-cell="amount"] input'))],
-      complete: ground(waiting?.querySelector('button[aria-label="Record Kedai Contoh"]')),
       blank: ground([...document.querySelectorAll('[data-testid="typing-row"] button')].find((b) => b.textContent === 'Record')),
+      header: ground(document.querySelector('[data-testid="record-ticked"]')),
     };
   });
   for (const pair of [colours.date, colours.note, colours.paid, colours.amount]) expect(pair[1]).toBe(pair[0]);
-  expect(colours.complete).toBe('rgb(28, 28, 30)');
-  expect(colours.blank).not.toBe(colours.complete);
+  // The header's Record N is black while a row is ticked; the blank typing row's Record grey.
+  expect(colours.header).toBe('rgb(28, 28, 30)');
+  expect(colours.blank).not.toBe(colours.header);
   await expect(draftRow(page, 'Kedai Contoh').getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?60\.700$/);
   // No amber row or orange box, and no blue cell at rest.
   await expectNoAmber(page);
@@ -130,14 +141,14 @@ test('rows pasted from two months back wait just above the typing row, are fille
   await expect(page.locator('[data-picked="true"]')).toHaveCount(0);
 
   // One by its own Record: it leaves the waiting rows; the toast says where, and Undo brings it back.
-  await recordOf(page, 'Kedai Contoh').click();
+  await recordRow(page, 'Kedai Contoh');
   const toast = page.getByTestId('recorded-toast');
   await expect(toast).toContainText('Recorded in September 2026');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
   await expect(page.getByTestId('transaction-row')).toHaveCount(2);
   await toast.getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(4);
-  await recordOf(page, 'Kedai Contoh').click();
+  await recordRow(page, 'Kedai Contoh');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
 
   // ⌘-click picks the other three; Record 3 records them together, one toast for them all.
@@ -229,7 +240,7 @@ test('a waiting row says its date as a recorded row does: no year in this one, t
   await draftRow(page, 'Kue Contoh').getByLabel('Row description').click();
   await expect(teh.getByLabel('Row date')).toHaveValue('14 Sep');
   // Recorded, it says the same in September's list.
-  await recordOf(page, 'Teh Contoh').click();
+  await recordRow(page, 'Teh Contoh');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await page.getByRole('button', { name: 'Earlier period' }).click();
   await page.getByRole('button', { name: 'Earlier period' }).click();
@@ -267,7 +278,7 @@ test('Tab moves along the typing row, past Amount keeps it waiting and starts a 
   // Tab past Amount: the row waits with its Record, and a fresh row's Date takes the typing, the day and Paid with carried.
   await page.keyboard.press('Tab');
   await expect(draftRow(page, 'Roti Contoh')).toHaveCount(1);
-  await expect(recordOf(page, 'Roti Contoh')).toBeEnabled();
+  await expect(tickOf(page, 'Roti Contoh')).toHaveAttribute('data-tick', 'on');
   await expect(page.getByTestId('transaction-row')).toHaveCount(0);
   await expect(typing.getByLabel('Row date')).toBeFocused();
   await expect(typing.getByLabel('Row date')).toHaveValue('18 Nov');
@@ -306,7 +317,7 @@ test('Tab moves along the typing row, past Amount keeps it waiting and starts a 
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
 });
 
-test('Record all records every waiting row with a date, amount and Paid with — a blank category under Uncategorised — and Undo puts them all back', async ({ page }) => {
+test('Record N records the waiting rows ticked — each that can be recorded starts ticked, a blank category under Uncategorised — and Undo puts them all back', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
   // Two months; Bioskop Contoh with no category, Parkir Contoh with no Paid with.
@@ -316,32 +327,46 @@ test('Record all records every waiting row with a date, amount and Paid with —
   );
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(4);
   await expect(draftRow(page, 'Bioskop Contoh').getByLabel('Row category')).toHaveValue('');
-  await expect(recordOf(page, 'Bioskop Contoh')).toBeEnabled();
-  await expect(recordOf(page, 'Parkir Contoh')).toBeDisabled();
-  // The box header's black Record all, counting what it would record.
-  const all = page.getByTestId('record-all');
-  await expect(all).toHaveText('Record all 3');
+  await expect(tickOf(page, 'Bioskop Contoh')).toHaveAttribute('data-tick', 'on');
+  await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('data-tick', 'missing');
+  // The box header's one black Record N, counting the rows ticked; the dashed circle says what is missing on hover.
+  const all = page.getByTestId('record-ticked');
+  await expect(all).toHaveText('Record 3');
+  await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('title', 'Needs paid with');
   await page.screenshot({ path: test.info().outputPath('record-all.png') });
+  // A click leaves a row out, and puts it back; a dashed circle takes no tick.
+  await tickOf(page, 'Kedai Contoh').click();
+  await expect(tickOf(page, 'Kedai Contoh')).toHaveAttribute('data-tick', 'off');
+  await expect(all).toHaveText('Record 2');
+  await tickOf(page, 'Parkir Contoh').click({ force: true });
+  await expect(tickOf(page, 'Parkir Contoh')).toHaveAttribute('data-tick', 'missing');
+  await expect(all).toHaveText('Record 2');
+  // ⇧-click turns every circle from the last one clicked: all of them off, then all on again.
+  await tickOf(page, 'Pasar Contoh').click({ modifiers: ['Shift'] });
+  await expect(all).toHaveText('Record');
+  await expect(all).toBeDisabled();
+  await tickOf(page, 'Kedai Contoh').click({ modifiers: ['Shift'] });
+  await expect(all).toHaveText('Record 3');
 
   await all.click();
   const toast = page.getByTestId('recorded-toast');
-  await expect(toast).toContainText('Recorded 3 in August and September 2026 · 1 skipped');
+  await expect(toast).toContainText('Recorded 3 in August and September 2026');
   await expect(toast.getByRole('button', { name: 'Show ›' })).toBeVisible();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await expect(draftRow(page, 'Parkir Contoh')).toHaveCount(1);
-  await expect(all).toHaveText('Record all');
+  await expect(all).toHaveText('Record');
   await expect(all).toBeDisabled();
 
   // Undo: all three wait again, Bioskop Contoh's category blank as it was.
   await toast.getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(4);
   await expect(draftRow(page, 'Bioskop Contoh').getByLabel('Row category')).toHaveValue('');
-  await expect(all).toHaveText('Record all 3');
+  await expect(all).toHaveText('Record 3');
 
   // Again, then Show › to September: Bioskop Contoh is recorded under Uncategorised, and Filter's "Waiting for a
   // category" lists it alone.
   await all.click();
-  await expect(toast).toContainText('Recorded 3 in August and September 2026 · 1 skipped');
+  await expect(toast).toContainText('Recorded 3 in August and September 2026');
   await toast.getByRole('button', { name: 'Show ›' }).click();
   await expect(page.getByTestId('chart-month')).toHaveText('September 2026');
   const bioskop = page.getByTestId('transaction-row').filter({ hasText: 'Bioskop Contoh' });
@@ -359,6 +384,43 @@ test('Record all records every waiting row with a date, amount and Paid with —
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/transactions');
   await expect(page.getByTestId('needs-category-card')).toContainText('1 needs a category');
+});
+
+test('a waiting row has a circle and no buttons of its own: Return records it, ⌫ on the rows picked discards them, and Undo brings them back', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(page, ['2026-11-03\tRoti Contoh\tRestaurants\tBank Contoh\t15.000', '2026-11-04\tSate Contoh\tRestaurants\tBank Contoh\t42.000', '2026-11-05\tKopi Contoh\tRestaurants\t\t9.000'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  const roti = draftRow(page, 'Roti Contoh');
+  await expect(roti.getByRole('button', { name: /^Record/ })).toHaveCount(0);
+  await expect(roti.getByRole('button', { name: 'Discard' })).toHaveCount(0);
+  // The typing row and the recorded rows have no circle.
+  await expect(page.getByTestId('typing-row').getByTestId('waiting-tick')).toHaveCount(0);
+  await expect(page.getByTestId('waiting-tick')).toHaveCount(3);
+  await expect(tickOf(page, 'Kopi Contoh')).toHaveAttribute('data-tick', 'missing');
+  await expect(page.getByTestId('record-ticked')).toHaveText('Record 2');
+
+  // Return in a row typed in records it.
+  await recordRow(page, 'Roti Contoh');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Roti Contoh' })).toHaveCount(1);
+  await expect(page.getByTestId('record-ticked')).toHaveText('Record 1');
+
+  // ⌘-click picks two, ⌫ discards both; Undo brings them back, still ticked as they were.
+  await draftRow(page, 'Sate Contoh').getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  await draftRow(page, 'Kopi Contoh').getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  await page.keyboard.press('Backspace');
+  const toast = page.getByTestId('discarded-toast');
+  await expect(toast).toContainText('Discarded 2 waiting rows');
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
+  await toast.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+  await expect(tickOf(page, 'Sate Contoh')).toHaveAttribute('data-tick', 'on');
+  // ⌫ in a cell being typed in only deletes text.
+  await draftRow(page, 'Sate Contoh').getByLabel('Row description').click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Backspace');
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+  await expect(page.getByTestId('not-recorded-row').first().getByLabel('Row description')).toHaveValue('Sate Conto');
 });
 
 test('a click on the first waiting row and ⇧-click on the last picks every waiting row between; ⌘-click still takes one out', async ({ page }) => {
