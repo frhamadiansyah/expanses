@@ -268,6 +268,16 @@ export class SyncService {
    * that lost its shares is exactly when a record outlives them — and, after the check, written for every share that
    * has none yet (§6.1 backfill). A device that never had keys never shared, holds no record, and makes none. Local only.
    */
+  /**
+   * Link my devices: a copy here not yet made this device's own (SelfService `joinOutcome` 'incomplete') carries the
+   * linking device's sharing bookkeeping. Nothing of sharing runs on it — no engine, no restore check, no sync — and a
+   * write into a shared workspace is refused, until an open finishes the link.
+   */
+  holdOff(): void {
+    this.elsewhere = true;
+    this.prepared = Promise.resolve();
+  }
+
   prepare(): Promise<void> {
     this.prepared ??= (async () => {
       if (devSampleLoaded()) return;

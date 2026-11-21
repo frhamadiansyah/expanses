@@ -1,5 +1,5 @@
 import { expenseLines } from '@expanses/core';
-import { addPhoto, createAccount, createDatabase, createWorkspace, type Database, listAccounts, MemoryKeyStore, MemoryTransport, migrate, postTransaction, requestSignerOf } from '@expanses/db';
+import { addPhoto, createAccount, createDatabase, createWorkspace, type Database, listAccounts, MemoryKeyStore, MemoryTransport, migrate, postTransaction, requestSignerOf, SyncNotReadyError } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -213,6 +213,50 @@ describe('receipt photos', () => {
     expect(await phone.database.db.values(sql`SELECT manifest_json FROM self_photos`)).toEqual([[null]]);
     macSelf.stop();
     phone.self.stop();
+  });
+});
+
+describe('a copy not yet made this device’s own', () => {
+  it('keeps the link and household sharing off — the copy’s shared workspace refuses a write — until an open finishes it', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const groceries = (await listAccounts(phone.database, phone.ws)).find((a) => a.name === 'Groceries')!.id;
+    const bank = (await createAccount(phone.database, phone.ws, { name: 'Test Bank', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    const bookId = (await phone.database.db.values<[string]>(sql`SELECT id FROM books LIMIT 1`))[0]![0];
+    await phone.database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, 'test-relay', 1, 'test-member', 'active', '2026-11-01T00:00:00Z')`);
+    const mac = await device(relay);
+    const { sessionId, code } = await phone.self.startLinking();
+    await mac.self.joinWithCode(code);
+    await phone.self.checkLinking(sessionId);
+    await mac.self.checkJoining(sessionId);
+    await phone.self.checkLinking(sessionId);
+    await phone.self.allowLinking(sessionId);
+    const { plan, bytes } = await mac.self.fetchCopy(sessionId);
+    keepPlan(plan);
+    await mac.database.importBytes(bytes);
+
+    // The reload, with this device's keys out of reach (a locked keychain): the copy cannot be made its own.
+    const locked = { getOrCreateDevice: () => Promise.reject(new Error('keychain locked')), hasDevice: async () => true };
+    const stuck = new SelfService({ database: mac.database, keyStore: locked, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await expect(stuck.prepare()).rejects.toThrow('keychain locked');
+    expect(stuck.joinOutcome).toBe('incomplete');
+    await expect(stuck.engine()).rejects.toThrow('Linking is not finished');
+    expect(storage.getItem(LINK_PLAN_KEY)).not.toBeNull();
+    // What the open does then: household sharing held off; the copy's shared workspace refuses a write.
+    const sync = new SyncService({ database: mac.database, keyStore: mac.keyStore, transportFor: (keys) => relay.as(requestSignerOf(keys)), shareRecords: null });
+    sync.holdOff();
+    await sync.prepare();
+    expect(sync.elsewhere).toBe(true);
+    await expect(
+      postTransaction(mac.database, phone.ws, { occurredOn: '2026-11-20', description: 'Test shop', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 9_000, currency: 'IDR' }) }),
+    ).rejects.toBeInstanceOf(SyncNotReadyError);
+    expect(await mac.database.db.values(sql`SELECT count(*) FROM sync_outbox`)).toEqual([[0]]);
+    expect(await mac.database.db.values(sql`SELECT state FROM shared_books`)).toEqual([['active']]);
+
+    // The next open, keys at hand, finishes it.
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBe('linked');
   });
 });
 

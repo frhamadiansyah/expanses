@@ -127,7 +127,9 @@ export async function openAppDb(
   const self = new SelfService({ database, photos, ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
   await self.prepare().catch((error: unknown) => console.warn('Linking could not finish', error));
   const sync = new SyncService({ database, log: deviceSyncLog(), ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
-  await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
+  // A copy not yet made this device's own runs as nobody: household sharing stays off until an open finishes the link.
+  if (self.joinOutcome === 'incomplete') sync.holdOff();
+  else await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
   // Link my devices, Drop 5: the owner's devices stand by in shared workspaces, and one takes over if the seat is lost.
   self.connect({ afterRun: (engine) => standbyStep(sync, engine, self.info.name, self.info.name), takeOver: (lost) => sync.takeOver(lost) });
   // The choices kept on the device that also go to the owner's other devices (lib/synced-prefs.ts).

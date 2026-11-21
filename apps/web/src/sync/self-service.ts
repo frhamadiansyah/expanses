@@ -123,8 +123,12 @@ export class SelfService {
   private state: SelfStatus = { group: null, devices: [], lastSyncedAt: null, lastError: null, held: null, seatId: null, photosMissing: 0 };
   /** Household sharing beside this group (Drop 5): its standby step after each run, its takeover when the seat goes. */
   private household: { afterRun: (engine: SelfEngine) => Promise<void>; takeOver: (lost: string) => Promise<void> } | null = null;
-  /** What `prepare` found of a link under way: finished here, or a copy that never arrived. */
-  joinOutcome: 'linked' | 'failed' | null = null;
+  /**
+   * What `prepare` found of a link under way: finished here, a copy that never arrived, or a copy here that could not
+   * be made this device's own yet ('incomplete'). Incomplete, the data is the linking device's copy with its identity:
+   * neither this channel nor household sharing runs until a later open finishes it (the plan is kept for that).
+   */
+  joinOutcome: 'linked' | 'failed' | 'incomplete' | null = null;
   private halted = false;
 
   constructor(options: SelfServiceOptions) {
@@ -139,6 +143,7 @@ export class SelfService {
   }
 
   engine(): Promise<SelfEngine> {
+    if (this.joinOutcome === 'incomplete') return Promise.reject(new Error('Linking is not finished on this device yet; it is tried again at the next open.'));
     this.made ??= (async () => {
       const device = await this.keyStore().getOrCreateDevice();
       return new SelfEngine(this.database, this.transportFor(device), device, this.info, this.now);
@@ -168,10 +173,16 @@ export class SelfService {
       this.joinOutcome = 'failed';
       return;
     }
-    const device = await this.keyStore().getOrCreateDevice();
-    const transport = this.transportFor(device);
-    this.made = completeLinkedCopy(this.database, plan, transport, device, this.info);
-    await this.made;
+    try {
+      const device = await this.keyStore().getOrCreateDevice();
+      const transport = this.transportFor(device);
+      this.made = completeLinkedCopy(this.database, plan, transport, device, this.info);
+      await this.made;
+    } catch (error) {
+      this.made = undefined;
+      this.joinOutcome = 'incomplete';
+      throw error;
+    }
     // The copy on the relay has done its work; it goes (a day's expiry would take it anyway).
     await (await this.made).deleteCopy(plan.copy, plan.relayBookId).catch(() => undefined);
     forgetPlan();
