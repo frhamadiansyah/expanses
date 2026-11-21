@@ -14,6 +14,7 @@ import { isoDate, type RawCapture, readsAsStatement } from '@expanses/core';
 import {
   type Database,
   fixCardEmailDrafts,
+  fixCardPurchaseDrafts,
   type IngestResult,
   ingestCaptures,
   purgeCaptureLeftovers,
@@ -61,6 +62,12 @@ async function rereadWaiting(database: Database, on: string): Promise<number> {
     changed += await fixCardEmailDrafts(database, { today: on });
   } catch {
     // Tried again on the next drain: the fix marks itself done only when it ran through.
+  }
+  try {
+    // Once per device: a card purchase email an older reader left waiting as money in, found by its own words.
+    changed += await fixCardPurchaseDrafts(database, { today: on });
+  } catch {
+    // As above: tried again on the next drain.
   }
   try {
     return changed + (await rereadUnreadDrafts(database, { today: on }));
