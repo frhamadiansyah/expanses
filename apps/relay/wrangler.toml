@@ -13,9 +13,18 @@ class_name = "BookObject"
 name = "INVITES"
 class_name = "InviteObject"
 
+# Link my devices: the one link meeting place (spec 2026-11-19 §3.5).
+[[durable_objects.bindings]]
+name = "LINKS"
+class_name = "LinkObject"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["BookObject", "InviteObject"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LinkObject"]
 
 [vars]
 # Origins allowed to call the relay from a browser: the Vite dev server and preview, and the Capacitor shell.
@@ -39,6 +48,10 @@ class_name = "BookObject"
 [[env.production.durable_objects.bindings]]
 name = "INVITES"
 class_name = "InviteObject"
+
+[[env.production.durable_objects.bindings]]
+name = "LINKS"
+class_name = "LinkObject"
 
 [env.production.vars]
 ALLOWED_ORIGINS = "capacitor://localhost"

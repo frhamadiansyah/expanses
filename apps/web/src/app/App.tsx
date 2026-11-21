@@ -11,6 +11,7 @@ import { watchNetWorthAutoSteps } from '../features/sharing/household';
 import { listenForAddLinks, listenForJoinLinks, listenForReviewLinks, listenForStatementLinks } from '../native/deep-link';
 import type { SyncService } from '../sync/sync-service';
 import { type AppState, AppContext } from './context';
+import { hydratePrefs } from '../lib/synced-prefs';
 import { createAppQueryClient } from './query-client';
 import { router } from './router';
 
@@ -42,6 +43,18 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
       sync.stop();
     };
   }, [sync, queryClient]);
+  // Link my devices: the owner's own devices sync behind every screen too; what another one wrote re-reads them all,
+  // and the choices kept on the device are read again from what arrived (lib/synced-prefs.ts).
+  useEffect(() => {
+    const off = app.self.whenApplied(() => {
+      void hydratePrefs(app.database).finally(() => void queryClient.invalidateQueries());
+    });
+    void app.self.start().catch((error: unknown) => console.warn('Linked devices did not start', error));
+    return () => {
+      off();
+      app.self.stop();
+    };
+  }, [app.self, app.database, queryClient]);
   /*
    * Household sharing, simplified (2026-11-13): the partner's Confirm of a net worth group filed separately, and this
    * person's review of one, happen by themselves after each sync run — through the same actions their buttons ran.

@@ -1,4 +1,5 @@
 import { CURRENCIES, type CurrencyInfo, searchCurrencies } from '@expanses/core';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 /** Where the currency sheet keeps the codes starred on this device. */
 export const FAVORITE_CURRENCY_KEY = 'expanses.currency.favorites';
@@ -20,6 +21,7 @@ export function readFavoriteCurrencies(baseCurrency: string): string[] {
       const seed = known(baseCurrency) ? [baseCurrency] : [];
       try {
         localStorage.setItem(FAVORITE_CURRENCY_KEY, JSON.stringify(seed));
+        mirrorPref(FAVORITE_CURRENCY_KEY, JSON.stringify(seed));
       } catch {
         // Not remembered, still shown.
       }
@@ -37,6 +39,7 @@ export function toggleFavoriteCurrency(code: string, current: readonly string[])
   const next = current.includes(code) ? current.filter((c) => c !== code) : [...current, code];
   try {
     localStorage.setItem(FAVORITE_CURRENCY_KEY, JSON.stringify(next));
+    mirrorPref(FAVORITE_CURRENCY_KEY, JSON.stringify(next));
   } catch {
     // Not remembered, still shown.
   }

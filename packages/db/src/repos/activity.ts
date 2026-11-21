@@ -224,7 +224,7 @@ interface AuditEvent {
   id: string;
   at: string;
   /** Where it came from: a person's doing on this phone, a member's change that arrived by sync, an account, a workspace. */
-  src: 'mark' | 'sync' | 'account' | 'book';
+  src: 'mark' | 'sync' | 'account' | 'book' | 'linked';
   op: string;
   entityId: string;
   payload: Record<string, unknown>;
@@ -248,12 +248,13 @@ async function eventsOf(db: Db, ws: WorkspaceContext): Promise<AuditEvent[]> {
       entity = 'activity'
       OR (entity = 'transaction' AND action IN ('post', 'void') AND payload_json LIKE '%"syncAuthor"%')
       OR (entity = 'account' AND action = 'rename')
-      OR (entity = 'book' AND action = 'delete'))
+      OR (entity = 'book' AND action = 'delete')
+      OR (entity = 'linked' AND action IN ('maybe_duplicate', 'not_shared')))
     ORDER BY created_at DESC, rowid DESC LIMIT ${SCAN}`);
   return rows.map(([id, action, entity, entityId, payloadJson, createdAt]) => ({
     id,
     at: createdAt,
-    src: entity === 'activity' ? 'mark' : entity === 'transaction' ? 'sync' : entity === 'account' ? 'account' : 'book',
+    src: entity === 'activity' ? 'mark' : entity === 'transaction' ? 'sync' : entity === 'account' ? 'account' : entity === 'linked' ? 'linked' : 'book',
     op: action,
     entityId,
     payload: parse(payloadJson),
@@ -319,6 +320,30 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
 
   if (event.src === 'account') {
     return { ...base, kind: 'rename', group: 'accounts', title: 'Account renamed', subtitle: typeof event.payload.name === 'string' ? `Now ${event.payload.name}` : '', who: null, state: 'cannot' };
+  }
+  if (event.src === 'linked' && event.op === 'not_shared') {
+    // Link my devices, Drop 6: a change made on another of the owner's devices that the household would not take.
+    return { ...base, kind: 'other', group: 'transactions', title: 'A change made on another device was not shared', subtitle: 'It is on every linked device; the household did not get it', who: null, state: 'cannot' };
+  }
+  if (event.src === 'linked') {
+    // Link my devices, rule 5: two of the owner's devices recorded one statement line or bank message each.
+    if (event.payload.table === 'draft_transactions') {
+      const [draft] = await db.values<[string]>(sql`SELECT description FROM draft_transactions WHERE id = ${event.entityId} AND workspace_id = ${ws.workspaceId}`);
+      if (!draft) return NO_LINE;
+      return { ...base, kind: 'other', group: 'transactions', title: `${draft[0]} may be in To review twice`, subtitle: 'Read on two devices from one message', who: null, state: 'cannot' };
+    }
+    const v = await versionOf(db, ws, event.entityId);
+    if (!v) return NO_LINE;
+    return {
+      ...base,
+      kind: 'other',
+      group: 'transactions',
+      title: `${v.description} may be recorded twice`,
+      subtitle: ['Recorded on two devices from one statement line', figureLine(v)].filter(Boolean).join(' · '),
+      who: null,
+      state: 'cannot',
+      transactionId: event.entityId,
+    };
   }
   if (event.src === 'book') {
     const name = typeof event.payload.name === 'string' ? event.payload.name : '';

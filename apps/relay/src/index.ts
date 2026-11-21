@@ -4,10 +4,12 @@ import type { DevicePublic } from '../../../packages/db/src/sync/types';
 import type { MemberOp, Result } from './book-object';
 import { verifyEntitlement } from './entitlement';
 import type { Env } from './env';
-import { isDevicePublic, isInviteRecord, isLogEntry, isOwnersBody } from './shapes';
+import { isAckBody, isBlobBody, isClaimBody, isDevicePublic, isInviteRecord, isLogEntry, isOwnersBody, isRevealBody, isWelcome } from './shapes';
+import type { LinkOp } from './link-object';
 
 export { BookObject } from './book-object';
 export { InviteObject } from './invite-object';
+export { LinkObject } from './link-object';
 
 /*
  * The household-sharing relay (spec §9): routing, CORS, the §9.1 header and timestamp checks, and the two requests
@@ -74,6 +76,51 @@ async function route(request: Request, env: Env): Promise<Result> {
     return bookStub(env, bookId).create(bookId, device, signed.deviceId);
   }
 
+  // POST /self-books (link my devices): the owner's own book, pruned once every device has read it
+  if (parts.length === 1 && parts[0] === 'self-books') {
+    allow(method, ['POST']);
+    const { signed, body } = await readSigned(request, url);
+    const device = expect(body, isDevicePublic, 'expected { signJwk, agreeJwk }');
+    await verifyOwnKey(device, signed);
+    const bookId = uuidv7();
+    if (!(await verifyEntitlement(bookId))) throw new HttpError(402, 'no entitlement to link devices');
+    return bookStub(env, bookId).create(bookId, device, signed.deviceId, true);
+  }
+
+  // /links (link my devices): the meeting place
+  if (parts[0] === 'links') {
+    const hub = env.LINKS.get(env.LINKS.idFromName('links'));
+    if (parts.length === 1) {
+      allow(method, ['POST']);
+      const { signed, body } = await readSigned(request, url);
+      const device = expect(body, isDevicePublic, 'expected { signJwk, agreeJwk }');
+      await verifyOwnKey(device, signed);
+      return hub.start(signed.deviceId, device, request.headers.get('CF-Connecting-IP'));
+    }
+    if (parts.length === 2 && parts[1] === 'claim') {
+      allow(method, ['POST']);
+      const { signed, body } = await readSigned(request, url);
+      const claim = expect(body, isClaimBody, 'expected { code, device, commit }');
+      await verifyOwnKey(claim.device, signed);
+      return hub.claim(signed.deviceId, claim.code, claim.device, claim.commit, request.headers.get('CF-Connecting-IP'));
+    }
+    const sessionId = parts[1]!;
+    const action = parts.length === 2 ? 'read' : parts.length === 3 ? parts[2]! : '';
+    if (!['read', 'reveal', 'allow', 'decline'].includes(action)) throw new HttpError(404, 'not found');
+    allow(method, [action === 'read' ? 'GET' : 'POST']);
+    const { signed, body } = await readSigned(request, url);
+    let op: LinkOp;
+    if (action === 'reveal') {
+      const reveal = expect(body, isRevealBody, 'expected { nonce }');
+      op = { type: 'reveal', nonce: reveal.nonce, ...(reveal.joinerName ? { joinerName: reveal.joinerName } : {}) };
+    } else if (action === 'allow') {
+      op = { type: 'allow', welcome: expect(body, isWelcome, 'expected a sealed welcome') };
+    } else {
+      op = { type: action as 'read' | 'decline' };
+    }
+    return hub.party(signed, sessionId, op);
+  }
+
   // /books/:id/...
   if (parts[0] === 'books' && parts.length >= 2) {
     const bookId = parts[1]!;
@@ -107,6 +154,19 @@ async function route(request: Request, env: Env): Promise<Result> {
       allow(method, ['DELETE']);
       signedRequest = await readSigned(request, url);
       op = { type: 'removeDevice', target: rest[1]! };
+    } else if (rest.length === 1 && rest[0] === 'ack') {
+      allow(method, ['POST']);
+      signedRequest = await readSigned(request, url);
+      op = { type: 'ack', seq: expect(signedRequest.body, isAckBody, 'expected { seq }').seq };
+    } else if (rest.length === 2 && rest[0] === 'blobs') {
+      allow(method, ['GET', 'PUT', 'DELETE']);
+      signedRequest = await readSigned(request, url);
+      const hash = rest[1]!;
+      if (!/^[0-9a-f]{64}$/.test(hash)) throw new HttpError(400, 'a blob is named by its sha-256');
+      if (method === 'PUT') {
+        const blob = expect(signedRequest.body, isBlobBody, 'expected { data, expiresAt }');
+        op = { type: 'putBlob', hash, data: blob.data, expiresAt: blob.expiresAt };
+      } else op = method === 'GET' ? { type: 'getBlob', hash } : { type: 'deleteBlob', hash };
     } else {
       throw new HttpError(404, 'not found');
     }

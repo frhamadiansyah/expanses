@@ -24,6 +24,8 @@ export const SYNC_LOG_FILE = 'sync-log.json';
 /** What was being done when it happened. */
 export type SyncLogOp =
   | 'sync'
+  /** Link my devices: this device took over a shared workspace from the lost seat. */
+  | 'takeover'
   | 'group'
   | 'apply'
   | 'pull'

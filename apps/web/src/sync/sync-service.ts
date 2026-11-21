@@ -1,4 +1,6 @@
 import {
+  seatIsElsewhere,
+  standbyBooks,
   type BookSyncStatus as EngineBookStatus,
   type CreatedInvite,
   BookError,
@@ -161,7 +163,7 @@ class ObservedTransport implements SyncTransport {
 }
 
 export class SyncService {
-  private readonly database: Database;
+  readonly database: Database;
   private readonly keyStore: () => KeyStore;
   private readonly transportFor: (device: DeviceKeys) => SyncTransport;
   private readonly appliedListeners = new Set<() => void>();
@@ -197,6 +199,8 @@ export class SyncService {
   /** Per book, when this device's own last-heard time was last written: written again only once it moves by more than a minute (minor 4). */
   private readonly ownSeenWritten = new Map<string, number>();
   private started = false;
+  /** Link my devices: another of the owner's devices is the seat; sharing never runs here (`prepare`). */
+  elsewhere = false;
   private readonly onVisible = () => {
     if (typeof document === 'undefined' || document.visibilityState === 'visible') this.triggerAll();
     // §6.1: the cursor reaches each share record when the app goes to the background, not only every 30 s.
@@ -264,9 +268,25 @@ export class SyncService {
    * that lost its shares is exactly when a record outlives them — and, after the check, written for every share that
    * has none yet (§6.1 backfill). A device that never had keys never shared, holds no record, and makes none. Local only.
    */
+  /**
+   * Link my devices: a copy here not yet made this device's own (SelfService `joinOutcome` 'incomplete') carries the
+   * linking device's sharing bookkeeping. Nothing of sharing runs on it — no engine, no restore check, no sync — and a
+   * write into a shared workspace is refused, until an open finishes the link.
+   */
+  holdOff(): void {
+    this.elsewhere = true;
+    this.prepared = Promise.resolve();
+  }
+
   prepare(): Promise<void> {
     this.prepared ??= (async () => {
       if (devSampleLoaded()) return;
+      // Link my devices (§3.4): another of the owner's devices keeps the shared workspaces in step. Nothing of sharing
+      // runs here — no restore check, no record, no sync — or the copied bookkeeping would be taken for this device's.
+      if (await seatIsElsewhere(this.database.db)) {
+        this.elsewhere = true;
+        return;
+      }
       try {
         const books = await listSharedBooks(this.database);
         if (books.length === 0 && !(await this.hasKeys())) return;
@@ -335,7 +355,9 @@ export class SyncService {
 
   /** Brings the schedulers in line with `shared_books`: one per active book, none for any other. */
   async refresh(): Promise<void> {
-    const active = new Set((await listSharedBooks(this.database)).filter((book) => book.state === 'active' && !devSampleLoaded()).map((book) => book.bookId));
+    const active = new Set(
+      this.elsewhere ? [] : (await listSharedBooks(this.database)).filter((book) => book.state === 'active' && !devSampleLoaded()).map((book) => book.bookId),
+    );
     for (const [bookId, scheduler] of this.schedulers) {
       if (!active.has(bookId)) {
         scheduler.stop();
@@ -355,6 +377,20 @@ export class SyncService {
       scheduler.start();
     }
     this.emit();
+  }
+
+  /**
+   * Link my devices, Drop 5: the seat was unlinked from this device, which now keeps the shared workspaces in step. Each
+   * one it stands by in is taken over (the whole log again, what the lost seat never sent, the lost seat removed).
+   */
+  async takeOver(lost: string): Promise<void> {
+    this.elsewhere = false;
+    const engine = await this.engine();
+    for (const bookId of await standbyBooks(this.database, engine.deviceId)) {
+      await engine.takeOverAsSeat(bookId, lost).catch((error: unknown) => this.note('takeover', bookId, { error }));
+    }
+    await this.refresh();
+    this.onApplied();
   }
 
   /** "I just wrote something": every shared book syncs now, behind the screen. */

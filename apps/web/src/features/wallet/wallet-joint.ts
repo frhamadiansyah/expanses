@@ -3,6 +3,7 @@ import { memberName, type ReceivedItem } from '../networth/joint-rows';
 import { shortDay } from '../networth/shared-item';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { moneyChip, walletCredit, walletMoney, walletOrder } from './wallet-model';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 /*
  * The partner's joint account and joint card as cards in Wallet (owner, 12 Nov: mockups 2026-11-12-wallet-joint-items
@@ -180,6 +181,7 @@ export function writeJointOrder(order: readonly string[], storage: Pick<Storage,
   try {
     if (order.some(isJointKey)) storage?.setItem(JOINT_ORDER_KEY, JSON.stringify(order));
     else storage?.removeItem(JOINT_ORDER_KEY);
+    if (storage === globalThis.localStorage) mirrorPref(JOINT_ORDER_KEY, order.some(isJointKey) ? JSON.stringify(order) : null);
   } catch {
     /* Kept for this visit only: the cards are still in the order chosen until the page is read again. */
   }

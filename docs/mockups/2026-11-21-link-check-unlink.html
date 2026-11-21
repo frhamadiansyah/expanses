@@ -1,0 +1,176 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Link my devices: check</title><style>
+:root{--ink:#1d1d1f;--ink2:#3c3c43;--ink3:#8a8a8e;--hair:#e3e3e8;--accent:#0a7cff;--up:#248a3d;--down:#d70015}
+*{box-sizing:border-box}
+body{margin:0;padding:28px;background:#d9d9de;font:13px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+h1{font-size:22px;margin:0 0 4px}.sub{color:#555;margin:0 0 22px;max-width:1180px;line-height:1.45;font-size:14px}
+h2{font-size:18px;margin:34px 0 4px}.lead{color:#555;margin:0 0 14px;max-width:1180px;line-height:1.45;font-size:14px}
+.rule{background:#fff;border-radius:12px;padding:14px 18px;max-width:1180px;font-size:14px;line-height:1.5;margin-bottom:6px}
+.rule b{display:inline-block;min-width:150px}
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.cap{font-size:13px;color:#444;margin:8px 4px 0;max-width:320px;line-height:1.4}
+.ph{width:320px;height:660px;background:#f2f2f7;border-radius:40px;box-shadow:0 0 0 9px #1d1d1f,0 18px 50px rgba(0,0,0,.3);overflow:hidden;position:relative;padding:44px 16px 0}
+.ph .nav{display:flex;align-items:center;justify-content:space-between;height:32px;font-size:15px;color:var(--accent)}
+.ph .nav b{color:var(--ink);font-size:15px}
+.ph h3{font-size:28px;margin:6px 4px 14px;font-weight:700}
+.gh{font-size:11.5px;color:var(--ink3);letter-spacing:.04em;text-transform:uppercase;margin:14px 14px 6px}
+.grp{background:#fff;border-radius:14px;overflow:hidden}
+.r{display:flex;align-items:center;gap:11px;padding:0 14px;height:48px;font-size:15.5px}
+.r+.r .b{border-top:.5px solid var(--hair)}
+.r .i{width:30px;height:30px;border-radius:50%;background:#efeff4;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;color:#3c3c43}
+.r .b{flex:1;display:flex;align-items:center;height:100%;gap:8px;min-width:0}
+.r .t{flex:1;min-width:0}.r .t small{display:block;font-size:12px;color:var(--ink3);margin-top:1px}
+.r .v{color:var(--ink3);font-size:15px}.r .ch{color:#c4c4c7;font-size:17px}
+.r.tall{height:58px}
+.r .blue{color:var(--accent)}
+.new{outline:2.5px solid #f5c400;outline-offset:-2px;border-radius:14px}
+.foot{font-size:12.5px;color:var(--ink3);margin:6px 14px 0;line-height:1.4}
+.sheet{position:absolute;left:0;right:0;bottom:0;top:120px;background:#fff;border-radius:18px 18px 0 0;padding:18px 20px;box-shadow:0 -6px 30px rgba(0,0,0,.15)}
+.sheet .top{display:flex;justify-content:space-between;font-size:15px;margin-bottom:18px}.sheet .top b{font-size:16px}
+.code{display:flex;gap:7px;justify-content:center;margin:22px 0 10px}
+.code span{width:36px;height:46px;border-radius:9px;background:#f2f2f7;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.code i{width:10px}
+.qr{width:150px;height:150px;margin:6px auto 0;border-radius:10px;background:
+ repeating-linear-gradient(90deg,#1d1d1f 0 7px,#fff 7px 12px,#1d1d1f 12px 15px,#fff 15px 22px),
+ repeating-linear-gradient(0deg,#1d1d1f 0 6px,#fff 6px 13px);background-blend-mode:difference;border:10px solid #fff;box-shadow:0 0 0 1px #e5e5ea}
+.center{text-align:center}.muted{color:var(--ink3);font-size:13.5px;line-height:1.4}
+.wait{margin:22px auto 0;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ink3);font-size:14px}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid #d1d1d6;border-top-color:var(--ink3)}
+/* mac */
+.win{width:1180px;height:620px;background:#fff;border-radius:11px;box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 22px 60px rgba(0,0,0,.25);display:flex;overflow:hidden;position:relative}
+.side{width:200px;background:#ececef;border-right:.5px solid #d6d6db;padding:14px 10px;display:flex;flex-direction:column}
+.ws{display:flex;align-items:center;gap:8px;padding:4px 8px 12px}.ws b{font-size:13px;display:block}.ws span{color:var(--ink3);font-size:11px}
+.av{width:22px;height:22px;border-radius:50%;background:#1d1d1f;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sh{font-size:11px;font-weight:600;color:var(--ink3);padding:10px 8px 4px}
+.it{padding:4px 8px;border-radius:6px;height:26px;display:flex;align-items:center;gap:8px}.it i{width:13px;height:13px;border:1.5px solid var(--accent);border-radius:3px;display:block}
+.it.on{background:rgba(0,0,0,.08)}
+.sfoot{margin-top:auto;font-size:11px;color:var(--ink3);padding:8px;display:flex;gap:6px;align-items:center}.sfoot i{width:7px;height:7px;border-radius:50%;background:var(--up);display:block}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.tb{height:52px;display:flex;align-items:center;padding:0 18px;border-bottom:.5px solid var(--hair);font-size:16px;font-weight:600}
+.set{flex:1;display:flex;min-height:0}
+.snav{width:230px;background:#f9f9fa;border-right:.5px solid var(--hair);padding:12px 8px}
+.snav .s{height:26px;border-radius:7px;background:#ededf0;color:var(--ink3);display:flex;align-items:center;padding:0 9px;font-size:12px;margin-bottom:12px}
+.snav .n{display:flex;align-items:center;gap:9px;padding:0 8px;height:32px;border-radius:7px;font-size:13px}
+.snav .n i{width:20px;height:20px;border-radius:5px;display:block}
+.snav .n.on{background:var(--accent);color:#fff}
+.pane{flex:1;background:#f5f5f7;padding:24px 30px;overflow:hidden}
+.pane h4{font-size:20px;margin:0 0 16px}
+.pane .gl{font-size:12.5px;font-weight:600;margin:14px 2px 6px}
+.box{background:#fff;border:.5px solid #e2e2e7;border-radius:10px;max-width:620px}
+.mr{display:flex;align-items:center;gap:11px;padding:9px 14px;min-height:48px}
+.mr+.mr{border-top:.5px solid var(--hair)}
+.mr .ic{width:26px;height:26px;border-radius:6px;background:#8e8e93;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex-shrink:0}
+.mr .tt{flex:1}.mr .tt small{display:block;color:var(--ink3);font-size:11.5px;margin-top:1px}
+.mr .rv{color:var(--ink3);font-size:12.5px}
+.btn{border:.5px solid #c7c7cc;border-radius:6px;padding:3px 11px;font-size:12.5px;background:#fff}
+.btn.blk{background:#1d1d1f;color:#fff;border-color:#1d1d1f}
+.btn.red{color:var(--down)}
+.gfoot{font-size:11.5px;color:var(--ink3);margin:6px 2px 0;max-width:620px;line-height:1.4}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.22);display:flex;align-items:flex-start;justify-content:center;padding-top:90px}
+.dlg{width:430px;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.35);padding:20px 22px}
+.dlg b.h{font-size:15px;display:block;margin-bottom:6px}
+.dlg .code span{background:#f2f2f7;width:38px;height:44px;font-size:22px}
+.dlg .warn{background:#fff6e5;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.45;margin-top:14px;color:#5c3d00}
+.dlg .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.prog .pr{display:flex;align-items:center;gap:10px;height:34px;font-size:13.5px}
+.prog .pr .ok{width:18px;height:18px;border-radius:50%;background:var(--up);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center}
+.prog .pr .sp{width:16px;height:16px;border-radius:50%;border:2px solid #d1d1d6;border-top-color:#8a8a8e;margin:1px}
+.prog .pr .nb{width:18px;height:18px;border-radius:50%;border:1.5px solid #d1d1d6}
+.prog .pr span.rt{margin-left:auto;color:var(--ink3);font-size:12px}
+.callout{position:absolute;background:#fff4c2;border:1px solid #e6c84a;color:#5c4a00;font-size:12px;padding:5px 9px;border-radius:7px;max-width:230px;line-height:1.35;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:5}
+.note{font-size:12.5px;color:#555;margin:10px 0 0;max-width:1180px;line-height:1.45}
+
+.digits{display:flex;gap:8px;justify-content:center;margin:18px 0 6px}
+.digits span{width:44px;height:56px;border-radius:10px;background:#f2f2f7;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+.big{font-size:20px;font-weight:700;text-align:center;margin:10px 0 4px}
+.btnrow{display:flex;flex-direction:column;gap:10px;margin-top:22px}
+.pbtn{height:48px;border-radius:12px;background:#1c1c1e;color:#fff;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sbtn{height:48px;border-radius:12px;background:#f2f2f7;color:var(--accent);font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.dbtn{color:var(--down)}
+.notice{background:#fff;border-radius:14px;padding:12px 14px;margin:0 0 10px;font-size:14px;line-height:1.4}
+.notice b{display:block;font-size:15px;margin-bottom:2px}
+.notice span{color:var(--ink3)}
+</style></head><body>
+<h1>Link my devices: the check, unlink, view-only</h1>
+<p class="sub">Invented data. Fills in the screens the approved mockup (2026-11-19) does not show: the Allow step with 4 check digits on both screens (owner answer 2), Unlink, a device that was unlinked (owner answer 3), and a shared workspace on a linked device that is not the one keeping it shared (owner answer 1).</p>
+
+<h2>The check: same 4 digits on both screens</h2>
+<p class="lead">After the Mac types the code. The iPhone asks; the Mac shows the same digits and waits. Allow only if they match.</p>
+<div class="phones">
+ <div>
+  <div class="ph"><div class="nav"><span></span><b>Link another device</b><span></span></div>
+   <div class="sheet" style="top:90px">
+    <div class="top"><span class="blue">Cancel</span><b></b><span></span></div>
+    <div class="big">Link MacBook Air?</div>
+    <p class="center muted">Check that the Mac shows the same numbers.</p>
+    <div class="digits"><span>4</span><span>8</span><span>2</span><span>7</span></div>
+    <p class="center muted">MacBook Air will get every workspace on this iPhone, private ones too.</p>
+    <div class="btnrow"><div class="pbtn">Allow</div><div class="sbtn dbtn">Don’t allow</div></div>
+   </div>
+  </div>
+  <p class="cap">1 · iPhone. The digits come from both devices’ keys; a code someone else typed would show other numbers.</p>
+ </div>
+ <div>
+  <div class="ph"><div class="nav"><span></span><b>Sending the copy</b><span></span></div>
+   <div class="sheet" style="top:90px">
+    <div class="top"><span></span><b></b><span></span></div>
+    <div class="big">Sending everything to MacBook Air</div>
+    <p class="center muted">Keep this iPhone open and online.</p>
+    <div class="wait"><i class="spin"></i>3 of 5 parts</div>
+   </div>
+  </div>
+  <p class="cap">2 · iPhone after Allow: the copy goes up. Then the Devices list.</p>
+ </div>
+</div>
+
+<div class="win" style="margin-top:24px">
+ <div class="side"><div class="ws"><div class="av">P</div><div><b>Personal</b><span>IDR · on this device</span></div></div></div>
+ <div class="main"><div class="tb">Settings</div>
+  <div class="set"><div class="snav"><div class="n on"><i style="background:#fff3"></i>Devices</div></div>
+   <div class="pane"><h4>Devices</h4></div></div>
+ </div>
+ <div class="dim"><div class="dlg">
+  <b class="h">Check the iPhone</b>
+  <p class="muted" style="margin:0">The iPhone shows these numbers too. Allow it there.</p>
+  <div class="digits"><span>4</span><span>8</span><span>2</span><span>7</span></div>
+  <div class="wait"><i class="spin"></i>Waiting for Allow on the iPhone…</div>
+  <div class="acts"><span class="btn">Cancel</span></div>
+ </div></div>
+</div>
+<p class="note">3 · Mac. After Allow the Mac saves the backup file, then shows “Bringing it over” (approved mockup).</p>
+
+<h2>Unlink</h2>
+<div class="phones">
+ <div>
+  <div class="ph"><div class="nav"><span>‹ Devices</span><b>MacBook Air</b><span></span></div>
+   <h3 style="font-size:22px">MacBook Air</h3>
+   <div class="grp"><div class="r"><div class="b"><span class="t">Linked<small>19 Nov</small></span></div></div><div class="r"><div class="b"><span class="t">Last synced<small>2 min ago</small></span></div></div></div>
+   <div class="gh"></div>
+   <div class="grp"><div class="r"><div class="b"><span class="t" style="color:var(--down)">Unlink…</span></div></div></div>
+   <p class="foot">A lost or sold device. It stops getting anything new; what it holds stays on it.</p>
+   <div class="sheet" style="top:330px">
+    <div class="big" style="font-size:17px">Unlink MacBook Air?</div>
+    <p class="center muted">It gets nothing written from now on. The data on this iPhone stays.</p>
+    <div class="btnrow"><div class="pbtn" style="background:var(--down)">Unlink</div><div class="sbtn">Cancel</div></div>
+   </div>
+  </div>
+  <p class="cap">4 · Tap a device in Devices. One confirm.</p>
+ </div>
+ <div>
+  <div class="ph"><div class="nav"><span>‹ Account</span><b>Devices</b><span></span></div>
+   <h3>Devices</h3>
+   <div class="notice"><b>Unlinked from this data</b><span>Another device unlinked this one. Nothing new comes here; what is here stays.</span></div>
+   <div class="gh">This device</div>
+   <div class="grp"><div class="r"><div class="i">💻</div><div class="b"><span class="t">MacBook Air<small>last synced 2 days ago</small></span></div></div></div>
+  </div>
+  <p class="cap">5 · The unlinked device, when it next opens. Nothing is erased by itself (owner answer 3).</p>
+ </div>
+ <div>
+  <div class="ph"><div class="nav"><span></span><b>Rumah</b><span></span></div>
+   <h3>Cashflow</h3>
+   <div class="notice"><b>Changed on iPhone</b><span>Rumah is shared with Sari from the iPhone. Here it can be looked at; adding and editing happen on the iPhone.</span></div>
+   <div class="grp"><div class="r"><div class="b"><span class="t">Groceries<small>Test grocer · 18 Nov</small></span><span class="v">Rp 125.000</span></div></div><div class="r"><div class="b"><span class="t">Electricity<small>Bill · 15 Nov</small></span><span class="v">Rp 410.000</span></div></div></div>
+  </div>
+  <p class="cap">6 · A workspace shared with someone else, on a linked device that is not the iPhone: view-only for now (owner answer 1). Private workspaces change anywhere.</p>
+ </div>
+</div>
+</body></html>

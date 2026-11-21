@@ -870,6 +870,64 @@ export class SyncEngine {
   }
 
   /**
+   * Link my devices, Drop 5 (spec §3.4): a linked device that is not the seat becomes a standby device of a shared
+   * book — admitted by the relay, holding the book's keys, introduced in the log as a device of the owner's own member
+   * — without ever pulling, applying or writing the household's bookkeeping, which is the seat's and arrives through
+   * the owner's own channel. Should the seat be lost, this device takes over (`takeOverAsSeat`) with the log's keys and
+   * the bookkeeping it already holds. The book's rows here are the seat's copy: only the introduction goes out.
+   */
+  async claimStandby(code: string, input: { deviceName: string }): Promise<{ bookId: string }> {
+    const preview = await this.previewInvite(code);
+    if (preview.claimed) throw new SharingError('INVITE_CLAIMED', 'Someone has already used this invite');
+    if (preview.expired) throw new SharingError('INVITE_EXPIRED', 'This invite has expired');
+    const terms = preview.terms;
+    if (!terms || terms.inviteId !== preview.inviteId || !terms.sameMember || !terms.memberId) throw new SharingError('BAD_CODE', 'That invite is not a link of this device');
+    const bookId = preview.bookId;
+    const shared = await this.sharedRow(bookId);
+    if (!shared) throw new SharingError('NOT_FOUND', 'That workspace is not here');
+    const { inviteId, secret } = parseCode(code);
+    const claim = await this.transport.claimInvite(inviteId, this.device.public);
+    const keys = await openInviteJson<InviteKey[]>(await inviteKeyOf(secret, inviteId), claim.keys, inviteAad('keys', inviteId));
+    if (keys.length === 0) throw new SharingError('NO_KEYS', 'That invite carries no keys; ask for a new one');
+    const now = new Date(this.now()).toISOString();
+    this.sealer.forget();
+    await this.database.transaction(async (tx) => {
+      // Quiet for the owner's own channel: the seat's bookkeeping here is the seat's to write and send.
+      await tx.run(sql`INSERT OR REPLACE INTO self_state (key, value) VALUES ('quiet', '1')`);
+      for (const k of keys) await this.sealer.storeEpochKeyTx(tx, bookId, k.epoch, base64UrlToBytes(k.key));
+      // The introduction is built from a row of this device written only for the moment: the seat writes the real one
+      // when it applies the introduction, and that comes back here through the owner's channel.
+      const had = (await tx.values(sql`SELECT 1 FROM book_devices WHERE book_id = ${bookId} AND device_id = ${this.deviceId}`)).length > 0;
+      if (!had) {
+        await tx.run(sql`
+          INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at, app_version)
+          VALUES (${bookId}, ${this.deviceId}, ${terms.memberId!}, ${input.deviceName}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)}, ${now}, NULL, ${this.appVersion ?? null})`);
+      }
+      const book = { bookId, memberId: terms.memberId!, epoch: shared.epoch };
+      const ops = (await rowUpsertsTx(tx, book, 'device')).filter((op) => op.id === this.deviceId);
+      await writeChangeSetsTx(tx, captureConfigOf(this.database), book, ops, { invite: terms });
+      if (!had) await tx.run(sql`DELETE FROM book_devices WHERE book_id = ${bookId} AND device_id = ${this.deviceId}`);
+      await tx.run(sql`DELETE FROM self_state WHERE key = 'quiet'`);
+    });
+    await this.drain(bookId);
+    return { bookId };
+  }
+
+  /**
+   * Link my devices, Drop 5: the seat is gone (unlinked from another of the owner's devices) and this standby device
+   * keeps the shared book in step from now on. The whole log is pulled again over the rows here (the seat's copy, with
+   * its bookkeeping) — which also opens every key sealed for this device since it became standby — what this device
+   * holds that the log does not say goes out (the seat's last unsent changes, which reached here through the owner's
+   * channel), and the lost device is removed from the book, which rotates its key.
+   */
+  async takeOverAsSeat(bookId: string, lostDeviceId: string): Promise<SyncOnceResult> {
+    const { result } = await this.placeHeldRows(bookId);
+    const [still] = await this.database.db.values(sql`SELECT 1 FROM book_devices WHERE book_id = ${bookId} AND device_id = ${lostDeviceId} AND removed_at IS NULL`);
+    if (still) await this.removeDevice(bookId, lostDeviceId);
+    return result;
+  }
+
+  /**
    * The reset a same-book rejoin (§8.7) and Place them now (sharing resilience §4.3) share, then the whole log pulled
    * again over the rows here. In one transaction: every skip of the book goes (a pull from 0 records each refusal again,
    * once), then `resetTx`'s own steps, the cursor back to 0, the authority view cleared to be rebuilt entry by entry,

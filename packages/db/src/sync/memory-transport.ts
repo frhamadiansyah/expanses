@@ -1,7 +1,10 @@
 import { uuidv7 } from '@expanses/core';
 import { deviceIdOf, inviteSignedByAnOwner, MAX_CLOCK_SKEW_MS, requestSigningBytes, verifySignature, bytesToBase64Url, type RequestSigner } from './relay-signing';
-import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SequencedEntry, SyncTransport } from './types';
+import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SealedFor, SequencedEntry, SyncTransport } from './types';
 import { SyncTransportError } from './types';
+import { LinkHub, LinkRefusal, type LinkStore, type LinkView } from '../self/link-hub';
+import { MAX_BLOB_BYTES, MAX_BLOB_TTL_MS, MAX_BOOK_BLOB_BYTES, MAX_BOOK_BLOBS, type SelfTransport } from '../self/transport';
+import { base64UrlToBytes, sha256Hex } from './relay-signing';
 
 /*
  * The relay's semantics, in memory (spec §9.2, §9.3). This is the reference `RelayTransport` (task 6) must match:
@@ -39,6 +42,12 @@ interface BookState {
   /** `deviceId + ':' + hlc` -> the seq it was given, so a duplicate append can answer with the original seq. */
   seen: Map<string, number>;
   invites: Map<string, StoredInvite>;
+  /** The owner's own relay book (link my devices): every device an owner, the log pruned below every device's ack. */
+  self?: boolean;
+  acks: Map<string, number>;
+  /** Entries up to this seq were pruned (self books). */
+  prunedThrough: number;
+  blobs: Map<string, { data: string; expiresAt: number; size: number }>;
   deleted: boolean;
   /** The owner device that deleted the book (§8.6): every later `410` names it. */
   deletedBy?: string;
@@ -53,8 +62,36 @@ function byteSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).length;
 }
 
+/** A map as the link hub's store, as a Durable Object's storage is on the relay. */
+function mapStore(): LinkStore {
+  const map = new Map<string, unknown>();
+  return {
+    get: async <T>(key: string) => structuredClone(map.get(key)) as T | undefined,
+    put: async (entries) => {
+      for (const [key, value] of Object.entries(entries)) map.set(key, structuredClone(value));
+    },
+    delete: async (key) => map.delete(key),
+  };
+}
+
+/** The link hub's refusal, as this relay's error. */
+async function linked<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof LinkRefusal) throw new SyncTransportError(error.status, error.message);
+    throw error;
+  }
+}
+
 export class MemoryTransport {
   private readonly books = new Map<string, BookState>();
+  /** `now` is the hub's clock, so a test can run ten minutes forward. */
+  readonly links: LinkHub;
+
+  constructor(options: { now?: () => number } = {}) {
+    this.links = new LinkHub(mapStore(), options.now ?? Date.now);
+  }
 
   /**
    * A `SyncTransport` acting as one device — every call it makes is authorised against that identity. Given the
@@ -63,7 +100,7 @@ export class MemoryTransport {
    * `createBook` and a claim; a refusal is the relay's `401`. Given only an id, the signature step is left out — for
    * tests of the relay's rules alone.
    */
-  as(who: string | RequestSigner): SyncTransport {
+  as(who: string | RequestSigner): SelfTransport {
     return typeof who === 'string' ? new BoundTransport(this, who) : new BoundTransport(this, who.deviceId, who);
   }
 
@@ -133,7 +170,7 @@ export class MemoryTransport {
   }
 
   /** `callerDeviceId` must be the id its own `device` derives to — the relay verifies a new device against the JWK in its own body (spec §9.1), never a claim it takes on faith. */
-  async createBook(device: DevicePublic, callerDeviceId: string): Promise<{ bookId: string }> {
+  async createBook(device: DevicePublic, callerDeviceId: string, options: { self?: boolean } = {}): Promise<{ bookId: string }> {
     const deviceId = await deviceIdOf(device).catch(() => null);
     if (deviceId !== callerDeviceId) throw new SyncTransportError(403, 'a device can only register itself');
     const bookId = uuidv7();
@@ -146,9 +183,67 @@ export class MemoryTransport {
       log: new Map(),
       seen: new Map(),
       invites: new Map(),
+      ...(options.self ? { self: true } : {}),
+      acks: new Map([[deviceId, 0]]),
+      prunedThrough: 0,
+      blobs: new Map(),
       deleted: false,
     });
     return { bookId };
+  }
+
+  /** Self books: this device has applied up to `seq`; entries every active device has applied are dropped. */
+  async ack(bookId: string, seq: number, actorDeviceId: string): Promise<void> {
+    const state = this.memberBook(bookId, actorDeviceId);
+    this.requireMember(state, actorDeviceId);
+    if (!state.self) throw new SyncTransportError(400, 'only a self book is pruned');
+    if (!Number.isSafeInteger(seq) || seq < 0 || seq > state.seq) throw new SyncTransportError(400, 'ack past the log');
+    state.acks.set(actorDeviceId, Math.max(state.acks.get(actorDeviceId) ?? 0, seq));
+    const active = [...state.devices.entries()].filter(([, d]) => d.removedAt === undefined).map(([id]) => id);
+    // A new device's copy taken at `startSeq` and not yet claimed holds everything after it (link my devices, §4.1).
+    const waiting = [...state.invites.values()].filter((i) => i.startSeq !== undefined && i.claimedAt === undefined && Date.parse(i.expiresAt) > Date.now()).map((i) => i.startSeq!);
+    const floor = Math.min(...active.map((id) => state.acks.get(id) ?? 0), ...waiting);
+    for (let s2 = state.prunedThrough + 1; s2 <= floor; s2 += 1) state.log.delete(s2);
+    state.prunedThrough = Math.max(state.prunedThrough, floor);
+  }
+
+  async putBlob(bookId: string, hash: string, data: string, expiresAt: string, actorDeviceId: string): Promise<void> {
+    const state = this.selfBlobBook(bookId, actorDeviceId);
+    let bytes: Uint8Array;
+    try {
+      bytes = base64UrlToBytes(data);
+    } catch {
+      throw new SyncTransportError(400, 'expected base64url');
+    }
+    if (bytes.length > MAX_BLOB_BYTES) throw new SyncTransportError(413, 'blob over 700 KB');
+    if ((await sha256Hex(bytes)) !== hash) throw new SyncTransportError(400, 'blob does not match its hash');
+    const until = Date.parse(expiresAt);
+    if (!Number.isFinite(until) || until > Date.now() + MAX_BLOB_TTL_MS) throw new SyncTransportError(400, 'a blob is kept a week at most');
+    for (const [key, blob] of state.blobs) if (blob.expiresAt <= Date.now()) state.blobs.delete(key);
+    const others = [...state.blobs.entries()].filter(([h]) => h !== hash);
+    const used = others.reduce((total, [, blob]) => total + blob.size, 0);
+    if (used + bytes.length > MAX_BOOK_BLOB_BYTES || others.length >= MAX_BOOK_BLOBS) throw new SyncTransportError(413, 'this book holds too much already');
+    state.blobs.set(hash, { data, expiresAt: until, size: bytes.length });
+  }
+
+  /** Blobs are the owner's own book's only (link my devices): a household book holds none. */
+  private selfBlobBook(bookId: string, actorDeviceId: string): BookState {
+    const state = this.memberBook(bookId, actorDeviceId);
+    this.requireMember(state, actorDeviceId);
+    if (!state.self) throw new SyncTransportError(400, 'only a self book holds blobs');
+    return state;
+  }
+
+  async getBlob(bookId: string, hash: string, actorDeviceId: string): Promise<string> {
+    const state = this.selfBlobBook(bookId, actorDeviceId);
+    const blob = state.blobs.get(hash);
+    if (!blob || blob.expiresAt <= Date.now()) throw new SyncTransportError(404, 'no such blob');
+    return blob.data;
+  }
+
+  async deleteBlob(bookId: string, hash: string, actorDeviceId: string): Promise<void> {
+    const state = this.selfBlobBook(bookId, actorDeviceId);
+    state.blobs.delete(hash);
   }
 
   async append(bookId: string, entry: LogEntry, actorDeviceId: string): Promise<{ seq: number }> {
@@ -186,6 +281,8 @@ export class MemoryTransport {
   async pull(bookId: string, since: number, actorDeviceId: string): Promise<{ entries: SequencedEntry[]; latest: number }> {
     const state = this.memberBook(bookId, actorDeviceId);
     this.requireMember(state, actorDeviceId);
+    // A self book's start is gone once every device has read it: a device that needs it is given a copy instead.
+    if (since < state.prunedThrough) throw new SyncTransportError(410, 'pruned');
 
     const entries = [...state.log.entries()]
       .filter(([seq]) => seq > since)
@@ -226,12 +323,20 @@ export class MemoryTransport {
     if (Date.parse(invite.expiresAt) <= Date.now()) throw new SyncTransportError(410, 'invite expired');
     if (!(await inviteSignedByAnOwner(invite, state.owners, (owner) => state.devices.get(owner)))) throw new SyncTransportError(403, 'bad owner signature');
 
+    if (state.self && invite.startSeq !== undefined && invite.startSeq < state.prunedThrough) throw new SyncTransportError(410, 'pruned');
     const activeDevices = [...state.devices.values()].filter((d) => d.removedAt === undefined).length;
     if (activeDevices >= MAX_ACTIVE_DEVICES) throw new SyncTransportError(429, 'this book already has five devices');
 
     const now = new Date().toISOString();
     state.devices.set(deviceId, { signJwk: device.signJwk, agreeJwk: device.agreeJwk, addedAt: now });
     invite.claimedAt = now;
+    // A self book: each of the owner's devices is an owner, and starts reading the log where it joined.
+    if (state.self) {
+      const from = invite.startSeq ?? state.seq;
+      state.owners.add(deviceId);
+      state.acks.set(deviceId, from);
+      return { bookId, epoch: state.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId, seq: from };
+    }
 
     return { bookId, epoch: state.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId };
   }
@@ -278,7 +383,7 @@ interface SignedRequest {
 }
 
 /** A `SyncTransport` bound to one device identity, so every call it makes is authorised as that device — never skippable. */
-class BoundTransport implements SyncTransport {
+class BoundTransport implements SelfTransport {
   constructor(
     private readonly relay: MemoryTransport,
     private readonly deviceId: string,
@@ -337,5 +442,68 @@ class BoundTransport implements SyncTransport {
   async deleteBook(bookId: string): Promise<void> {
     await this.signed('DELETE', `/books/${bookId}`, undefined, bookId);
     return this.relay.deleteBook(bookId, this.deviceId);
+  }
+
+  /* ---------------------------------------------------------------- link my devices */
+
+  async createSelfBook(device: DevicePublic): Promise<{ bookId: string }> {
+    await this.signed('POST', '/self-books', device, null, device.signJwk);
+    return this.relay.createBook(device, this.deviceId, { self: true });
+  }
+
+  async ack(bookId: string, seq: number): Promise<void> {
+    await this.signed('POST', `/books/${bookId}/ack`, { seq }, bookId);
+    return this.relay.ack(bookId, seq, this.deviceId);
+  }
+
+  async putBlob(bookId: string, hash: string, data: string, expiresAt: string): Promise<void> {
+    await this.signed('PUT', `/books/${bookId}/blobs/${hash}`, { data, expiresAt }, bookId);
+    return this.relay.putBlob(bookId, hash, data, expiresAt, this.deviceId);
+  }
+
+  async getBlob(bookId: string, hash: string): Promise<string> {
+    await this.signed('GET', `/books/${bookId}/blobs/${hash}`, undefined, bookId);
+    return this.relay.getBlob(bookId, hash, this.deviceId);
+  }
+
+  async deleteBlob(bookId: string, hash: string): Promise<void> {
+    await this.signed('DELETE', `/books/${bookId}/blobs/${hash}`, undefined, bookId);
+    return this.relay.deleteBlob(bookId, hash, this.deviceId);
+  }
+
+  async startLink(device: DevicePublic): Promise<LinkView> {
+    await this.signed('POST', '/links', device, null, device.signJwk);
+    if ((await deviceIdOf(device).catch(() => null)) !== this.deviceId) throw new SyncTransportError(403, 'a device can only register itself');
+    return linked(() => this.relay.links.start(this.deviceId, device));
+  }
+
+  async claimLink(code: string, device: DevicePublic, commit: string): Promise<LinkView> {
+    await this.signed('POST', '/links/claim', { code, device, commit }, null, device.signJwk);
+    if ((await deviceIdOf(device).catch(() => null)) !== this.deviceId) throw new SyncTransportError(403, 'a device can only claim as itself');
+    return linked(() => this.relay.links.claim(this.deviceId, code, device, commit));
+  }
+
+  /** A party's call on a session: signed, and checked against the key the session holds for it. */
+  private async party<T>(method: string, path: string, body: unknown, sessionId: string, work: () => Promise<T>): Promise<T> {
+    const key = await linked(() => this.relay.links.partyKey(this.deviceId, sessionId));
+    await this.signed(method, path, body, null, key);
+    return linked(work);
+  }
+
+  readLink(sessionId: string): Promise<LinkView> {
+    return this.party('GET', `/links/${sessionId}`, undefined, sessionId, () => this.relay.links.read(this.deviceId, sessionId));
+  }
+
+  revealLink(sessionId: string, nonce: string, joinerName?: SealedFor): Promise<LinkView> {
+    const body = { nonce, ...(joinerName ? { joinerName } : {}) };
+    return this.party('POST', `/links/${sessionId}/reveal`, body, sessionId, () => this.relay.links.reveal(this.deviceId, sessionId, nonce, joinerName));
+  }
+
+  allowLink(sessionId: string, welcome: SealedFor & { payload?: Sealed; sig?: string }): Promise<void> {
+    return this.party('POST', `/links/${sessionId}/allow`, welcome, sessionId, () => this.relay.links.allow(this.deviceId, sessionId, welcome));
+  }
+
+  declineLink(sessionId: string): Promise<void> {
+    return this.party('POST', `/links/${sessionId}/decline`, undefined, sessionId, () => this.relay.links.decline(this.deviceId, sessionId));
   }
 }

@@ -28,6 +28,7 @@ import { exactExists, exactFitsPosting } from './exact-column';
 import { extrasTablesExist } from './transaction-extras';
 import { eventOnlyExists } from './event-only';
 import { cardTerms, cycleActuals, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
+import { stableId } from '../self/stable-id';
 
 export class PointsError extends Error {
   constructor(message: string) {
@@ -45,6 +46,19 @@ export type RedemptionOptionRow = typeof redemptionOptions.$inferSelect;
 /** Catalogue-internal writes pass fromCatalog so a linked program stays linked. */
 export interface PointsWriteOptions {
   fromCatalog?: boolean;
+  /**
+   * A row the app writes by itself (the catalogue's terms): named under its programme rather than given a random id,
+   * so two linked devices writing the same terms make the same rows (link my devices, Drop 0). Written again under the
+   * same name, the row is updated in place and back in use.
+   */
+  stableName?: string;
+}
+
+/** The id a new row gets, and whether a row under a stable name is already there to be written over. */
+async function newRowId(tx: Db, table: string, programId: string, options: PointsWriteOptions): Promise<{ id: string; exists: boolean }> {
+  if (!options.stableName) return { id: uuidv7(), exists: false };
+  const id = await stableId(programId, options.stableName);
+  return { id, exists: (await tx.values(sql`SELECT 1 FROM ${sql.identifier(table)} WHERE id = ${id}`)).length > 0 };
 }
 
 async function accountOf(db: Db, ws: WorkspaceContext, accountId: string) {
@@ -255,7 +269,11 @@ export async function saveEarnRuleTx(tx: Db, ws: WorkspaceContext, programId: st
     await tx.update(earnRules).set(values).where(and(eq(earnRules.id, rule.id), eq(earnRules.workspaceId, ws.workspaceId)));
     return rule.id;
   }
-  const id = uuidv7();
+  const { id, exists } = await newRowId(tx, 'earn_rules', programId, options);
+  if (exists) {
+    await tx.update(earnRules).set({ catalogKey: null, ...values, archivedAt: null }).where(eq(earnRules.id, id));
+    return id;
+  }
   await tx.insert(earnRules).values({ catalogKey: null, ...values, id, workspaceId: ws.workspaceId, programId, archivedAt: null, createdAt: now() });
   return id;
 }
@@ -322,7 +340,11 @@ export async function saveCycleBonusTx(tx: Db, ws: WorkspaceContext, programId: 
     await tx.update(cycleBonuses).set(values).where(and(eq(cycleBonuses.id, bonus.id), eq(cycleBonuses.workspaceId, ws.workspaceId)));
     return bonus.id;
   }
-  const id = uuidv7();
+  const { id, exists } = await newRowId(tx, 'cycle_bonuses', programId, options);
+  if (exists) {
+    await tx.update(cycleBonuses).set({ catalogKey: null, ...values, archivedAt: null }).where(eq(cycleBonuses.id, id));
+    return id;
+  }
   await tx.insert(cycleBonuses).values({ catalogKey: null, ...values, id, workspaceId: ws.workspaceId, programId, archivedAt: null, createdAt: now() });
   return id;
 }
@@ -421,7 +443,11 @@ export async function saveTransferPartnerTx(
     await tx.update(transferPartners).set(values).where(and(eq(transferPartners.id, partner.id), eq(transferPartners.workspaceId, ws.workspaceId)));
     return partner.id;
   }
-  const id = uuidv7();
+  const { id, exists } = await newRowId(tx, 'transfer_partners', programId, options);
+  if (exists) {
+    await tx.update(transferPartners).set({ catalogKey: null, ...values, archivedAt: null }).where(eq(transferPartners.id, id));
+    return id;
+  }
   await tx.insert(transferPartners).values({ catalogKey: null, ...values, id, workspaceId: ws.workspaceId, programId, archivedAt: null, createdAt: now() });
   return id;
 }
@@ -486,7 +512,11 @@ export async function saveRedemptionOptionTx(tx: Db, ws: WorkspaceContext, input
     await tx.update(redemptionOptions).set(values).where(and(eq(redemptionOptions.id, input.id), eq(redemptionOptions.workspaceId, ws.workspaceId)));
     return input.id;
   }
-  const id = uuidv7();
+  const { id, exists } = await newRowId(tx, 'redemption_options', input.programId, options);
+  if (exists) {
+    await tx.update(redemptionOptions).set({ catalogKey: null, ...values }).where(eq(redemptionOptions.id, id));
+    return id;
+  }
   await tx.insert(redemptionOptions).values({ catalogKey: null, ...values, id, workspaceId: ws.workspaceId, programId: input.programId });
   return id;
 }

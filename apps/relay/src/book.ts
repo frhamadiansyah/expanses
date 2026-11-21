@@ -1,6 +1,8 @@
 import { inviteSignedByAnOwner } from '../../../packages/db/src/sync/relay-signing';
 import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SequencedEntry } from '../../../packages/db/src/sync/types';
 import { verifyEntitlement } from './entitlement';
+import { MAX_BLOB_BYTES, MAX_BLOB_TTL_MS, MAX_BOOK_BLOB_BYTES, MAX_BOOK_BLOBS } from '../../../packages/db/src/self/transport';
+import { base64UrlToBytes, sha256Hex } from '../../../packages/db/src/sync/relay-signing';
 
 /*
  * One book's relay state and every rule over it (spec §9.2, §9.3) — `MemoryTransport`'s `BookState` and methods
@@ -14,6 +16,9 @@ import { verifyEntitlement } from './entitlement';
  *   log:<seq, zero-padded>     LogEntry
  *   seen:<deviceId>:<hlc>      seq
  *   invite:<inviteId>          InviteRecord & { claimedAt? }
+ *   ack:<deviceId>             seq — a self book's (link my devices): how far that device has applied the log
+ *   blob:<hash>                { data, expiresAt, size } — the copy a new device starts from, its photos
+ *   blobs                      { [hash]: [size, expiresAt] } — every blob kept, small, so a put never lists the data
  */
 
 export const MAX_ENTRY_BYTES = 128 * 1024;
@@ -25,6 +30,7 @@ export interface BookStore {
   get<T>(key: string): Promise<T | undefined>;
   put(entries: Record<string, unknown>): Promise<void>;
   list<T>(options: { prefix: string; start?: string; limit?: number }): Promise<Map<string, T>>;
+  delete(keys: string[]): Promise<number>;
 }
 
 export class RelayError extends Error {
@@ -53,6 +59,12 @@ interface Meta {
   deleted: boolean;
   /** The owner device that deleted the book (§8.6, task 9a): every later `410` names it. */
   deletedBy?: string;
+  /** The owner's own book (link my devices): every device an owner, the log pruned below every device's ack. */
+  self?: boolean;
+  /** Entries up to this seq were pruned. */
+  prunedThrough?: number;
+  /** Bytes of every blob kept. */
+  blobBytes?: number;
 }
 
 type StoredInvite = InviteRecord & { claimedAt?: string };
@@ -61,6 +73,15 @@ const logKey = (seq: number) => `log:${String(seq).padStart(15, '0')}`;
 const deviceKey = (deviceId: string) => `device:${deviceId}`;
 const seenKey = (deviceId: string, hlc: string) => `seen:${deviceId}:${hlc}`;
 const inviteKey = (inviteId: string) => `invite:${inviteId}`;
+const ackKey = (deviceId: string) => `ack:${deviceId}`;
+const blobKey = (hash: string) => `blob:${hash}`;
+const BLOB_INDEX = 'blobs';
+
+interface StoredBlob {
+  data: string;
+  expiresAt: number;
+  size: number;
+}
 
 function byteSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).length;
@@ -74,12 +95,88 @@ export class Book {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async create(bookId: string, device: DevicePublic, deviceId: string): Promise<{ bookId: string }> {
+  async create(bookId: string, device: DevicePublic, deviceId: string, options: { self?: boolean } = {}): Promise<{ bookId: string }> {
     if (await this.store.get<Meta>('meta')) throw new RelayError(409, 'book already exists');
-    const meta: Meta = { bookId, epoch: 1, seq: 0, owners: [deviceId], deleted: false };
+    const meta: Meta = { bookId, epoch: 1, seq: 0, owners: [deviceId], deleted: false, ...(options.self ? { self: true, prunedThrough: 0, blobBytes: 0 } : {}) };
     const record: DeviceRecord = { signJwk: device.signJwk, agreeJwk: device.agreeJwk, addedAt: this.now().toISOString() };
-    await this.store.put({ meta, [deviceKey(deviceId)]: record });
+    await this.store.put({ meta, [deviceKey(deviceId)]: record, ...(options.self ? { [ackKey(deviceId)]: 0 } : {}) });
     return { bookId };
+  }
+
+  /** A self book: this device has applied up to `seq`; what every active device has applied goes — `MemoryTransport.ack`. */
+  async ack(seq: number, actor: string): Promise<void> {
+    const meta = await this.requireMember(actor);
+    if (!meta.self) throw new RelayError(400, 'only a self book is pruned');
+    if (!Number.isSafeInteger(seq) || seq < 0 || seq > meta.seq) throw new RelayError(400, 'ack past the log');
+    const mine = (await this.store.get<number>(ackKey(actor))) ?? 0;
+    await this.store.put({ [ackKey(actor)]: Math.max(mine, seq) });
+    const devices = await this.store.list<DeviceRecord>({ prefix: 'device:' });
+    const acks = await this.store.list<number>({ prefix: 'ack:' });
+    const active = [...devices.entries()].filter(([, d]) => d.removedAt === undefined).map(([key]) => key.slice('device:'.length));
+    // A new device's copy taken at `startSeq` and not yet claimed holds everything after it — `MemoryTransport.ack`.
+    const invites = await this.store.list<StoredInvite>({ prefix: 'invite:' });
+    const waiting = [...invites.values()].filter((i) => i.startSeq !== undefined && i.claimedAt === undefined && Date.parse(i.expiresAt) > this.now().getTime()).map((i) => i.startSeq!);
+    const floor = Math.min(...active.map((id) => acks.get(ackKey(id)) ?? 0), ...waiting);
+    const from = meta.prunedThrough ?? 0;
+    if (floor <= from) return;
+    const keys: string[] = [];
+    for (let at = from + 1; at <= floor; at += 1) keys.push(logKey(at));
+    for (let i = 0; i < keys.length; i += 128) await this.store.delete(keys.slice(i, i + 128));
+    const latest = (await this.store.get<Meta>('meta'))!;
+    await this.store.put({ meta: { ...latest, prunedThrough: floor } });
+  }
+
+  /** The blob index: each kept blob's size and expiry, one small value (at most `MAX_BOOK_BLOBS` of them). */
+  private async blobIndex(): Promise<Record<string, [number, number]>> {
+    return (await this.store.get<Record<string, [number, number]>>(BLOB_INDEX)) ?? {};
+  }
+
+  /** Blobs are the owner's own book's only (link my devices): a household book holds none. */
+  private async requireSelfMember(actor: string): Promise<Meta> {
+    const meta = await this.requireMember(actor);
+    if (!meta.self) throw new RelayError(400, 'only a self book holds blobs');
+    return meta;
+  }
+
+  async putBlob(hash: string, data: string, expiresAt: string, actor: string): Promise<void> {
+    const meta = await this.requireSelfMember(actor);
+    let bytes: Uint8Array;
+    try {
+      bytes = base64UrlToBytes(data);
+    } catch {
+      throw new RelayError(400, 'expected base64url');
+    }
+    if (bytes.length > MAX_BLOB_BYTES) throw new RelayError(413, 'blob over 700 KB');
+    if ((await sha256Hex(bytes)) !== hash) throw new RelayError(400, 'blob does not match its hash');
+    const until = Date.parse(expiresAt);
+    if (!Number.isFinite(until) || until > this.now().getTime() + MAX_BLOB_TTL_MS) throw new RelayError(400, 'a blob is kept a week at most');
+    // What the book holds, from the index alone: the expired go (index and data), the rest counts.
+    const index = await this.blobIndex();
+    const expired = Object.keys(index).filter((h) => index[h]![1] <= this.now().getTime());
+    for (const h of expired) delete index[h];
+    for (let i = 0; i < expired.length; i += 128) await this.store.delete(expired.slice(i, i + 128).map(blobKey));
+    delete index[hash];
+    const used = Object.values(index).reduce((total, [size]) => total + size, 0);
+    if (used + bytes.length > MAX_BOOK_BLOB_BYTES || Object.keys(index).length >= MAX_BOOK_BLOBS) throw new RelayError(413, 'this book holds too much already');
+    index[hash] = [bytes.length, until];
+    await this.store.put({ [blobKey(hash)]: { data, expiresAt: until, size: bytes.length }, [BLOB_INDEX]: index, meta: { ...meta, blobBytes: used + bytes.length } });
+  }
+
+  async getBlob(hash: string, actor: string): Promise<{ data: string }> {
+    await this.requireSelfMember(actor);
+    const blob = await this.store.get<StoredBlob>(blobKey(hash));
+    if (!blob || blob.expiresAt <= this.now().getTime()) throw new RelayError(404, 'no such blob');
+    return { data: blob.data };
+  }
+
+  async deleteBlob(hash: string, actor: string): Promise<void> {
+    const meta = await this.requireSelfMember(actor);
+    const index = await this.blobIndex();
+    const entry = index[hash];
+    await this.store.delete([blobKey(hash)]);
+    if (!entry) return;
+    delete index[hash];
+    await this.store.put({ [BLOB_INDEX]: index, meta: { ...meta, blobBytes: Math.max(0, (meta.blobBytes ?? 0) - entry[0]) } });
   }
 
   /** 404 no book, 410 deleted — `MemoryTransport.requireBook`. */
@@ -155,6 +252,8 @@ export class Book {
 
   async pull(since: number, actor: string): Promise<{ entries: SequencedEntry[]; latest: number }> {
     const meta = await this.requireMember(actor);
+    // A self book's start is gone once every device has read it — `MemoryTransport.pull`.
+    if (since < (meta.prunedThrough ?? 0)) throw new RelayError(410, 'pruned');
     const rows = await this.store.list<LogEntry>({ prefix: 'log:', start: logKey(since + 1), limit: MAX_PULL_ENTRIES });
     const devices = await this.store.list<DeviceRecord>({ prefix: 'device:' });
     const entries = [...rows.entries()].map(([key, entry]): SequencedEntry => ({
@@ -186,6 +285,7 @@ export class Book {
     if (invite.claimedAt !== undefined) throw new RelayError(409, 'invite already claimed');
     if (Date.parse(invite.expiresAt) <= this.now().getTime()) throw new RelayError(410, 'invite expired');
     if (!(await this.signedByAnOwner(invite, meta.owners))) throw new RelayError(403, 'bad owner signature');
+    if (meta.self && invite.startSeq !== undefined && invite.startSeq < (meta.prunedThrough ?? 0)) throw new RelayError(410, 'pruned');
 
     const devices = await this.store.list<DeviceRecord>({ prefix: 'device:' });
     const active = [...devices.values()].filter((d) => d.removedAt === undefined).length;
@@ -194,6 +294,12 @@ export class Book {
     const now = this.now().toISOString();
     const record: DeviceRecord = { signJwk: device.signJwk, agreeJwk: device.agreeJwk, addedAt: now };
     await this.store.put({ [deviceKey(deviceId)]: record, [inviteKey(inviteId)]: { ...invite, claimedAt: now } });
+    // A self book: each of the owner's devices is an owner, and starts reading the log where it joined.
+    if (meta.self) {
+      const from = invite.startSeq ?? meta.seq;
+      await this.store.put({ meta: { ...meta, owners: [...new Set([...meta.owners, deviceId])] }, [ackKey(deviceId)]: from });
+      return { bookId: meta.bookId, epoch: meta.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId, seq: from };
+    }
     return {
       bookId: meta.bookId,
       epoch: meta.epoch,

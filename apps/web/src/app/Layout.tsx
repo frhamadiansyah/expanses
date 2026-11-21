@@ -26,6 +26,7 @@ import { useForeignRecalcAtStart } from '../features/accounts/withdrawal-rate-st
 import { WithdrawalRateNotice } from '../features/accounts/WithdrawalRateNotice';
 import { lateNote } from '../features/debt-plan/plan-view';
 import { useLateDebtCount } from '../features/debt-plan/queries';
+import { SeatNotice } from '../features/devices/SeatNotice';
 
 const NAV = [
   { to: '/transactions', label: 'Transactions' },
@@ -211,6 +212,8 @@ export function Layout() {
           <BackupBanner />
           {/* A share that ended here is read-only (§8.6), and every screen of it says so. */}
           <ReadOnlyNotice />
+          {/* A workspace shared with someone, on a linked device that is not the one keeping it shared: view-only here. */}
+          <SeatNotice />
           {/* Once: Family purchases the shared-book repair put right (sync gaps R2). */}
           <RepairNotice />
           <Outlet />

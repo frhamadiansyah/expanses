@@ -29,6 +29,7 @@ import { classify } from './classify';
 import { isEditable } from './draft';
 import { postedAgainstPlaceholder } from '../sharing/sharing-copy';
 import { hasRest, settleRest, splitTotal } from './split-rest';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 export type FormMode = 'expense' | 'income' | 'transfer' | 'trade';
 
@@ -1755,6 +1756,7 @@ export function rememberCurrency(code: string): void {
   try {
     const next = [code, ...readRecentCurrencies().filter((c) => c !== code)].slice(0, 5);
     localStorage.setItem(RECENT_CURRENCY_KEY, JSON.stringify(next));
+    mirrorPref(RECENT_CURRENCY_KEY, JSON.stringify(next));
   } catch {
     // A browser that refuses storage still gets a working sheet; it just does not remember.
   }
