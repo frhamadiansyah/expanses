@@ -27,6 +27,18 @@ test.describe.configure({ timeout: 300_000 });
 
 const phoneProject = (info: TestInfo) => info.project.name === 'phone';
 
+/**
+ * Opens a Net worth row's own page as a person does: on a wide screen a double-click on the Mac page's row link (a
+ * click there opens its side peek); on a phone a tap, as it always was — there the row is the link itself, and a
+ * second click would land on the page it opened.
+ */
+async function openNetWorthRow(target: Locator) {
+  if (wideScreen(target.page())) {
+    const link = (await target.evaluate((node) => node.tagName === 'A')) ? target : target.getByRole('link');
+    await link.dblclick();
+  } else await target.click();
+}
+
 /** A second device: a context of its own, the same shape as the project's. */
 async function secondDevice(browser: Browser, info: TestInfo): Promise<Page> {
   const use = info.project.use;
@@ -703,14 +715,14 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   });
 
   // Dewi's own account page, opened from the household's sheet (a double-click on the Mac page's row), wears her ring on its hero.
-  await sheetRow(dewi, 'Dewi Bank').getByRole('link').dblclick();
+  await openNetWorthRow(sheetRow(dewi, 'Dewi Bank'));
   await expect(dewi.getByTestId('balance-card').getByTestId('card-currency')).toHaveAttribute('data-ring', TEAL);
   await dewi.goto('/net-worth');
   await openDrawers(dewi);
 
   // Fandri's shared account opens the account page's layout on Dewi's phone, read-only: the hero with his ring, whose
   // it is and when it was updated in its line, Recent with the one locked other-use total, and no Spend or Edit.
-  await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).dblclick();
+  await openNetWorthRow(dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }));
   await expect(dewi).toHaveURL(/\/net-worth\/shared\//);
   await expect(dewi.getByRole('heading', { name: 'Fandri Bank' })).toBeVisible();
   await expect(dewi.getByTestId('shared-item-hero')).toContainText('10.000.000');
@@ -969,7 +981,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
     await openDrawers(dewi);
-    await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).dblclick();
+    await openNetWorthRow(dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }));
     await expect(rowsOn(dewi)).toHaveCount(2, { timeout: 2_000 });
   });
   await expect(rowsOn(dewi).filter({ hasText: 'Dewi groceries' })).toContainText('by me');
@@ -997,7 +1009,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
     await openDrawers(dewi);
-    await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).dblclick();
+    await openNetWorthRow(dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }));
     await expect(dewi.getByTestId('joint-row-deleted')).toContainText('deleted by Fandri', { timeout: 1_000 });
   });
   await dewi.getByTestId('joint-row-restore').click();
@@ -1041,7 +1053,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
     await openDrawers(dewi);
-    await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).dblclick();
+    await openNetWorthRow(dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }));
     await expect(rowsOn(dewi).filter({ hasText: 'Cash withdrawal' })).toHaveCount(1, { timeout: 1_000 });
   });
 
@@ -1059,7 +1071,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
     await openDrawers(dewi);
-    await dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }).dblclick();
+    await openNetWorthRow(dewi.getByRole('link', { name: /^Fandri's Fandri Bank, / }));
     await expect(rowsOn(dewi)).toHaveCount(0, { timeout: 1_000 });
   });
   await expect(dewi.locator('main')).toContainText('9.470.000');
