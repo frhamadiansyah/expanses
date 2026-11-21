@@ -57,7 +57,8 @@ test('a purchase abroad is read in its own currency, and records as what the car
   // Nothing was asked of a rate server for a draft merely waiting.
   expect(asked).toEqual([]);
 
-  // A swipe right asks for it to be recorded. It has no category yet, so the form opens — on the day's rate.
+  // A swipe right asks for it to be recorded. The reader was not sure of a figure in won, so the form opens to check it
+  // — on the day's rate. (A blank category alone holds nothing back: it would be filed under Uncategorised.)
   await swipeRight(page, row);
   const form = page.getByRole('form', { name: 'Review TOKO KOPI CONTOH' });
   await expect(form).toBeVisible();

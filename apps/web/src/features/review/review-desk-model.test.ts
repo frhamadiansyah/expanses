@@ -34,9 +34,17 @@ describe('deskState', () => {
     expect(state()).toEqual({ needsCategory: false, needsAccount: false, checkAmount: false, onForm: false, complete: true, ready: true });
   });
 
-  it('a missing category holds it back — until one is filled, which makes it ready', () => {
-    expect(state({ categoryAccountId: null })).toMatchObject({ needsCategory: true, ready: false, complete: false });
+  it('a blank category holds nothing back: it is ready, recorded under Uncategorised, and still counted as needing one', () => {
+    // One record rule (owner 2026-11-21): a date, an amount and Paid with — as Cashflow's Record.
+    expect(state({ categoryAccountId: null })).toMatchObject({ needsCategory: true, ready: true, complete: true });
+    expect(state({ categoryAccountId: null, source: 'manual', captureIds: [] })).toMatchObject({ needsCategory: true, ready: true });
+    expect(state({ kind: 'income', amountMinor: -50_000, categoryAccountId: null })).toMatchObject({ needsCategory: true, ready: true });
     expect(state({ categoryAccountId: 'groceries' })).toMatchObject({ needsCategory: false, ready: true });
+  });
+
+  it('a blank Paid with still holds it back, category or not', () => {
+    expect(state({ accountId: null, categoryAccountId: null })).toMatchObject({ needsAccount: true, complete: false, ready: false });
+    expect(state({ accountId: null })).toMatchObject({ complete: false, ready: false });
   });
 
   it('the category the merchant’s history guesses counts, as the phone’s row and swipe count it', () => {
@@ -69,7 +77,8 @@ describe('deskState', () => {
 describe('queueCounts', () => {
   it('counts every row once for To review, and each need apart (a row can need both)', () => {
     const states = [state(), state({ id: 'd2', categoryAccountId: null }), state({ id: 'd3', categoryAccountId: null, accountId: null }), state({ id: 'd4', amountMinor: 0, categoryAccountId: null })];
-    expect(queueCounts(states)).toEqual({ toReview: 4, ready: 1, needCategory: 3, needAccount: 1, checkAmount: 1 });
+    // The one with no category but an account and a figure counts as ready too; the one with no account, or no figure, does not.
+    expect(queueCounts(states)).toEqual({ toReview: 4, ready: 2, needCategory: 3, needAccount: 1, checkAmount: 1 });
   });
 });
 

@@ -63,7 +63,8 @@ test('a range of category cells takes one choice for all three, and one Undo put
   expect(await copyOnPage(page)).toBe('Restaurants\nRestaurants\nRestaurants');
 
   await page.getByTestId('cell-change').getByRole('button', { name: 'Undo' }).click();
-  for (const name of ['WARUNG SATU', 'WARUNG DUA', 'WARUNG TIGA']) await expect(row(page, name).getByRole('button', { name: `Category for ${name}` })).toHaveText('Choose…');
+  // Blank again, as before: a plain blank cell (a blank category holds Record back no more).
+  for (const name of ['WARUNG SATU', 'WARUNG DUA', 'WARUNG TIGA']) await expect(row(page, name).getByRole('button', { name: `Category for ${name}` })).toHaveText('');
 });
 
 test('⇧-click picks a range of amounts; a paste fills them in order, ⌘D fills down, and Delete does not discard', async ({ page }) => {

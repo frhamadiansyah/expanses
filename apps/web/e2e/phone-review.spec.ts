@@ -137,22 +137,20 @@ test('a swipe left discards, and the toast brings it back', async ({ page }) => 
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
 });
 
-test('a swipe on a capture with no category opens the form rather than recording it', async ({ page }) => {
+test('a swipe on a capture with no category records it under Uncategorised, where Cashflow’s needs-a-category line finds it', async ({ page }) => {
   await addCard(page);
   await capture(page, 'BCA Visa (IDR)', CARD_CSV);
 
   await page.goto('/review');
   const refund = row(page, 'REFUND UNIQLO');
   await expect(refund).toContainText('899.000');
+  await expect(refund).toContainText('Choose category');
 
-  // No gesture may answer a question: the form opens on the row, and Record stays refused until it is answered.
-  await swipe(page, refund, 'right');
+  // A tap opens the form: money in is read as income, on the Income tab, with no category yet. Back records nothing.
+  await refund.click();
   const form = page.getByRole('form', { name: 'Review REFUND UNIQLO' });
   await expect(form).toBeVisible();
-  // Money in is read as income, on the Income tab, with no category yet.
   await expect(form.getByRole('radio', { name: 'Income' })).toBeChecked();
-  await expect(page.getByRole('button', { name: 'Record', exact: true })).toBeDisabled();
-  // Back records nothing: the draft is still waiting.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
 
@@ -161,6 +159,26 @@ test('a swipe on a capture with no category opens the form rather than recording
   await page.getByRole('button', { name: 'Discard', exact: true }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
   await expect(toast(page)).toContainText('Discarded REFUND UNIQLO');
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+
+  // One record rule (owner 2026-11-21): a date, an amount and Paid with are there, so a swipe right records it — a
+  // blank category filed under Uncategorised. Undo brings it back with its category blank again.
+  await swipe(page, refund, 'right');
+  await expect(toast(page)).toContainText('Recorded REFUND UNIQLO');
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await expect(refund).toContainText('Choose category');
+
+  await swipe(page, refund, 'right');
+  await expect(toast(page)).toContainText('Recorded REFUND UNIQLO');
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  // Findable later: Cashflow's line of what still needs a category lists it.
+  await page.goto('/transactions');
+  await expect(page.getByTestId('needs-category-card')).toContainText('1 needs a category');
+  await page.getByTestId('needs-category-card').click();
+  await expect(page.getByText('REFUND UNIQLO').first()).toBeVisible();
 });
 
 const sms = (id: string, shop: string, amount: string, time: string) =>
@@ -197,10 +215,11 @@ test('a capture whose shop has history shows that category, and a swipe right re
   await expect(page.getByText('WARUNG SEDERHANA').first()).toBeVisible();
   await expect(page.getByText('Groceries').first()).toBeVisible();
 
-  // The shop with no history opens the form rather than recording.
+  // The shop with no history records all the same, under Uncategorised (one record rule, owner 2026-11-21).
   await page.goto('/review');
   await swipe(page, row(page, 'TOKO ASING BARU'), 'right');
-  await expect(page.getByRole('form', { name: 'Review TOKO ASING BARU' })).toBeVisible();
+  await expect(toast(page)).toContainText('Recorded TOKO ASING BARU');
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
 });
 
 test('a row pasted into Cashflow’s table on a wide screen waits in the phone’s Review too, and a swipe records it', async ({ page }) => {

@@ -31,7 +31,7 @@ async function answeredSource(page: Page) {
   await expect(row(page, 'SEED SHOP').getByRole('button', { name: 'Account for SEED SHOP' })).toHaveText('Everyday bank');
 }
 
-test('a missing category is filled in place, the row turns ready, and Record records it', async ({ page }) => {
+test('a missing account is filled in place, the row turns ready (a blank category holds nothing back), and Record records it', async ({ page }) => {
   await page.goto('/review');
   await expect(page.getByTestId('review-page')).toHaveAttribute('data-desk', 'true');
   await inject(page, [notice()]);
@@ -47,19 +47,22 @@ test('a missing category is filled in place, the row turns ready, and Record rec
   await expect(kopi.getByTestId('review-from')).toHaveText('Notification');
   await expect(kopi.getByTestId('draft-amount')).toHaveText('38.000');
 
-  // Not ready: Record is greyed, and the orange cells say what is missing.
+  // Not ready: Record is greyed, and the orange cell says what is missing. The blank category is plain, not orange.
   await expect(kopi).toHaveAttribute('data-ready', 'false');
   await expect(kopi.getByRole('button', { name: 'Record TOKO KOPI' })).toBeDisabled();
   await expect(kopi.getByRole('button', { name: 'Account for TOKO KOPI' })).toHaveText('Which account?');
-  await expect(kopi.getByRole('button', { name: 'Category for TOKO KOPI' })).toHaveText('Choose…');
+  await expect(kopi.getByRole('button', { name: 'Category for TOKO KOPI' })).toHaveText('');
 
-  // The account, in the phone's Paid with sheet, in place.
+  // The account, in the phone's Paid with sheet, in place: a date, an amount and Paid with, so the row turns ready.
   await kopi.getByRole('button', { name: 'Account for TOKO KOPI' }).click();
   await choosePayment(page, 'Everyday bank', 'Paid with');
   await expect(count(page, 'review-need-account')).toHaveText('0');
-  await expect(kopi.getByRole('button', { name: 'Record TOKO KOPI' })).toBeDisabled();
+  await expect(kopi).toHaveAttribute('data-ready', 'true');
+  await expect(kopi.getByRole('button', { name: 'Record TOKO KOPI' })).toBeEnabled();
+  await expect(count(page, 'review-ready')).toHaveText('1');
+  await expect(count(page, 'review-need-category')).toHaveText('1');
 
-  // The category, in the phone's Select category sheet: the row turns ready.
+  // The category, in the phone's Select category sheet: still ready, no longer counted under No category.
   await pickDraftCategory(page, 'TOKO KOPI', 'Groceries');
   await expect(kopi).toHaveAttribute('data-ready', 'true');
   await expect(count(page, 'review-ready')).toHaveText('1');
@@ -95,28 +98,66 @@ test('Record N ready records every ready row at once, and Undo puts them all bac
     notice({ id: 'note-a', body: 'Pembayaran Rp45.000 berhasil. Merchant: WARUNG SATE', capturedAt: '2026-09-30T09:00:00+07:00' }),
     notice({ id: 'note-b', body: 'Pembayaran Rp120.000 berhasil. Merchant: APOTIK SEHAT', capturedAt: '2026-09-30T10:00:00+07:00' }),
   ]);
-  // Answered once for the app, both arrive with their account; each still needs its category.
+  // Answered once for the app, both arrive with their account: ready, a blank category or not.
   await expect(page.getByTestId('draft-row')).toHaveCount(3);
   await expect(count(page, 'review-need-account')).toHaveText('0');
   await pickDraftCategory(page, 'WARUNG SATE', 'Restaurants');
   await pickDraftCategory(page, 'APOTIK SEHAT', 'Groceries');
+  await expect(count(page, 'review-ready')).toHaveText('3');
+  await expect(count(page, 'review-need-category')).toHaveText('1');
+  await expect(row(page, 'SEED SHOP')).toHaveAttribute('data-ready', 'true');
+
+  await page.getByRole('button', { name: 'Record 3 ready' }).click();
+  await expect(toast(page)).toContainText('Recorded 3 captures');
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+  await expect(count(page, 'review-to-review')).toHaveText('0');
+  await expect(page.getByRole('button', { name: /^Record \d+ ready$/ })).toHaveCount(0);
+
+  // Undo takes them all back: the transactions voided, the drafts in the queue again, ready as they were — the one
+  // filed under Uncategorised with its category blank again.
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(3);
+  await expect(count(page, 'review-ready')).toHaveText('3');
+  await expect(row(page, 'SEED SHOP').getByRole('button', { name: 'Category for SEED SHOP' })).toHaveText('');
+  await expect(count(page, 'review-need-category')).toHaveText('1');
+  await page.goto('/transactions');
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'WARUNG SATE' })).toHaveCount(0);
+});
+
+test('a capture with no category is a plain blank cell, counts as ready, and Record N ready files it under Uncategorised, where Cashflow’s filter finds it', async ({ page }) => {
+  await answeredSource(page);
+  await inject(page, [notice({ id: 'note-a', body: 'Pembayaran Rp45.000 berhasil. Merchant: WARUNG SATE', capturedAt: '2026-09-30T09:00:00+07:00' })]);
+  await pickDraftCategory(page, 'WARUNG SATE', 'Restaurants');
+
+  // SEED SHOP: no category, nothing guessed. Its cell is blank and plain — no orange — and still opens the picker.
+  const seed = row(page, 'SEED SHOP');
+  const cell = seed.getByRole('button', { name: 'Category for SEED SHOP' });
+  await expect(cell).toHaveText('');
+  await expect(cell.locator('[class*="ph-warn"]')).toHaveCount(0);
+  await expect(seed).toHaveAttribute('data-ready', 'true');
+  await expect(seed.getByRole('button', { name: 'Record SEED SHOP' })).toBeEnabled();
   await expect(count(page, 'review-ready')).toHaveText('2');
-  await expect(row(page, 'SEED SHOP')).toHaveAttribute('data-ready', 'false');
+  await expect(page.getByTestId('review-need-category')).toContainText('No category');
+  await expect(count(page, 'review-need-category')).toHaveText('1');
+  await expect(count(page, 'review-need-category')).not.toHaveClass(/ph-warn/);
+  await cell.click();
+  await expect(page.getByRole('dialog', { name: 'Category for SEED SHOP' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Category for SEED SHOP' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Record 2 ready' }).click();
   await expect(toast(page)).toContainText('Recorded 2 captures');
-  // The one not ready stays, still asking for its category.
-  await expect(page.getByTestId('draft-row')).toHaveCount(1);
-  await expect(row(page, 'SEED SHOP')).toHaveCount(1);
-  await expect(count(page, 'review-to-review')).toHaveText('1');
-  await expect(page.getByRole('button', { name: /^Record \d+ ready$/ })).toHaveCount(0);
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
 
-  // Undo takes both back: the transactions voided, the drafts in the queue again, ready as they were.
-  await toast(page).getByRole('button', { name: 'Undo' }).click();
-  await expect(page.getByTestId('draft-row')).toHaveCount(3);
-  await expect(count(page, 'review-ready')).toHaveText('2');
+  // In Cashflow it sits under Uncategorised, and the Filter's "Waiting for a category" lists it alone.
   await page.goto('/transactions');
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'WARUNG SATE' })).toHaveCount(0);
+  const recorded = page.getByTestId('transaction-row').filter({ hasText: 'SEED SHOP' });
+  await expect(recorded.locator('[data-cell="category"]')).toHaveText('Uncategorised');
+  await page.getByRole('button', { name: /^Filter/ }).click();
+  await page.getByRole('dialog', { name: 'Filter' }).getByLabel('Waiting for a category (1)').check();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('transaction-row')).toHaveCount(1);
+  await expect(page.getByTestId('transaction-row')).toContainText('SEED SHOP');
 });
 
 test('Discard takes a row out of the queue for good, with Undo on the toast', async ({ page }) => {
@@ -174,9 +215,7 @@ test('a row’s peek shows what was captured, steps with the arrows, and Return 
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
   await expect(peek.getByTestId('peek-title')).toHaveText('SEED SHOP');
 
-  // SEED SHOP has no category: Return does nothing, ⌫ discards it.
-  await page.keyboard.press('Enter');
-  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  // ⌫ discards SEED SHOP.
   await page.keyboard.press('Backspace');
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
   await expect(peek).toHaveCount(0);

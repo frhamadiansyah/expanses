@@ -15,6 +15,7 @@ import {
   reopenDraft,
   type SetAsideChoice,
   setSourceAccount,
+  uncategorisedCategory,
   unmerge,
   voidTransaction,
 } from '@expanses/db';
@@ -71,8 +72,8 @@ type RecordOutcome = { kind: 'recorded'; transactionId: string; charged: Charged
  * one of this page's own. A phone held sideways reads it as a table, every column in place. A phone reads it as rows
  * — a chevron into the sheet that holds what a row had no width for, and the two answers themselves one gesture
  * away: right to record, left to discard. The gesture is only safe because it asks what the Record button asks —
- * a purchase that takes promised money still gets its question first, and a draft with no account or category has
- * no answer to give, so it opens the sheet — and because either write can be taken back from the toast: a record
+ * a purchase that takes promised money still gets its question first, and a draft with no account or no sure figure
+ * has no answer to give, so it opens the sheet (one with no category records under Uncategorised) — and because either write can be taken back from the toast: a record
  * is voided through the ledger and the draft returns to the queue, which is the one way back for both directions.
  */
 export function ReviewPage() {
@@ -155,6 +156,8 @@ export function ReviewPage() {
   async function undo(draft: DraftRow, transactionId: string | null) {
     if (transactionId) await voidTransaction(database, ws, transactionId);
     await reopenDraft(database, ws, draft.id);
+    // One a record filed under Uncategorised waits with its category blank again, as it was.
+    if (filedUncategorised.current.delete(draft.id)) await editDraft(database, ws, draft.id, { categoryAccountId: null });
     await invalidate();
   }
 
@@ -179,7 +182,21 @@ export function ReviewPage() {
   }
 
   /** A draft whose payment takes promised money: confirmed from the question's sheet once it is answered. */
-  const [asking, setAsking] = useState<{ id: string; door: Door; undoable: boolean; keepPhoto: boolean; charged: Charged | null } | null>(null);
+  const [asking, setAsking] = useState<{ id: string; door: Door; undoable: boolean; keepPhoto: boolean; charged: Charged | null; uncategorised: boolean } | null>(null);
+
+  /** Drafts a record filed under Uncategorised (no category chosen or guessed): an Undo puts their category back to blank. */
+  const filedUncategorised = useRef(new Set<string>());
+  /**
+   * One record rule with Cashflow (owner 2026-11-21): a draft with a date, an amount and Paid with records, and one with
+   * no category is filed under the open book's Uncategorised — Cashflow's own path (`uncategorisedCategory`) — where its
+   * "Waiting for a category" finds it. Written onto the draft just before `confirmDraft` reads it. A transfer has none.
+   * Nothing is learned from it: the merchant's history never guesses Uncategorised, and a source learns no category.
+   */
+  async function fileUncategorised(draft: Pick<DraftRow, 'id' | 'kind'>) {
+    const categoryAccountId = await uncategorisedCategory(database, ws, draft.kind === 'income' ? 'income' : 'expense');
+    await editDraft(database, ws, draft.id, { categoryAccountId });
+    filedUncategorised.current.add(draft.id);
+  }
 
   /**
    * Fetches the day's rate for a draft read in a currency its account does not hold, when this device has none for
@@ -207,8 +224,10 @@ export function ReviewPage() {
       return { kind: 'stopped' };
     }
     const keepPhoto = keepsPicture(draft);
-    // A category the row showed from the merchant's history is written onto the draft before it is recorded.
+    // A category the row showed from the merchant's history is written onto the draft before it is recorded; with none
+    // at all, money out or in is filed under Uncategorised as it is confirmed (`fileUncategorised`).
     const guessed = effectiveCategory(draft, guesses);
+    const uncategorised = draft.kind !== 'transfer' && !guessed;
     if (guessed && !draft.categoryAccountId) {
       try {
         await editDraft(database, ws, draft.id, { categoryAccountId: guessed });
@@ -242,12 +261,13 @@ export function ReviewPage() {
         return { kind: 'stopped' };
       }
       if (asks) {
-        setAsking({ id: draft.id, door: door!, undoable: opts.undoable ?? false, keepPhoto, charged });
+        setAsking({ id: draft.id, door: door!, undoable: opts.undoable ?? false, keepPhoto, charged, uncategorised });
         return { kind: 'stopped' };
       }
     }
     let posted: string | null = null;
     await run(draft.id, async () => {
+      if (uncategorised) await fileUncategorised(draft);
       const { transactionId, keptImage } = await confirmDraft(database, ws, draft.id, { setAside: null, keepPhoto, charged });
       posted = transactionId;
       await settlePicture(draft, transactionId, keptImage);
@@ -416,11 +436,10 @@ export function ReviewPage() {
    * a question of its own, and no gesture may answer it: the sheet opens on the row instead.
    */
   function swipeRecord(draft: DraftRow) {
-    // A category is a question too: the row no longer prints it, but recording without one is refused all the same.
-    const uncategorised = draft.kind !== 'transfer' && !effectiveCategory(draft, guesses);
+    // A blank category is no question (one record rule, owner 2026-11-21): `record` files it under Uncategorised.
     // Captured in event mode for a shared event: recording moves it into the event, so it is done on the form, seen.
     const intoShared = recordsOnForm(draft, sharedSummaries);
-    if (uncategorised || intoShared || captureRowView(draft, sourceOf(draft)).needs.length > 0) void openToFinish(draft);
+    if (intoShared || captureRowView(draft, sourceOf(draft)).needs.length > 0) void openToFinish(draft);
     else void record(draft, { undoable: true });
   }
 
@@ -475,12 +494,13 @@ export function ReviewPage() {
         <SetAsideSheet
           door={asking.door}
           onSave={async (choice) => {
+            const draft = list.find((row) => row.id === asking.id);
+            if (asking.uncategorised) await fileUncategorised({ id: asking.id, kind: draft?.kind ?? 'expense' });
             const { transactionId, keptImage } = await confirmDraft(database, ws, asking.id, {
               setAside: choice,
               keepPhoto: asking.keepPhoto,
               charged: asking.charged,
             });
-            const draft = list.find((row) => row.id === asking.id);
             if (draft) await settlePicture(draft, transactionId, keptImage);
             await invalidate();
             if ((asking.undoable || asking.charged) && draft) resolved(draft, 'recorded', transactionId, undefined, asking.charged);

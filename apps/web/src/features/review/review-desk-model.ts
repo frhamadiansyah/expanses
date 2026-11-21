@@ -13,7 +13,11 @@ import { recordsOnForm } from './draft-form';
 
 /** Where one draft stands: what it still needs, and whether it may be recorded from the table or the peek. */
 export interface DeskDraftState {
-  /** Money out or in with no category of its own and none the merchant's history guesses. */
+  /**
+   * Money out or in with no category of its own and none the merchant's history guesses. It holds nothing back (one
+   * record rule, owner 2026-11-21): recorded so, the row is filed under the book's Uncategorised, as Cashflow files it,
+   * and found again by Cashflow's "Waiting for a category". It is counted, to fix later.
+   */
   needsCategory: boolean;
   /** No paying account — or, for a transfer, no account it went to. */
   needsAccount: boolean;
@@ -21,7 +25,10 @@ export interface DeskDraftState {
   checkAmount: boolean;
   /** Captured in event mode for a shared event: it is recorded on its form, where the move into the event is seen. */
   onForm: boolean;
-  /** Everything the form's ✓ asks for is there (`canRecord`): the peek, where the capture is in view, may record it. */
+  /**
+   * What a record needs is there — an account (and a different one it went to, for a transfer) and a figure: the peek,
+   * where the capture is in view, may record it. A blank category is not asked for (filed under Uncategorised).
+   */
   complete: boolean;
   /**
    * What a swipe may record on the phone (`swipeRecord`): complete, its figure sure, and not one for its form. The row's
@@ -43,7 +50,8 @@ export function deskState(
   const checkAmount = needs.includes('amount');
   const onForm = recordsOnForm(draft, sharedEvents);
   const sameAccount = transfer && draft.accountId !== null && draft.accountId === draft.toAccountId;
-  const complete = !needsCategory && !needsAccount && !sameAccount && draft.amountMinor !== 0;
+  // One rule with Cashflow's Record: a date, an amount and Paid with. A category left blank files it under Uncategorised.
+  const complete = !needsAccount && !sameAccount && draft.amountMinor !== 0;
   return { needsCategory, needsAccount, checkAmount, onForm, complete, ready: complete && !checkAmount && !onForm };
 }
 

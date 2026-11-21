@@ -142,7 +142,8 @@ export function DraftPeek({
                   <span className="truncate">{category.name}</span>
                 </>
               ) : (
-                <span className={WARN}>Choose…</span>
+                // Blank, as the table's cell: recorded so, it is filed under Uncategorised.
+                <span className="h-[18px]" aria-hidden />
               )}
             </PickField>
           ),

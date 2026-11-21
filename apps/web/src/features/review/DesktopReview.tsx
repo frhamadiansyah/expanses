@@ -108,8 +108,9 @@ function useWidth<T extends HTMLElement>(): [(node: T | null) => void, number] {
  * Review on a wide screen (Mac Review, owner 2026-11-17): what the iPhone captured and nobody has recorded yet, as a
  * table to work through. A title bar with To review / Recorded / Discarded, Scan a receipt and "Record N ready"; one box
  * of counts (the sidebar's badge and Cashflow's To review count the same queue); then the captures — when, where from,
- * description, amount, category, paid with — each with Record and Discard. What a row still needs is orange and is
- * filled in place, in the pickers the phone uses. A row opens its side peek: the capture's own words, and the fields.
+ * description, amount, category, paid with — each with Record and Discard. What a row still needs (an account, a
+ * figure) is orange and is filled in place, in the pickers the phone uses; a blank category is plain, and records under
+ * Uncategorised (one record rule with Cashflow, owner 2026-11-21). A row opens its side peek: the capture's own words, and the fields.
  * Return records the peeked row when it is ready, ⌫ discards it. Skipped captures fold away at the foot.
  */
 export function DesktopReview({
@@ -453,7 +454,8 @@ function CountsBox({ counts, loaded }: { counts: ReturnType<typeof queueCounts>;
       <div className="flex flex-wrap items-center gap-x-[26px] gap-y-[6px] px-[16px] py-[12px]">
         {figure('To review', counts.toReview, undefined, 'review-to-review')}
         {figure('Ready to record', counts.ready, 'text-[var(--ph-up)]', 'review-ready')}
-        {figure('Need a category', counts.needCategory, counts.needCategory > 0 ? WARN : undefined, 'review-need-category')}
+        {/* Plain ink: a row with no category records under Uncategorised, so this is a count to fix later, not a block. */}
+        {figure('No category', counts.needCategory, undefined, 'review-need-category')}
         {figure('Need an account', counts.needAccount, counts.needAccount > 0 ? WARN : undefined, 'review-need-account')}
         {counts.checkAmount > 0 && figure('Amount to check', counts.checkAmount, WARN, 'review-check-amount')}
         <span className="flex-1" />
@@ -632,7 +634,8 @@ function DraftTableRow({
                   <span className="truncate">{category.name}</span>
                 </>
               ) : (
-                <span className={WARN}>Choose…</span>
+                // Blank, as Cashflow's blank cell: no category holds Record back (filed under Uncategorised).
+                <span className="h-[18px]" aria-hidden />
               ),
             )}
       </td>
