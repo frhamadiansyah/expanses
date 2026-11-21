@@ -328,7 +328,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
               }}
             />
             <MoneyRow label="Fee" value={draft.buy.fee} onChange={(fee) => setBuy({ fee })} currency={draft.currency} placeholder="None" />
-            <PickerRow label="Paid with" value={paidWith?.name ?? null} placeholder="Account" onOpen={() => setPaying(true)} />
+            <PickerRow label="Payment method" value={paidWith?.name ?? null} placeholder="Account" onOpen={() => setPaying(true)} />
             {needs.charged && paidWith ? (
               <MoneyRow
                 label={`Charged in ${pay.cashCurrency}`}
@@ -408,7 +408,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
       <ErrorBox error={error} />
       {paying && (
         <PaymentSheet
-          title="Paid with"
+          title="Payment method"
           options={moneyOptions}
           accounts={accounts}
           chosenAccountId={draft.buy.moneyId}

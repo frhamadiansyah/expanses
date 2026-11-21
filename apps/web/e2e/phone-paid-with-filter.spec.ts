@@ -21,11 +21,11 @@ test('Paid with is a sheet with a search; "48" leaves 4821, the pick marks the i
   const icon = historyMenu(page);
   const openSheet = async () => {
     await icon.click();
-    await page.getByRole('menuitem', { name: /^Paid with/ }).click();
+    await page.getByRole('menuitem', { name: /^Payment method/ }).click();
   };
   await expect(page.getByTestId('filter-on')).toHaveCount(0);
   await openSheet();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
   await expect(sheet.getByRole('button', { name: 'All', exact: true })).toBeVisible();
   // Each card is named by its name and its digits, the digits leading on screen.
   const mandiri = sheet.getByRole('button', { name: 'Mandiri Signature ···· 4821' });
@@ -47,7 +47,7 @@ test('Paid with is a sheet with a search; "48" leaves 4821, the pick marks the i
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText('Kopi Kenangan');
   await expect(page.getByTestId('filter-on')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Clear paid with' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Clear payment method' })).toHaveCount(0);
 
   // All takes the filter off again, dot and all.
   await openSheet();

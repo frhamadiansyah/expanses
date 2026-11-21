@@ -113,7 +113,7 @@ export function editFromForm(
     if (others && otherAccountId && !others.includes(otherAccountId)) throw new Error(`The other account of a transfer here is an open ${currency} account`);
     return { ...common, direction: side, otherAccountId, categoryId: '' };
   }
-  if (form.moneyId !== accountId) throw new Error(form.mode === 'income' ? 'Received into stays this account' : 'Paid with stays this account');
+  if (form.moneyId !== accountId) throw new Error(form.mode === 'income' ? 'Received into stays this account' : 'Payment method stays this account');
   return { ...common, direction: form.mode === 'income' ? 'in' : 'out', categoryId: form.categoryId, otherAccountId: '' };
 }
 

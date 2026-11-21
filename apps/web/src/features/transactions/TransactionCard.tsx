@@ -887,7 +887,7 @@ function CardBody({
   // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
-  const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : !finish && isRefund(draft) ? 'Into' : 'Paid with';
+  const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : !finish && isRefund(draft) ? 'Into' : 'Payment method';
   const categoryName = draft.categoryId === CARD_CASHBACK_CHOICE ? CARD_CASHBACK.name : draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
   // Where a transfer may land: money you hold, by the rule the From list uses — never a motorbike, a laptop or a
   // car, which hold value but receive nothing; never a card or a loan, which are paid through their own Pay; never

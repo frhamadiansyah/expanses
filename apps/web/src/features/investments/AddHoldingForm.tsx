@@ -189,7 +189,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
             <MoneyRow label="Fee" value={draft.fee} onChange={(fee) => change({ fee })} currency={security.currency} placeholder="None" />
             {/* With nothing to pay from yet — a broker not opened yet has no cash — ✓ waits on this row, so it says so. */}
             <PickerRow
-              label="Paid with"
+              label="Payment method"
               value={paidWith?.name ?? null}
               placeholder="Account"
               hint={paidFrom === '' ? (draft.brokerChoice === NEW_BROKER ? 'A broker not opened yet has no cash to pay from: choose what paid for it.' : 'Choose what paid for it.') : undefined}
@@ -253,7 +253,7 @@ export function AddHoldingForm({ picked, brokers, heldAt, onConfirm, onTicker }:
       <ErrorBox error={error} />
       {paying && (
         <PaymentSheet
-          title="Paid with"
+          title="Payment method"
           options={tradeMoneyChoices(accounts, 'buy', paidFrom)}
           accounts={accounts}
           chosenAccountId={paidFrom}

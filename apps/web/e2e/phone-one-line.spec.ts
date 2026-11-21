@@ -17,7 +17,7 @@ async function setUp(page: Page) {
 
 const field = (page: Page) => page.getByLabel('One line', { exact: true });
 const preview = (page: Page) => page.getByTestId('line-preview');
-const part = (page: Page, name: 'Category' | 'Paid with' | 'Day' | 'Amount') => preview(page).getByRole('button', { name, exact: true });
+const part = (page: Page, name: 'Category' | 'Payment method' | 'Day' | 'Amount') => preview(page).getByRole('button', { name, exact: true });
 
 test('One line reads a typed purchase into the preview row and saves it with Return', async ({ page }) => {
   await setUp(page);
@@ -40,8 +40,8 @@ test('One line reads a typed purchase into the preview row and saves it with Ret
 
   await test.step('note and amount are enough: paid-with falls back to the last one, shown unsure', async () => {
     await field(page).fill('parkir 10rb');
-    await expect(part(page, 'Paid with')).toHaveAttribute('data-unsure', 'true');
-    await expect(part(page, 'Paid with')).toHaveText('Bank Nusa?');
+    await expect(part(page, 'Payment method')).toHaveAttribute('data-unsure', 'true');
+    await expect(part(page, 'Payment method')).toHaveText('Bank Nusa?');
     await expect(part(page, 'Category')).toHaveText('Uncategorised');
     await page.screenshot({ path: test.info().outputPath('one-line-2-unsure.png') });
     await field(page).press('Enter');
@@ -55,7 +55,7 @@ test('One line reads a typed purchase into the preview row and saves it with Ret
     await expect(page.getByTestId('line-saved')).toContainText('3 saved');
     await field(page).fill('roti 15rb');
     await expect(part(page, 'Day')).toHaveText('Yesterday');
-    await expect(part(page, 'Paid with')).toHaveText('Bank Nusa?');
+    await expect(part(page, 'Payment method')).toHaveText('Bank Nusa?');
   });
 
   await test.step('a line with no amount does not save', async () => {

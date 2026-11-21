@@ -64,7 +64,7 @@ test('a purchase typed with cents posts rounded up, reopens whole, and an edit o
   await typeOnDock(page, '12500,30');
   // The cents stay on screen while the form is open.
   await expect(amount).toHaveText('12.500,30');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'CIMB Octo');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -122,7 +122,7 @@ test('the card shows a purchase typed with cents at what it was charged, and sti
   const form = addForm(page);
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
   await typeOnDock(page, '12500,30');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'CIMB Octo');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -177,7 +177,7 @@ test('a split takes whole rupiah only, and its dock keeps 00', async ({ page }) 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();

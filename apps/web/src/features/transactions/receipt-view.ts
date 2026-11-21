@@ -146,9 +146,9 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   if (across && paid) {
     lines.push({ label: `Charged on ${accountText(paid.accountId)}`, value: formatMinor(Math.abs(paid.amountMinor), currency) });
   } else if (payer) {
-    if (payer.paidLabel) lines.push({ label: 'Paid with', value: payer.paidLabel });
+    if (payer.paidLabel) lines.push({ label: 'Payment method', value: payer.paidLabel });
     lines.push({ label: 'Paid by', value: payer.mine ? 'Me' : (payer.payerName ?? 'Someone else') });
-  } else if (paid) lines.push({ label: left[0] ? 'Paid with' : 'Paid into', value: accountText(paid.accountId) });
+  } else if (paid) lines.push({ label: left[0] ? 'Payment method' : 'Paid into', value: accountText(paid.accountId) });
   if (into) lines.push({ label: 'Into', value: accountText(into.accountId) });
   // What the account was really charged, never the share that was kept: a split bill's card entry is the whole
   // bill, and the chart's treatment of it changes nothing about what the bank will ask for.

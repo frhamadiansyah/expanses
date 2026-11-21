@@ -183,7 +183,7 @@ export function SortFilterMenu({
                 }}
                 className={cx(ROW, 'justify-between')}
               >
-                <span>Paid with</span>
+                <span>Payment method</span>
                 <span className="flex min-w-0 items-center gap-1 text-[var(--ph-ink-3)]">
                   <span className="max-w-28 truncate">{paidName ?? 'All'}</span>
                   <ChevronRight size={14} aria-hidden />
@@ -219,18 +219,18 @@ export function SortFilterMenu({
             <>
               <button type="button" onClick={() => setView('menu')} className={cx(ROW, 'font-semibold')}>
                 <ChevronLeft size={14} aria-hidden />
-                Paid with
+                Payment method
               </button>
               <input
                 autoFocus
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Type to find"
-                aria-label="Find in paid with"
+                aria-label="Find a payment method"
                 aria-controls={listId}
                 className="h-11 w-full border-t-[0.5px] border-[var(--ph-hair)] bg-transparent px-3.5 text-[15px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none"
               />
-              <ul id={listId} role="listbox" aria-label="Paid with" className="max-h-64 overflow-y-auto">
+              <ul id={listId} role="listbox" aria-label="Payment method" className="max-h-64 overflow-y-auto">
                 {matching.length === 0 && <li className="border-t-[0.5px] border-[var(--ph-hair)] px-3.5 py-3 text-[15px] text-[var(--ph-ink-3)]">Nothing matches.</li>}
                 {matching.map((option) => (
                   <li

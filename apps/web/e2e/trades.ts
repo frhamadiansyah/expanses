@@ -57,7 +57,7 @@ export async function openShortTrade(page: Page, doing: 'buy' | 'sell', holding:
 }
 
 /** The trade's account row ("Paid with" or "Received into"), and the account picked from its list. */
-export async function pickTradeCash(page: Page, sheet: Locator, row: 'Paid with' | 'Received into', account: string) {
+export async function pickTradeCash(page: Page, sheet: Locator, row: 'Payment method' | 'Received into', account: string) {
   await sheet.getByRole('button', { name: new RegExp(`^${row}`) }).click();
   const list = page.getByRole('dialog', { name: row, exact: true });
   await list.getByRole('button', { name: new RegExp(`^${escape(account)}`) }).first().click();

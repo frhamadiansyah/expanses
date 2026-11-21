@@ -15,7 +15,7 @@ test('several pictures from the Amount camera ask what they are, and Read as a l
   await openAccount(page, { subtype: 'ewallet', name: 'Dompet Satu', balance: '500000' });
   await page.goto('/transactions/new');
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'Dompet Satu');
 
   await setStatementImages(page, [walletListLines(LIST), [], []]);

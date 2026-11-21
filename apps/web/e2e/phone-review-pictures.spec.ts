@@ -93,7 +93,7 @@ test('a receipt photographed in the app is kept on its receipt; one chosen from 
     await expect(page.getByRole('switch', { name: 'Keep photo' })).toHaveCount(0);
     await form.getByLabel('Note').fill(note);
     await form.getByRole('button', { name: 'Which account is this?' }).click();
-    await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /BCA Tahapan/ }).click();
+    await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /BCA Tahapan/ }).click();
     await form.getByRole('button', { name: 'Category' }).click();
     await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
     await page.getByRole('button', { name: 'Record', exact: true }).click();

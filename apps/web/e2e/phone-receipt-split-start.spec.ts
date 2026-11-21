@@ -59,7 +59,7 @@ test('Account → Split a receipt: people, photo, tag, totals, Record this purch
   // New transaction, filled in; nothing saved yet.
   await expect(page).toHaveURL(/\/transactions\/new/);
   const form = addForm(page);
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('BCA Tahapan');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('BCA Tahapan');
   await expect(form.getByLabel('Note')).toHaveValue('WARUNG LAUT');
   await expect(page.getByRole('dialog', { name: 'With', exact: true })).toHaveCount(0);
   await form.getByRole('button', { name: 'Category' }).click();

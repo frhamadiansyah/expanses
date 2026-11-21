@@ -21,8 +21,8 @@ test('the Default Paid with is set from the Account page, saved by the ✓, and 
   await expect(page.getByRole('link', { name: /^Default/ })).toContainText('None');
   await page.goto('/transactions/new');
   const form = addForm(page);
-  await expect(form.getByRole('button', { name: 'Paid with' })).toBeVisible();
-  await expect(form.getByRole('button', { name: 'Paid with' })).not.toContainText('BCA Tahapan');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toBeVisible();
+  await expect(form.getByRole('button', { name: 'Payment method' })).not.toContainText('BCA Tahapan');
 
   // Tapping a row only moves the tick; ‹ leaves with nothing saved.
   await openDefault(page);
@@ -45,14 +45,14 @@ test('the Default Paid with is set from the Account page, saved by the ✓, and 
 
   // A plain new transaction opens with it chosen.
   await page.goto('/transactions/new');
-  await expect(addForm(page).getByRole('button', { name: 'Paid with' })).toContainText('BCA Tahapan');
+  await expect(addForm(page).getByRole('button', { name: 'Payment method' })).toContainText('BCA Tahapan');
 
   // Another account for one purchase changes that purchase only.
-  await addForm(page).getByRole('button', { name: 'Paid with' }).click();
+  await addForm(page).getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'Mandiri Giro');
-  await expect(addForm(page).getByRole('button', { name: 'Paid with' })).toContainText('Mandiri Giro');
+  await expect(addForm(page).getByRole('button', { name: 'Payment method' })).toContainText('Mandiri Giro');
   await page.goto('/transactions/new');
-  await expect(addForm(page).getByRole('button', { name: 'Paid with' })).toContainText('BCA Tahapan');
+  await expect(addForm(page).getByRole('button', { name: 'Payment method' })).toContainText('BCA Tahapan');
   await openDefault(page);
   await expect(ticked(page, 'BCA Tahapan')).toBeVisible();
 
@@ -62,5 +62,5 @@ test('the Default Paid with is set from the Account page, saved by the ✓, and 
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole('link', { name: /^Default/ })).toContainText('None');
   await page.goto('/transactions/new');
-  await expect(addForm(page).getByRole('button', { name: 'Paid with' })).not.toContainText('BCA Tahapan');
+  await expect(addForm(page).getByRole('button', { name: 'Payment method' })).not.toContainText('BCA Tahapan');
 });

@@ -31,12 +31,12 @@ test('an account at a bank is called by its bank and its name, while Settings ke
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: 'Paid with' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await form.getByRole('button', { name: 'Payment method' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Payment method' });
   await expect(sheet.getByRole('button', { name: 'Mandiri Xpresi', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Mandiri Giro', exact: true })).toBeVisible();
   await sheet.getByRole('button', { name: 'Mandiri Xpresi', exact: true }).click();
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Mandiri Xpresi');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('Mandiri Xpresi');
 
   // Its page is titled the same; its Settings keep the name as typed and the bank as picked.
   await openWalletAccount(page, 'Mandiri Xpresi');

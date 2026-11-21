@@ -24,8 +24,8 @@ test('phone: a bond bought now on a card is added with its purchase, and the car
   await page.getByLabel('Purchase value', { exact: true }).fill('5000000');
   await page.getByLabel('Fee', { exact: true }).fill('15000');
   // Paid with is the account sheet Trade's Buy opens, cards and all.
-  await page.getByRole('button', { name: /^Paid with/ }).click();
-  await choosePayment(page, 'Mitra Visa', 'Paid with');
+  await page.getByRole('button', { name: /^Payment method/ }).click();
+  await choosePayment(page, 'Mitra Visa', 'Payment method');
   await expect(page.getByText('Paid with a card: the card owes it now')).toBeVisible();
   await page.getByLabel('Category for points').selectOption({ index: 1 });
   await page.getByLabel('MCC', { exact: true }).fill('6211');
@@ -76,8 +76,8 @@ test('phone: Trade’s Investment sheet lists holdings by kind and ends with New
   await expect(page.getByRole('radio', { name: 'New purchase' })).toBeChecked();
   await page.getByLabel('How much', { exact: true }).fill('2');
   await page.getByLabel('Cost', { exact: true }).fill('3000000');
-  await page.getByRole('button', { name: /^Paid with/ }).click();
-  await choosePayment(page, 'Mitra Giro', 'Paid with');
+  await page.getByRole('button', { name: /^Payment method/ }).click();
+  await choosePayment(page, 'Mitra Giro', 'Payment method');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await expect(page).toHaveURL(/\/net-worth\/assets\/[^/?]+$/);
   await expect(page.getByText('Value now')).toBeVisible();

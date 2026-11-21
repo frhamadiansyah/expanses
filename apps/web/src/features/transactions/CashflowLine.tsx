@@ -115,7 +115,7 @@ export function CashflowLine() {
       return;
     }
     if (!canSaveLine(line.preview)) {
-      if (!card) setLacking(line.preview.amountMinor === null ? 'Amount?' : 'Paid with?');
+      if (!card) setLacking(line.preview.amountMinor === null ? 'Amount?' : 'Payment method?');
       buzzWarning();
       clearTimeout(shakeTimer.current);
       setShaking(false);

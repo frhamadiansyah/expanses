@@ -102,8 +102,8 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
   await expect(chart.getByTestId('chart-month')).toContainText('2026');
   // The filter is a sheet on a phone: the card's row, led by its digits, is named with both.
   await historyMenu(page).click();
-  await page.getByRole('menuitem', { name: /^Paid with/ }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /^BCA Visa/ }).click();
+  await page.getByRole('menuitem', { name: /^Payment method/ }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /^BCA Visa/ }).click();
   // 85.000 + 126.500 + 45.000 + 60.000 + 10.000: the card's spending, the payments line not among it.
   await expect(chart.getByTestId('period-total')).toContainText('326.500');
   await chart.getByTestId('see-categories').click();

@@ -49,8 +49,8 @@ test('one ⋯ in the header selects, sorts, filters by Paid with and resets, wit
   await expect(page.getByTestId('filter-on')).toBeVisible();
 
   // Sort leaves the menu open, so Paid with is the next tap.
-  await page.getByRole('menuitem', { name: /^Paid with/ }).click();
-  await page.getByLabel('Find in paid with').fill('bca');
+  await page.getByRole('menuitem', { name: /^Payment method/ }).click();
+  await page.getByLabel('Find a payment method').fill('bca');
   await page.getByRole('option', { name: /BCA Tahapan/ }).click();
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText('Kopi Kenangan');

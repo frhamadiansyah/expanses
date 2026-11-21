@@ -80,7 +80,7 @@ test('a purchase split between a shared workspace and a private one reaches the 
   await openWorkspace(page, 'Home');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByLabel('Note').fill('Toko Sumber Rejeki');
   await openSplit(page);

@@ -13,7 +13,7 @@ test('Buy a fund by amount: no NAV, no units, and the value grows by the amount'
   // The fund, fixed and named alone; a fund bought by money has no units row.
   await expect(page.getByTestId('trade-holding')).toHaveText(FUND);
   await expect(sheet.getByLabel('Units', { exact: true })).toHaveCount(0);
-  await expect(sheet.getByRole('button', { name: /^Paid with/ })).toContainText('BCA');
+  await expect(sheet.getByRole('button', { name: /^Payment method/ })).toContainText('BCA');
   await expect(page.getByRole('button', { name: 'Record buy' })).toBeDisabled();
   await sheet.getByLabel('Amount', { exact: true }).pressSequentially('500000');
   await expect(page.getByTestId('fund-units')).toHaveCount(0);

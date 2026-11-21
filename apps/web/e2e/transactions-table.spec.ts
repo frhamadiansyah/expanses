@@ -19,7 +19,7 @@ test('rows are typed into the table, and the next purchase at the same shop gues
 
   await typing.getByLabel('Row description').fill('Superindo');
   await typing.getByLabel('Row amount (IDR)').fill('450.000');
-  await pick(typing, 'Row paid with', 'bca');
+  await pick(typing, 'Row payment method', 'bca');
   await pick(typing, 'Row category', 'groceries');
   await typing.getByLabel('Row description').press('Enter');
 
@@ -27,7 +27,7 @@ test('rows are typed into the table, and the next purchase at the same shop gues
   await expect(recorded).toHaveCount(1);
   await expect(recorded.getByLabel('Row description')).toHaveValue('Superindo');
   // The account carries down to the next row; the category is worked out from the shop.
-  await expect(typing.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
+  await expect(typing.getByLabel('Row payment method')).toHaveValue('BCA Tahapan');
   await typing.getByLabel('Row description').fill('SUPERINDO Kebayoran');
   await typing.getByLabel('Row amount (IDR)').focus();
   await expect(typing.getByLabel('Row category')).toHaveValue('Groceries');
@@ -51,7 +51,7 @@ test('an unfinished row waits as not recorded, and is finished in place', async 
   const waiting = page.getByTestId('not-recorded-row');
   await expect(waiting).toHaveCount(1);
   await expect(page.getByRole('button', { name: '1 not recorded' })).toBeVisible();
-  await pick(waiting, 'Row paid with', 'bca');
+  await pick(waiting, 'Row payment method', 'bca');
   await pick(waiting, 'Row category', 'pharm');
   await waiting.getByRole('button', { name: 'Record Apotek K24' }).click();
 
@@ -64,7 +64,7 @@ test('a recorded row is corrected cell by cell and saved on its own', async ({ p
   const typing = page.getByTestId('typing-row');
   await typing.getByLabel('Row description').fill('Superindo');
   await typing.getByLabel('Row amount (IDR)').fill('450000');
-  await pick(typing, 'Row paid with', 'bca');
+  await pick(typing, 'Row payment method', 'bca');
   await pick(typing, 'Row category', 'groceries');
   await typing.getByRole('button', { name: 'Record' }).click();
 
@@ -91,7 +91,7 @@ test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) =
 
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
   const grab = page.getByTestId('not-recorded-row').filter({ has: page.locator('input[value="Grab to office"]') });
-  await expect(grab.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
+  await expect(grab.getByLabel('Row payment method')).toHaveValue('BCA Tahapan');
   await expect(page.getByTestId('typing-row').getByLabel('Row description')).toHaveValue('');
 });
 
@@ -107,7 +107,7 @@ test('the ⓘ opens a receipt from the table, on an editable row and on a locked
   const typing = page.getByTestId('typing-row');
   await typing.getByLabel('Row description').fill('Superindo');
   await typing.getByLabel('Row amount (IDR)').fill('450000');
-  await pick(typing, 'Row paid with', 'bca');
+  await pick(typing, 'Row payment method', 'bca');
   await pick(typing, 'Row category', 'groceries');
   await typing.getByRole('button', { name: 'Record' }).click();
   await expect(page.getByTestId('table-row')).toHaveCount(1);

@@ -31,7 +31,7 @@ test('the header has Transactions, Days/Categories and one ⋯; its menu selects
   await expect(menu.getByRole('menuitem').or(menu.getByRole('menuitemradio')).or(menu.getByRole('menuitemcheckbox'))).toHaveText([
     'Select',
     /^Sort\s*Newest$/,
-    /^Paid with\s*All$/,
+    /^Payment method\s*All$/,
     /^Not monthly\s*Hidden$/,
     'Reset',
   ]);
@@ -42,7 +42,7 @@ test('the header has Transactions, Days/Categories and one ⋯; its menu selects
   const sort = menu.getByTestId('sort-cycle');
   const word = sort.locator('span').last();
   await expect(sort.locator('svg')).toHaveCount(0);
-  await expect(word).toHaveCSS('color', await menu.getByRole('menuitem', { name: /^Paid with/ }).locator('span').nth(1).evaluate((el) => getComputedStyle(el).color));
+  await expect(word).toHaveCSS('color', await menu.getByRole('menuitem', { name: /^Payment method/ }).locator('span').nth(1).evaluate((el) => getComputedStyle(el).color));
   // Each tap is the next order, the menu left open: Newest → Oldest → Largest.
   await sort.click();
   await expect(sort).toHaveText(/^Sort\s*Oldest$/);
@@ -63,21 +63,21 @@ test('the header has Transactions, Days/Categories and one ⋯; its menu selects
   await sort.click();
   await expect(sort).toHaveText(/^Sort\s*Largest$/);
 
-  await page.getByRole('menuitem', { name: /^Paid with/ }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /^BCA Tahapan/ }).click();
+  await page.getByRole('menuitem', { name: /^Payment method/ }).click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /^BCA Tahapan/ }).click();
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText('Kopi Kenangan');
 
   // Reset puts Sort back to Newest and Paid with back to All.
   await historyMenu(page).click();
   await expect(sort).toHaveText(/^Sort\s*Largest$/);
-  await expect(menu.getByRole('menuitem', { name: /^Paid with/ })).toContainText('BCA Tahapan');
+  await expect(menu.getByRole('menuitem', { name: /^Payment method/ })).toContainText('BCA Tahapan');
   await page.getByRole('menuitem', { name: 'Reset' }).click();
   await expect(rows).toHaveCount(2);
   await expect(page.getByTestId('filter-on')).toHaveCount(0);
   await historyMenu(page).click();
   await expect(sort).toHaveText(/^Sort\s*Newest$/);
-  await expect(menu.getByRole('menuitem', { name: /^Paid with/ })).toHaveText(/^Paid with\s*All$/);
+  await expect(menu.getByRole('menuitem', { name: /^Payment method/ })).toHaveText(/^Payment method\s*All$/);
 });
 
 test('Select from the ⋯ menu turns ⋯ into the dark Select square, which stops selecting', async ({ page }) => {

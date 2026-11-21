@@ -86,7 +86,7 @@ test('a split is recorded from a share’s Settings, under Prices, and its line 
   // The Units form, as Buy & sell's Units button opened it: a unit change, with no amount to type.
   const form = tradeForm(page);
   // A change of units has no money: no account row and no amount, only the shares and the day.
-  await expect(form.getByRole('button', { name: /^(Paid with|Received into)/ })).toHaveCount(0);
+  await expect(form.getByRole('button', { name: /^(Payment method|Received into)/ })).toHaveCount(0);
   await expect(form.getByLabel(/^Amount before tax/)).toHaveCount(0);
   // A 2-for-1 split: 10.000 shares more on the 10.000 held.
   await form.getByLabel('Shares', { exact: true }).fill('10000');

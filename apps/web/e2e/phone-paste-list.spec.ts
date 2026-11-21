@@ -37,9 +37,9 @@ test('a pasted list is read, fixed on the review, and saved as purchases paid fr
 
   await box.fill('gocar 18000\nyoshinoya 249000\ntaxi bluebird 25000\ncaterng 90000\nparkir');
   await expect(page.getByRole('button', { name: 'Review 5' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
-  await expect(page.getByRole('button', { name: 'Paid with' })).toContainText('BCA Tahapan');
+  await expect(page.getByRole('button', { name: 'Payment method' })).toContainText('BCA Tahapan');
   await page.screenshot({ path: test.info().outputPath('page-1-paste.png') });
   await page.getByRole('button', { name: 'Review 5' }).click();
 

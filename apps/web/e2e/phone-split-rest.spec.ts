@@ -13,7 +13,7 @@ test('the last part is the Rest: it follows the other parts, and an edit that wo
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   await openAmount(form);
   await fillAmount(page, form, '250000');

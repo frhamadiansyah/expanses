@@ -137,7 +137,7 @@ test('Spend opens “New expense” on the card: no tabs, Paid with the card', a
   await expect(page.getByRole('heading', { name: /BCA Visa/ })).toHaveCount(0);
   const form = addForm(page);
   await expect(form.getByRole('radio')).toHaveCount(0);
-  await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('BCA Visa');
+  await expect(form.getByRole('button', { name: /^Payment method/ })).toContainText('BCA Visa');
   await expect(form.getByRole('button', { name: /^Category/ })).toBeVisible();
 });
 

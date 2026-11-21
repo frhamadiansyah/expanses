@@ -157,7 +157,7 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('button', { name: 'Paid with' }).click();
+  await form.getByRole('button', { name: 'Payment method' }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByLabel('Amount', { exact: true }).fill('900000');
   await form.getByRole('button', { name: 'Category' }).click();

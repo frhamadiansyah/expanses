@@ -15,7 +15,7 @@ test('by thumb: an account page adds from itself, and a pocket goes back to its 
   await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Record', exact: true }).tap();
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=expense/);
-  await expect(addForm(page).getByRole('button', { name: /^Paid with/ })).toContainText('Everyday');
+  await expect(addForm(page).getByRole('button', { name: /^Payment method/ })).toContainText('Everyday');
   await page.goBack();
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
 

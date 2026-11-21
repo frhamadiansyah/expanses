@@ -253,7 +253,7 @@ test('Pay several: Paid with makes one account pay every ticked bill, and the de
   // Untouched, the row says every bill keeps its own account.
   await expect(sheet.getByTestId('several-with')).toContainText("Each bill's own account");
   await sheet.getByTestId('several-with').getByRole('button').click();
-  const list = page.getByRole('dialog', { name: 'Paid with' });
+  const list = page.getByRole('dialog', { name: 'Payment method' });
   await expect(list.getByText("Each bill's own account")).toBeVisible();
   await expect(list.getByText('Accounts', { exact: true })).toBeVisible();
   await expect(list.getByRole('button', { name: /Jenius/ })).toBeVisible();

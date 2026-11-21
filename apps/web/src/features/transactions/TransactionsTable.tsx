@@ -9,6 +9,7 @@ import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
+import { needWords } from './need-words';
 import { ReceiptLink } from './ReceiptLink';
 import { isQuickEditable, parsePastedRows, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
 
@@ -118,7 +119,7 @@ function TypingRow({ options, accounts, today, baseCurrency, handlers }: { optio
         }}
         actions={
           <>
-            <Button className="px-2.5 py-1.5" disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void record()}>
+            <Button className="px-2.5 py-1.5" disabled={!touched || needs.length > 0 || busy} title={needs.length ? `Needs ${needWords(needs)}` : 'Record this row'} onClick={() => void record()}>
               Record
             </Button>
             <Button variant="ghost" className="px-2 py-1.5 text-xs" disabled={!touched || busy} title="Keep it as not recorded, to finish later" onClick={() => void handlers.keepTyped(values).then((ok) => ok && reset())}>
@@ -186,14 +187,14 @@ function EditableRow({ row, options, accounts, today, baseCurrency, handlers }: 
         actions={
           isDraft ? (
             <>
-              <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
+              <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needWords(needs)}` : 'Record this row'} aria-label={`Record ${values.description || 'row'}`} onClick={() => void handlers.saveDraft(row.id, values, true)}>
                 Record
               </Button>
               <TwoTap busy={busy} label="Discard" onConfirm={() => void handlers.dismissDraft(row.id)} />
             </>
           ) : dirty ? (
             <>
-              <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Save the change'} onClick={save}>
+              <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy} title={needs.length ? `Needs ${needWords(needs)}` : 'Save the change'} onClick={save}>
                 Save
               </Button>
               <Button variant="ghost" className="px-2 py-1.5" aria-label="Undo changes" title="Undo changes" onClick={() => setValues(initial)}>
@@ -309,7 +310,7 @@ export function TransactionsTable({
           <span className="px-2">Date</span>
           <span className="px-2">Description</span>
           <span className="px-2 text-right">Amount</span>
-          <span className="px-2">Paid with</span>
+          <span className="px-2">Payment method</span>
           <span className="px-2">Category</span>
           <span />
         </div>

@@ -345,7 +345,7 @@ export function useOneLine() {
       {preview.unsure.has('paid') && '?'}
     </>
   ) : (
-    'Paid with?'
+    'Payment method?'
   );
 
   /** The line drawn as the list row it will be saved as, each part a way to its picker. */
@@ -362,7 +362,7 @@ export function useOneLine() {
       subtitle={
         <>
           {preview.description ? `${preview.description} · ` : ''}
-          {part('Paid with', 'paid', paidPart, () => setPicking('paid'), !preview.paid)}
+          {part('Payment method', 'paid', paidPart, () => setPicking('paid'), !preview.paid)}
           {' · '}
           {part('Day', 'day', previewDay(preview.occurredOn, today), () => setPicking('day'))}
         </>
@@ -391,7 +391,7 @@ export function useOneLine() {
       )}
       {picking === 'paid' && (
         <PaymentSheet
-          title="Paid with"
+          title="Payment method"
           cards
           options={options}
           accounts={accounts}

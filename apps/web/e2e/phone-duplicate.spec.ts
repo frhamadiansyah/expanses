@@ -54,7 +54,7 @@ async function recordSteak(page: Page, day: string, withEvent: boolean) {
   const form = addForm(page);
   await openAmount(form);
   await fillAmount(page, form, '120000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
@@ -75,7 +75,7 @@ async function expectCopied(page: Page, day: string) {
   await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+\/duplicate$/);
   await expect(page.locator('header').getByText('Duplicate', { exact: true })).toBeVisible();
   const form = page.getByRole('form', { name: 'Duplicate a transaction' });
-  await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('BCA Tahapan');
+  await expect(form.getByRole('button', { name: /^Payment method/ })).toContainText('BCA Tahapan');
   await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Restaurants');
   await expect(form.getByLabel('Note')).toHaveValue('Warung Steak');
   await expect(form.getByLabel('Date')).toHaveValue(day);

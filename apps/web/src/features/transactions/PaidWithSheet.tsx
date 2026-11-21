@@ -40,7 +40,7 @@ export function PaidWithSheet({ choices, value, onPick, onClose }: { choices: re
   };
   const tick = <Check size={18} aria-hidden />;
   return (
-    <Sheet grouped tall expanded title="Paid with" onClose={onClose}>
+    <Sheet grouped tall expanded title="Payment method" onClose={onClose}>
       <div className="mb-3">
         <SearchPill value={typed} onChange={setTyped} onClose={() => setTyped('')} placeholder="Name or last digits" label="Find an account" />
       </div>

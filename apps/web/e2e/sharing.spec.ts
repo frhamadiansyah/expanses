@@ -193,7 +193,7 @@ test('two people share a workspace: join, record on both, correct each other, re
   // placeholder account it is posted against on Dewi's device — not its account, card, statement or balance.
   await openReceipt(dewi, phone, 'History lunch');
   const receipt = dewi.locator('main');
-  await expect(receipt).toContainText('Paid with');
+  await expect(receipt).toContainText('Payment method');
   await expect(receipt).toContainText('Fandri Bank');
   await expect(receipt).toContainText('Paid by');
   await expect(receipt.getByText('Fandri', { exact: true })).toBeVisible();
@@ -742,8 +742,8 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   const form = addForm(dewi);
   await openAmount(form);
   await fillAmount(dewi, form, '200000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
-  const paidWith = dewi.getByRole('dialog', { name: 'Paid with' });
+  await form.getByRole('button', { name: /^Payment method/ }).click();
+  const paidWith = dewi.getByRole('dialog', { name: 'Payment method' });
   await paidWith.getByRole('radio', { name: 'Credit cards' }).click();
   await paidWith.getByRole('button', { name: 'Fandri Card, Fandri’s, shared', exact: true }).click();
   await form.getByRole('button', { name: /^Category/ }).click();
@@ -921,11 +921,11 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await page.goBack();
 
   // Dewi's Paid with lists it with the Joint tag, and she pays from it.
-  const paidWithJoint = dewi.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Fandri Bank, Fandri’s, shared', exact: true });
+  const paidWithJoint = dewi.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: 'Fandri Bank, Fandri’s, shared', exact: true });
   await eventually(dewi, async () => {
     await dewi.goto('/transactions');
     await dewi.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-    await addForm(dewi).getByRole('button', { name: /^Paid with/ }).click();
+    await addForm(dewi).getByRole('button', { name: /^Payment method/ }).click();
     await expect(paidWithJoint).toContainText('owned together', { timeout: 1_000 });
   });
   await dewi.goto('/transactions');
@@ -933,7 +933,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   const form = addForm(dewi);
   await openAmount(form);
   await fillAmount(dewi, form, '180000');
-  await form.getByRole('button', { name: /^Paid with/ }).click();
+  await form.getByRole('button', { name: /^Payment method/ }).click();
   await paidWithJoint.click();
   await form.getByRole('button', { name: /^Category/ }).click();
   await dewi.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -1154,7 +1154,7 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   await andi.getByTestId('joint-add').click();
   await expect(andi).toHaveURL(/\/transactions\/new/);
   const form = addForm(andi);
-  await expect(form.getByRole('button', { name: /^Paid with/ })).toContainText('Rina Card', { timeout: 10_000 });
+  await expect(form.getByRole('button', { name: /^Payment method/ })).toContainText('Rina Card', { timeout: 10_000 });
   await openAmount(form);
   await fillAmount(andi, form, '350000');
   await form.getByRole('button', { name: /^Category/ }).click();

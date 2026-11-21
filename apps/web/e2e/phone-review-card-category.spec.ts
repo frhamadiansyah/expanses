@@ -33,6 +33,6 @@ test('review opens on the card whose digits the message names, with the category
   ]);
   await page.getByTestId('draft-row').filter({ hasText: 'WARTEG SEDERHANA' }).click();
   const form = page.getByRole('form', { name: 'Review WARTEG SEDERHANA' });
-  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('9025');
+  await expect(form.getByRole('button', { name: 'Payment method' })).toContainText('9025');
   await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Restaurants');
 });

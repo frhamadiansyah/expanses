@@ -27,8 +27,8 @@ const CASH = {
 async function paidWithSheet(page: Page) {
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  await addForm(page).getByRole('button', { name: /^Paid with/ }).click();
-  return page.getByRole('dialog', { name: 'Paid with' });
+  await addForm(page).getByRole('button', { name: /^Payment method/ }).click();
+  return page.getByRole('dialog', { name: 'Payment method' });
 }
 
 /** The grid's Balance box (the pile shows none). */
