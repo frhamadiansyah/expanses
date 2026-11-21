@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cicis Mac: before and after</title>
+<style>
+  :root { --bg:#1b1b1d; --ink:#f2f2f7; --ink2:#c7c7cc; --ink3:#8e8e93; --line:#2c2c2f; --dot:#ff9500; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; padding:30px 36px 60px; }
+  .page-h { font-size:20px; font-weight:700; margin:0 0 4px; }
+  .page-p { color:var(--ink2); margin:0 0 8px; max-width:1100px; }
+  section { max-width:1300px; padding:26px 0 22px; border-top:1px solid var(--line); margin-top:22px; }
+  h2 { font-size:22px; font-weight:800; margin:0 0 14px; letter-spacing:-.2px; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  figure { margin:0; min-width:0; }
+  figcaption { font-size:12.5px; font-weight:700; color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
+  .shot { position:relative; border-radius:12px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.45); background:#fff; }
+  .shot img { display:block; width:100%; height:auto; }
+  .dot { position:absolute; width:22px; height:22px; margin:-11px 0 0 -11px; border-radius:50%; background:var(--dot); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.35); }
+  ol { list-style:none; padding:0; margin:16px 0 0; display:grid; gap:7px; max-width:1000px; }
+  ol li { display:flex; gap:10px; align-items:flex-start; color:var(--ink2); }
+  ol .n { flex-shrink:0; width:20px; height:20px; border-radius:50%; background:var(--dot); color:#fff; font-size:11.5px; font-weight:800; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+  ol em { color:var(--ink3); font-style:normal; }
+  @media (max-width:900px) { body { padding:20px 16px 40px; } .pair { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<p class="page-h">cicis for Mac · before and after, page by page</p>
+<p class="page-p">Left: today’s Mac layout with the sample data, at 1280×820. Right: the soft-cards-with-a-sidebar proposal (2026-11-21-mac-redesign-sidebar.html) at the same size, with its own invented figures, so the numbers differ. Orange dots mark what changed; the list under each pair says what.</p>
+<section>
+  <h2>Overview</h2>
+  <div class="pair">
+    <figure><figcaption>Before · today</figcaption><div class="shot"><img src="2026-11-21-before/overview.png" alt="Overview today" width="1280" height="820"><span class="dot" style="left:28.12%;top:3.05%">1</span><span class="dot" style="left:32.42%;top:10.98%">2</span><span class="dot" style="left:56.64%;top:55.00%">3</span><span class="dot" style="left:11.72%;top:52.44%">4</span></div></figure>
+    <figure><figcaption>After · soft cards with a sidebar</figcaption><div class="shot"><img src="2026-11-21-after/overview.png" alt="Overview redesign" width="1280" height="820"><span class="dot" style="left:42.19%;top:11.83%">1</span><span class="dot" style="left:34.38%;top:23.41%">2</span><span class="dot" style="left:35.94%;top:41.22%">3</span><span class="dot" style="left:10.16%;top:69.51%">4</span><span class="dot" style="left:34.38%;top:72.80%">5</span></div></figure>
+  </div>
+  <ol><li><span class="n">1</span><span>The page opens on a large title with a grey line under it; the toolbar keeps only the page name.</span></li><li><span class="n">2</span><span>Money on hand and How long it lasts give way to four stat tiles: spent, received, left to spend, net worth.</span></li><li><span class="n">3</span><span>Worth a look becomes Bills this month: one coloured dot and bar per status.</span></li><li><span class="n">4</span><span>The account list leaves the sidebar (Accounts › opens it). Each sidebar page has its own icon and lights up in its own colour.</span></li><li><span class="n">5</span><span>New: Quick actions, four pastel tiles for the common jobs. <em>(after only)</em></span></li></ol>
+</section>
+<section>
+  <h2>Cashflow</h2>
+  <div class="pair">
+    <figure><figcaption>Before · today</figcaption><div class="shot"><img src="2026-11-21-before/cashflow.png" alt="Cashflow today" width="1280" height="820"><span class="dot" style="left:27.97%;top:3.05%">1</span><span class="dot" style="left:35.31%;top:10.73%">2</span><span class="dot" style="left:94.38%;top:33.17%">3</span><span class="dot" style="left:56.95%;top:6.71%">4</span></div></figure>
+    <figure><figcaption>After · soft cards with a sidebar</figcaption><div class="shot"><img src="2026-11-21-after/cashflow.png" alt="Cashflow redesign" width="1280" height="820"><span class="dot" style="left:34.53%;top:11.71%">1</span><span class="dot" style="left:34.38%;top:23.41%">2</span><span class="dot" style="left:87.50%;top:41.22%">3</span><span class="dot" style="left:90.31%;top:7.32%">4</span></div></figure>
+  </div>
+  <ol><li><span class="n">1</span><span>Large title over the page.</span></li><li><span class="n">2</span><span>The donut, the daily bars and the This month box become four stat tiles; To review carries a badge.</span></li><li><span class="n">3</span><span>Transactions sit in one soft card: one black Record pill in its header, tick circles in the first column.</span></li><li><span class="n">4</span><span>Filter and the search field become one round search button.</span></li></ol>
+</section>
+<section>
+  <h2>Budget</h2>
+  <div class="pair">
+    <figure><figcaption>Before · today</figcaption><div class="shot"><img src="2026-11-21-before/budget.png" alt="Budget today" width="1280" height="820"><span class="dot" style="left:26.80%;top:3.05%">1</span><span class="dot" style="left:74.22%;top:10.73%">2</span><span class="dot" style="left:29.53%;top:32.07%">3</span><span class="dot" style="left:23.83%;top:58.05%">4</span></div></figure>
+    <figure><figcaption>After · soft cards with a sidebar</figcaption><div class="shot"><img src="2026-11-21-after/budget.png" alt="Budget redesign" width="1280" height="820"><span class="dot" style="left:31.87%;top:11.71%">1</span><span class="dot" style="left:29.69%;top:23.41%">2</span><span class="dot" style="left:31.25%;top:41.22%">3</span><span class="dot" style="left:46.48%;top:57.20%">4</span></div></figure>
+  </div>
+  <ol><li><span class="n">1</span><span>Large title over the page.</span></li><li><span class="n">2</span><span>The gauge and the split bar become three stat tiles: Essential, Lifestyle, Debts &amp; savings, each with what is left.</span></li><li><span class="n">3</span><span>The category spreadsheet becomes one card per group, each row with a progress bar and the amount left.</span></li><li><span class="n">4</span><span>Over budget reads as “Rp 110.000 over” in red with a full red bar.</span></li></ol>
+</section>
+<section>
+  <h2>Bills</h2>
+  <div class="pair">
+    <figure><figcaption>Before · today</figcaption><div class="shot"><img src="2026-11-21-before/bills.png" alt="Bills today" width="1280" height="820"><span class="dot" style="left:25.00%;top:3.05%">1</span><span class="dot" style="left:29.30%;top:11.34%">2</span><span class="dot" style="left:93.36%;top:31.34%">3</span><span class="dot" style="left:86.17%;top:10.73%">4</span></div></figure>
+    <figure><figcaption>After · soft cards with a sidebar</figcaption><div class="shot"><img src="2026-11-21-after/bills.png" alt="Bills redesign" width="1280" height="820"><span class="dot" style="left:27.89%;top:11.71%">1</span><span class="dot" style="left:28.28%;top:23.41%">2</span><span class="dot" style="left:91.02%;top:44.27%">3</span></div></figure>
+  </div>
+  <ol><li><span class="n">1</span><span>Large title over the page.</span></li><li><span class="n">2</span><span>The calendar and summary boxes become four stat tiles by status: Paid, Due this week, Later this month, Late.</span></li><li><span class="n">3</span><span>One table for the month: a coloured status dot on the left and a coloured tag on the right (Paid green, Due soon blue, Late red).</span></li><li><span class="n">4</span><span>Yearly set-aside, card fees and instalments are not drawn in the mockup yet. <em>(before only)</em></span></li></ol>
+</section>
+<section>
+  <h2>Review</h2>
+  <div class="pair">
+    <figure><figcaption>Before · today</figcaption><div class="shot"><img src="2026-11-21-before/review.png" alt="Review today" width="1280" height="820"><span class="dot" style="left:26.72%;top:3.05%">1</span><span class="dot" style="left:63.67%;top:10.98%">2</span><span class="dot" style="left:92.66%;top:28.05%">3</span><span class="dot" style="left:37.50%;top:28.05%">4</span></div></figure>
+    <figure><figcaption>After · soft cards with a sidebar</figcaption><div class="shot"><img src="2026-11-21-after/review.png" alt="Review redesign" width="1280" height="820"><span class="dot" style="left:31.64%;top:11.71%">1</span><span class="dot" style="left:29.69%;top:23.41%">2</span><span class="dot" style="left:57.03%;top:41.10%">3</span><span class="dot" style="left:36.72%;top:45.37%">4</span><span class="dot" style="left:80.47%;top:41.10%">5</span></div></figure>
+  </div>
+  <ol><li><span class="n">1</span><span>Large title over the page.</span></li><li><span class="n">2</span><span>The count strip becomes three stat tiles: waiting, ready to record, missing something.</span></li><li><span class="n">3</span><span>Record and Discard on every row give way to a tick circle per row (filled = ready, dashed = missing something) and one black Record 2 pill.</span></li><li><span class="n">4</span><span>The source chip (Email, Import, Notification) becomes a grey line under the name.</span></li><li><span class="n">5</span><span>New: a Message card beside the list shows the captured text and what was read from it. <em>(after only)</em></span></li></ol>
+</section>
+<section>
+  <h2>Wallet</h2>
+  <div class="pair">
+    <figure><figcaption>Before · today</figcaption><div class="shot"><img src="2026-11-21-before/wallet.png" alt="Wallet today" width="1280" height="820"><span class="dot" style="left:26.17%;top:3.05%">1</span><span class="dot" style="left:27.97%;top:10.73%">2</span><span class="dot" style="left:40.23%;top:89.39%">3</span><span class="dot" style="left:80.94%;top:6.71%">4</span><span class="dot" style="left:32.42%;top:37.07%">5</span></div></figure>
+    <figure><figcaption>After · soft cards with a sidebar</figcaption><div class="shot"><img src="2026-11-21-after/wallet.png" alt="Wallet redesign" width="1280" height="820"><span class="dot" style="left:30.63%;top:11.71%">1</span><span class="dot" style="left:29.69%;top:53.90%">2</span><span class="dot" style="left:30.47%;top:23.05%">3</span><span class="dot" style="left:85.94%;top:23.05%">4</span><span class="dot" style="left:35.94%;top:71.71%">5</span></div></figure>
+  </div>
+  <ol><li><span class="n">1</span><span>Large title over the page.</span></li><li><span class="n">2</span><span>Banks and cash become four account tiles with their balance; the Balance and Where the money sits boxes go.</span></li><li><span class="n">3</span><span>Credit cards show as gradient faces with the amount owed and the pay-by date under each.</span></li><li><span class="n">4</span><span>Points moves from a toolbar button to a Points card on the page.</span></li><li><span class="n">5</span><span>Card payments: what each card needs and when, in one list.</span></li></ol>
+</section>
+<section>
+  <h2>Net worth</h2>
+  <div class="pair">
+    <figure><figcaption>Before · today</figcaption><div class="shot"><img src="2026-11-21-before/net-worth.png" alt="Net worth today" width="1280" height="820"><span class="dot" style="left:28.28%;top:3.05%">1</span><span class="dot" style="left:81.64%;top:10.73%">2</span><span class="dot" style="left:37.89%;top:54.63%">3</span></div></figure>
+    <figure><figcaption>After · soft cards with a sidebar</figcaption><div class="shot"><img src="2026-11-21-after/net-worth.png" alt="Net worth redesign" width="1280" height="820"><span class="dot" style="left:35.16%;top:11.71%">1</span><span class="dot" style="left:29.69%;top:23.05%">2</span><span class="dot" style="left:32.19%;top:57.56%">3</span><span class="dot" style="left:76.17%;top:82.80%">4</span></div></figure>
+  </div>
+  <ol><li><span class="n">1</span><span>Large title over the page.</span></li><li><span class="n">2</span><span>Total, the year line and assets vs debts share one card; Financial health is not on this page.</span></li><li><span class="n">3</span><span>The treemaps become grouped rows with a total per group.</span></li><li><span class="n">4</span><span>New: debts against assets as one bar. <em>(after only)</em></span></li></ol>
+</section>
+<section>
+  <h2>Credit card page</h2>
+  <div class="pair">
+    <figure><figcaption>Before · today</figcaption><div class="shot"><img src="2026-11-21-before/card.png" alt="Credit card page today" width="1280" height="820"><span class="dot" style="left:48.83%;top:3.05%">1</span><span class="dot" style="left:30.08%;top:10.85%">2</span><span class="dot" style="left:67.34%;top:10.85%">3</span><span class="dot" style="left:31.41%;top:45.37%">4</span><span class="dot" style="left:82.66%;top:6.71%">5</span></div></figure>
+    <figure><figcaption>After · soft cards with a sidebar</figcaption><div class="shot"><img src="2026-11-21-after/card.png" alt="Credit card page redesign" width="1280" height="820"><span class="dot" style="left:45.70%;top:11.71%">1</span><span class="dot" style="left:40.62%;top:32.68%">2</span><span class="dot" style="left:57.81%;top:23.05%">3</span><span class="dot" style="left:70.70%;top:54.27%">4</span><span class="dot" style="left:81.72%;top:7.07%">5</span></div></figure>
+  </div>
+  <ol><li><span class="n">1</span><span>Large title with the card name; digits and statement days on the grey line under it.</span></li><li><span class="n">2</span><span>The outstanding amount moves onto a big card face, with credit left.</span></li><li><span class="n">3</span><span>The statement box reads Spent, Paid, Left to pay, with a Pay by tag.</span></li><li><span class="n">4</span><span>Each row shows its payment: one green ✓ with “Paid 3 Nov” or “Paid with the 15 Nov payment”; unpaid rows keep an empty grey ring.</span></li><li><span class="n">5</span><span>Toolbar: Pay credit card and New expense instead of Spend, Statement and Pay.</span></li></ol>
+</section>
+</body>
+</html>
