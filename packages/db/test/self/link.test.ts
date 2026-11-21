@@ -319,7 +319,7 @@ describe('a join that does not finish', () => {
     expect(relay.peek(plan.relayBookId)!.prunedThrough).toBe(relay.peek(plan.relayBookId)!.seq);
   });
 
-  it('is taken off the relay by the linking device once three days pass without the new device’s row', async () => {
+  it('is taken off the relay by the linking device once fourteen days pass without the new device’s row', async () => {
     let now = Date.parse('2026-11-21T08:00:00Z');
     const { relay, phone, phoneEngine, mac, plan } = await allowed(() => now);
     await phoneEngine.sync();
@@ -328,6 +328,20 @@ describe('a join that does not finish', () => {
     await phoneEngine.sync();
     expect(activeOn(relay, plan.relayBookId)).toEqual([phone.keys.deviceId]);
     expect(await phone.database.db.values(sql`SELECT key FROM self_state WHERE key LIKE 'joining:%'`)).toEqual([]);
+  });
+
+  it('a Mac taken off after fourteen silent days hears it was unlinked at its next sync, its data kept, and may link again', async () => {
+    let now = Date.parse('2026-11-21T08:00:00Z');
+    const { phone, phoneEngine, mac, plan } = await allowed(() => now);
+    await mac.database.importBytes(await mac.engine.downloadPlanCopy(plan));
+    mac.engine = await completeLinkedCopy(mac.database, plan, mac.transport, mac.keys, mac.info);
+    const kept = (await mac.database.db.values(sql`SELECT count(*) FROM accounts`))[0]![0];
+    now += UNFINISHED_JOIN_MS + 60_000;
+    await phoneEngine.sync();
+    expect(await mac.engine.sync()).toMatchObject({ unlinked: true });
+    expect((await mac.database.db.values(sql`SELECT count(*) FROM accounts`))[0]![0]).toBe(kept);
+    await link(phone, mac); // from the iPhone's own clock (the relay keeps the copy by its own)
+    expect((await mac.engine.group())!.state).toBe('active');
   });
 
   it('one that did finish is simply forgotten by the linking device', async () => {

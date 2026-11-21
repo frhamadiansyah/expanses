@@ -134,8 +134,13 @@ export class SelfError extends Error {
 export const selfBookId = (relayBookId: string) => `self:${relayBookId}`;
 const COPY_TTL_MS = 24 * 60 * 60 * 1000;
 const SEEN_EVERY_MS = 5 * 60 * 1000;
-/** A device let in whose own row has not arrived after this long never finished joining. */
-export const UNFINISHED_JOIN_MS = 3 * 24 * 60 * 60 * 1000;
+/**
+ * A device let in whose own row has not arrived after this long never finished joining. Long, because the row is the
+ * only sign of life the linking device sees: a Mac that took its copy and then stayed offline is not cut off in a few
+ * days. A failed join takes itself off at once (`abandonJoin`); and a device taken off this way that did finish is told
+ * "Unlinked from this data" at its next sync, its data kept, and offered Link to another device again.
+ */
+export const UNFINISHED_JOIN_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface SourceSession {
   nonce: string;
