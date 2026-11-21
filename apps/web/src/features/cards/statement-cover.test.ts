@@ -14,10 +14,11 @@ import {
   setPostedOn,
   setSettledBeforeApp,
   voidTransaction,
+  type StatementLine,
 } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it } from 'vitest';
-import { paidCountText, showsPaid, statementCover } from './statement-cover';
+import { type LineCover, paidCountText, paidHowText, showsPaid, statementCover } from './statement-cover';
 import { statementTotals } from './statement-totals';
 
 /* Invented figures and names throughout. A card with a statement on the 20th: August is 21 Jul – 20 Aug. */
@@ -72,7 +73,7 @@ describe('which purchases a statement’s payments cover', () => {
     const s = await c.statement();
     expect(statementTotals(s).leftMinor).toBe(0);
     const cover = statementCover(s);
-    for (const id of ids) expect(cover.get(id)).toMatchObject({ whole: true, by: { transactionId: lump } });
+    for (const id of ids) expect(cover.get(id)).toMatchObject({ whole: true, by: { transactionId: lump }, creditCount: 1 });
     expect(s.lines.filter((line) => line.countedMinor > 0).every((line) => showsPaid(line, cover))).toBe(true);
   });
 
@@ -109,7 +110,8 @@ describe('which purchases a statement’s payments cover', () => {
     const a = await c.buy('2026-08-02', 'Bookshop', 100_000);
     const lump = await c.pay('2026-08-25', 60_000);
     const rest = await c.payWhatIsOffered([a]);
-    expect(statementCover(await c.statement()).get(a)).toMatchObject({ whole: true, by: { transactionId: rest } });
+    // The lump and the payment for what was left both went into it: two payments, the later one completing it.
+    expect(statementCover(await c.statement()).get(a)).toMatchObject({ whole: true, by: { transactionId: rest }, creditCount: 2 });
 
     await voidTransaction(c.database, c.ws, lump);
     const s = await c.statement();
@@ -145,5 +147,54 @@ describe('the count beside a statement’s heading', () => {
     expect(paidCountText(2, 4)).toBe('2 of 4 paid');
     expect(paidCountText(0, 3)).toBe('0 of 3 paid');
     expect(paidCountText(0, 0)).toBeNull();
+  });
+});
+
+describe('the words that say how a paid line was paid', () => {
+  const line = (over: Partial<StatementLine> = {}): StatementLine => ({
+    key: 'l1',
+    transactionId: 't1',
+    occurredOn: '2026-10-23',
+    postedOn: null,
+    statementOn: '2026-10-23',
+    description: 'Restoran Satu',
+    cardId: null,
+    owedMinor: 520_000,
+    countedMinor: 520_000,
+    instalment: null,
+    convertedTo: null,
+    spending: true,
+    originalCurrency: null,
+    originalAmountMinor: null,
+    paidBy: null,
+    settles: 0,
+    paidOff: false,
+    balancing: false,
+    ...over,
+  });
+  const payment = line({ key: 'p1', transactionId: 'p1', occurredOn: '2026-11-15', owedMinor: -340_000, countedMinor: -340_000, spending: false });
+  const covered = (over: Partial<LineCover>): ReadonlyMap<string, LineCover> => new Map([['l1', { coveredMinor: 520_000, leftMinor: 0, whole: true, by: payment, creditCount: 1, ...over }]]);
+  const none = new Map<string, LineCover>();
+
+  it('says nothing for a line not paid, or only part covered', () => {
+    expect(paidHowText(line(), none)).toBeNull();
+    expect(paidHowText(line(), covered({ coveredMinor: 100_000, leftMinor: 420_000, whole: false }))).toBeNull();
+  });
+
+  it('names the pay date of a purchase paid one by one', () => {
+    expect(paidHowText(line({ paidBy: { transactionId: 'p2', paidOn: '2026-11-03' } }), none)).toBe('Paid 3 Nov');
+  });
+
+  it('names the payment that covered it, or how many did', () => {
+    expect(paidHowText(line(), covered({}))).toBe('Paid with the 15 Nov payment');
+    expect(paidHowText(line(), covered({ by: { ...payment, spending: true } }))).toBe('Paid with the 15 Nov refund');
+    expect(paidHowText(line(), covered({ creditCount: 2 }))).toBe('Paid with 2 payments');
+    expect(paidHowText(line(), covered({ by: null, creditCount: 0 }))).toBe('Paid with earlier credit');
+  });
+
+  it('says paid before cicis, settled for money back, and paid for a plan’s instalment', () => {
+    expect(paidHowText(line({ paidOff: true }), none)).toBe('Paid before cicis');
+    expect(paidHowText(line({ paidOff: true, owedMinor: -120_000, countedMinor: -120_000 }), none)).toBe('Settled');
+    expect(paidHowText(line({ paidOff: true, instalment: { planId: 'plan', number: 1, of: 12, noPurchase: true, paidSoFar: 1 } }), none)).toBe('Paid');
   });
 });

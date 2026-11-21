@@ -17,7 +17,7 @@ import { useWorkspaceBadges } from '../workspaces/queries';
 import { StatementBand } from './StatementBand';
 import { cycleBack } from './statement-dates';
 import { groupStatementLines } from './statement-groups';
-import { isCharge, type LineCover, paidCountText, payableLine, showsPaid, statementCover } from './statement-cover';
+import { isCharge, type LineCover, paidCountText, paidHowText, payableLine, showsPaid, statementCover } from './statement-cover';
 import { statementPayLink } from './card-pay';
 import { CardSheet } from './CardSheet';
 import { SELECT_CIRCLE, SelectBarFrame } from '../transactions/SelectBar';
@@ -32,39 +32,15 @@ export interface StatementPoints {
   cardFee: boolean;
 }
 
-/** The soft green ✓ of a purchase a payment covered (mockup `.tick.cov`), at a row's size or the legend's. */
-function CoveredTick({ small = false }: { small?: boolean }) {
+/**
+ * The one paid look (owner, 21 Nov 2026): a solid green circle with a white ✓, whether the purchase was paid one by one,
+ * covered by a payment, paid off before the app, settled or ticked paid on its plan. How it was paid is said in words at
+ * the start of the row's subtitle (`paidHowText`), so no legend is needed under the statement.
+ */
+function PaidTick() {
   return (
-    <span
-      aria-hidden
-      className={cx('flex items-center justify-center rounded-full border-[1.5px] border-[var(--ph-covered-edge)] bg-[var(--ph-covered-fill)] text-[var(--ph-covered-ink)]', small ? 'h-[14px] w-[14px]' : 'h-[18px] w-[18px]')}
-    >
-      <Check size={small ? 9 : 11} strokeWidth={3.5} aria-hidden />
-    </span>
-  );
-}
-
-/** The solid ink ✓ of a purchase paid one by one, drawn for the legend as the row's checked box draws it. */
-function OwnTick() {
-  return (
-    <span aria-hidden className="flex h-[14px] w-[14px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink)] bg-[var(--ph-ink)] text-[var(--ph-surface)]">
-      <Check size={9} strokeWidth={3.5} aria-hidden />
-    </span>
-  );
-}
-
-/** Under a statement with a covered purchase: what its two kinds of ✓ mean. */
-function CoverLegend() {
-  return (
-    <span data-testid="statement-legend" className="flex flex-wrap items-center gap-x-[14px] gap-y-[4px] text-[12px]">
-      <span className="flex items-center gap-[5px]">
-        <OwnTick />
-        paid one by one
-      </span>
-      <span className="flex items-center gap-[5px]">
-        <CoveredTick small />
-        covered by a payment
-      </span>
+    <span aria-hidden className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-up)] text-white">
+      <Check size={11} strokeWidth={3.5} aria-hidden />
     </span>
   );
 }
@@ -126,7 +102,7 @@ export function StatementPanel({
   const [assigning, setAssigning] = useState<readonly StatementLine[] | null>(null);
   // The line whose ⋯ was tapped on a phone: the sheet listing what can be done to it.
   const [acting, setActing] = useState<StatementLine | null>(null);
-  // The covered purchase whose soft ✓ was tapped: the sheet naming the payment that covered it.
+  // The covered purchase whose ✓ was tapped: the sheet naming the payment that covered it.
   const [explaining, setExplaining] = useState<StatementLine | null>(null);
 
   const cycle = cycleBack(today, statementDay, back);
@@ -283,7 +259,7 @@ export function StatementPanel({
   /** A purchase already paid stays ticked and cannot be unticked; deleting its payment frees it again. */
   const tick = (line: StatementLine) =>
     coveredWhole(line) ? (
-      // Covered by a payment: a soft green ✓ that is not a switch. A tap says which payment covered it.
+      // Covered by a payment: the paid ✓, not a switch. A tap says which payment covered it.
       <button
         type="button"
         aria-label={`${line.description}, ${coveredNote(line)}`}
@@ -291,10 +267,10 @@ export function StatementPanel({
         onClick={() => setExplaining(line)}
         className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
       >
-        <CoveredTick />
+        <PaidTick />
       </button>
     ) : line.paidOff ? (
-      // Paid off before the app: nothing to pay, so the Add form's ✓ in the box's place. A tap offers to take it back.
+      // Paid off before the app: nothing to pay, so the paid ✓ in the box's place. A tap offers to take it back.
       <button
         type="button"
         aria-label={`${line.description}, already ${settledWord(line)}`}
@@ -305,9 +281,7 @@ export function StatementPanel({
         onClick={() => setUnmarking(line)}
         className="ph-focus flex h-[44px] w-[32px] shrink-0 items-center justify-center"
       >
-        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--ph-up)] text-white">
-          <Check size={11} strokeWidth={3.5} aria-hidden />
-        </span>
+        <PaidTick />
       </button>
     ) : (
     // The label is the circle's reach: an 18 px circle inside a 44 pt target, the size of the ✓ a paid-off line wears. The
@@ -322,17 +296,18 @@ export function StatementPanel({
         title={line.paidBy ? `Paid on ${day(line.paidBy.paidOn)}` : undefined}
         aria-label={line.paidBy ? `${line.description}, paid on ${day(line.paidBy.paidOn)}` : `Pay ${line.description}`}
       />
-      <span
-        aria-hidden
-        className={cx(
-          'flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-disabled:opacity-60',
-          // Paid one by one is a solid ink ✓, set apart from the soft green one a covering payment gives; a line picked
-          // to pay is an ink ring with a ✓, not filled.
-          line.paidBy ? 'peer-checked:border-[var(--ph-ink)] peer-checked:bg-[var(--ph-ink)] peer-checked:text-[var(--ph-surface)]' : 'peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)]',
-        )}
-      >
-        <Check size={11} strokeWidth={3.5} aria-hidden />
-      </span>
+      {line.paidBy ? (
+        // Paid one by one: the paid ✓ every way of paying wears, at full strength though its box cannot be unticked.
+        <PaidTick />
+      ) : (
+        // A line picked to pay is an ink ring with a ✓, not filled.
+        <span
+          aria-hidden
+          className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)] peer-disabled:opacity-60"
+        >
+          <Check size={11} strokeWidth={3.5} aria-hidden />
+        </span>
+      )}
     </label>
     );
 
@@ -350,26 +325,32 @@ export function StatementPanel({
     ) : null;
 
   /** What else the statement says about a line, after its description: plan, conversion, payment, card, tag. */
-  const notes = (line: StatementLine): ReactNode[] => {
+  const notes = (line: StatementLine, withDigits = true): ReactNode[] => {
     const out: ReactNode[] = [];
     // One purchase split across workspaces is one charge here, as the bank prints it: its line names every part.
     if (line.splitCategories) out.push(line.splitCategories.join(' · '));
     // An instalment row names the purchase's category, as a purchase row on Cashflow does; its "1 of 12" is a pill.
     if (line.instalment) out.push([categoryNameOf(line.instalment.categoryId), 'instalment'].filter(Boolean).join(' · '));
-    if (planRow(line) && line.paidOff) out.push('paid');
     if (line.convertedTo) out.push(`converted to ${line.convertedTo.months} months, billed monthly`);
-    // Which purchases have been settled one by one, kept apart from what the bank has billed.
-    if (line.paidBy) out.push(`${s?.closed ? 'paid' : 'paid ahead'} ${day(line.paidBy.paidOn)}`);
-    // Covered by a payment oldest first: whole says by which, part says how much is left to pay.
+    // How a paid line was paid leads the subtitle (`how`); part covered says how much is left to pay.
     const covered = cover.get(line.key);
-    if (covered?.whole) out.push(coveredNote(line));
-    else if (covered && covered.coveredMinor > 0) out.push(`${money(covered.coveredMinor)} covered, ${money(covered.leftMinor)} left`);
+    if (covered && !covered.whole && covered.coveredMinor > 0) out.push(`${money(covered.coveredMinor)} covered, ${money(covered.leftMinor)} left`);
     // A payment made for chosen purchases says so, so a batch can be told from a bill payment.
     if (line.settles > 0) out.push(`for ${line.settles} purchase${line.settles === 1 ? '' : 's'}`);
-    if (!grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
+    if (withDigits && !grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
     const tag = tagFor(line);
     if (tag) out.push(tag);
     return out;
+  };
+
+  /** How a paid line was paid, in small green words where the phone's subtitle has its date, at the start of the table's. */
+  const how = (line: StatementLine) => {
+    const text = paidHowText(line, cover);
+    return text ? (
+      <span data-testid="statement-paid-how" className="text-[var(--ph-up)]">
+        {text}
+      </span>
+    ) : null;
   };
 
   const pointsOf = (line: StatementLine) =>
@@ -404,7 +385,9 @@ export function StatementPanel({
    * drawn from the kit's parts rather than as an `InsetRow`, which holds one target and nothing inside it.
    */
   const statementRow = (line: StatementLine) => {
-    const extra = notes(line);
+    // "Paid with the 15 Nov payment" fills a phone row's subtitle: the card's digits give way to it (mockup 21 Nov).
+    const extra = notes(line, !paidHowText(line, cover)?.startsWith('Paid with'));
+    const paid = how(line);
     const earned = points ? pointsOf(line) : '';
     return (
       <Line
@@ -444,7 +427,7 @@ export function StatementPanel({
             <WorkspaceBadge book={badgeOf(line.transactionId)} />
           </span>
           <span className={cx('mt-[2px] block truncate', SUBTITLE)}>
-            <span className="tabular">{day(line.occurredOn)}</span>
+            {paid ?? <span className="tabular">{day(line.occurredOn)}</span>}
             {extra.map((note, index) => (
               <span key={index}> · {note}</span>
             ))}
@@ -486,7 +469,8 @@ export function StatementPanel({
       <tbody>
         {lines.map((line) => {
           const late = lateOf(line);
-          const extra = notes(line);
+          const paid = how(line);
+          const extra = paid ? [paid, ...notes(line)] : notes(line);
           return (
             <tr key={line.key} data-testid="statement-line" className={cx('border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0', line.convertedTo && 'opacity-60')}>
               <td className="pl-[6px] align-middle">{tick(line)}</td>
@@ -604,15 +588,13 @@ export function StatementPanel({
       {searching ? null : lines.length === 0 ? (
         <p className="pb-[18px] text-center text-[15px] text-[var(--ph-ink-3)]">Nothing on this statement.</p>
       ) : (
-        groups.map((group, index) => {
-          // How many of the section's charges show paid, either ✓. A card alone on its account heads its one list Purchases.
+        groups.map((group) => {
+          // How many of the section's charges show paid. A card alone on its account heads its one list Purchases.
           const charges = group.lines.filter(isCharge);
           const count = paidCountText(charges.filter((line) => showsPaid(line, cover)).length, charges.length);
           // One statement, split by card when the account carries more than one, the way the bank prints it.
           const header = group.title ? `${group.title}${group.digits ? ` ${group.digits}` : ''}` : count ? 'Purchases' : undefined;
           const trailing = group.title ? [subtotal(group.totalMinor), count].filter(Boolean).join(' · ') : (count ?? undefined);
-          // Under the list, once a covered ✓ shows: what the two kinds mean.
-          const legend = index === groups.length - 1 && lines.some(coveredWhole) ? <CoverLegend /> : undefined;
           // Purchases whose card was never said are put right all at once, from the top of their own section.
           const assign =
             group.kind === 'unassigned' && plastic.length > 1 ? (
@@ -621,12 +603,12 @@ export function StatementPanel({
           return (
             <section key={group.key} data-testid="statement-group" aria-label={header}>
               {phone ? (
-                <InsetGroup header={header} trailing={trailing} footer={legend}>
+                <InsetGroup header={header} trailing={trailing}>
                   {assign}
                   {group.lines.map(statementRow)}
                 </InsetGroup>
               ) : (
-                <Panel header={header} trailing={trailing} footer={legend} pad={false}>
+                <Panel header={header} trailing={trailing} pad={false}>
                   {assign && <div className="border-b-[0.5px] border-[var(--ph-hair)]">{assign}</div>}
                   {table(group.lines)}
                 </Panel>

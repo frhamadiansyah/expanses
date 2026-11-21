@@ -128,6 +128,8 @@ export interface StatementCover {
   whole: boolean;
   /** Null when nothing covers it yet, or the cover came from credit left on the card from before. */
   creditKey: string | null;
+  /** How many credits went into its cover (credit carried from before counts none). */
+  credits: number;
 }
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -433,7 +435,7 @@ function poolLinesOf(all: readonly StatementLine[]): PoolLine[] {
 function statementCoverOf(pool: readonly PoolLine[], cycle: Cycle, today: string): Record<string, StatementCover> {
   const out: Record<string, StatementCover> = {};
   for (const [key, c] of coverStatement({ lines: pool, cycle, today })) {
-    out[key] = { coveredMinor: c.coveredMinor, leftMinor: c.leftMinor, whole: c.whole, creditKey: c.credit?.key ?? null };
+    out[key] = { coveredMinor: c.coveredMinor, leftMinor: c.leftMinor, whole: c.whole, creditKey: c.credit?.key ?? null, credits: c.credits };
   }
   return out;
 }

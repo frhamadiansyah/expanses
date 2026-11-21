@@ -57,6 +57,8 @@ test('a card purchase is marked paid off from its receipt, and from the ⋯ on i
   await openStatement(page);
   const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
   await expect(hotel.getByTestId('statement-paid-off')).toBeVisible();
+  // How it was paid, in green words where the date was; the card's digits, when shown, still follow.
+  await expect(hotel.getByTestId('statement-paid-how')).toHaveText('Paid before cicis');
   await expect(page.getByLabel('Pay Hotel Mulia')).toHaveCount(0);
 
   // Off again from the receipt, and the ✓ goes.
@@ -128,6 +130,7 @@ test('money back on the card reads Settled on its receipt and in its ⋯', async
   await expect(sheet.getByRole('button', { name: 'Billed next statement' })).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Settled', exact: true }).click();
   await expect(refund.getByTestId('statement-paid-off')).toBeVisible();
+  await expect(refund.getByTestId('statement-paid-how')).toHaveText('Settled');
   // The purchase and the refund: no balancing line is drawn.
   await expect(page.getByTestId('statement-line')).toHaveCount(2);
 
