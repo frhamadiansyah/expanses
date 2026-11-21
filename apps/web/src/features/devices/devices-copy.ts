@@ -44,6 +44,11 @@ export function workspaceLine(devices: number, sharedWith: readonly string[]): s
   return sharedWith.length > 0 ? `${on} · shared with ${namesOf(sharedWith)}` : on;
 }
 
+/** "1 workspace", "3 workspaces": a count with its noun, singular for one. */
+export function counted(n: number, noun: string): string {
+  return `${n} ${n === 1 ? noun : `${noun}s`}`;
+}
+
 export function namesOf(names: readonly string[]): string {
   if (names.length <= 1) return names[0] ?? '';
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
@@ -55,14 +60,13 @@ export function allowTitle(deviceName: string): string {
 }
 
 export function allowBody(deviceName: string, sourceName: string, held?: { workspaces: number; transactions: number }): string {
-  const what = held ? `: ${held.workspaces === 1 ? '1 workspace' : `${held.workspaces} workspaces`}, ${held.transactions === 1 ? '1 transaction' : `${held.transactions} transactions`}` : '';
+  const what = held ? `: ${counted(held.workspaces, 'workspace')}, ${counted(held.transactions, 'transaction')}` : '';
   return `${deviceName} will get every workspace on this ${sourceName}, private ones too${what}.`;
 }
 
 /** The new device's warning before anything happens, when it already holds data. */
 export function replaceWarning(input: { deviceName: string; workspaces: number; transactions: number; sourceHint: string }): string {
-  const what = input.workspaces === 1 ? '1 workspace' : `${input.workspaces} workspaces`;
-  return `This ${input.deviceName} already holds data (${what}, ${input.transactions} transactions). Linking replaces it with the ${input.sourceHint}'s. A backup file of this ${input.deviceName} is saved first.`;
+  return `This ${input.deviceName} already holds data (${counted(input.workspaces, 'workspace')}, ${counted(input.transactions, 'transaction')}). Linking replaces it with the ${input.sourceHint}'s. A backup file of this ${input.deviceName} is saved first.`;
 }
 
 /** A device that shares a workspace with someone else keeps it: it shows a code, it never takes one. */

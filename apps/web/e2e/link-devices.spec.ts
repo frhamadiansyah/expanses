@@ -54,6 +54,10 @@ test('an iPhone links a Mac: same digits on both, the Mac takes the iPhone’s d
   // Mac: Settings › Devices › Link to another device, the code, Save backup and link.
   await mac.goto('/account/devices');
   await mac.getByTestId('link-to-another').click();
+  // The code field is focused on opening, wide enough for the 6 digits, and the warning counts one of each in the singular.
+  await expect(mac.getByTestId('join-link-code')).toBeFocused();
+  expect((await mac.getByTestId('join-link-code').boundingBox())?.width ?? 0).toBeGreaterThan(55);
+  await expect(mac.getByTestId('join-link-sheet')).toContainText('(1 workspace, 1 transaction)');
   await mac.getByTestId('join-link-code').fill(code);
   await expect(mac.getByTestId('join-link-go')).toHaveText(/Save backup and link/);
   await shot(mac, '3-mac-code');

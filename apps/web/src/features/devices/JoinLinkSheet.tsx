@@ -131,7 +131,7 @@ export function JoinLinkSheet({ onClose }: { onClose: () => void }) {
           >
             <p className="mb-3 text-center text-[14px] text-[var(--ph-ink-3)]">Type the code shown on the other device, under Account › Devices › Link another device.</p>
             <InsetGroup wide footer={holdsData && held.data ? replaceWarning({ deviceName, workspaces: held.data.workspaces, transactions: held.data.transactions, sourceHint: 'other device' }) : undefined}>
-              <TextRow label="Code" data-testid="join-link-code" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value.replace(/[^\d\s]/g, '').slice(0, 7))} autoFocus />
+              <TextRow label="Code" data-testid="join-link-code" inputMode="numeric" pattern="[0-9 ]*" autoComplete="one-time-code" placeholder="6 digits" className="tabular min-w-[8ch]" value={code} onChange={(event) => setCode(event.target.value.replace(/[^\d\s]/g, '').slice(0, 7))} autoFocus />
             </InsetGroup>
             <InsetGroup wide>
               <InsetRow action testId="join-link-go" title={holdsData ? 'Save backup and link' : 'Link'} disabled={!ready || !/^\d{6}$/.test(code.replace(/\s/g, ''))} onClick={() => void start()} />
