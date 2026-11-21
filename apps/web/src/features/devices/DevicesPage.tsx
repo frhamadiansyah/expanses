@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Laptop, Plus, Smartphone, Tablet, MonitorSmartphone } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { DesktopSettings } from '../account/DesktopSettings';
 import { InsetGroup, InsetRow, Notice, PushedTitle, SCREEN } from '../../ui/native';
 import { useSharedBooks } from '../sharing/queries';
 import { useBooks } from '../workspaces/queries';
@@ -40,26 +42,26 @@ function readFailed(): boolean {
   }
 }
 
+/** /account/devices: on a wide screen the Mac Settings at Devices, else the phone's Devices page. */
+export function DevicesRoute() {
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopSettings section="devices" /> : <DevicesPage />;
+}
+
 /**
- * Account › Devices (mockup 2026-11-19 steps 1–2, Mac "After linking"): every device holding this data, Link another
- * device, the workspaces each on how many devices; on a device with nothing linked, Link to another device as well.
+ * What the Devices screens read, the phone's page and the Mac's Settings › Devices alike: the devices holding this data
+ * (this one first), what can be done from here, and each workspace with how many devices hold it and who else shares it.
  */
-export function DevicesPage() {
-  const { self } = useApp();
+export function useDevicesState() {
   const status = useSelfStatus();
   const books = useBooks();
   const shared = useSharedBooks();
-  const [linking, setLinking] = useState(false);
-  const [joining, setJoining] = useState(false);
   const [failed, setFailed] = useState(readFailed);
-  const now = Date.now();
   const devices = linkedDevices(status.devices);
-  const group = status.group;
-  const unlinked = group?.state === 'unlinked';
+  const unlinked = status.group?.state === 'unlinked';
   const others = devices.filter((d) => !d.thisDevice);
   const count = Math.max(1, devices.length);
-  const actions = devicesActions({ unlinked, others: others.length });
-  const thisRow = devices.find((d) => d.thisDevice) ?? null;
   const partners = useQuery({
     queryKey: ['devices-partners', shared.data?.length ?? 0],
     queryFn: () =>
@@ -70,6 +72,36 @@ export function DevicesPage() {
       ),
     enabled: shared.isSuccess,
   });
+  return {
+    status,
+    devices,
+    others,
+    unlinked,
+    actions: devicesActions({ unlinked, others: others.length }),
+    thisRow: devices.find((d) => d.thisDevice) ?? null,
+    workspaces: (books.data ?? []).map((book) => ({ book, line: workspaceLine(count, partners.data?.get(book.id) ?? []) })),
+    failed,
+    dismissFailed: () => {
+      try {
+        localStorage.removeItem(LINK_FAILED_KEY);
+      } catch {
+        // nothing kept
+      }
+      setFailed(false);
+    },
+  };
+}
+
+/**
+ * Account › Devices (mockup 2026-11-19 steps 1–2, Mac "After linking"): every device holding this data, Link another
+ * device, the workspaces each on how many devices; on a device with nothing linked, Link to another device as well.
+ */
+export function DevicesPage() {
+  const { self } = useApp();
+  const { status, devices, others, unlinked, actions, thisRow, workspaces, failed, dismissFailed } = useDevicesState();
+  const [linking, setLinking] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const now = Date.now();
 
   return (
     <div className={SCREEN}>
@@ -82,14 +114,7 @@ export function DevicesPage() {
             kind="info"
             title={JOIN_FAILED_TITLE}
             line={JOIN_FAILED_BODY}
-            onDismiss={() => {
-              try {
-                localStorage.removeItem(LINK_FAILED_KEY);
-              } catch {
-                // nothing kept
-              }
-              setFailed(false);
-            }}
+            onDismiss={dismissFailed}
           />
         )}
         <InsetGroup wide header={unlinked ? 'This device' : 'This data is on'} footer={!unlinked && status.photosMissing > 0 ? photosLine(status.photosMissing) : undefined}>
@@ -111,8 +136,8 @@ export function DevicesPage() {
           </InsetGroup>
         )}
         <InsetGroup wide header="Workspaces">
-          {(books.data ?? []).map((book) => (
-            <InsetRow key={book.id} title={book.name} subtitle={workspaceLine(count, partners.data?.get(book.id) ?? [])} chevron={false} />
+          {workspaces.map(({ book, line }) => (
+            <InsetRow key={book.id} title={book.name} subtitle={line} chevron={false} />
           ))}
         </InsetGroup>
       </div>

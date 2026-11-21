@@ -21,8 +21,8 @@ import { syncedAgo } from './sharing-copy';
 import { useSyncState } from './sync-state';
 
 /*
- * The Mac's Settings › Workspaces & sharing and › Devices & sync (Mac Settings and Tools, A). Each row reads what the
- * phone's Account and Share pages read, and opens their pages; the one action done in place — Link a device — is the
+ * The Mac's Settings › Workspaces & sharing, and each shared workspace's household devices under › Devices (Mac
+ * Settings and Tools, A). Each row reads what the phone's Account and Share pages read, and opens their pages; the one action done in place — Link a device — is the
  * member page's own call (`sync.linkDevice`), its code shown in the same invite card.
  */
 
@@ -73,7 +73,7 @@ function SharedWith({ book, detail }: { book: BookRow; detail: SharingDetail }) 
     <DeskGroup title={`${book.name} is shared with`} footer={EXPLAINER[1]} testId="settings-shared-with">
       {detail.members.map((member) => {
         const devices = member.devices.map((device) => (device.mine ? 'this device' : device.name));
-        // Last heard from: only another member's device that has been (this device's own is under Devices & sync).
+        // Last heard from: only another member's device that has been (this device's own is under Devices).
         const seen = member.me ? null : Math.max(0, ...member.devices.map((device) => device.seenAt ?? 0)) || null;
         return (
           <DeskRow
@@ -207,7 +207,7 @@ export function DeskWorkspaces() {
 }
 
 /** One shared workspace's devices: whose each is and when it was last heard from, Sync, and Link a device. */
-function BookDevices({ bookId }: { bookId: string }) {
+export function BookDevices({ bookId }: { bookId: string }) {
   const { sync } = useApp();
   const book = useShareBook(bookId);
   const detail = useSharingDetail(bookId);
@@ -278,21 +278,5 @@ function SyncRow({ book, detail }: { book: BookRow; detail: SharingDetail }) {
       label={count > 0 ? `Sync, ${count} to fix` : `Sync, ${state.value}`}
       right={<span className={count > 0 ? 'font-semibold text-[var(--ph-alarm)]' : undefined}>{count > 0 ? `${count} to fix` : state.value}</span>}
     />
-  );
-}
-
-export function DeskDevices() {
-  const shared = (useSharedBooks().data ?? []).filter((each) => each.state === 'active');
-  return (
-    <div data-testid="settings-devices">
-      <PaneTitle>Devices & sync</PaneTitle>
-      {shared.length === 0 ? (
-        <DeskGroup footer="Devices are linked through a shared workspace: share one under Workspaces & sharing, then link another device to it here.">
-          <DeskRow lead={<DeskIcon icon={Laptop} tint="#8e8e93" />} title="This device only" subtitle="No workspace here is shared" />
-        </DeskGroup>
-      ) : (
-        shared.map((each) => <BookDevices key={each.bookId} bookId={each.bookId} />)
-      )}
-    </div>
   );
 }

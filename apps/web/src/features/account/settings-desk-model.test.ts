@@ -7,8 +7,8 @@ const store = () => {
 };
 
 describe('the sections (Mac Settings A)', () => {
-  it('reads Workspaces & sharing, Devices & sync, Backup, Defaults, Categories, Activity, then Capture (iPhone) and About', () => {
-    expect(SETTINGS_SECTIONS.map((section) => section.name)).toEqual(['Workspaces & sharing', 'Devices & sync', 'Backup', 'Defaults', 'Categories', 'Activity', 'Capture', 'About']);
+  it('reads Workspaces & sharing, Devices, Backup, Defaults, Categories, Activity, then Capture (iPhone) and About', () => {
+    expect(SETTINGS_SECTIONS.map((section) => section.name)).toEqual(['Workspaces & sharing', 'Devices', 'Backup', 'Defaults', 'Categories', 'Activity', 'Capture', 'About']);
   });
 
   it('repeats none of the sidebar’s places', () => {
@@ -60,12 +60,13 @@ describe('Search', () => {
   });
 
   it('finds a section by a row, and says which', () => {
-    expect(matchSections('link', SETTINGS_SECTIONS)).toEqual([{ key: 'devices', hits: ['Link a device'] }]);
+    expect(matchSections('link', SETTINGS_SECTIONS)).toEqual([{ key: 'devices', hits: ['Link another device', 'Link to another device'] }]);
     expect(matchSections('restore', SETTINGS_SECTIONS)).toEqual([{ key: 'backup', hits: ['Restore from iCloud', 'Restore from a file'] }]);
   });
 
   it('needs every word, in any order', () => {
-    expect(matchSections('device link', SETTINGS_SECTIONS)).toEqual([{ key: 'devices', hits: ['Link a device'] }]);
+    expect(matchSections('unlink', SETTINGS_SECTIONS)).toEqual([{ key: 'devices', hits: ['Unlink'] }]);
+    expect(matchSections('another link', SETTINGS_SECTIONS)).toEqual([{ key: 'devices', hits: ['Link another device', 'Link to another device'] }]);
     expect(matchSections('zebra', SETTINGS_SECTIONS)).toEqual([]);
   });
 

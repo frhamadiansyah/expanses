@@ -70,6 +70,7 @@ describe('which row is selected', () => {
     expect(activeTo('/account/workspaces/b1', rows)).toBe(SETTINGS_TO);
     expect(activeTo('/categories', rows)).toBe(SETTINGS_TO);
     expect(activeTo('/backup', rows)).toBe(SETTINGS_TO);
+    expect(activeTo('/account/devices/d1', rows)).toBe(SETTINGS_TO);
     expect(activeTo('/tools', rows)).toBe(TOOLS_TO);
     expect(activeTo('/calculators', rows)).toBe(TOOLS_TO);
     expect(activeTo('/calculators/loan', rows)).toBe(TOOLS_TO);
@@ -280,6 +281,10 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/account', false)).toBe(true);
     expect(edgeToEdge('/account', true)).toBe(false);
     expect(edgeToEdge('/backup', false)).toBe(true);
+    // Settings › Devices and a device's pane in it; the phone keeps its own pushed pages.
+    expect(edgeToEdge('/account/devices', false)).toBe(true);
+    expect(edgeToEdge('/account/devices/d1', false)).toBe(true);
+    expect(edgeToEdge('/account/devices/d1', true)).toBe(false);
     expect(edgeToEdge('/account/workspaces/b1', false)).toBe(false);
     expect(edgeToEdge('/backup/icloud', false)).toBe(false);
   });

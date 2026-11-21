@@ -285,6 +285,8 @@ const EDGE_TO_EDGE_WIDE = [
   '/tools',
   '/account',
   '/backup',
+  // Settings › Devices, and one device's pane in it (Link my devices on the Mac).
+  '/account/devices',
 ];
 /** Pages of one thing, drawn edge to edge on a wide screen: an event (Mac Events) — not its settings, plan or costs. */
 const EDGE_TO_EDGE_PATTERNS = [
@@ -293,6 +295,7 @@ const EDGE_TO_EDGE_PATTERNS = [
   // Merchants). A kind with no Mac page (a deposit, a debit card) brings the column itself (`DeskColumn`).
   /^\/accounts\/(?!new$|add$)[^/]+$/,
   /^\/cards\/(?!points$|merchants$)[^/]+$/,
+  /^\/account\/devices\/[^/]+$/,
 ];
 export function edgeToEdge(pathname: string, phoneShell: boolean, accountScoped = false): boolean {
   if (pathname === '/overview') return true;

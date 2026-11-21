@@ -80,6 +80,16 @@ test('an iPhone links a Mac: same digits on both, the Mac takes the iPhone’s d
     await expect(mac.getByTestId('device-other')).toHaveText(/iPhone/);
   }).toPass({ timeout: 60_000, intervals: [1_000, 2_000] });
   await shot(mac, '6-mac-devices');
+  // The Mac's Settings › Devices: the iPhone's row opens its own pane there, with Unlink… and the way back to Devices.
+  await expect(mac.getByTestId('settings-page')).toBeVisible();
+  await expect(mac.getByTestId('device-other').getByTestId('device-unlink')).toHaveText('Unlink…');
+  await mac.getByTestId('device-other').getByRole('link').click();
+  await expect(mac).toHaveURL(/\/account\/devices\/[^/]+$/);
+  await expect(mac.getByTestId('device-page').getByRole('heading', { name: /iPhone/ })).toBeVisible();
+  await expect(mac.getByTestId('device-page').getByTestId('device-unlink')).toBeVisible();
+  await mac.getByTestId('device-page').getByRole('link', { name: 'Devices' }).click();
+  await expect(mac).toHaveURL(/\/account\/devices$/);
+  await expect(mac.getByTestId('device-other')).toHaveText(/iPhone/);
   await mac.goto('/account');
   await expect(mac.getByTestId('account-workspace').filter({ hasText: 'Test Household' })).toBeVisible();
   await mac.goto('/accounts');

@@ -1,7 +1,7 @@
 import { LATEST_VERSION } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router';
-import { Cloud, History, Info, Link2, Search, Smartphone, Tags, Users, WalletCards, type LucideIcon } from 'lucide-react';
+import { Cloud, History, Info, MonitorSmartphone, Search, Smartphone, Tags, Users, WalletCards, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 import pkg from '../../../package.json';
 import { useApp } from '../../app/context';
@@ -14,7 +14,8 @@ import { ActivityList } from '../activity/ActivityPage';
 import { DeskBackup } from '../backup/DeskBackup';
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { buildName } from '../recovery/failure-record';
-import { DeskDevices, DeskWorkspaces } from '../sharing/DeskSharing';
+import { DeskWorkspaces } from '../sharing/DeskSharing';
+import { DeskDevicePane, DeskLinkedDevices } from '../devices/DeskDevices';
 import { useBooks } from '../workspaces/queries';
 import { isCardOption, paymentLabel } from '../transactions/PaymentSheet';
 import { pickerGroups } from '../transactions/CategoryPicker';
@@ -25,7 +26,7 @@ import { matchSections, readSection, SETTINGS_SECTIONS, type SettingsSection, sh
 
 const ICONS: Record<SettingsSection, LucideIcon> = {
   workspaces: Users,
-  devices: Link2,
+  devices: MonitorSmartphone,
   backup: Cloud,
   defaults: WalletCards,
   categories: Tags,
@@ -160,12 +161,12 @@ function DeskAbout() {
   );
 }
 
-function Pane({ section }: { section: SettingsSection }) {
+function Pane({ section, device }: { section: SettingsSection; device?: string }) {
   switch (section) {
     case 'workspaces':
       return <DeskWorkspaces />;
     case 'devices':
-      return <DeskDevices />;
+      return device ? <DeskDevicePane deviceId={device} /> : <DeskLinkedDevices />;
     case 'backup':
       return <DeskBackup />;
     case 'defaults':
@@ -185,9 +186,10 @@ function Pane({ section }: { section: SettingsSection }) {
  * Settings on a wide screen (Mac Settings and Tools, A), styled like the Mac's System Settings: the title bar, then an
  * inner column — Search and the sections, each a coloured square and its name — and the chosen section's rows beside
  * it. The sidebar's Settings, the Mac menu's Settings… (⌘,) and /backup open it; `?section=` names a section, and the
- * one last chosen here is shown otherwise. `section` is the route's own (/backup is Backup).
+ * one last chosen here is shown otherwise. `section` is the route's own (/backup is Backup, /account/devices Devices);
+ * `device` is /account/devices/$deviceId's, that device's pane under Devices.
  */
-export function DesktopSettings({ section: fixed }: { section?: SettingsSection }) {
+export function DesktopSettings({ section: fixed, device }: { section?: SettingsSection; device?: string }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const asked = (useSearch({ strict: false }) as { section?: SettingsSection }).section;
@@ -263,7 +265,7 @@ export function DesktopSettings({ section: fixed }: { section?: SettingsSection 
         {/* A region, not a <section>: each group inside is one, and a group is found by its own heading. */}
         <div role="region" className="min-w-0 flex-1 px-[30px] py-[22px]" aria-label={available.find((each) => each.key === section)?.name}>
           <div className="max-w-[620px]">
-            <Pane section={section} />
+            <Pane section={section} device={device} />
           </div>
         </div>
       </div>

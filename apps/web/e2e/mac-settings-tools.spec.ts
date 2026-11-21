@@ -23,7 +23,7 @@ test('the sidebar’s Settings opens Settings, and each section shows its own ro
   await page.locator('aside').getByRole('link', { name: 'App settings', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Settings', exact: true })).toBeVisible();
-  await expect(sections(page).getByRole('button')).toHaveText(['Workspaces & sharing', 'Devices & sync', 'Backup', 'Defaults', 'Categories', 'Activity', 'About']);
+  await expect(sections(page).getByRole('button')).toHaveText(['Workspaces & sharing', 'Devices', 'Backup', 'Defaults', 'Categories', 'Activity', 'About']);
   // The places the sidebar holds are not repeated in Settings.
   for (const place of ['Budget', 'Recurring', 'Events', 'Goals', 'Debt-free plan', 'Review', 'Calculators', 'Tax report', 'Import', 'Which card?']) {
     await expect(page.getByTestId('settings-page').getByRole('link', { name: place, exact: true })).toHaveCount(0);
@@ -37,9 +37,12 @@ test('the sidebar’s Settings opens Settings, and each section shows its own ro
   await expect(page.getByTestId('add-workspace')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Share…' })).toBeVisible();
 
-  await section(page, 'Devices & sync').click();
+  // Devices: this device the only copy, Link to another device offered beside Link another device.
+  await section(page, 'Devices').click();
   await expect(page).toHaveURL(/\?section=devices$/);
-  await expect(page.getByTestId('settings-devices')).toContainText('This device only');
+  await expect(page.getByTestId('device-this')).toContainText('this device · only copy');
+  await expect(page.getByTestId('link-another')).toHaveText('Link…');
+  await expect(page.getByTestId('link-to-another')).toHaveText('Link…');
 
   await section(page, 'Backup').click();
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
@@ -105,7 +108,7 @@ test('Search filters the sections by their names and their rows', async ({ page 
   const search = page.getByLabel('Search settings');
   await search.fill('link');
   await expect(sections(page).getByRole('button')).toHaveCount(1);
-  await expect(section(page, 'Devices & sync')).toContainText('Link a device');
+  await expect(section(page, 'Devices')).toContainText('Link another device · Link to another device');
   await search.press('Enter');
   await expect(page).toHaveURL(/\?section=devices$/);
   await expect(page.getByTestId('settings-devices')).toBeVisible();
@@ -249,7 +252,7 @@ async function secondDevice(browser: Browser, info: TestInfo): Promise<Page> {
   return page;
 }
 
-test('Workspaces & sharing and Devices & sync read a shared workspace: members, devices, Sync, Link a device', async ({ page, browser }, info) => {
+test('Workspaces & sharing and Devices read a shared workspace: members, devices, Sync, Link a device', async ({ page, browser }, info) => {
   test.setTimeout(300_000);
   await openWorkspacePage(page, 'Personal');
   await renameWorkspace(page, 'Rumah');
@@ -352,7 +355,7 @@ test('no reminder to back up over Backup itself: ?section=backup and /backup lea
   await expect(page.getByTestId('settings-backup')).toBeVisible();
   await expect(reminder).toHaveCount(0);
   // Chosen here, Backup is also what a plain /account shows: still no reminder over it.
-  await section(page, 'Devices & sync').click();
+  await section(page, 'Devices').click();
   await expect(reminder).toBeVisible();
   await section(page, 'Backup').click();
   await expect(page.getByTestId('settings-backup')).toBeVisible();

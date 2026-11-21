@@ -25,7 +25,12 @@ export const SETTINGS_SECTIONS: readonly SectionInfo[] = [
     tint: '#007aff',
     rows: ['Workspaces', 'Add workspace', 'New workspace', 'Join with a code', 'Archived', 'Shared with', 'Members', 'What is shared', 'Sharing settings', 'Share'],
   },
-  { key: 'devices', name: 'Devices & sync', tint: '#34c759', rows: ['Link a device', 'Devices', 'This device', 'Sync', 'Sync details'] },
+  {
+    key: 'devices',
+    name: 'Devices',
+    tint: '#34c759',
+    rows: ['Link another device', 'Link to another device', 'This data is on', 'This device', 'Unlink', 'Link a device', 'Sync', 'Sync details'],
+  },
   {
     key: 'backup',
     name: 'Backup',

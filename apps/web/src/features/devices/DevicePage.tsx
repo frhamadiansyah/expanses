@@ -1,13 +1,23 @@
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { Sheet } from '../../app/Sheet';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { DesktopSettings } from '../account/DesktopSettings';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
 import { UNLINK_FOOTER } from './devices-copy';
+import { UnlinkSheet } from './UnlinkSheet';
 import { useSelfStatus } from './use-self';
 
-const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—');
+export const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—');
+
+/** /account/devices/$deviceId: on a wide screen the Mac Settings at Devices, showing that device; else the phone's page. */
+export function DeviceRoute() {
+  const { deviceId } = useParams({ from: '/account/devices/$deviceId' });
+  const phone = usePhone();
+  const sideways = useSideways();
+  return !phone && !sideways ? <DesktopSettings section="devices" device={deviceId} /> : <DevicePage />;
+}
 
 /** Devices › one device (mockup 2026-11-21 step 4): when it was linked, when it last synced, Unlink… */
 export function DevicePage() {
@@ -57,17 +67,7 @@ export function DevicePage() {
           </InsetGroup>
         )}
       </div>
-      {asking && device && (
-        <Sheet grouped title={`Unlink ${device.name}?`} onClose={() => setAsking(false)}>
-          <p className="mb-5 text-center text-[14px] text-[var(--ph-ink-3)]">It gets nothing written from now on. The data on this {self.info.name} stays.</p>
-          <InsetGroup wide>
-            <InsetRow destructive testId="device-unlink-confirm" title="Unlink" onClick={() => void unlink()} />
-          </InsetGroup>
-          <InsetGroup wide>
-            <InsetRow action title="Cancel" onClick={() => setAsking(false)} />
-          </InsetGroup>
-        </Sheet>
-      )}
+      {asking && device && <UnlinkSheet deviceName={device.name} hereName={self.info.name} onUnlink={() => void unlink()} onClose={() => setAsking(false)} />}
     </div>
   );
 }
