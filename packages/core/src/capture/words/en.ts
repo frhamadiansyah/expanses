@@ -5,7 +5,7 @@ export const EN: WordList = {
   spent: ['paid', 'payment', 'sent', 'debit', 'purchase', 'spent', 'withdrawal'],
   received: ['received', 'credited', 'credit', 'incoming', 'deposit'],
   topup: ['top up', 'top-up', 'topup', 'reload'],
-  refund: ['refund', 'refunded'],
+  refund: ['refund', 'refunded', 'reversal', 'reversed'],
   notDirection: ['credit card', 'credit-card'],
   promo: ['discount', 'cashback', 'voucher', 'promo', 'reward', 'coupon', 'points'],
   transaction: ['transaction', 'edc'],
