@@ -66,7 +66,8 @@ export type JoinStage =
   | { stage: 'confirm'; digits: string }
   /** Allowed: the copy is on the relay. The app takes a backup, replaces this device's data with it (`acceptLink`). */
   | { stage: 'allowed' }
-  | { stage: 'ended'; why: 'expired' | 'burned' | 'declined' };
+  /** 'mismatch': the other device's keys changed after its numbers were shown — a relay in the middle. */
+  | { stage: 'ended'; why: 'expired' | 'burned' | 'declined' | 'mismatch' };
 
 export interface SelfSyncResult {
   sent: number;
@@ -145,7 +146,12 @@ interface JoinSession {
   nonce: string;
   revealed: boolean;
   source?: LinkView['source'];
+  /** The source's keys exactly as they fed the check digits on the first confirm; every later view must match them. */
+  pinned?: LinkView['source'];
 }
+
+/** A source's identity, for comparing one view of it with another. */
+const sourceIdentity = (source: LinkView['source']) => canonicalJson({ deviceId: source.deviceId, signJwk: source.signJwk, agreeJwk: source.agreeJwk });
 
 export class SelfEngine {
   private readonly sealer: Sealer;
@@ -338,6 +344,7 @@ export class SelfEngine {
     const mine = this.joining.get(sessionId);
     let view = await this.transport.readLink(sessionId);
     if (!mine) return { stage: 'ended', why: 'expired' };
+    if (mine.pinned && sourceIdentity(view.source) !== sourceIdentity(mine.pinned)) return { stage: 'ended', why: 'mismatch' };
     if (view.status === 'expired' || view.status === 'burned' || view.status === 'declined') return { stage: 'ended', why: view.status };
     if (view.status === 'allowed' && view.welcome) return { stage: 'allowed' };
     if (!view.sourceNonce) return { stage: 'waiting' };
@@ -346,7 +353,11 @@ export class SelfEngine {
       view = await this.transport.revealLink(sessionId, mine.nonce, name);
       mine.revealed = true;
     }
-    return { stage: 'confirm', digits: await checkDigits({ source: view.source, joiner: this.device.public, sourceNonce: view.sourceNonce!, joinerNonce: mine.nonce }) };
+    // The keys behind the digits are pinned on the first confirm: a relay that shows one key for the digits and
+    // another later is caught, here and in acceptLink.
+    mine.pinned ??= { deviceId: view.source.deviceId, signJwk: view.source.signJwk, agreeJwk: view.source.agreeJwk };
+    if (sourceIdentity(view.source) !== sourceIdentity(mine.pinned)) return { stage: 'ended', why: 'mismatch' };
+    return { stage: 'confirm', digits: await checkDigits({ source: mine.pinned, joiner: this.device.public, sourceNonce: view.sourceNonce!, joinerNonce: mine.nonce }) };
   }
 
   /**
@@ -358,9 +369,12 @@ export class SelfEngine {
   async acceptLink(sessionId: string): Promise<JoinPlan> {
     const view = await this.transport.readLink(sessionId);
     if (view.status !== 'allowed' || !view.welcome) throw new SelfError('MISMATCH', 'This link has not been allowed');
-    // The welcome is the source's, signed by the very key the check digits on both screens were made from.
+    // The welcome is the source's, signed by the very key the check digits on both screens were made from — the key
+    // pinned when the digits were shown, never one a later view hands over.
+    const pinned = this.joining.get(sessionId)?.pinned;
+    if (!pinned || sourceIdentity(view.source) !== sourceIdentity(pinned)) throw new SelfError('MISMATCH', 'The other device is not the one whose numbers were shown. Nothing here was changed.');
     const signature = (view.welcome as SealedFor & { sig?: string }).sig;
-    if (!signature || !(await verifySignature(view.source.signJwk, welcomeSigningBytes(sessionId, this.deviceId, view.welcome), signature))) {
+    if (!signature || !(await verifySignature(pinned.signJwk, welcomeSigningBytes(sessionId, this.deviceId, view.welcome), signature))) {
       throw new SelfError('MISMATCH', 'The other device did not send this. Nothing here was changed.');
     }
     const opened = JSON.parse(fromUtf8(await openSealedKey(this.device.agree.privateKey, `link:${sessionId}`, view.welcome))) as Welcome;

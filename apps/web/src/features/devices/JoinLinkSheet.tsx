@@ -27,6 +27,7 @@ const ENDED: Record<string, string> = {
   expired: 'The code ran out. Ask the other device for a new one.',
   burned: 'That code was tried too many times. Ask the other device for a new one.',
   declined: 'The other device did not allow it. Nothing here was changed.',
+  mismatch: 'The other device did not answer as it should. Nothing here was changed.',
 };
 
 /** What this device holds now, for the warning: its workspaces and transactions, and what it shares with someone. */

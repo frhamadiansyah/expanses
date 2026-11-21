@@ -5,7 +5,7 @@ import { activityOf, createAccount, type Database, listAccounts, postTransaction
 import { generateDevice, requestSignerOf, type DeviceKeys } from '../../src/sync/keys';
 import { MemoryTransport } from '../../src/sync/memory-transport';
 import { SyncTransportError } from '../../src/sync/types';
-import { bytesToBase64Url, sha256Hex } from '../../src/sync/relay-signing';
+import { bytesToBase64Url, canonicalJson, sha256Hex } from '../../src/sync/relay-signing';
 import { sealKeyFor } from '../../src/sync/crypto';
 import { LATEST_VERSION } from '../../src/migrations';
 import { SelfEngine, selfBookId, type SelfDeviceInfo, UNFINISHED_JOIN_MS } from '../../src/self/engine';
@@ -222,6 +222,29 @@ describe('the welcome the new device takes', () => {
         return { ...view, welcome: { ...forged, sig: bytesToBase64Url(sig) } };
       }),
     );
+    await expect(macEngine.acceptLink(sessionId)).rejects.toMatchObject({ code: 'MISMATCH' });
+    expect((await phone.engine.devices()).map((d) => d.name)).toEqual(['iPhone']);
+  });
+
+  it('signed by a key swapped in after the numbers were shown is refused: the key behind the digits is pinned', async () => {
+    const attacker = await generateDevice();
+    let swap = false;
+    let macKeys: Owned['keys'] | null = null;
+    const { phone, macEngine, sessionId } = await allowedWith((mac) => {
+      macKeys = mac.keys;
+      return welcoming(mac.transport, async (view) => {
+        if (!swap) return view;
+        // The relay shows the real key until the digits are on screen, then its own key and a welcome of its making.
+        const forged = await sealKeyFor({ deviceId: macKeys!.deviceId, agreeJwk: macKeys!.public.agreeJwk }, `link:${view.sessionId}`, 1, new TextEncoder().encode('{"relayBookId":"elsewhere"}'));
+        // Signed with the attacker's key over the very bytes a source signs: it verifies against the swapped-in key.
+        const bytes = new TextEncoder().encode(canonicalJson({ v: 'cicis-link-welcome-v1', sessionId: view.sessionId, joinerId: macKeys!.deviceId, welcome: forged }));
+        const sig = bytesToBase64Url(new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, attacker.sign.privateKey, bytes)));
+        const fake = { ...view, source: { ...attacker.public, deviceId: attacker.deviceId } };
+        return view.welcome ? { ...fake, welcome: { ...forged, sig } } : fake;
+      });
+    });
+    swap = true;
+    expect(await macEngine.checkJoining(sessionId)).toEqual({ stage: 'ended', why: 'mismatch' });
     await expect(macEngine.acceptLink(sessionId)).rejects.toMatchObject({ code: 'MISMATCH' });
     expect((await phone.engine.devices()).map((d) => d.name)).toEqual(['iPhone']);
   });
