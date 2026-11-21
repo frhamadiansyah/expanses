@@ -78,6 +78,12 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * summary would not go again until its period ended or a line moved it. Once now, this phone sends the items whose sent
  * face differs from the one they have (`itemsWithStaleFaceTx`), and only those, so the partner draws the face the holder
  * already chose; a phone with no joint account sends nothing and logs no note.
+ *
+ * R10 credit card faces (fix/joint-card-face): a joint credit card's summary now carries its face too (its issuer and
+ * its catalogue product, `ItemFace.bank`/`entry`). R4 has already run on every phone that had it, so its marker keeps it
+ * from looking again: R10 is the same pass under its own marker, once more per phone, so a card made joint before this
+ * build reaches the partner with its art without the holder editing anything. Only items whose sent face differs from
+ * the one they have now go out; a phone with no joint card sends nothing.
  */
 
 const BILL_LINKS = 'bill-links';
@@ -120,6 +126,7 @@ async function crossedTx(tx: Db, bookId: string, key = crossedKey(bookId)): Prom
 
 const EVENT_TAGS = 'event-tags';
 const CARD_FACES = 'card-faces';
+const CREDIT_CARD_FACES = 'credit-card-faces';
 const NOTICE_PREFIX = 'repair.notice.v1.';
 
 const markerKey = (name: string, bookId: string) => `repair.${name}.v1.${bookId}`;
@@ -169,6 +176,8 @@ export interface RepairReport {
   tripTransfers: number | null;
   /** R4: this phone's net-worth items sent again with their card faces; null when it had run already. */
   cardFaces: number | null;
+  /** R10: R4 once more, for the joint credit cards' faces; null when it had run already. */
+  creditCardFaces?: number | null;
   /** True for a shared event's log held here: asked on every sync, since each device crossing earns R5 one more pass. */
   eventBook?: boolean;
   /** R5: the trip's switches sent again (1) or nothing to send (0); null when no device had newly crossed. */
@@ -539,6 +548,19 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       const stale = await itemsWithStaleFaceTx(tx);
       const sent = stale.length > 0 ? await sendSummariesTx(tx, stale, today) : 0;
       await markDoneTx(tx, CARD_FACES, bookId);
+      return sent;
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.creditCardFaces = await database.transaction(async (tx) => {
+      const book = await activeBookTx(tx, bookId);
+      if (!book || (await doneTx(tx, CREDIT_CARD_FACES, bookId))) return null;
+      // As R4: only the items whose sent face differs from the one they have now — after R4, the joint credit cards.
+      const stale = await itemsWithStaleFaceTx(tx);
+      const sent = stale.length > 0 ? await sendSummariesTx(tx, stale, today) : 0;
+      await markDoneTx(tx, CREDIT_CARD_FACES, bookId);
       return sent;
     });
   } catch (error) {

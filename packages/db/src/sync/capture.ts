@@ -137,10 +137,11 @@ export interface CaptureConfig {
    * device already emitted). The §6.4 test harness uses it to leave those writes out of its watch, and only those.
    */
   pausedWrites?: {
-    begin(tx: Db, changeSet?: ChangeSet): Promise<void>;
+    /** `bookId`: the shared book (a workspace's, or a net-worth group log's) whose change-set is being applied. */
+    begin(tx: Db, changeSet?: ChangeSet, bookId?: string): Promise<void>;
     end(tx: Db): Promise<void>;
     /** The ops apply actually took in, when they are known only after it ran (authority refusals left out). */
-    applied?(tx: Db, changeSet: ChangeSet): Promise<void>;
+    applied?(tx: Db, changeSet: ChangeSet, bookId?: string): Promise<void>;
   };
 }
 
@@ -853,18 +854,18 @@ export function pauseCapture(tx: Db): void {
 
 /**
  * Runs `fn` with capture off for the rest of this transaction, and tells the config's `pausedWrites` observer
- * where those writes begin and end, and which change-set they apply. Apply's door: what it writes was emitted by the
- * device that made the change.
+ * where those writes begin and end, and which change-set they apply, in which book. Apply's door: what it writes was
+ * emitted by the device that made the change.
  */
-export async function withCapturePaused<T>(tx: Db, fn: () => Promise<T>, applying?: ChangeSet | (() => ChangeSet | undefined)): Promise<T> {
+export async function withCapturePaused<T>(tx: Db, fn: () => Promise<T>, applying?: ChangeSet | (() => ChangeSet | undefined), bookId?: string): Promise<T> {
   const session = sessionOf(tx);
   session?.pause();
   const observer = session?.config.pausedWrites;
-  await observer?.begin(tx, typeof applying === 'function' ? undefined : applying);
+  await observer?.begin(tx, typeof applying === 'function' ? undefined : applying, bookId);
   const result = await fn();
   if (typeof applying === 'function') {
     const taken = applying();
-    if (taken) await observer?.applied?.(tx, taken);
+    if (taken) await observer?.applied?.(tx, taken, bookId);
   }
   await observer?.end(tx);
   return result;

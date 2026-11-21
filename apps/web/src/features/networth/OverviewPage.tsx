@@ -2,7 +2,7 @@ import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGro
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { ChartCandlestick, ChartColumn, ChartLine, ChevronRight, Gauge, type LucideIcon } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
 import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl, useDrawers, iconCentre, type TreePlace } from '../../ui/native';
@@ -17,6 +17,8 @@ import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWort
 import { buyChoices } from '../transactions/buy-in-form';
 import { figureOf, jointSeries, ownerRing, receivedPocketAccounts, sheetOwnerOf } from './joint-rows';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
+import { useActiveNetWorthGroup } from '../sharing/net-worth-queries';
+import { keepLastFigures, lastFigures } from './last-figures';
 import { accountDestination, type AccountDestination } from '../accounts/destination';
 import { foldPockets, type ShownSheetRow } from './overview-rows';
 
@@ -345,9 +347,6 @@ function fold(
 export function OverviewPage() {
   const { ws } = useApp();
   const today = isoDate();
-  // What there is to buy or sell, for the corner's Trade: the same list the Add form's trade rows offer.
-  const assetValues = useAssetValues();
-  const assetProfiles = useAssetProfiles();
   /*
    * The range is chosen first because it decides how much is read: a snapshot a month, so six months are six of them
    * and five years are sixty. The page opens on the shortest and cheapest, and each range that has been read once is
@@ -368,7 +367,6 @@ export function OverviewPage() {
     }
   };
   const months = lastNMonths(monthOf(today), SPAN_MONTHS[span]);
-  const series = useNetWorthSeries(months);
   const sheetInputs = useSheet();
   /*
    * With one tax ID the page is the household's (§8.2, D12): the other's shared items join this phone's own rows in the
@@ -382,9 +380,26 @@ export function OverviewPage() {
   /*
    * Until the page knows whether the household files jointly — or while the household's inputs load, or when they fail
    * — the figure, the line and the sheet are held: a personal total must never stand where the household's belongs
-   * (review round 1, finding 1).
+   * (review round 1, finding 1). And a personal page holds them until its own sheet is read: a sheet not read yet is
+   * not a sheet of nothing, and it drew Rp 0 for as long as the read took.
    */
-  const holding = household.status === 'pending' || household.status === 'error';
+  const holding = household.status === 'pending' || household.status === 'error' || (!joint && !sheetInputs.data);
+  /*
+   * The figure and the sheet first, then the line and what the corner needs. Every read waits its turn on the one
+   * database, so a line read beside the sheet kept the figure and the sheet waiting for most of the line; asked for
+   * once they are drawn, the line fills in under a page that already says what the money is.
+   */
+  const series = useNetWorthSeries(months, { enabled: !holding });
+  /*
+   * While held, the figures this page last showed, once the group says the page is the same kind it was then (owner,
+   * 21 Nov: 7–8 s of a dash on her iPhone). Only the total and the two cards: the rows and the line wait for the read.
+   */
+  const group = useActiveNetWorthGroup();
+  const householdNow = group.isSuccess ? group.data?.mode === 'joint' : null;
+  const kept = holding && householdNow !== null && household.status !== 'error' && !sheetInputs.error ? lastFigures(ws.workspaceId, { household: householdNow, currency: ws.baseCurrency }) : null;
+  // What there is to buy or sell, for the corner's Trade: the same list the Add form's trade rows offer.
+  const assetValues = useAssetValues(undefined, { enabled: !holding });
+  const assetProfiles = useAssetProfiles();
 
   const points = holding ? [] : joint ? jointSeries(series.data ?? [], joint.received, joint.ratesToBase, ws.baseCurrency) : (series.data ?? []);
   // The range the line is drawn over, out of the same snapshots the figure is: what is drawn is what is summed.
@@ -414,6 +429,18 @@ export function OverviewPage() {
    * each such row in its own currency and every total over it blank.
    */
   const sheetBlocked = joint ? joint.ownMissing.length > 0 : sheetMissing.length > 0;
+  // What is drawn, kept for the next open (`last-figures.ts`): only a whole figure, never one a rate is missing from.
+  const drawn = !holding && sheetMissing.length === 0 && sheet.netWorthMinor !== null ? sheet : null;
+  useEffect(() => {
+    if (!drawn) return;
+    keepLastFigures(ws.workspaceId, {
+      household: joint !== null,
+      currency: ws.baseCurrency,
+      netWorthMinor: drawn.netWorthMinor,
+      assetsMinor: drawn.assetsTotalMinor,
+      liabilitiesMinor: drawn.liabilitiesTotalMinor,
+    });
+  }, [ws.workspaceId, ws.baseCurrency, joint !== null, drawn?.netWorthMinor, drawn?.assetsTotalMinor, drawn?.liabilitiesTotalMinor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /*
    * The corner: how the figure is doing. Needs attention is no longer one of them: what it gathered is said where it
@@ -577,8 +604,8 @@ export function OverviewPage() {
         <div className="px-4 md:px-0">
           <div data-testid="net-worth">
             {holding ? (
-              /* Held, not blank-and-personal: the kit's figure with no amount yet. */
-              <Hero minor={null} currency={ws.baseCurrency} />
+              /* Held, not blank-and-personal: the figure last shown for this same page, else the kit's figure with no amount yet. */
+              <Hero minor={kept?.netWorthMinor ?? null} currency={ws.baseCurrency} />
             ) : sheetMissing.length > 0 ? (
               <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
             ) : (
@@ -633,6 +660,12 @@ export function OverviewPage() {
        * Always drawn, because each card is the way into its side's page. While a rate is missing the figure is a dash —
        * a total built from rows that read 0 would be wrong — and the sheet below says which rate it is waiting on.
        */}
+      {holding && kept && (
+        <section data-testid="sheet-totals" className="mb-[18px] grid grid-cols-2 gap-2.5">
+          <TotalCard label="Assets" to="/net-worth/assets" testId="sheet-total-assets" figure={formatMinor(kept.assetsMinor, ws.baseCurrency)} />
+          <TotalCard label="Liabilities" to="/net-worth/loans" testId="sheet-total-liabilities" figure={formatMinor(kept.liabilitiesMinor, ws.baseCurrency)} />
+        </section>
+      )}
       {!holding && (
         <section data-testid="sheet-totals" className="mb-[18px] grid grid-cols-2 gap-2.5">
           {/* Each card opens its side's own page. */}

@@ -5,6 +5,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardIdentity } from '../schema-cards';
+import { markAccountDirtyTx } from '../sync/capture';
 import { cardTerms, catalogCategoryChoices, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 import { categoryIdsByKeyAllTx } from './categories';
 import { nameOwnProgrammeTx, openOwnProgrammeTx } from './programme-link';
@@ -236,6 +237,8 @@ export function applyCatalogEntry(
     await clearRows(tx, ws, program.id, input.replaceManual);
     const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked', true, memberLevel);
     await nameOwnProgrammeTx(tx, ws, program.id, input.entry.program.name, input.entry.program.unit);
+    // A joint card's summary carries its issuer and catalogue product (`ItemFace`): the partner's phone draws the new art.
+    markAccountDirtyTx(tx, input.cardAccountId);
     return { programId: program.id, unmappedKeys };
   });
 }
@@ -331,6 +334,8 @@ export function customiseFromScratch(database: Database, ws: WorkspaceContext, p
         catalogSnapshotJson: null,
       })
       .where(eq(rewardPrograms.id, program.id));
+    // Off the catalogue, a joint card's face has no product any more (`ItemFace.entry`).
+    markAccountDirtyTx(tx, program.cardAccountId);
   });
 }
 

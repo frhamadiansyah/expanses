@@ -2,7 +2,7 @@ import type { RawCapture } from '@expanses/core';
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ingestCaptures } from '../src/capture/ingest';
-import { fixCardEmailDrafts } from '../src/capture/reread';
+import { fixCardEmailDrafts, fixCardPurchaseDrafts } from '../src/capture/reread';
 import { listSources, tidySenderSources } from '../src/capture/sources';
 import { addCard, confirmDraft, createCardAccount, type Database, listAccounts, listDrafts } from '../src/index';
 import { captureSources } from '../src/schema-capture';
@@ -350,5 +350,181 @@ describe('the draft build 114 stored for a Maybank card email', () => {
     await asBuild114Stored(made, { categoryAccountId: other!.id });
     expect(await fixCardEmailDrafts(made.database, { today: DAY })).toBe(0);
     expect((await row(made.database, 'draft-114')).kind).toBe('income');
+  });
+});
+
+/*
+ * The owner's report of 2026-11-18: a card purchase email whose sender came through so that its source was named "Com"
+ * — no Maybank domain to go by — was waiting as money received into the card. The email is spending by its own words,
+ * whoever sent it. Invented throughout.
+ */
+describe('a credit card purchase email, whatever its sender came through as', () => {
+  const BODY = [
+    'Hi Pemegang Kartu Kredit Maybank,',
+    'Anda baru saja melakukan transaksi dengan',
+    'Maybank Kartu Kredit',
+    'Nomor Kartu',
+    'Jenis Kartu',
+    'Merchant',
+    '**** **** **** 4321',
+    'VISA',
+    'Grab* A-ZZ9EXAMPLE01',
+    'Waktu Transaksi',
+    'Mata Uang',
+    'Jumlah',
+    '02 Nov 26 09:41',
+    'IDR',
+    '57,300',
+    'Status',
+    'Sukses/Approved',
+    'Apabila Anda tidak melakukan transaksi',
+    'segera hubungi Maybank Customer Care',
+    '1500611 atau +622100000000 (dari luar negeri)',
+  ].join('\n');
+  /** The body as an older reader got it wrong: the card's "Kredit" on a line of its own. */
+  const BROKEN = BODY.replace(/Kartu Kredit/g, 'Kartu\nKredit');
+
+  async function card4321() {
+    const made = await workspace();
+    const visa = await createCardAccount(made.database, made.ws, { name: 'Maybank Visa', subtype: 'credit_card', currency: 'IDR' });
+    const visaCard = await addCard(made.database, made.ws, { accountId: visa.id, last4: '4321' });
+    return { ...made, visa: visa.id, visaCard };
+  }
+
+  it.each([
+    ['an address on a domain that is not the bank’s', 'notifikasi@kartu.example.com'],
+    ['two addresses', 'Maybank Kartu Kredit <notifikasi@maybank.co.id>, balasan@mailer.example.com'],
+    ['a domain alone', 'notifikasi.maybank.com'],
+    ['a name alone', 'Maybank Kartu Kredit'],
+  ])('is spending on the card its digits name, from %s', async (_, app) => {
+    const { database, ws, visa, visaCard } = await card4321();
+    await ingestCaptures(database, ws, [{ ...mail('m-card', BROKEN, app, ''), capturedAt: '2026-11-18T13:16:00+07:00', title: null }], { today: '2026-11-18' });
+    const [draft] = await listDrafts(database, ws, 'pending');
+    expect(draft).toMatchObject({ kind: 'expense', amountMinor: 57_300, currency: 'IDR', accountId: visa, cardId: visaCard, description: 'Grab* A-ZZ9EXAMPLE01', occurredOn: '2026-11-02' });
+  });
+
+  it.each([
+    ['two addresses', 'Maybank Kartu Kredit <notifikasi@maybank.co.id>, balasan@mailer.example.com'],
+    ['a domain alone', 'notifikasi.maybank.com'],
+    ['a domain on a country', 'maybank.co.id'],
+  ])('comes from a source named Maybank when the sender is %s', async (_, app) => {
+    const { database, ws } = await card4321();
+    await ingestCaptures(database, ws, [mail('m-card', BODY, app)], { today: DAY });
+    expect((await listSources(database)).map((source) => source.label)).toEqual(['Maybank']);
+  });
+
+  it('renames a source an older build named "Com" for its sender, and the next email still finds it', async () => {
+    const { database, ws } = await card4321();
+    const key = 'notifikasi@maybank.com';
+    await database.db.insert(captureSources).values({
+      id: 'src-com',
+      workspaceId: null,
+      keyKind: 'app',
+      key,
+      label: 'Com',
+      accountId: null,
+      templateJson: null,
+      readOffers: 0,
+      capturedCount: 2,
+      createdAt: '2026-11-09T12:00:00.000Z',
+      updatedAt: '2026-11-09T12:00:00.000Z',
+    });
+    expect(await tidySenderSources(database)).toBe(1);
+    expect(await tidySenderSources(database)).toBe(0);
+    await ingestCaptures(database, ws, [mail('m-next', BODY, key)], { today: DAY });
+    expect((await listSources(database)).map((source) => [source.id, source.label])).toEqual([['src-com', 'Maybank']]);
+  });
+
+  it('leaves a source named by this build, and an app, as they are', async () => {
+    const { database, ws } = await card4321();
+    await ingestCaptures(database, ws, [mail('m-a', BODY, 'notifikasi@maybank.com'), { ...mail('m-b', 'Pembayaran Rp38.000 berhasil. Merchant: TOKO KOPI', 'com.example.pay'), title: 'Pay' }], { today: DAY });
+    expect(await tidySenderSources(database)).toBe(0);
+    expect((await listSources(database)).map((source) => source.label).sort()).toEqual(['Maybank', 'Pay']);
+  });
+});
+
+describe('the one-time fix of card purchase drafts an older reader left as income', () => {
+  const BODY = [
+    'Hi Pemegang Kartu',
+    'Kredit Maybank,',
+    'Anda baru saja melakukan transaksi dengan',
+    'Maybank Kartu',
+    'Kredit',
+    'Nomor Kartu',
+    'Jenis Kartu',
+    'Merchant',
+    '**** **** **** 4732',
+    'VISA',
+    'Ojekku* A-QZ81LMNOPQ2',
+    'Waktu Transaksi',
+    'Mata Uang',
+    'Jumlah',
+    '05 Nov 26 18:22',
+    'IDR',
+    '47,500',
+    'Status',
+    'Sukses/Approved',
+  ].join('\n');
+  const COM = 'notifikasi@kartu.example.com';
+
+  /** As the build before this one queued it: money in on the card's account, no card chosen, read as received, its words kept. */
+  async function asLastBuildLeftIt(database: Database, id: string, over: Partial<typeof draftTransactions.$inferInsert> = {}) {
+    const now = await row(database, id);
+    const reading = JSON.parse(now.readingJson!) as Record<string, unknown>;
+    await database.db
+      .update(draftTransactions)
+      .set({ kind: 'income', amountMinor: -Math.abs(now.amountMinor), cardId: null, categoryAccountId: null, readingJson: JSON.stringify({ ...reading, type: { value: 'received', confidence: 85, line: null } }), ...over })
+      .where(eq(draftTransactions.id, id));
+  }
+
+  async function queued(made: Awaited<ReturnType<typeof workspace>>, figures: string[], app = COM) {
+    await ingestCaptures(made.database, made.ws, figures.map((figure, n) => mail(`c-${n}`, BODY.replace('47,500', figure), app, '')), { today: DAY });
+    return (await listDrafts(made.database, made.ws, 'pending')).sort((x, y) => y.amountMinor - x.amountMinor);
+  }
+
+  it('turns the reader’s own income into a purchase on its card, once, whoever sent it, and leaves a confirmed one', async () => {
+    const made = await workspace();
+    const { database, ws, card, cardId, income } = made;
+    const [a, c] = await queued(made, ['47,500', '12,000']);
+    await asLastBuildLeftIt(database, a!.id);
+    await asLastBuildLeftIt(database, c!.id, { categoryAccountId: income });
+    await confirmDraft(database, ws, c!.id);
+    const confirmedBefore = await row(database, c!.id);
+
+    expect(await fixCardPurchaseDrafts(database, { today: DAY })).toBe(1);
+    expect(await row(database, a!.id)).toMatchObject({ kind: 'expense', amountMinor: 47_500, accountId: card, cardId, categoryAccountId: null, status: 'pending' });
+    expect(JSON.parse((await row(database, a!.id)).readingJson!).type.value).toBe('spent');
+    expect(await row(database, c!.id)).toEqual(confirmedBefore);
+
+    // Once per device.
+    await asLastBuildLeftIt(database, a!.id);
+    expect(await fixCardPurchaseDrafts(database, { today: DAY })).toBe(0);
+  });
+
+  it('leaves a draft the owner changed, one whose words or reading are gone, and one read as a refund', async () => {
+    const made = await workspace();
+    const { database, ws, income } = made;
+    const other = await createCardAccount(database, ws, { name: 'Other card', subtype: 'credit_card', currency: 'IDR' });
+    const [account, category, sign, words, reading, refund] = await queued(made, ['47,500', '12,000', '9,000', '8,000', '7,000', '6,000']);
+    await asLastBuildLeftIt(database, account!.id, { accountId: other.id });
+    await asLastBuildLeftIt(database, category!.id, { categoryAccountId: income });
+    await asLastBuildLeftIt(database, sign!.id, { amountMinor: 9_000 });
+    await asLastBuildLeftIt(database, words!.id, { rawPayload: null });
+    await asLastBuildLeftIt(database, reading!.id, { readingJson: null });
+    const kept = JSON.parse((await row(database, refund!.id)).readingJson!) as Record<string, unknown>;
+    await asLastBuildLeftIt(database, refund!.id, { readingJson: JSON.stringify({ ...kept, type: { value: 'refund', confidence: 85, line: null } }) });
+    const all = [account, category, sign, words, reading, refund];
+    const before = await Promise.all(all.map((draft) => row(database, draft!.id)));
+
+    expect(await fixCardPurchaseDrafts(database, { today: DAY })).toBe(0);
+    expect(await Promise.all(all.map((draft) => row(database, draft!.id)))).toEqual(before);
+  });
+
+  it('leaves money in that names no credit card, from the debit app and from any other sender', async () => {
+    const { database, ws } = await workspace();
+    const body = ['Mata Uang', 'Jumlah', 'IDR', '500,000', 'Dana telah masuk ke rekening Anda.'].join('\n');
+    await ingestCaptures(database, ws, [mail('m-other', body, COM, 'Notifikasi'), mail('m-m2u', body.replace('500,000', '600,000'), 'm2uadvisor@maybank.co.id', 'Notifikasi')], { today: DAY });
+    expect(await fixCardPurchaseDrafts(database, { today: DAY })).toBe(0);
+    expect((await listDrafts(database, ws, 'pending')).map((draft) => draft.kind)).toEqual(['income', 'income']);
   });
 });
