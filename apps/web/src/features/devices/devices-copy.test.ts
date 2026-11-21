@@ -55,5 +55,9 @@ describe('the Devices screens’ words', () => {
     expect(copy.replaceWarning({ deviceName: 'Mac', workspaces: 2, transactions: 40, sourceHint: 'other device' })).toBe(
       "This Mac already holds data (2 workspaces, 40 transactions). Linking replaces it with the other device's. A backup file of this Mac is saved first.",
     );
+    expect(copy.replaceWarning({ deviceName: 'Mac', workspaces: 1, transactions: 1, sourceHint: 'other device' })).toBe(
+      "This Mac already holds data (1 workspace, 1 transaction). Linking replaces it with the other device's. A backup file of this Mac is saved first.",
+    );
+    expect(copy.allowBody('Mac', 'iPhone', { workspaces: 1, transactions: 0 })).toBe('Mac will get every workspace on this iPhone, private ones too: 1 workspace, 0 transactions.');
   });
 });
