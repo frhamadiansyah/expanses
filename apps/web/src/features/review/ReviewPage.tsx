@@ -73,8 +73,9 @@ type RecordOutcome = { kind: 'recorded'; transactionId: string; charged: Charged
  * — a chevron into the sheet that holds what a row had no width for, and the two answers themselves one gesture
  * away: right to record, left to discard. The gesture is only safe because it asks what the Record button asks —
  * a purchase that takes promised money still gets its question first, and a draft with no account or no sure figure
- * has no answer to give, so it opens the sheet (one with no category records under Uncategorised) — and because either write can be taken back from the toast: a record
- * is voided through the ledger and the draft returns to the queue, which is the one way back for both directions.
+ * has no answer to give, so it opens the sheet (one with no category records under Uncategorised) — and because
+ * either write can be taken back from the toast: a record is voided through the ledger and the draft returns to the
+ * queue, which is the one way back for both directions.
  */
 export function ReviewPage() {
   const { database, ws } = useApp();
