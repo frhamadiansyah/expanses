@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Statement paid marks: what each circle means</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --line:#e5e5ea; --bg:#f2f2f7; --up:#248a3d; --cf:#dcfce7; --ce:#86efac; --ci:#15803d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e9e9ee; font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; color:var(--ink); padding:26px 30px 40px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .intro { color:#55555a; margin:0 0 20px; max-width:980px; }
+  .row { display:flex; gap:34px; align-items:flex-start; }
+  .col h2 { font-size:15px; margin:0 0 8px; }
+  .phone { width:390px; background:var(--bg); border-radius:38px; padding:18px 16px 22px; border:1px solid #d1d1d6; }
+  .title { text-align:center; font-weight:700; font-size:22px; margin:4px 0 12px; }
+  .box { background:#fff; border-radius:14px; overflow:hidden; }
+  .sum div { display:flex; justify-content:space-between; padding:11px 14px; border-top:1px solid var(--line); font-size:15px; }
+  .sum div:first-child { border-top:0; }
+  .sum .b { font-weight:700; }
+  .cap { display:flex; justify-content:space-between; font-size:12px; letter-spacing:.06em; color:var(--ink3); font-weight:600; margin:16px 6px 6px; }
+  .line { display:flex; align-items:center; gap:10px; padding:10px 12px 10px 10px; border-top:1px solid var(--line); }
+  .line:first-child { border-top:0; }
+  .mk { width:22px; display:flex; justify-content:center; flex-shrink:0; position:relative; }
+  .tx { flex:1; min-width:0; }
+  .tx .n { font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tx .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tx .s b { color:var(--ink2); font-weight:600; }
+  .tx .s .how { color:var(--up); }
+  .am { font-size:16px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .am.done { color:var(--ink3); }
+  .dots { color:var(--ink2); font-weight:700; letter-spacing:1px; margin-left:4px; }
+  /* the circles */
+  .c { width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .c svg { width:11px; height:11px; }
+  .c.empty { border:1.5px solid var(--ink3); }
+  .c.pick { border:1.5px solid var(--ink); color:var(--ink); }
+  .c.own { background:var(--ink); color:#fff; }
+  .c.cov { background:var(--cf); border:1.5px solid var(--ce); color:var(--ci); }
+  .c.off { background:var(--up); color:#fff; }
+  .c.one { background:var(--up); color:#fff; }
+  .num { width:16px; height:16px; margin-right:5px; border-radius:50%; background:#ff9f0a; color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .mk.w { width:auto; }
+  .paybar { margin-top:12px; background:var(--ink); color:#fff; border-radius:14px; text-align:center; padding:12px; font-weight:600; }
+  table.key { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; width:560px; }
+  table.key th { text-align:left; font-size:12px; color:var(--ink3); font-weight:600; padding:8px 12px; background:#fafafa; border-bottom:1px solid var(--line); }
+  table.key td { padding:10px 12px; border-top:1px solid var(--line); vertical-align:top; font-size:13.5px; }
+  table.key td.i { width:66px; }
+  .tag { display:inline-flex; align-items:center; gap:6px; }
+  .tag .numk { width:18px; height:18px; border-radius:50%; background:#ff9f0a; color:#fff; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; }
+  .wrap { padding-left:30px; }
+  .note { font-size:12.5px; color:#55555a; margin-top:8px; width:390px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><symbol id="ck" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></symbol></svg>
+<h1>Credit card statement · what each circle means today</h1>
+<p class="intro">Left: today's iPhone statement with one purchase in each state (invented rows). Middle: what each circle means, how a purchase gets it, and what a tap does. Right: a simpler proposal — one green ✓ for every way a purchase is paid, with how it was paid in small green words under the name.</p>
+
+<div class="row">
+  <div class="col wrap">
+    <h2>Today</h2>
+    <div class="phone">
+      <div class="title">Statement</div>
+      <div class="box sum"><div><span>Paid</span><span>Rp 1.390.000</span></div><div><span>Still to pay</span><span>Rp 760.000</span></div><div class="b"><span>Total bill</span><span>Rp 2.150.000</span></div></div>
+      <div class="cap"><span>PURCHASES</span><span>4 OF 6 PAID</span></div>
+      <div class="box">
+        <div class="line"><div class="mk w"><span class="num">1</span><span class="c empty"></span></div><div class="tx"><div class="n">Toko Buku Contoh</div><div class="s">18 Oct · ···· <b>4417</b></div></div><div class="am">Rp 310.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk w"><span class="num">2</span><span class="c pick"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Apotek Contoh</div><div class="s">21 Oct · ···· <b>4417</b></div></div><div class="am">Rp 450.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk w"><span class="num">3</span><span class="c own"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Restoran Contoh</div><div class="s">23 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 520.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk w"><span class="num">4</span><span class="c cov"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">SPBU Contoh</div><div class="s">24 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 340.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk w"><span class="num">5</span><span class="c off"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Toko Sepatu Contoh</div><div class="s">26 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 410.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk w"><span class="num">6</span><span class="c off"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Refund Toko Contoh</div><div class="s">27 Oct · ···· <b>4417</b></div></div><div class="am done" style="color:var(--up)">−Rp 120.000</div><span class="dots">···</span></div>
+      </div>
+      <div class="paybar">Pay 1 purchase · Rp 450.000</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h2>What each one means</h2>
+    <table class="key">
+      <tr><th>Circle</th><th>Means</th><th>Gets it when</th><th>A tap</th></tr>
+      <tr><td class="i"><span class="tag"><span class="numk">1</span><span class="c empty"></span></span></td><td><b>Not paid yet</b></td><td>Billed, nothing paid toward it</td><td>Picks it to pay</td></tr>
+      <tr><td class="i"><span class="tag"><span class="numk">2</span><span class="c pick"><svg><use href="#ck"/></svg></span></span></td><td><b>Picked to pay</b> (not paid yet)</td><td>Tapped just now; the black “Pay 1 purchase” bar appears</td><td>Unpicks it</td></tr>
+      <tr><td class="i"><span class="tag"><span class="numk">3</span><span class="c own"><svg><use href="#ck"/></svg></span></span></td><td><b>Paid one by one</b> (black)</td><td>Paid through “Pay N purchases” for just these</td><td>Shows the pay date</td></tr>
+      <tr><td class="i"><span class="tag"><span class="numk">4</span><span class="c cov"><svg><use href="#ck"/></svg></span></span></td><td><b>Covered by a payment</b> (light green)</td><td>A card payment of the whole bill (or enough of it) was recorded; cicis counts it from the oldest purchase</td><td>Says which payment covered it</td></tr>
+      <tr><td class="i"><span class="tag"><span class="numk">5</span><span class="c off"><svg><use href="#ck"/></svg></span></span></td><td><b>Paid off before cicis</b> (solid green)</td><td>Marked “Paid off” in the ⋯ menu — paid outside the app</td><td>Offers “Not paid off”</td></tr>
+      <tr><td class="i"><span class="tag"><span class="numk">6</span><span class="c off"><svg><use href="#ck"/></svg></span></span></td><td><b>Settled</b> (a refund) / <b>Paid</b> (an instalment)</td><td>Same solid green as 5, with its own word in the ⋯ menu</td><td>Offers “Not settled” / “Not paid”</td></tr>
+    </table>
+    <p class="note" style="width:560px">So a paid purchase can wear three different ✓ today: black (3), light green (4) and solid green (5, 6). All three mean “nothing left to pay on this one”; they differ only in <i>how</i> it was paid.</p>
+  </div>
+
+  <div class="col">
+    <h2>Proposal · one paid look</h2>
+    <div class="phone">
+      <div class="title">Statement</div>
+      <div class="box sum"><div><span>Paid</span><span>Rp 1.390.000</span></div><div><span>Still to pay</span><span>Rp 760.000</span></div><div class="b"><span>Total bill</span><span>Rp 2.150.000</span></div></div>
+      <div class="cap"><span>PURCHASES</span><span>4 OF 6 PAID</span></div>
+      <div class="box">
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Toko Buku Contoh</div><div class="s">18 Oct · ···· <b>4417</b></div></div><div class="am">Rp 310.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c pick"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Apotek Contoh</div><div class="s">21 Oct · ···· <b>4417</b></div></div><div class="am">Rp 450.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Restoran Contoh</div><div class="s"><span class="how">Paid 3 Nov</span> · ···· <b>4417</b></div></div><div class="am done">Rp 520.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">SPBU Contoh</div><div class="s"><span class="how">Paid with the 15 Nov payment</span></div></div><div class="am done">Rp 340.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Toko Sepatu Contoh</div><div class="s"><span class="how">Paid before cicis</span> · ···· <b>4417</b></div></div><div class="am done">Rp 410.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Refund Toko Contoh</div><div class="s"><span class="how">Settled</span> · ···· <b>4417</b></div></div><div class="am done" style="color:var(--up)">−Rp 120.000</div><span class="dots">···</span></div>
+      </div>
+      <div class="paybar">Pay 1 purchase · Rp 450.000</div>
+    </div>
+    <p class="note">Three looks only: empty = not paid, outlined ✓ = picked to pay, green ✓ = paid. How it was paid is the small green word under the name. Taps stay as today.</p>
+  </div>
+</div>
+</body>
+</html>
