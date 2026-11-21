@@ -124,6 +124,32 @@ describe('the open after a link', () => {
     // It left the group's relay book it had claimed a place in: no ghost device stays behind.
     expect(relay.peek(plan.relayBookId)!.devices.get(plan.deviceId)!.removedAt).toBeDefined();
   });
+
+  it('a read that fails at the open keeps the plan for the next one and runs nothing as this device meanwhile', async () => {
+    const relay = new MemoryTransport();
+    const phone = await device(relay);
+    const mac = await device(relay);
+    const { sessionId, code } = await phone.self.startLinking();
+    await mac.self.joinWithCode(code);
+    await phone.self.checkLinking(sessionId);
+    await mac.self.checkJoining(sessionId);
+    await phone.self.checkLinking(sessionId);
+    await phone.self.allowLinking(sessionId);
+    const { plan, bytes } = await mac.self.fetchCopy(sessionId);
+    keepPlan(plan);
+    await mac.database.importBytes(bytes);
+    const failing = vi.spyOn(mac.database.db, 'values').mockRejectedValueOnce(new Error('database is locked'));
+    const stuck = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await expect(stuck.prepare()).rejects.toThrow('database is locked');
+    failing.mockRestore();
+    expect(stuck.joinOutcome).toBe('incomplete');
+    expect(storage.getItem(LINK_PLAN_KEY)).not.toBeNull();
+    expect(storage.getItem(LINK_FAILED_KEY)).toBeNull();
+    expect(relay.peek(plan.relayBookId)!.devices.get(plan.deviceId)!.removedAt).toBeUndefined();
+    const reopened = new SelfService({ database: mac.database, keyStore: mac.keyStore, info: mac.self.info, transportFor: (keys) => relay.as(requestSignerOf(keys)) });
+    await reopened.prepare();
+    expect(reopened.joinOutcome).toBe('linked');
+  });
 });
 
 describe('taking the copy', () => {

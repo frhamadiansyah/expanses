@@ -160,7 +160,14 @@ export class SelfService {
   async prepare(): Promise<void> {
     const plan = readPlan();
     if (!plan) return;
-    const where = await planWaitsHere(this.database, plan);
+    let where: Awaited<ReturnType<typeof planWaitsHere>>;
+    try {
+      where = await planWaitsHere(this.database, plan);
+    } catch (error) {
+      // Not known whether this is the copy: the plan stays for the next open, and nothing runs as this device till then.
+      this.joinOutcome = 'incomplete';
+      throw error;
+    }
     if (where === 'not-the-copy') {
       forgetPlan();
       // The link will not finish: this device leaves the group's relay book it claimed a place in.
@@ -381,7 +388,8 @@ export class SelfService {
       keepPlan(plan);
       await steps.replace(bytes);
     } catch (error) {
-      if ((await planWaitsHere(this.database, plan).catch(() => 'not-the-copy' as const)) === 'not-the-copy') {
+      // Only a clean read that the copy is not here drops the plan; a read that fails keeps it for the next open.
+      if ((await planWaitsHere(this.database, plan).catch(() => 'unknown' as const)) === 'not-the-copy') {
         forgetPlan();
         await engine.abandonJoin(plan.relayBookId);
       }

@@ -493,6 +493,10 @@ describe('replacing the new device’s data', () => {
     expect(await planWaitsHere(mac!.database, plan)).toBe('not-the-copy');
     await expect(completeLinkedCopy(mac!.database, plan, mac!.transport, mac!.keys, mac!.info)).rejects.toBeInstanceOf(JoinRefused);
     expect(await dumpForSelf(mac!.database)).toEqual(before);
+    // A read that fails is not a clean "not the copy": it throws, and the plan is not dropped on it.
+    const failing = vi.spyOn(mac!.database.db, 'values').mockRejectedValueOnce(new Error('database is locked'));
+    await expect(planWaitsHere(mac!.database, plan)).rejects.toThrow('database is locked');
+    failing.mockRestore();
   });
 
   it('done twice (the app closed before it forgot the plan) changes nothing the second time', async () => {

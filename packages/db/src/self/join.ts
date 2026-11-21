@@ -29,16 +29,16 @@ const WIPED: readonly string[] = Object.entries(SELF_TABLES)
   .filter(([table, kind]) => kind === 'device' && table !== 'schema_migrations')
   .map(([table]) => table);
 
-/** Whether this database is the plan's copy and not yet made this device's: what the app checks at open. */
+/**
+ * Whether this database is the plan's copy and not yet made this device's: what the app checks at open. 'not-the-copy'
+ * only on a clean read — no group here, or another group's or an unlinked one's. A read that fails throws: the plan is
+ * kept and the next open asks again, never dropped on a passing error.
+ */
 export async function planWaitsHere(database: Database, plan: JoinPlan): Promise<'waiting' | 'done' | 'not-the-copy'> {
-  try {
-    const [row] = await database.db.values<[string, string, string]>(sql`SELECT relay_book_id, device_id, state FROM self_group WHERE id = 1`);
-    // An unlinked device's own old data, even from this very group, is never the copy (the copy is of an active device).
-    if (!row || row[0] !== plan.relayBookId || row[2] !== 'active') return 'not-the-copy';
-    return row[1] === plan.deviceId ? 'done' : 'waiting';
-  } catch {
-    return 'not-the-copy';
-  }
+  const [row] = await database.db.values<[string, string, string]>(sql`SELECT relay_book_id, device_id, state FROM self_group WHERE id = 1`);
+  // An unlinked device's own old data, even from this very group, is never the copy (the copy is of an active device).
+  if (!row || row[0] !== plan.relayBookId || row[2] !== 'active') return 'not-the-copy';
+  return row[1] === plan.deviceId ? 'done' : 'waiting';
 }
 
 /**
