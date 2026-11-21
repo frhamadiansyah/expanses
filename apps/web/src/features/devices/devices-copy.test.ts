@@ -20,6 +20,12 @@ describe('the Devices screens’ words', () => {
     ]);
   });
 
+  it('offer linking again once unlinked; a device in a group only links others', () => {
+    expect(copy.devicesActions({ unlinked: true, others: 2 })).toEqual({ linkAnother: false, linkToAnother: true });
+    expect(copy.devicesActions({ unlinked: false, others: 1 })).toEqual({ linkAnother: true, linkToAnother: false });
+    expect(copy.devicesActions({ unlinked: false, others: 0 })).toEqual({ linkAnother: true, linkToAnother: true });
+  });
+
   it('count devices and name who a workspace is shared with', () => {
     expect(copy.workspaceLine(2, [])).toBe('on 2 devices');
     expect(copy.workspaceLine(1, [])).toBe('on this device');

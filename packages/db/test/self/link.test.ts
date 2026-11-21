@@ -14,7 +14,7 @@ import type { SelfTransport } from '../../src/self/transport';
 import { dumpForSelf } from '../../src/self/dump';
 import { setupDb } from '../helpers';
 import { completeLinkedCopy, JoinRefused, planWaitsHere } from '../../src/self/join';
-import { configureCapture } from '../../src/sync/capture';
+import { configureCapture, seatIsElsewhere } from '../../src/sync/capture';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -275,6 +275,26 @@ describe('unlinking', () => {
     expect((await ipad!.engine.group())!.epoch).toBe(2);
     expect((await ipad!.engine.devices()).find((d) => d.name === 'MacBook Air')!.removedAt).not.toBeNull();
     expect(relay.peek(book)!.epoch).toBe(2);
+  });
+
+  it('the unlinked Mac stops capturing for the group — nothing piles up — and can be linked again, its data replaced', async () => {
+    const { devices: [phone, mac], spend } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    await link(phone!, mac!);
+    await mac!.engine.sync();
+    await phone!.engine.unlink(mac!.keys.deviceId);
+    expect(await mac!.engine.sync()).toMatchObject({ unlinked: true });
+    expect(await seatIsElsewhere(mac!.database.db)).toBe(false);
+    await spend(mac!, 5_000, 'Test stall (after the unlink)');
+    expect(await mac!.database.db.values(sql`SELECT COUNT(*) FROM self_pending`)).toEqual([[0]]);
+    expect(await mac!.database.db.values(sql`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'self_cap_%'`)).toEqual([[0]]);
+
+    // Linked again from the iPhone: the Mac takes a code, and ends with the iPhone's data and a place of its own.
+    const id = await spend(phone!, 61_000, 'Test kiosk (before linking again)');
+    await phone!.engine.sync();
+    await link(phone!, mac!);
+    expect((await mac!.engine.group())!.state).toBe('active');
+    expect(await mac!.database.db.values(sql`SELECT description FROM transactions WHERE id = ${id}`)).toEqual([['Test kiosk (before linking again)']]);
+    expect(await sameRows(phone!, mac!)).toEqual([]);
   });
 });
 

@@ -12,11 +12,19 @@ export const LINK_ANOTHER_FOOTER = 'Every workspace, private ones too. A workspa
 export const LINK_TO_ANOTHER = 'Link to another device';
 export const LINK_TO_ANOTHER_SUB = 'Bring over everything from an iPhone, iPad or Mac';
 export const UNLINKED_TITLE = 'Unlinked from this data';
-export const UNLINKED_BODY = 'Another device unlinked this one. Nothing new comes here; what is here stays.';
+export const UNLINKED_BODY = 'Another device unlinked this one. Nothing new comes here; what is here stays. Link to another device links it again.';
 export const JOIN_FAILED_TITLE = 'Linking did not finish';
 export const JOIN_FAILED_BODY = "This device's data is as it was. Link again from the other device to try once more.";
 export const LINKED_TITLE = 'Linked';
 export const UNLINK_FOOTER = 'A lost or sold device. It stops getting anything new; what it holds stays on it.';
+
+/**
+ * What the Devices page offers. A device in a group links others; one on its own, or unlinked from a group (its data
+ * its own again), links to another — its data replaced by that device's, after a backup.
+ */
+export function devicesActions(state: { unlinked: boolean; others: number }): { linkAnother: boolean; linkToAnother: boolean } {
+  return { linkAnother: !state.unlinked, linkToAnother: state.unlinked || state.others === 0 };
+}
 
 /** "MacBook Air" — "this device · synced just now", or a device's last sync. */
 export function deviceLine(device: SelfDeviceRow, now: number): string {

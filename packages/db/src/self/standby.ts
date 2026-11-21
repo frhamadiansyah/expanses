@@ -52,6 +52,20 @@ export async function markStandbyDone(database: Database, relayBookId: string): 
   await database.db.run(sql`INSERT OR REPLACE INTO self_state (key, value) VALUES (${`standby:${relayBookId}`}, '1')`);
 }
 
+/**
+ * Devices unlinked from the owner's group that still hold a place in a shared workspace (they stood by there): the seat
+ * takes each out, so an unlinked device — a lost Mac — can neither read nor write the household's workspace again.
+ */
+export async function standbyGone(database: Database, seatId: string): Promise<{ bookId: string; deviceId: string }[]> {
+  const rows = await database.db.values<[string, string]>(sql`
+    SELECT s.book_id, d.device_id
+    FROM shared_books s JOIN self_devices d ON d.removed_at IS NOT NULL AND d.device_id <> ${seatId}
+    WHERE s.state = 'active'
+      AND EXISTS (SELECT 1 FROM book_devices bd WHERE bd.book_id = s.book_id AND bd.device_id = d.device_id AND bd.removed_at IS NULL)
+    ORDER BY s.book_id, d.device_id`);
+  return rows.map(([bookId, deviceId]) => ({ bookId, deviceId }));
+}
+
 /** An invite that could not be claimed goes, so the seat offers a fresh one. */
 export async function dropStandbyOffer(database: Database, relayBookId: string, deviceId: string): Promise<void> {
   await database.db.run(sql`DELETE FROM self_standby WHERE relay_book_id = ${relayBookId} AND device_id = ${deviceId}`);

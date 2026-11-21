@@ -7,7 +7,8 @@ import { SyncEngine } from '../../src/sync/engine';
 import { generateDevice, requestSignerOf } from '../../src/sync/keys';
 import { SelfEngine } from '../../src/self/engine';
 import { completeLinkedCopy } from '../../src/self/join';
-import { becomeSeat, markStandbyDone, offerStandby, standbyBooks, standbyOffers, standbyWanted } from '../../src/self/standby';
+import { becomeSeat, markStandbyDone, offerStandby, standbyBooks, standbyGone, standbyOffers, standbyWanted } from '../../src/self/standby';
+import { seatIsElsewhere } from '../../src/sync/capture';
 import type { SelfTransport } from '../../src/self/transport';
 import { Household, type Device } from '../sync/household';
 
@@ -31,53 +32,59 @@ async function spend(d: { database: Device['database']; ws: Device['ws'] }, paym
 const has = async (database: Device['database'], description: string) =>
   (await database.db.values(sql`SELECT 1 FROM transactions WHERE description = ${description} AND status = 'posted'`)).length > 0;
 
+async function standingBy() {
+  const household = new Household();
+  const dewi = await household.device('Dewi');
+  const budi = await household.device('Budi');
+  const bookId = await household.share(dewi);
+  await household.join(budi, dewi);
+  await household.settle([dewi, budi]);
+
+  // Dewi links her Mac from the iPhone (the iPhone is the seat: it made the group and shares the workspace).
+  const phoneSelf = new SelfEngine(dewi.database, dewi.transport as SelfTransport, dewi.keys, { name: 'iPhone', kind: 'phone', appVersion: '0.3.0' });
+  const macDatabase = createDatabase(createNodeExecutor());
+  await migrate(macDatabase);
+  const macKeys = await generateDevice();
+  const macTransport = household.relay.as(requestSignerOf(macKeys));
+  let macSelf = new SelfEngine(macDatabase, macTransport, macKeys, { name: 'Mac', kind: 'mac', appVersion: '0.3.0' });
+  const { sessionId, code } = await phoneSelf.startLinking();
+  await macSelf.joinWithCode(code);
+  await phoneSelf.checkLinking(sessionId);
+  await macSelf.checkJoining(sessionId);
+  await phoneSelf.checkLinking(sessionId);
+  await phoneSelf.allowLinking(sessionId);
+  const plan = await macSelf.acceptLink(sessionId);
+  await macDatabase.importBytes(await macSelf.downloadPlanCopy(plan));
+  macSelf = await completeLinkedCopy(macDatabase, plan, macTransport, macKeys, { name: 'Mac', kind: 'mac', appVersion: '0.3.0' });
+  await macSelf.sync();
+  await phoneSelf.sync();
+
+  // The seat invites the Mac into the shared workspace; the Mac claims it as a standby device.
+  const wanted = await standbyWanted(dewi.database, dewi.deviceId);
+  expect(wanted.map((w) => [w.bookId, w.deviceId])).toEqual([[bookId, macKeys.deviceId]]);
+  const invite = await dewi.engine.linkDevice(bookId, { inviterName: 'Dewi' });
+  await offerStandby(dewi.database, wanted[0]!.relayBookId, macKeys.deviceId, invite.code, Date.now());
+  await phoneSelf.sync();
+  await macSelf.sync();
+  const macSync = new SyncEngine(macDatabase, macTransport, macKeys, undefined, { appVersion: '0.3.0' });
+  for (const offer of await standbyOffers(macDatabase, macKeys.deviceId)) {
+    await macSync.claimStandby(offer.code, { deviceName: 'Mac' });
+    await markStandbyDone(macDatabase, offer.relayBookId);
+  }
+  await dewi.engine.syncOnce(bookId); // the seat admits the Mac, as for any device of an owner
+  await phoneSelf.sync();
+  await macSelf.sync();
+  expect(await standbyBooks(macDatabase, macKeys.deviceId)).toEqual([bookId]);
+  expect(await standbyWanted(dewi.database, dewi.deviceId)).toEqual([]);
+  // Standing by is not syncing: the Mac's household bookkeeping is the seat's, untouched by it.
+  expect(await macDatabase.db.values(sql`SELECT state FROM shared_books WHERE book_id = ${bookId}`)).toEqual([['active']]);
+  return { household, dewi, budi, bookId, phoneSelf, macDatabase, macKeys, macTransport, macSelf, macSync };
+}
+
 describe('a linked Mac standing by in a shared workspace', () => {
   it('changes it through the iPhone, then takes over from the lost iPhone: Budi gets what the iPhone never sent, and the Mac and Budi go on in step', async () => {
-    const household = new Household();
-    const dewi = await household.device('Dewi');
-    const budi = await household.device('Budi');
-    const bookId = await household.share(dewi);
-    await household.join(budi, dewi);
-    await household.settle([dewi, budi]);
-
-    // Dewi links her Mac from the iPhone (the iPhone is the seat: it made the group and shares the workspace).
-    const phoneSelf = new SelfEngine(dewi.database, dewi.transport as SelfTransport, dewi.keys, { name: 'iPhone', kind: 'phone', appVersion: '0.3.0' });
-    const macDatabase = createDatabase(createNodeExecutor());
-    await migrate(macDatabase);
-    const macKeys = await generateDevice();
-    const macTransport = household.relay.as(requestSignerOf(macKeys));
-    let macSelf = new SelfEngine(macDatabase, macTransport, macKeys, { name: 'Mac', kind: 'mac', appVersion: '0.3.0' });
-    const { sessionId, code } = await phoneSelf.startLinking();
-    await macSelf.joinWithCode(code);
-    await phoneSelf.checkLinking(sessionId);
-    await macSelf.checkJoining(sessionId);
-    await phoneSelf.checkLinking(sessionId);
-    await phoneSelf.allowLinking(sessionId);
-    const plan = await macSelf.acceptLink(sessionId);
-    await macDatabase.importBytes(await macSelf.downloadPlanCopy(plan));
-    macSelf = await completeLinkedCopy(macDatabase, plan, macTransport, macKeys, { name: 'Mac', kind: 'mac', appVersion: '0.3.0' });
-    await macSelf.sync();
-    await phoneSelf.sync();
-
-    // The seat invites the Mac into the shared workspace; the Mac claims it as a standby device.
-    const wanted = await standbyWanted(dewi.database, dewi.deviceId);
-    expect(wanted.map((w) => [w.bookId, w.deviceId])).toEqual([[bookId, macKeys.deviceId]]);
-    const invite = await dewi.engine.linkDevice(bookId, { inviterName: 'Dewi' });
-    await offerStandby(dewi.database, wanted[0]!.relayBookId, macKeys.deviceId, invite.code, Date.now());
-    await phoneSelf.sync();
-    await macSelf.sync();
-    const macSync = new SyncEngine(macDatabase, macTransport, macKeys, undefined, { appVersion: '0.3.0' });
-    for (const offer of await standbyOffers(macDatabase, macKeys.deviceId)) {
-      await macSync.claimStandby(offer.code, { deviceName: 'Mac' });
-      await markStandbyDone(macDatabase, offer.relayBookId);
-    }
-    await dewi.engine.syncOnce(bookId); // the seat admits the Mac, as for any device of an owner
-    await phoneSelf.sync();
-    await macSelf.sync();
-    expect(await standbyBooks(macDatabase, macKeys.deviceId)).toEqual([bookId]);
-    expect(await standbyWanted(dewi.database, dewi.deviceId)).toEqual([]);
-    // Standing by is not syncing: the Mac's household bookkeeping is the seat's, untouched by it.
-    expect(await macDatabase.db.values(sql`SELECT state FROM shared_books WHERE book_id = ${bookId}`)).toEqual([['active']]);
+    const { household: _h, dewi, budi, bookId, phoneSelf, macDatabase, macKeys, macSelf, macSync } = await standingBy();
+    void _h;
 
     // Drop 6: a purchase recorded on the Mac in the shared workspace reaches Budi through the iPhone, the seat.
     const macBankEarly = (await listAccounts(macDatabase, dewi.ws)).find((a) => a.name === 'Dewi Bank')!.id;
@@ -131,5 +138,26 @@ describe('a linked Mac standing by in a shared workspace', () => {
     expect(await has(budi.database, 'Test kiosk (Mac)')).toBe(true);
     // The lost iPhone reads nothing new: it was removed from Budi's book too.
     await expect(dewi.engine.syncOnce(bookId)).resolves.toMatchObject({ ended: 'removed' });
+  });
+
+  it('unlinked from the iPhone, the Mac is taken out of the shared workspace, stops capturing for the group, and is no longer kept from sharing', async () => {
+    const { dewi, budi, bookId, phoneSelf, macDatabase, macKeys, macSelf, macSync } = await standingBy();
+    expect(await seatIsElsewhere(macDatabase.db)).toBe(true);
+    await phoneSelf.unlink(macKeys.deviceId);
+    expect(await standbyGone(dewi.database, dewi.deviceId)).toEqual([{ bookId, deviceId: macKeys.deviceId }]);
+    // What the seat's step does after each run of the owner's channel.
+    for (const gone of await standbyGone(dewi.database, dewi.deviceId)) await dewi.engine.removeDevice(gone.bookId, gone.deviceId);
+    expect(await standbyGone(dewi.database, dewi.deviceId)).toEqual([]);
+    await budi.engine.syncOnce(bookId);
+    expect(await budi.database.db.values(sql`SELECT removed_at IS NOT NULL FROM book_devices WHERE book_id = ${bookId} AND device_id = ${macKeys.deviceId}`)).toEqual([[1]]);
+
+    // The Mac hears it was unlinked: nothing it writes waits for the group, and the seat is no longer elsewhere.
+    expect(await macSelf.sync()).toMatchObject({ unlinked: true });
+    expect(await seatIsElsewhere(macDatabase.db)).toBe(false);
+    const macBank = (await listAccounts(macDatabase, dewi.ws)).find((a) => a.name === 'Dewi Bank')!.id;
+    await spend({ database: macDatabase, ws: dewi.ws }, macBank, 12_000, 'Test stall (Mac, after unlink)');
+    expect(await macDatabase.db.values(sql`SELECT COUNT(*) FROM self_pending`)).toEqual([[0]]);
+    // It reads nothing new of the shared workspace either.
+    await expect(macSync.syncOnce(bookId)).resolves.toMatchObject({ ended: 'removed' });
   });
 });

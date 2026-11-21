@@ -16,6 +16,7 @@ import {
   LINK_TO_ANOTHER_SUB,
   linkedDevices,
   photosLine,
+  devicesActions,
   UNLINKED_BODY,
   UNLINKED_TITLE,
   workspaceLine,
@@ -57,6 +58,7 @@ export function DevicesPage() {
   const unlinked = group?.state === 'unlinked';
   const others = devices.filter((d) => !d.thisDevice);
   const count = Math.max(1, devices.length);
+  const actions = devicesActions({ unlinked, others: others.length });
   const thisRow = devices.find((d) => d.thisDevice) ?? null;
   const partners = useQuery({
     queryKey: ['devices-partners', shared.data?.length ?? 0],
@@ -98,12 +100,12 @@ export function DevicesPage() {
             )),
           ]}
         </InsetGroup>
-        {!unlinked && (
+        {actions.linkAnother && (
           <InsetGroup wide footer={LINK_ANOTHER_FOOTER}>
             <InsetRow icon={<Plus size={16} aria-hidden />} title={LINK_ANOTHER} chevron={false} onClick={() => setLinking(true)} testId="link-another" />
           </InsetGroup>
         )}
-        {others.length === 0 && !unlinked && (
+        {actions.linkToAnother && (
           <InsetGroup wide>
             <InsetRow icon={<MonitorSmartphone size={16} aria-hidden />} title={LINK_TO_ANOTHER} subtitle={LINK_TO_ANOTHER_SUB} chevron={false} onClick={() => setJoining(true)} testId="link-to-another" />
           </InsetGroup>

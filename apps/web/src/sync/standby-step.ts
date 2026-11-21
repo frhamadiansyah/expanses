@@ -1,4 +1,4 @@
-import { dropStandbyOffer, markStandbyDone, offerStandby, type SelfEngine, SharingError, standbyOffers, standbyWanted } from '@expanses/db';
+import { dropStandbyOffer, markStandbyDone, offerStandby, type SelfEngine, SharingError, standbyGone, standbyOffers, standbyWanted } from '@expanses/db';
 import type { SyncService } from './sync-service';
 
 /*
@@ -13,6 +13,8 @@ export async function standbyStep(sync: SyncService, engine: SelfEngine, inviter
   const database = sync.database;
   if (seat === me) {
     const household = await sync.engine();
+    // An unlinked device leaves the shared workspaces too: it keeps its own data, never the household's.
+    for (const gone of await standbyGone(database, me)) await household.removeDevice(gone.bookId, gone.deviceId);
     for (const wanted of await standbyWanted(database, me)) {
       const invite = await household.linkDevice(wanted.bookId, { inviterName });
       await offerStandby(database, wanted.relayBookId, wanted.deviceId, invite.code, Date.now());
