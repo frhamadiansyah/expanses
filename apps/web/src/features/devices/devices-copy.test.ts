@@ -48,6 +48,9 @@ describe('the Devices screens’ words', () => {
     ];
     for (const line of lines) expect(line).not.toMatch(/\byou(r|rs)?\b/i);
     expect(copy.allowTitle('Mac')).toBe('Link Mac?');
+    // Before Allow, what goes: the workspaces and transactions on this device.
+    expect(copy.allowBody('Mac', 'iPhone', { workspaces: 3, transactions: 1284 })).toBe('Mac will get every workspace on this iPhone, private ones too: 3 workspaces, 1284 transactions.');
+    expect(copy.allowBody('Mac', 'iPhone', { workspaces: 1, transactions: 1 })).toBe('Mac will get every workspace on this iPhone, private ones too: 1 workspace, 1 transaction.');
     expect(copy.seatBody('Rumah', ['Sari'], 'iPhone')).toBe('Rumah is shared with Sari from the iPhone. Changes made here reach them once the iPhone has synced.');
     expect(copy.replaceWarning({ deviceName: 'Mac', workspaces: 2, transactions: 40, sourceHint: 'other device' })).toBe(
       "This Mac already holds data (2 workspaces, 40 transactions). Linking replaces it with the other device's. A backup file of this Mac is saved first.",

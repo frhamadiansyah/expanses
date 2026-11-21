@@ -54,8 +54,9 @@ export function allowTitle(deviceName: string): string {
   return `Link ${deviceName}?`;
 }
 
-export function allowBody(deviceName: string, sourceName: string): string {
-  return `${deviceName} will get every workspace on this ${sourceName}, private ones too.`;
+export function allowBody(deviceName: string, sourceName: string, held?: { workspaces: number; transactions: number }): string {
+  const what = held ? `: ${held.workspaces === 1 ? '1 workspace' : `${held.workspaces} workspaces`}, ${held.transactions === 1 ? '1 transaction' : `${held.transactions} transactions`}` : '';
+  return `${deviceName} will get every workspace on this ${sourceName}, private ones too${what}.`;
 }
 
 /** The new device's warning before anything happens, when it already holds data. */

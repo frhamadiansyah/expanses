@@ -1,3 +1,5 @@
+import { heldHere } from '@expanses/db';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -27,7 +29,9 @@ const ENDED: Record<string, string> = {
  * question with the 4 check digits once the new device has typed it, then the copy going up.
  */
 export function LinkSheet({ onClose }: { onClose: () => void }) {
-  const { self } = useApp();
+  const { self, database } = useApp();
+  // What goes to the new device, said before Allow: this device's workspaces and transactions.
+  const held = useQuery({ queryKey: ['link-held-here'], queryFn: () => heldHere(database) });
   const [step, setStep] = useState<Step>({ kind: 'starting' });
   const [error, setError] = useState<unknown>(null);
   const sourceName = self.info.name;
@@ -88,7 +92,7 @@ export function LinkSheet({ onClose }: { onClose: () => void }) {
             <p className="mt-2 text-center text-[20px] leading-[26px] font-bold text-[var(--ph-ink)]">{allowTitle(step.deviceName)}</p>
             <p className="text-center text-[14px] text-[var(--ph-ink-3)]">Check that the {step.deviceName} shows the same numbers.</p>
             <Digits value={step.digits} testId="link-check-digits" />
-            <p className="mb-5 text-center text-[14px] text-[var(--ph-ink-3)]">{allowBody(step.deviceName, sourceName)}</p>
+            <p className="mb-5 text-center text-[14px] text-[var(--ph-ink-3)]">{allowBody(step.deviceName, sourceName, held.data)}</p>
             <InsetGroup wide>
               <InsetRow action testId="link-allow" title="Allow" onClick={() => void allow()} />
             </InsetGroup>
