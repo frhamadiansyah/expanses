@@ -52,7 +52,7 @@ export function CellCombo({
   dense?: boolean;
   /** Not yet usable, such as while its choices are still loading. */
   disabled?: boolean;
-  /** Filled in by a guess rather than chosen: said in italic (the desk: in its own ink, no colour), with why on hover and to a reader. */
+  /** Filled in by a guess rather than chosen: said in italic on the phone (the desk draws it plain), with why on hover and to a reader. */
   guessed?: string | null;
   /**
    * Text pasted into the cell that names no choice yet (a card's digits, an account's name): shown in the empty cell with a
@@ -193,7 +193,9 @@ export function CellCombo({
           Boolean(selected?.meta) && query === null && 'truncate pr-12',
           // The desk's table draws no missing cell (option E): blank is just blank.
           invalid && !dense && 'bg-amber-50 ring-1 ring-amber-400 ring-inset',
-          guessed && query === null && (dense ? 'italic' : 'text-[var(--ph-ink-2)] italic'),
+          // The desk draws a guess like any other value (owner, 21 Nov: the row's Record button already says it waits);
+          // why it was guessed stays on hover and for a reader.
+          guessed && query === null && !dense && 'text-[var(--ph-ink-2)] italic',
         )}
       />
       {shownPending && (
