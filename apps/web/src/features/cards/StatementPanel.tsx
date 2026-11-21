@@ -325,7 +325,7 @@ export function StatementPanel({
     ) : null;
 
   /** What else the statement says about a line, after its description: plan, conversion, payment, card, tag. */
-  const notes = (line: StatementLine): ReactNode[] => {
+  const notes = (line: StatementLine, withDigits = true): ReactNode[] => {
     const out: ReactNode[] = [];
     // One purchase split across workspaces is one charge here, as the bank prints it: its line names every part.
     if (line.splitCategories) out.push(line.splitCategories.join(' · '));
@@ -337,7 +337,7 @@ export function StatementPanel({
     if (covered && !covered.whole && covered.coveredMinor > 0) out.push(`${money(covered.coveredMinor)} covered, ${money(covered.leftMinor)} left`);
     // A payment made for chosen purchases says so, so a batch can be told from a bill payment.
     if (line.settles > 0) out.push(`for ${line.settles} purchase${line.settles === 1 ? '' : 's'}`);
-    if (!grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
+    if (withDigits && !grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
     const tag = tagFor(line);
     if (tag) out.push(tag);
     return out;
@@ -385,7 +385,8 @@ export function StatementPanel({
    * drawn from the kit's parts rather than as an `InsetRow`, which holds one target and nothing inside it.
    */
   const statementRow = (line: StatementLine) => {
-    const extra = notes(line);
+    // "Paid with the 15 Nov payment" fills a phone row's subtitle: the card's digits give way to it (mockup 21 Nov).
+    const extra = notes(line, !paidHowText(line, cover)?.startsWith('Paid with'));
     const paid = how(line);
     const earned = points ? pointsOf(line) : '';
     return (

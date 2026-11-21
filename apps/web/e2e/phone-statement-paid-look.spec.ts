@@ -99,7 +99,9 @@ test('every paid purchase wears one green ✓, with how it was paid in words whe
   await expect(line(page, 'Kursi Contoh').getByTestId('instalment-pill')).toHaveText('1 of 12');
   await expect(how('Toko Buku Contoh')).toHaveCount(0);
   await expect(how('Apotek Contoh')).toHaveCount(0);
-  await expect(line(page, 'SPBU Contoh')).toContainText('···· 4417');
+  // "Paid with the … payment" fills the subtitle: the card's digits give way to it; a shorter one keeps them.
+  await expect(line(page, 'SPBU Contoh')).not.toContainText('···· 4417');
+  await expect(line(page, 'Restoran Contoh')).toContainText('···· 4417');
   await expect(line(page, 'Toko Buku Contoh')).toContainText(/\d+ \w+ · ···· 4417/);
   // No legend under the statement: the rows say it.
   await expect(page.getByTestId('statement-legend')).toHaveCount(0);
