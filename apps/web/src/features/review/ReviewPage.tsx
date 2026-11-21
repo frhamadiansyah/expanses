@@ -562,7 +562,9 @@ export function ReviewPage() {
           onView={() => setViewing({ draft: editingDraft, focus: null })}
           onRecord={(form, opts) => recordForm(editingDraft, form, opts)}
           onDiscard={() => void discard(editingDraft, true)}
-          onClose={() => setEditing(null)}
+          // Closes this draft's form only: a record's save finishes after its toast (the picture settled, the lists read
+          // again), by which time the next row may already be open — its form must not be closed by the last one's Done.
+          onClose={() => setEditing((now) => (now === editingDraft.id ? null : now))}
         />
         {overlays}
       </div>

@@ -88,6 +88,8 @@ test('a receipt photographed in the app is kept on its receipt; one chosen from 
     ['41.500', 'Sinar Pagi'],
     ['27.250', 'Kedai Embun'],
   ] as const) {
+    // The second row is opened as soon as the first one's toast shows, before its save has finished: the first form's
+    // Done must not close the second (a race that closed it, so Note could never be filled).
     await page.getByTestId('draft-row').filter({ hasText: figure }).click();
     const form = page.getByRole('form', { name: /^Review / });
     await expect(page.getByRole('switch', { name: 'Keep photo' })).toHaveCount(0);
