@@ -249,6 +249,22 @@ describe('the welcome the new device takes', () => {
     expect((await phone.engine.devices()).map((d) => d.name)).toEqual(['iPhone']);
   });
 
+  it('the linking device seals it only for the new device whose numbers were shown: a joiner key swapped in later ends the link', async () => {
+    const relay = new MemoryTransport();
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }], relay);
+    const attacker = await generateDevice();
+    let swap = false;
+    const phoneEngine = new SelfEngine(phone!.database, welcoming(phone!.transport, async (view) => (swap && view.joiner ? { ...view, joiner: { ...attacker.public, deviceId: attacker.deviceId } } : view)), phone!.keys, phone!.info);
+    const { sessionId, code } = await phoneEngine.startLinking();
+    await mac!.engine.joinWithCode(code);
+    await phoneEngine.checkLinking(sessionId);
+    await mac!.engine.checkJoining(sessionId);
+    expect((await phoneEngine.checkLinking(sessionId)).stage).toBe('confirm');
+    swap = true;
+    await expect(phoneEngine.allowLinking(sessionId)).rejects.toMatchObject({ code: 'MISMATCH' });
+    expect(await mac!.engine.checkJoining(sessionId)).toEqual({ stage: 'ended', why: 'declined' });
+  });
+
   it('from a newer version of the app is refused before anything is claimed or replaced: update this device first', async () => {
     const relay = new MemoryTransport();
     const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }], relay);
@@ -371,6 +387,29 @@ describe('unlinking', () => {
     expect((await mac!.engine.group())!.state).toBe('active');
     expect(await mac!.database.db.values(sql`SELECT description FROM transactions WHERE id = ${id}`)).toEqual([['Test kiosk (before linking again)']]);
     expect(await sameRows(phone!, mac!)).toEqual([]);
+    // Listed as a device again on both, not as an unlinked one.
+    for (const d of [phone!, mac!]) {
+      expect(await d.database.db.values(sql`SELECT removed_at FROM self_devices WHERE device_id = ${mac!.keys.deviceId}`)).toEqual([[null]]);
+    }
+  });
+
+  it('linked again, the Mac is sealed the next key: after another device is unlinked, it still reads what the iPhone writes', async () => {
+    const { devices: [phone, mac, ipad], spend } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }, { name: 'iPad', kind: 'tablet' }]);
+    await link(phone!, mac!);
+    await link(phone!, ipad!);
+    await phone!.engine.unlink(mac!.keys.deviceId);
+    expect(await mac!.engine.sync()).toMatchObject({ unlinked: true });
+    await phone!.engine.sync();
+    await link(phone!, mac!);
+    await mac!.engine.sync();
+    await phone!.engine.sync();
+    // The iPad goes: a new key, sealed for every device of the group — the Mac included.
+    await phone!.engine.unlink(ipad!.keys.deviceId);
+    expect((await phone!.engine.group())!.epoch).toBeGreaterThan(2);
+    const id = await spend(phone!, 33_000, 'Test bakery (after the new key)');
+    await phone!.engine.sync();
+    expect(await mac!.engine.sync()).not.toMatchObject({ unlinked: true });
+    expect(await mac!.database.db.values(sql`SELECT description FROM transactions WHERE id = ${id}`)).toEqual([['Test bakery (after the new key)']]);
   });
 });
 

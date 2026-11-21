@@ -140,6 +140,8 @@ export const UNFINISHED_JOIN_MS = 3 * 24 * 60 * 60 * 1000;
 interface SourceSession {
   nonce: string;
   revealed: boolean;
+  /** The new device's keys exactly as they fed the check digits on the first confirm (the welcome is sealed for them). */
+  pinned?: NonNullable<LinkView['joiner']>;
 }
 
 interface JoinSession {
@@ -151,7 +153,7 @@ interface JoinSession {
 }
 
 /** A source's identity, for comparing one view of it with another. */
-const sourceIdentity = (source: LinkView['source']) => canonicalJson({ deviceId: source.deviceId, signJwk: source.signJwk, agreeJwk: source.agreeJwk });
+const sourceIdentity = (source: LinkView['source'] | NonNullable<LinkView['joiner']>) => canonicalJson({ deviceId: source.deviceId, signJwk: source.signJwk, agreeJwk: source.agreeJwk });
 
 export class SelfEngine {
   private readonly sealer: Sealer;
@@ -204,7 +206,7 @@ export class SelfEngine {
       VALUES (${this.deviceId}, ${this.info.name}, ${this.info.kind}, ${JSON.stringify(this.device.public.signJwk)}, ${JSON.stringify(this.device.public.agreeJwk)},
               ${this.info.appVersion}, ${iso}, ${lastSyncedAt})
       ON CONFLICT (device_id) DO UPDATE SET name = excluded.name, kind = excluded.kind, app_version = excluded.app_version,
-        last_synced_at = COALESCE(excluded.last_synced_at, self_devices.last_synced_at)`);
+        last_synced_at = COALESCE(excluded.last_synced_at, self_devices.last_synced_at), removed_at = NULL`);
   }
 
   /** The group, made on the first link: its relay book, epoch 1's key, this device's row, capture on. */
@@ -252,7 +254,12 @@ export class SelfEngine {
       await this.transport.declineLink(sessionId);
       return { stage: 'ended', why: 'mismatch' };
     }
-    const digits = await checkDigits({ source: this.device.public, joiner: view.joiner, sourceNonce: mine.nonce, joinerNonce: view.joinerNonce });
+    mine.pinned ??= { deviceId: view.joiner.deviceId, signJwk: view.joiner.signJwk, agreeJwk: view.joiner.agreeJwk };
+    if (sourceIdentity(view.joiner) !== sourceIdentity(mine.pinned)) {
+      await this.transport.declineLink(sessionId).catch(() => undefined);
+      return { stage: 'ended', why: 'mismatch' };
+    }
+    const digits = await checkDigits({ source: this.device.public, joiner: mine.pinned, sourceNonce: mine.nonce, joinerNonce: view.joinerNonce });
     let deviceName = 'A new device';
     if (view.joinerName) {
       try {
@@ -274,6 +281,9 @@ export class SelfEngine {
     const view = await this.transport.readLink(sessionId);
     // Everything sent and everything read first: the copy is then this device at `startSeq`, and the new device reads
     // the log from there (§4.1). What is written from now on goes out after it, and the relay keeps it for the new one.
+    // A device unlinked once and now linked again is a device of the group again — in the copy too, so it is sealed
+    // each new key, invited to stand by, and no longer taken out of shared workspaces.
+    if (view.joiner) await this.database.db.run(sql`UPDATE self_devices SET removed_at = NULL WHERE device_id = ${view.joiner.deviceId} AND removed_at IS NOT NULL`);
     await this.sync();
     const group = (await this.group())!;
     const bookId = selfBookId(group.relayBookId);
@@ -295,7 +305,9 @@ export class SelfEngine {
     };
     const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, this.device.sign.privateKey, inviteSigningBytes(unsigned) as BufferSource);
     await this.transport.putInvite(group.relayBookId, { ...unsigned, sig: bytesToBase64Url(new Uint8Array(sig)) });
-    const joiner = view.joiner!;
+    // Sealed for the new device's keys as they were when the digits were shown, never a later view's.
+    const joiner = this.sourcing.get(sessionId)?.pinned;
+    if (!joiner || !view.joiner || sourceIdentity(view.joiner) !== sourceIdentity(joiner)) throw new SelfError('MISMATCH', 'The new device is not the one whose numbers were shown');
     const welcome = await sealKeyFor(
       { deviceId: joiner.deviceId, agreeJwk: joiner.agreeJwk },
       `link:${sessionId}`,
