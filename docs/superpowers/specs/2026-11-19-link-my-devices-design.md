@@ -376,6 +376,30 @@ again with today's resilience flows.
   made on another device was not shared"); while the seat's sharing is not ready the change waits (held). The
   view-only notice became "Shared through the iPhone — changes made here reach them once the iPhone has synced".
 
+### 6.2 Code review fixes (2026-11-21)
+
+- **Welcome signed, versioned.** The source signs `{v, sessionId, joinerId, welcome}` with the key the check digits
+  covered; the new device verifies it against `view.source.signJwk` before it claims anything. The welcome carries the
+  source's data version (`schema`) and app version: a newer copy is refused before any claim or replace ("Update cicis
+  on this device first", `NEWER_SOURCE`).
+- **Backup always.** The new device saves its backup file before linking unless it holds nothing of the owner's
+  (`heldHere().empty`: no transaction of any status, no asset/liability account, one workspace at most); nothing starts
+  until that is known, and a failed save stops the link.
+- **No ghost device.** `SelfService.takeCopy` holds the photos, then keeps the plan, then replaces. A step that fails
+  before the replace took forgets the plan and takes the device off the relay book (`abandonJoin`); so does an open
+  that finds the plan but not the copy. The source records `joining:<id>` on Allow and, three days on without that
+  device's row (`UNFINISHED_JOIN_MS`), takes it off the relay itself. An unlinked device's old data is never the copy.
+- **Unlinked.** Capture triggers removed, `self_pending`/`self_outbox` cleared, `seatIsElsewhere` false (the data is
+  its own again); the seat takes it out of every shared workspace it stood by in (`standbyGone`); Devices offers
+  "Link to another device" again.
+- **A copy not yet made its own** (`joinOutcome: 'incomplete'`): the link channel refuses to run and household sharing
+  is held off (`SyncService.holdOff`; a write into a shared workspace refuses) until an open finishes it.
+- **Relay.** Blobs: a small index `blobs` of `[size, expiresAt]` (≤ 1000 blobs a book), never a listing of the data;
+  household books hold none (400). Link meeting place: wrong codes count by device (5) and by network address
+  (CF-Connecting-IP, IPv6 by /64: 20) per 10 minutes and never end anyone's session; one waiting code a device, ten new
+  codes an address per 10 minutes, 500 sessions in all; tries kept in one pruned value.
+- **Before Allow** the source says what goes: N workspaces, N transactions.
+
 ## 7. Risks
 
 1. **Automatic writers** that make rows with fresh random ids, or caches that are not pure, would double or unbalance
