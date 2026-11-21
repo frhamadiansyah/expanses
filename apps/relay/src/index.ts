@@ -95,14 +95,14 @@ async function route(request: Request, env: Env): Promise<Result> {
       const { signed, body } = await readSigned(request, url);
       const device = expect(body, isDevicePublic, 'expected { signJwk, agreeJwk }');
       await verifyOwnKey(device, signed);
-      return hub.start(signed.deviceId, device);
+      return hub.start(signed.deviceId, device, request.headers.get('CF-Connecting-IP'));
     }
     if (parts.length === 2 && parts[1] === 'claim') {
       allow(method, ['POST']);
       const { signed, body } = await readSigned(request, url);
       const claim = expect(body, isClaimBody, 'expected { code, device, commit }');
       await verifyOwnKey(claim.device, signed);
-      return hub.claim(signed.deviceId, claim.code, claim.device, claim.commit);
+      return hub.claim(signed.deviceId, claim.code, claim.device, claim.commit, request.headers.get('CF-Connecting-IP'));
     }
     const sessionId = parts[1]!;
     const action = parts.length === 2 ? 'read' : parts.length === 3 ? parts[2]! : '';

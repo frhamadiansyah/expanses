@@ -79,9 +79,10 @@ export async function linkWrongCodes(make: MakeParty): Promise<void> {
   const started = await source.transport.startLink(source.keys.public);
   const wrong = String((Number(started.code) + 1) % 1_000_000).padStart(6, '0');
   for (let i = 0; i < 5; i += 1) await refused(guesser.transport.claimLink(wrong, guesser.keys.public, await commitOf(newNonce())), 404);
-  expect((await source.transport.readLink(started.sessionId)).status).toBe('burned');
+  // The guesser is stopped, even with the right code; the owner's session is untouched and her own device claims it.
   await refused(guesser.transport.claimLink(started.code!, guesser.keys.public, await commitOf(newNonce())), 429);
-  await refused(owner.transport.claimLink(started.code!, owner.keys.public, await commitOf(newNonce())), 404);
+  expect((await source.transport.readLink(started.sessionId)).status).toBe('waiting');
+  expect((await owner.transport.claimLink(started.code!, owner.keys.public, await commitOf(newNonce()))).status).toBe('claimed');
 }
 
 /** Declined: the session ends and its code with it. */

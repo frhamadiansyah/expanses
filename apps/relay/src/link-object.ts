@@ -26,12 +26,13 @@ export class LinkObject extends DurableObject<Env> {
     delete: (key) => this.ctx.storage.delete(key),
   });
 
-  async start(deviceId: string, device: DevicePublic): Promise<Result> {
-    return this.serial(async () => ({ status: 201, body: await this.hub.start(deviceId, device) }));
+  /** `address`: the caller's network address (CF-Connecting-IP), which the hub's limits count by. */
+  async start(deviceId: string, device: DevicePublic, address: string | null): Promise<Result> {
+    return this.serial(async () => ({ status: 201, body: await this.hub.start(deviceId, device, address) }));
   }
 
-  async claim(deviceId: string, code: string, device: DevicePublic, commit: string): Promise<Result> {
-    return this.serial(async () => ({ status: 200, body: await this.hub.claim(deviceId, code, device, commit) }));
+  async claim(deviceId: string, code: string, device: DevicePublic, commit: string, address: string | null): Promise<Result> {
+    return this.serial(async () => ({ status: 200, body: await this.hub.claim(deviceId, code, device, commit, address) }));
   }
 
   async party(call: SignedCall, sessionId: string, op: LinkOp): Promise<Result> {

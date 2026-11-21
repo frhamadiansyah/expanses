@@ -11,8 +11,11 @@ import type { DevicePublic, Sealed, SealedFor } from '../sync/types';
  * digits match; the source then leaves, sealed for the new device's key, what it needs to join.
  *
  * Six digits are a meeting point the relay knows, not a secret it cannot guess — the check digits are what make it safe.
- * They are also few: so every wrong code tried counts against every session open at that moment, and a session that
- * has seen five is burned (the source shows a new code). One device may try five wrong codes in ten minutes.
+ * Guessing is slowed where it comes from: a device may try five wrong codes in ten minutes, and one network address
+ * (the Worker's CF-Connecting-IP; an IPv6 address by its /64) twenty, however many fresh device keys it makes. A wrong
+ * guess never ends anyone's session, so a stranger guessing cannot keep the owner from linking. Sessions are bounded:
+ * a device has one open at a time (a new code ends its last), an address opens ten in ten minutes, and the hub holds
+ * at most `LINK_MAX_SESSIONS`. The tries are one small value, pruned as their windows pass.
  *
  * One implementation for both relays: `MemoryTransport` keeps the store in a map, the Worker in a Durable Object's
  * storage. A refusal is a `LinkRefusal` with the HTTP status either relay answers with.
@@ -20,6 +23,11 @@ import type { DevicePublic, Sealed, SealedFor } from '../sync/types';
 
 export const LINK_TTL_MS = 10 * 60 * 1000;
 export const LINK_MAX_WRONG = 5;
+export const LINK_MAX_WRONG_PER_PLACE = 20;
+export const LINK_MAX_STARTS_PER_PLACE = 10;
+export const LINK_MAX_SESSIONS = 500;
+/** Tries remembered at once (one stored value): past it, the oldest windows are forgotten first. */
+const MAX_TRIES_KEPT = 1000;
 const CODE_DIGITS = 6;
 
 export class LinkRefusal extends Error {
@@ -46,7 +54,6 @@ interface Session {
   expiresAt: number;
   sourceId: string;
   source: DevicePublic;
-  wrong: number;
   status: 'waiting' | 'claimed' | 'allowed' | 'declined' | 'burned';
   joinerId?: string;
   joiner?: DevicePublic;
@@ -78,7 +85,17 @@ export interface LinkView {
 
 const sessionKey = (id: string) => `session:${id}`;
 const codeKey = (code: string) => `code:${code}`;
-const triesKey = (deviceId: string) => `tries:${deviceId}`;
+/** Every window of tries, keyed `device:<id>`, `wrong:<place>` or `start:<place>`. */
+const TRIES = 'tries';
+type Tries = Record<string, { count: number; since: number }>;
+
+/** Where a request came from, for its limits: an IPv4 address whole, an IPv6 one by its /64 (one household's network). */
+export function placeOf(address: string | null | undefined): string | undefined {
+  if (!address) return undefined;
+  if (!address.includes(':')) return address;
+  const groups = address.split('::')[0]!.split(':');
+  return `${groups.slice(0, 4).join(':')}::/64`;
+}
 /** Every session not yet forgotten: an ended one stays an hour past its expiry, so the new device can still read it. */
 const SESSIONS = 'sessions';
 const KEEP_MS = 60 * 60 * 1000;
@@ -139,39 +156,71 @@ export class LinkHub {
     return session;
   }
 
-  /** The source opens a session: a fresh 6-digit code no other open session holds. */
-  async start(actor: string, source: DevicePublic): Promise<LinkView> {
+  private async tries(): Promise<Tries> {
+    const all = (await this.store.get<Tries>(TRIES)) ?? {};
+    const live: Tries = {};
+    for (const [key, window] of Object.entries(all)) if (this.now() - window.since < LINK_TTL_MS) live[key] = window;
+    return live;
+  }
+
+  private count(tries: Tries, key: string): number {
+    return tries[key]?.count ?? 0;
+  }
+
+  private async bump(tries: Tries, keys: string[]): Promise<void> {
+    for (const key of keys) tries[key] = { count: this.count(tries, key) + 1, since: tries[key]?.since ?? this.now() };
+    const kept = Object.entries(tries).sort(([, a], [, b]) => b.since - a.since).slice(0, MAX_TRIES_KEPT);
+    await this.store.put({ [TRIES]: Object.fromEntries(kept) });
+  }
+
+  /**
+   * The source opens a session: a fresh 6-digit code no other open session holds. The device's last session still
+   * waiting for a code ends (it shows this one now), and old ones are forgotten.
+   */
+  async start(actor: string, source: DevicePublic, address?: string | null): Promise<LinkView> {
+    const place = placeOf(address);
+    const tries = await this.tries();
+    if (place && this.count(tries, `start:${place}`) >= LINK_MAX_STARTS_PER_PLACE) throw new LinkRefusal(429, 'too many codes asked for; wait a few minutes');
     const kept: string[] = [];
     for (const id of await this.live()) {
       const s = await this.store.get<Session>(sessionKey(id));
       if (!s) continue;
-      if (s.expiresAt + KEEP_MS > this.now()) {
-        kept.push(id);
+      if (s.expiresAt + KEEP_MS <= this.now()) {
+        await this.store.delete(sessionKey(id));
+        if ((await this.store.get<string>(codeKey(s.code))) === id) await this.store.delete(codeKey(s.code));
         continue;
       }
-      await this.store.delete(sessionKey(id));
-      if ((await this.store.get<string>(codeKey(s.code))) === id) await this.store.delete(codeKey(s.code));
+      if (s.sourceId === actor && this.statusOf(s) === 'waiting') {
+        await this.store.put({ [sessionKey(id)]: { ...s, status: 'declined' } });
+        if ((await this.store.get<string>(codeKey(s.code))) === id) await this.store.delete(codeKey(s.code));
+      }
+      kept.push(id);
     }
+    if (kept.length >= LINK_MAX_SESSIONS) throw new LinkRefusal(503, 'too many links at once; try again in a few minutes');
     let code = this.newCode();
-    for (let tries = 0; (await this.store.get<string>(codeKey(code))) !== undefined; tries += 1) {
-      if (tries > 20) throw new LinkRefusal(503, 'no code free; try again');
+    for (let attempt = 0; (await this.store.get<string>(codeKey(code))) !== undefined; attempt += 1) {
+      if (attempt > 20) throw new LinkRefusal(503, 'no code free; try again');
       code = this.newCode();
     }
-    const session: Session = { sessionId: this.newId(), code, expiresAt: this.now() + LINK_TTL_MS, sourceId: actor, source: { signJwk: source.signJwk, agreeJwk: source.agreeJwk }, wrong: 0, status: 'waiting' };
+    const session: Session = { sessionId: this.newId(), code, expiresAt: this.now() + LINK_TTL_MS, sourceId: actor, source: { signJwk: source.signJwk, agreeJwk: source.agreeJwk }, status: 'waiting' };
     await this.store.put({ [sessionKey(session.sessionId)]: session, [codeKey(code)]: session.sessionId, [SESSIONS]: [...kept, session.sessionId] });
+    if (place) await this.bump(tries, [`start:${place}`]);
     return this.view(session, actor);
   }
 
   /** The new device types the code: it claims the session with its keys and its commitment, once. */
-  async claim(actor: string, code: string, joiner: DevicePublic, commit: string): Promise<LinkView> {
-    const tries = (await this.store.get<{ count: number; since: number }>(triesKey(actor))) ?? { count: 0, since: this.now() };
-    const window = this.now() - tries.since < LINK_TTL_MS ? tries : { count: 0, since: this.now() };
-    if (window.count >= LINK_MAX_WRONG) throw new LinkRefusal(429, 'too many wrong codes; wait a few minutes');
+  async claim(actor: string, code: string, joiner: DevicePublic, commit: string, address?: string | null): Promise<LinkView> {
+    const place = placeOf(address);
+    const tries = await this.tries();
+    if (this.count(tries, `device:${actor}`) >= LINK_MAX_WRONG || (place && this.count(tries, `wrong:${place}`) >= LINK_MAX_WRONG_PER_PLACE)) {
+      throw new LinkRefusal(429, 'too many wrong codes; wait a few minutes');
+    }
     if (!/^[0-9a-f]{64}$/.test(commit)) throw new LinkRefusal(400, 'expected a commitment');
     const id = /^\d{6}$/.test(code) ? await this.store.get<string>(codeKey(code)) : undefined;
     const session = id ? await this.store.get<Session>(sessionKey(id)) : undefined;
     if (!session || this.statusOf(session) !== 'waiting' || actor === session.sourceId) {
-      await this.wrongCode(actor, window);
+      // A wrong code counts against the device and its address — never against anyone's session.
+      await this.bump(tries, [`device:${actor}`, ...(place ? [`wrong:${place}`] : [])]);
       if (session && this.statusOf(session) === 'expired') throw new LinkRefusal(410, 'this code has expired');
       throw new LinkRefusal(404, 'no such code');
     }
@@ -179,18 +228,6 @@ export class LinkHub {
     await this.store.put({ [sessionKey(session.sessionId)]: claimed });
     await this.store.delete(codeKey(session.code)); // claimed once: the code works for nobody else (and may be handed out again)
     return this.view(claimed, actor);
-  }
-
-  /** A wrong code counts against its device, and against every session open now; five burn a session. */
-  private async wrongCode(actor: string, window: { count: number; since: number }): Promise<void> {
-    await this.store.put({ [triesKey(actor)]: { count: window.count + 1, since: window.since } });
-    for (const id of await this.live()) {
-      const s = await this.store.get<Session>(sessionKey(id));
-      if (!s || this.statusOf(s) !== 'waiting') continue;
-      const wrong = s.wrong + 1;
-      await this.store.put({ [sessionKey(id)]: { ...s, wrong, status: wrong >= LINK_MAX_WRONG ? 'burned' : s.status } });
-      if (wrong >= LINK_MAX_WRONG && (await this.store.get<string>(codeKey(s.code))) === id) await this.store.delete(codeKey(s.code));
-    }
   }
 
   /** The signing key a party's request to the session is checked against (the relay knows no other for them). */
