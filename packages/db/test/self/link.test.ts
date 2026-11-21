@@ -5,7 +5,9 @@ import { activityOf, createAccount, type Database, listAccounts, postTransaction
 import { generateDevice, requestSignerOf, type DeviceKeys } from '../../src/sync/keys';
 import { MemoryTransport } from '../../src/sync/memory-transport';
 import { SyncTransportError } from '../../src/sync/types';
-import { sha256Hex } from '../../src/sync/relay-signing';
+import { bytesToBase64Url, sha256Hex } from '../../src/sync/relay-signing';
+import { sealKeyFor } from '../../src/sync/crypto';
+import { LATEST_VERSION } from '../../src/migrations';
 import { SelfEngine, selfBookId, type SelfDeviceInfo } from '../../src/self/engine';
 import type { LinkView } from '../../src/self/link-hub';
 import type { SelfTransport } from '../../src/self/transport';
@@ -173,6 +175,76 @@ describe('a relay that swaps keys', () => {
     await phone!.engine.checkLinking(sessionId);
     await mac!.transport.revealLink(sessionId, 'x'.repeat(43));
     expect(await phone!.engine.checkLinking(sessionId)).toEqual({ stage: 'ended', why: 'mismatch' });
+  });
+});
+
+describe('the welcome the new device takes', () => {
+  /** The relay hands the new device a welcome of its choosing in place of the linking device's. */
+  function welcoming(inner: SelfTransport, swap: (view: LinkView) => Promise<LinkView>): SelfTransport {
+    return new Proxy(inner, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver) as unknown;
+        if (prop === 'readLink') return async (...args: unknown[]) => swap(await (value as (...a: unknown[]) => Promise<LinkView>).apply(target, args));
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+  }
+
+  async function allowedWith(transportOf: (mac: Owned) => SelfTransport) {
+    const relay = new MemoryTransport();
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }], relay);
+    const macEngine = new SelfEngine(mac!.database, transportOf(mac!), mac!.keys, mac!.info);
+    const { sessionId, code } = await phone!.engine.startLinking();
+    await macEngine.joinWithCode(code);
+    await phone!.engine.checkLinking(sessionId);
+    await macEngine.checkJoining(sessionId);
+    await phone!.engine.checkLinking(sessionId);
+    await phone!.engine.allowLinking(sessionId);
+    return { relay, phone: phone!, mac: mac!, macEngine, sessionId };
+  }
+
+  it('without the linking device’s signature is refused, nothing claimed', async () => {
+    const { relay, phone, macEngine, sessionId } = await allowedWith((mac) =>
+      welcoming(mac.transport, async (view) => (view.welcome ? { ...view, welcome: { ...view.welcome, sig: undefined } } : view)),
+    );
+    await expect(macEngine.acceptLink(sessionId)).rejects.toMatchObject({ code: 'MISMATCH' });
+    expect((await phone.engine.devices()).map((d) => d.name)).toEqual(['iPhone']);
+    void relay;
+  });
+
+  it('made by someone else (sealed for the new device, signed with another key) is refused', async () => {
+    const attacker = await generateDevice();
+    const { phone, macEngine, sessionId } = await allowedWith((mac) =>
+      welcoming(mac.transport, async (view) => {
+        if (!view.welcome) return view;
+        const forged = await sealKeyFor({ deviceId: mac.keys.deviceId, agreeJwk: mac.keys.public.agreeJwk }, `link:${view.sessionId}`, 1, new TextEncoder().encode('{"relayBookId":"elsewhere"}'));
+        const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, attacker.sign.privateKey, new TextEncoder().encode('anything')));
+        return { ...view, welcome: { ...forged, sig: bytesToBase64Url(sig) } };
+      }),
+    );
+    await expect(macEngine.acceptLink(sessionId)).rejects.toMatchObject({ code: 'MISMATCH' });
+    expect((await phone.engine.devices()).map((d) => d.name)).toEqual(['iPhone']);
+  });
+
+  it('from a newer version of the app is refused before anything is claimed or replaced: update this device first', async () => {
+    const relay = new MemoryTransport();
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }], relay);
+    class NewerEngine extends SelfEngine {
+      protected override readonly schema = LATEST_VERSION + 1;
+    }
+    const newer = new NewerEngine(phone!.database, phone!.transport, phone!.keys, { ...phone!.info, appVersion: '0.6.0' });
+    const { sessionId, code } = await newer.startLinking();
+    await mac!.engine.joinWithCode(code);
+    await newer.checkLinking(sessionId);
+    await mac!.engine.checkJoining(sessionId);
+    await newer.checkLinking(sessionId);
+    await newer.allowLinking(sessionId);
+    const before = await dumpForSelf(mac!.database);
+    const refused = await mac!.engine.acceptLink(sessionId).catch((e: unknown) => e);
+    expect(refused).toMatchObject({ code: 'NEWER_SOURCE' });
+    expect(String((refused as Error).message)).toContain('Update cicis on this device first');
+    expect((await newer.devices()).map((d) => d.name)).toEqual(['iPhone']);
+    expect(await dumpForSelf(mac!.database)).toEqual(before);
   });
 });
 

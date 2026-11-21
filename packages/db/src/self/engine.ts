@@ -3,7 +3,7 @@ import type { Database } from '../database';
 import { aesGcmDecrypt, aesGcmEncrypt, AT_REST_INFO, fromUtf8, openSealedKey, randomBytes, sealKeyFor, utf8 } from '../sync/crypto';
 import { inviteAad, inviteKeyOf, newInviteSecret, openInviteJson, sealInviteJson, type InviteKey } from '../sync/invite';
 import type { DeviceKeys } from '../sync/keys';
-import { base64UrlToBytes, bytesToBase64Url, deviceIdOf, inviteSigningBytes, sha256Hex } from '../sync/relay-signing';
+import { base64UrlToBytes, bytesToBase64Url, canonicalJson, deviceIdOf, inviteSigningBytes, sha256Hex, verifySignature } from '../sync/relay-signing';
 import { type ChangeLogEntry, openChangeSet, sealChangeSet, signEntry, verifyEntry } from '../sync/seal';
 import { Sealer } from '../sync/seal';
 import type { ChangeSet, InviteRecord, LogEntry, SealedFor } from '../sync/types';
@@ -12,7 +12,8 @@ import { applySelfChangeSet, collectSelfChanges, dropFromSelfOutbox, selfOutbox,
 import type { LinkView } from './link-hub';
 import { checkDigits, commitOf, linkQrText, newNonce, parseLinkCode } from './link-crypto';
 import { MAX_BLOB_BYTES, type SelfTransport } from './transport';
-import { installSelfCapture } from './triggers';
+import { installSelfCapture, removeSelfCapture } from './triggers';
+import { LATEST_VERSION } from '../migrations';
 import { localTick } from '../sync/hlc';
 
 /*
@@ -90,6 +91,15 @@ interface Welcome {
   inviteId: string;
   secret: string;
   copy: CopyManifest;
+  /** The source's data version and app version: a device older than the copy does not take it. */
+  schema: number;
+  appVersion: string;
+}
+
+/** The bytes the source signs for a welcome: the session, the new device, and the sealed welcome itself. */
+function welcomeSigningBytes(sessionId: string, joinerId: string, welcome: SealedFor): Uint8Array {
+  const { sig: _sig, ...sealed } = welcome as SealedFor & { sig?: string };
+  return utf8(canonicalJson({ v: 'cicis-link-welcome-v1', sessionId, joinerId, welcome: sealed }));
 }
 
 /**
@@ -111,7 +121,7 @@ export const SEAT_KEY = 'self.seat';
 
 export class SelfError extends Error {
   constructor(
-    readonly code: 'NOT_LINKED' | 'UNLINKED' | 'ALREADY_LINKED' | 'BAD_CODE' | 'MISMATCH' | 'NO_KEY' | 'LAST_DEVICE',
+    readonly code: 'NOT_LINKED' | 'UNLINKED' | 'ALREADY_LINKED' | 'BAD_CODE' | 'MISMATCH' | 'NO_KEY' | 'LAST_DEVICE' | 'NEWER_SOURCE',
     message: string,
   ) {
     super(message);
@@ -140,6 +150,9 @@ export class SelfEngine {
   /** Nonces live only in memory: an app closed half way through a link starts again with a new code. */
   private readonly sourcing = new Map<string, SourceSession>();
   private readonly joining = new Map<string, JoinSession>();
+
+  /** The data version this install's copy is at (a test stands in a newer one). */
+  protected readonly schema: number = LATEST_VERSION;
 
   constructor(
     private readonly database: Database,
@@ -279,9 +292,12 @@ export class SelfEngine {
       { deviceId: joiner.deviceId, agreeJwk: joiner.agreeJwk },
       `link:${sessionId}`,
       1,
-      utf8(JSON.stringify({ relayBookId: group.relayBookId, inviteId, secret: bytesToBase64Url(secret), copy } satisfies Welcome)),
+      utf8(JSON.stringify({ relayBookId: group.relayBookId, inviteId, secret: bytesToBase64Url(secret), copy, schema: this.schema, appVersion: this.info.appVersion } satisfies Welcome)),
     );
-    await this.transport.allowLink(sessionId, welcome);
+    // Signed with this device's key — the key the check digits covered — so a relay cannot hand the new device a
+    // welcome of its own making and have it replace its data.
+    const welcomeSig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, this.device.sign.privateKey, welcomeSigningBytes(sessionId, joiner.deviceId, welcome) as BufferSource));
+    await this.transport.allowLink(sessionId, { ...welcome, sig: bytesToBase64Url(welcomeSig) });
     // It gave its data: from now on it never takes another device's, even before the new device's row arrives.
     await this.database.db.run(sql`INSERT OR REPLACE INTO self_state (key, value) VALUES ('gave', '1')`);
     this.sourcing.delete(sessionId);
@@ -300,8 +316,10 @@ export class SelfEngine {
   async joinWithCode(text: string): Promise<{ sessionId: string }> {
     // A device that gives its data never takes another's: one linked to others, or one showing a code right now. One
     // that showed a code nobody used (its group holds only itself) may still take one.
-    const others = (await this.group())?.state === 'active' ? (await this.devices()).filter((d) => !d.thisDevice && d.removedAt === null) : [];
-    const gave = (await this.database.db.values(sql`SELECT 1 FROM self_state WHERE key = 'gave'`)).length > 0;
+    const group = await this.group();
+    const others = group?.state === 'active' ? (await this.devices()).filter((d) => !d.thisDevice && d.removedAt === null) : [];
+    // Unlinked from a group, a device may be linked again — its data replaced, after its backup, as any other's.
+    const gave = group?.state !== 'unlinked' && (await this.database.db.values(sql`SELECT 1 FROM self_state WHERE key = 'gave'`)).length > 0;
     if (others.length > 0 || gave || this.sourcing.size > 0) throw new SelfError('ALREADY_LINKED', 'This device is already linked to other devices');
     const code = parseLinkCode(text);
     if (!code) throw new SelfError('BAD_CODE', 'That is not a 6-digit code');
@@ -336,7 +354,16 @@ export class SelfEngine {
   async acceptLink(sessionId: string): Promise<JoinPlan> {
     const view = await this.transport.readLink(sessionId);
     if (view.status !== 'allowed' || !view.welcome) throw new SelfError('MISMATCH', 'This link has not been allowed');
+    // The welcome is the source's, signed by the very key the check digits on both screens were made from.
+    const signature = (view.welcome as SealedFor & { sig?: string }).sig;
+    if (!signature || !(await verifySignature(view.source.signJwk, welcomeSigningBytes(sessionId, this.deviceId, view.welcome), signature))) {
+      throw new SelfError('MISMATCH', 'The other device did not send this. Nothing here was changed.');
+    }
     const opened = JSON.parse(fromUtf8(await openSealedKey(this.device.agree.privateKey, `link:${sessionId}`, view.welcome))) as Welcome;
+    // A copy from a newer version of the app would not open here: refused before anything is claimed or replaced.
+    if (typeof opened.schema !== 'number' || opened.schema > this.schema) {
+      throw new SelfError('NEWER_SOURCE', `The other device has a newer version of cicis${opened.appVersion ? ` (${opened.appVersion})` : ''}. Update cicis on this device first.`);
+    }
     const claim = await this.transport.claimInvite(opened.inviteId, this.device.public);
     const keys = await openInviteJson<InviteKey[]>(await inviteKeyOf(base64UrlToBytes(opened.secret), opened.inviteId), claim.keys, inviteAad('keys', opened.inviteId));
     const bookId = selfBookId(opened.relayBookId);
@@ -379,8 +406,23 @@ export class SelfEngine {
     }
   }
 
+  /**
+   * Unlinked by another of the owner's devices: this device stops capturing for the group (nothing it writes is sent,
+   * and nothing waits to be), and is no longer kept from household sharing — its data is its own again.
+   */
   private async markUnlinked(): Promise<void> {
     await this.database.db.run(sql`UPDATE self_group SET state = 'unlinked' WHERE id = 1`);
+    await removeSelfCapture(this.database);
+    await this.database.db.run(sql`DELETE FROM self_pending`);
+    await this.database.db.run(sql`DELETE FROM self_outbox`);
+  }
+
+  /**
+   * A join that will not finish (the replace failed or was called off, or the copy never arrived): this device takes
+   * itself off the group's relay book, so it neither holds back the log's pruning nor fills a place.
+   */
+  async abandonJoin(relayBookId: string): Promise<void> {
+    await this.transport.removeDevice(relayBookId, this.deviceId).catch(() => undefined);
   }
 
   private async send(): Promise<number> {

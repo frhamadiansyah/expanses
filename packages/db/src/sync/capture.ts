@@ -47,8 +47,9 @@ import type { ChangeSet, Op } from './types';
  */
 export async function seatIsElsewhere(tx: Db): Promise<boolean> {
   try {
-    const [row] = await tx.values<[string, string | null]>(sql`SELECT g.device_id, (SELECT value FROM settings WHERE key = 'self.seat') FROM self_group g WHERE g.id = 1`);
-    return !!row && row[1] !== row[0];
+    const [row] = await tx.values<[string, string | null, string]>(sql`SELECT g.device_id, (SELECT value FROM settings WHERE key = 'self.seat'), g.state FROM self_group g WHERE g.id = 1`);
+    // Unlinked: its data is its own again, household sharing included (its own device, as on any other phone).
+    return !!row && row[2] === 'active' && row[1] !== row[0];
   } catch {
     return false;
   }

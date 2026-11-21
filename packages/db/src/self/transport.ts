@@ -29,7 +29,7 @@ export interface SelfTransport extends SyncTransport {
   claimLink(code: string, device: DevicePublic, commit: string): Promise<LinkView>;
   readLink(sessionId: string): Promise<LinkView>;
   revealLink(sessionId: string, nonce: string, joinerName?: SealedFor): Promise<LinkView>;
-  allowLink(sessionId: string, welcome: SealedFor & { payload?: Sealed }): Promise<void>;
+  allowLink(sessionId: string, welcome: SealedFor & { payload?: Sealed; sig?: string }): Promise<void>;
   declineLink(sessionId: string): Promise<void>;
 }
 

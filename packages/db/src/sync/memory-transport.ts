@@ -493,7 +493,7 @@ class BoundTransport implements SelfTransport {
     return this.party('POST', `/links/${sessionId}/reveal`, body, sessionId, () => this.relay.links.reveal(this.deviceId, sessionId, nonce, joinerName));
   }
 
-  allowLink(sessionId: string, welcome: SealedFor & { payload?: Sealed }): Promise<void> {
+  allowLink(sessionId: string, welcome: SealedFor & { payload?: Sealed; sig?: string }): Promise<void> {
     return this.party('POST', `/links/${sessionId}/allow`, welcome, sessionId, () => this.relay.links.allow(this.deviceId, sessionId, welcome));
   }
 

@@ -117,7 +117,7 @@ export class RelayTransport implements SelfTransport {
     return (await this.call('POST', `/links/${seg(sessionId)}/reveal`, { nonce, ...(joinerName ? { joinerName } : {}) })) as LinkView;
   }
 
-  async allowLink(sessionId: string, welcome: SealedFor & { payload?: Sealed }): Promise<void> {
+  async allowLink(sessionId: string, welcome: SealedFor & { payload?: Sealed; sig?: string }): Promise<void> {
     await this.call('POST', `/links/${seg(sessionId)}/allow`, welcome);
   }
 

@@ -57,7 +57,7 @@ interface Session {
   /** The new device's name, sealed for the source's key (the relay never reads a name). */
   joinerName?: SealedFor;
   /** What the source leaves for the new device on Allow, sealed for the new device's key. */
-  welcome?: SealedFor & { payload?: Sealed };
+  welcome?: SealedFor & { payload?: Sealed; sig?: string };
 }
 
 /** What either device of a session sees of it. */
@@ -73,7 +73,7 @@ export interface LinkView {
   sourceNonce?: string;
   joinerNonce?: string;
   joinerName?: SealedFor;
-  welcome?: SealedFor & { payload?: Sealed };
+  welcome?: SealedFor & { payload?: Sealed; sig?: string };
 }
 
 const sessionKey = (id: string) => `session:${id}`;
@@ -225,7 +225,7 @@ export class LinkHub {
   }
 
   /** The owner tapped Allow on the source: what the new device needs, sealed for it. */
-  async allow(actor: string, sessionId: string, welcome: SealedFor & { payload?: Sealed }): Promise<void> {
+  async allow(actor: string, sessionId: string, welcome: SealedFor & { payload?: Sealed; sig?: string }): Promise<void> {
     const session = await this.party(actor, sessionId);
     if (actor !== session.sourceId) throw new LinkRefusal(403, 'only the device showing the code allows');
     if (this.statusOf(session) !== 'claimed' || !session.joinerNonce) throw new LinkRefusal(409, 'nothing to allow yet');

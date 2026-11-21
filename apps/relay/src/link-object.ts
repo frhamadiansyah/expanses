@@ -15,7 +15,7 @@ import type { Env } from './env';
 export type LinkOp =
   | { type: 'read' }
   | { type: 'reveal'; nonce: string; joinerName?: SealedFor }
-  | { type: 'allow'; welcome: SealedFor & { payload?: Sealed } }
+  | { type: 'allow'; welcome: SealedFor & { payload?: Sealed; sig?: string } }
   | { type: 'decline' };
 
 export class LinkObject extends DurableObject<Env> {
