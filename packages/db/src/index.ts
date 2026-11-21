@@ -290,3 +290,24 @@ export { ACTIVE_COPY_MESSAGE, deleteEventCopy, type EventCopyPlan, planEventCopy
 // Sharing resilience §4.2 (D-A3): the rows of a share another copy on this phone holds, set aside until it is gone.
 export { heldElsewhereOf, HELD_PREFIX, type HeldRow } from './sync/held';
 export * from './repos/bond-coupons';
+// Link my devices (spec 2026-11-19): the owner's own devices as one group over one relay book.
+export {
+  SelfEngine,
+  SelfError,
+  SEAT_KEY,
+  selfBookId,
+  type CopyManifest,
+  type DeviceKind,
+  type JoinPlan,
+  type JoinStage,
+  type SelfDeviceInfo,
+  type SelfDeviceRow,
+  type SelfGroup,
+  type SelfSyncResult,
+  type SourceStage,
+} from './self/engine';
+export { completeLinkedCopy, JoinRefused, planWaitsHere } from './self/join';
+export type { SelfTransport } from './self/transport';
+export { seatIsElsewhere, SeatElsewhereError } from './sync/capture';
+export { linkQrText, parseLinkCode } from './self/link-crypto';
+export { heldHere, putSyncedPref, syncedPrefRows } from './self/app-reads';

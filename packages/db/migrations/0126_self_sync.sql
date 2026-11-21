@@ -63,6 +63,8 @@ CREATE TABLE self_aliases (
 -- the owner's devices ('unlinked': it stops syncing and keeps its data). One row at most.
 CREATE TABLE self_group (
   id INTEGER PRIMARY KEY CHECK (id = 1),
+  -- this install's own device id: capture compares it with the seat (settings 'self.seat') without the keychain
+  device_id TEXT NOT NULL,
   relay_book_id TEXT NOT NULL,
   epoch INTEGER NOT NULL,
   cursor INTEGER NOT NULL DEFAULT 0,

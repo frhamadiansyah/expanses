@@ -1,4 +1,5 @@
 import type { CreatedInvite, MoveRefusal } from '@expanses/db';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 /** What sharing an event does, said before it is shared: by the event's Share sheet and by the share list alike. */
 export const shareEventFooter = (eventName: string) =>
@@ -104,7 +105,10 @@ export function conversionDone(eventId: string): boolean {
 export function markConversionDone(eventId: string): void {
   try {
     const done = JSON.parse(localStorage.getItem(CONVERTED_KEY) ?? '[]') as string[];
-    if (!done.includes(eventId)) localStorage.setItem(CONVERTED_KEY, JSON.stringify([...done, eventId]));
+    if (!done.includes(eventId)) {
+      localStorage.setItem(CONVERTED_KEY, JSON.stringify([...done, eventId]));
+      mirrorPref(CONVERTED_KEY, JSON.stringify([...done, eventId]));
+    }
   } catch {
     // Remembered only as a convenience.
   }

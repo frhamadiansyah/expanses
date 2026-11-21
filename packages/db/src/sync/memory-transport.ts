@@ -200,7 +200,9 @@ export class MemoryTransport {
     if (!Number.isSafeInteger(seq) || seq < 0 || seq > state.seq) throw new SyncTransportError(400, 'ack past the log');
     state.acks.set(actorDeviceId, Math.max(state.acks.get(actorDeviceId) ?? 0, seq));
     const active = [...state.devices.entries()].filter(([, d]) => d.removedAt === undefined).map(([id]) => id);
-    const floor = Math.min(...active.map((id) => state.acks.get(id) ?? 0));
+    // A new device's copy taken at `startSeq` and not yet claimed holds everything after it (link my devices, §4.1).
+    const waiting = [...state.invites.values()].filter((i) => i.startSeq !== undefined && i.claimedAt === undefined && Date.parse(i.expiresAt) > Date.now()).map((i) => i.startSeq!);
+    const floor = Math.min(...active.map((id) => state.acks.get(id) ?? 0), ...waiting);
     for (let s2 = state.prunedThrough + 1; s2 <= floor; s2 += 1) state.log.delete(s2);
     state.prunedThrough = Math.max(state.prunedThrough, floor);
   }
@@ -315,6 +317,7 @@ export class MemoryTransport {
     if (Date.parse(invite.expiresAt) <= Date.now()) throw new SyncTransportError(410, 'invite expired');
     if (!(await inviteSignedByAnOwner(invite, state.owners, (owner) => state.devices.get(owner)))) throw new SyncTransportError(403, 'bad owner signature');
 
+    if (state.self && invite.startSeq !== undefined && invite.startSeq < state.prunedThrough) throw new SyncTransportError(410, 'pruned');
     const activeDevices = [...state.devices.values()].filter((d) => d.removedAt === undefined).length;
     if (activeDevices >= MAX_ACTIVE_DEVICES) throw new SyncTransportError(429, 'this book already has five devices');
 
@@ -323,9 +326,10 @@ export class MemoryTransport {
     invite.claimedAt = now;
     // A self book: each of the owner's devices is an owner, and starts reading the log where it joined.
     if (state.self) {
+      const from = invite.startSeq ?? state.seq;
       state.owners.add(deviceId);
-      state.acks.set(deviceId, state.seq);
-      return { bookId, epoch: state.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId, seq: state.seq };
+      state.acks.set(deviceId, from);
+      return { bookId, epoch: state.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId, seq: from };
     }
 
     return { bookId, epoch: state.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId };

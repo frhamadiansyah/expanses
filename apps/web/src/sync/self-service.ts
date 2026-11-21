@@ -1,0 +1,291 @@
+import {
+  completeLinkedCopy,
+  type Database,
+  type DeviceKeys,
+  type JoinPlan,
+  type JoinStage,
+  type KeyStore,
+  planWaitsHere,
+  requestSignerOf,
+  SelfEngine,
+  type SelfDeviceInfo,
+  type SelfDeviceRow,
+  type SelfGroup,
+  type SelfSyncResult,
+  type SelfTransport,
+  type SourceStage,
+} from '@expanses/db';
+import pkg from '../../package.json';
+import { createKeyStore } from './key-store';
+import { createRelayTransport } from './relay';
+import { SyncScheduler } from './sync-scheduler';
+
+/*
+ * Link my devices in the app (spec §3.5, §4.2, §5): the owner's own devices as one group. One service per open, made
+ * beside household sharing's `SyncService` and readied before it (`prepare`): a device that has just been replaced
+ * by another device's copy finishes making that copy its own before anything else reads it.
+ *
+ * The plan of a link under way lives outside the database (localStorage): the replace swaps the database, and the
+ * plan is what the next open needs to finish. It holds the group's keys sealed for this device, and the one-off key of
+ * the copy on the relay — no more than the database itself holds.
+ */
+
+export const LINK_PLAN_KEY = 'cicis.link.plan';
+/** Set when a plan could not be finished (the copy never replaced this device's data): the Devices page says so once. */
+export const LINK_FAILED_KEY = 'cicis.link.failed';
+
+function readPlan(): JoinPlan | null {
+  try {
+    const raw = localStorage.getItem(LINK_PLAN_KEY);
+    return raw ? (JSON.parse(raw) as JoinPlan) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Kept before the replace; a device that cannot keep it does not replace anything. */
+export function keepPlan(plan: JoinPlan): void {
+  localStorage.setItem(LINK_PLAN_KEY, JSON.stringify(plan));
+  if (localStorage.getItem(LINK_PLAN_KEY) === null) throw new Error("This device can't keep the link in progress, so nothing was replaced.");
+}
+
+function forgetPlan(): void {
+  try {
+    localStorage.removeItem(LINK_PLAN_KEY);
+  } catch {
+    // nothing kept to forget
+  }
+}
+
+/** What this device is, in the words the Devices list uses. No plugin reads a device's own name, so it is its kind. */
+export function thisDeviceInfo(userAgent: string = typeof navigator === 'undefined' ? '' : navigator.userAgent, touch = typeof navigator === 'undefined' ? 0 : navigator.maxTouchPoints): SelfDeviceInfo {
+  const version = pkg.version;
+  if (/iPad/.test(userAgent) || (/Macintosh/.test(userAgent) && touch > 1)) return { name: 'iPad', kind: 'tablet', appVersion: version };
+  if (/iPhone|iPod/.test(userAgent)) return { name: 'iPhone', kind: 'phone', appVersion: version };
+  if (/Macintosh|Mac OS X/.test(userAgent)) return { name: 'Mac', kind: 'mac', appVersion: version };
+  return { name: 'This device', kind: 'other', appVersion: version };
+}
+
+export interface SelfStatus {
+  group: SelfGroup | null;
+  devices: SelfDeviceRow[];
+  lastSyncedAt: number | null;
+  lastError: string | null;
+  /** The newest change from another device waits (a newer data version, or a clash to look at). */
+  held: string | null;
+  /** The device keeping shared workspaces in step (§3.4). */
+  seatId: string | null;
+}
+
+export interface SelfServiceOptions {
+  database: Database;
+  keyStore?: KeyStore;
+  transportFor?: (device: DeviceKeys) => SelfTransport;
+  info?: SelfDeviceInfo;
+  intervalMs?: number;
+  now?: () => number;
+}
+
+export class SelfService {
+  private readonly database: Database;
+  private readonly keyStore: () => KeyStore;
+  private readonly transportFor: (device: DeviceKeys) => SelfTransport;
+  readonly info: SelfDeviceInfo;
+  private readonly intervalMs: number | undefined;
+  private readonly now: () => number;
+  private made: Promise<SelfEngine> | undefined;
+  private scheduler: SyncScheduler | null = null;
+  private readonly listeners = new Set<() => void>();
+  private readonly appliedListeners = new Set<() => void>();
+  private state: SelfStatus = { group: null, devices: [], lastSyncedAt: null, lastError: null, held: null, seatId: null };
+  /** What `prepare` found of a link under way: finished here, or a copy that never arrived. */
+  joinOutcome: 'linked' | 'failed' | null = null;
+  private halted = false;
+
+  constructor(options: SelfServiceOptions) {
+    this.database = options.database;
+    let store: KeyStore | undefined = options.keyStore;
+    this.keyStore = () => (store ??= createKeyStore());
+    this.transportFor = options.transportFor ?? ((device) => createRelayTransport(requestSignerOf(device)));
+    this.info = options.info ?? thisDeviceInfo();
+    this.intervalMs = options.intervalMs;
+    this.now = options.now ?? Date.now;
+  }
+
+  engine(): Promise<SelfEngine> {
+    this.made ??= (async () => {
+      const device = await this.keyStore().getOrCreateDevice();
+      return new SelfEngine(this.database, this.transportFor(device), device, this.info, this.now);
+    })();
+    this.made.catch(() => (this.made = undefined));
+    return this.made;
+  }
+
+  /**
+   * At open, before household sharing gets ready: a link under way is finished — the copy that replaced this device's
+   * data becomes this device's own — or, when the data here is not that copy (the replace never happened), the plan
+   * is dropped and the data is left exactly as it is.
+   */
+  async prepare(): Promise<void> {
+    const plan = readPlan();
+    if (!plan) return;
+    const where = await planWaitsHere(this.database, plan);
+    if (where === 'not-the-copy') {
+      forgetPlan();
+      try {
+        localStorage.setItem(LINK_FAILED_KEY, '1');
+      } catch {
+        // said once if it can be kept; the data is as it was either way
+      }
+      this.joinOutcome = 'failed';
+      return;
+    }
+    const device = await this.keyStore().getOrCreateDevice();
+    const transport = this.transportFor(device);
+    this.made = completeLinkedCopy(this.database, plan, transport, device, this.info);
+    await this.made;
+    // The copy on the relay has done its work; it goes (a day's expiry would take it anyway).
+    await (await this.made).deleteCopy(plan.copy, plan.relayBookId).catch(() => undefined);
+    forgetPlan();
+    try {
+      // A copy from the development sample is no longer a sample here: sync is not held back for it.
+      localStorage.removeItem('expanses.dev-sample-loaded');
+    } catch {
+      // nothing to clear
+    }
+    this.joinOutcome = 'linked';
+  }
+
+  async start(): Promise<void> {
+    await this.refresh();
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisible);
+  }
+
+  stop(): void {
+    this.scheduler?.stop();
+    this.scheduler = null;
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisible);
+  }
+
+  /** Stops every run for good: the database is about to be replaced (a link's copy, a restore). */
+  halt(): void {
+    this.halted = true;
+    this.stop();
+  }
+
+  private readonly onVisible = () => {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') void this.scheduler?.trigger();
+  };
+
+  /** Reads the group and the Devices list; starts or stops the schedule to match. */
+  async refresh(): Promise<void> {
+    const engine = await this.engine().catch(() => null);
+    const group = engine ? await engine.group() : null;
+    this.state = { ...this.state, group, devices: engine && group ? await engine.devices() : [], seatId: engine && group ? await engine.seat() : null };
+    if (group?.state === 'active' && !this.halted) {
+      this.scheduler ??= new SyncScheduler({
+        syncOnce: () => this.runOnce(),
+        onError: (error) => {
+          this.state = { ...this.state, lastError: error instanceof Error ? error.message : String(error) };
+          this.emit();
+        },
+        ...(this.intervalMs === undefined ? {} : { intervalMs: this.intervalMs }),
+      });
+      this.scheduler.start();
+    } else {
+      this.scheduler?.stop();
+      this.scheduler = null;
+    }
+    this.emit();
+  }
+
+  private async runOnce(): Promise<void> {
+    if (this.halted) return;
+    const engine = await this.engine();
+    const result: SelfSyncResult = await engine.sync();
+    this.state = {
+      ...this.state,
+      group: await engine.group(),
+      devices: await engine.devices(),
+      lastSyncedAt: this.now(),
+      lastError: null,
+      held: result.held ? (result.held.reason === 'newer-version' ? 'newer-version' : `clash:${result.held.key}`) : null,
+    };
+    if (result.applied > 0 || result.unlinked) for (const listener of this.appliedListeners) listener();
+    if (result.unlinked) {
+      this.scheduler?.stop();
+      this.scheduler = null;
+    }
+    this.emit();
+  }
+
+  /** "Something was written here": the group syncs now, behind the screen. */
+  nudge(): void {
+    void this.scheduler?.trigger();
+  }
+
+  async syncNow(): Promise<void> {
+    if (this.scheduler) await this.scheduler.trigger();
+  }
+
+  status(): SelfStatus {
+    return this.state;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** Told when a run applied what another device wrote: the screens re-read. */
+  whenApplied(listener: () => void): () => void {
+    this.appliedListeners.add(listener);
+    return () => this.appliedListeners.delete(listener);
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) listener();
+  }
+
+  /* --------------------------------------------------------------------------------------- linking, both sides */
+
+  async startLinking() {
+    const out = await (await this.engine()).startLinking();
+    await this.refresh();
+    return out;
+  }
+
+  async checkLinking(sessionId: string): Promise<SourceStage> {
+    return (await this.engine()).checkLinking(sessionId);
+  }
+
+  async allowLinking(sessionId: string, onProgress?: (done: number, total: number) => void): Promise<void> {
+    await (await this.engine()).allowLinking(sessionId, onProgress);
+    await this.refresh();
+  }
+
+  async declineLinking(sessionId: string): Promise<void> {
+    await (await this.engine()).declineLinking(sessionId);
+  }
+
+  async joinWithCode(code: string): Promise<{ sessionId: string }> {
+    return (await this.engine()).joinWithCode(code);
+  }
+
+  async checkJoining(sessionId: string): Promise<JoinStage> {
+    return (await this.engine()).checkJoining(sessionId);
+  }
+
+  /** After Allow: the plan and the copy. This device's data is untouched until the caller replaces it. */
+  async fetchCopy(sessionId: string, onProgress?: (done: number, total: number) => void): Promise<{ plan: JoinPlan; bytes: Uint8Array }> {
+    const engine = await this.engine();
+    const plan = await engine.acceptLink(sessionId);
+    const bytes = await engine.downloadPlanCopy(plan, onProgress);
+    return { plan, bytes };
+  }
+
+  async unlink(deviceId: string): Promise<void> {
+    await (await this.engine()).unlink(deviceId);
+    await this.refresh();
+  }
+}

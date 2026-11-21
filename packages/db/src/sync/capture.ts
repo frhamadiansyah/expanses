@@ -40,6 +40,20 @@ import type { ChangeSet, Op } from './types';
  * nothing. Apply runs with capture switched off: `pauseCapture(tx)`.
  */
 
+/**
+ * Link my devices (§3.4): this install belongs to a group of the owner's devices and is not the one that keeps shared
+ * workspaces in step (`settings 'self.seat'`). A group with no seat named is treated the same: never run sharing from a
+ * copy that cannot show it is the seat. False on a database from before 0126 or with no group.
+ */
+export async function seatIsElsewhere(tx: Db): Promise<boolean> {
+  try {
+    const [row] = await tx.values<[string, string | null]>(sql`SELECT g.device_id, (SELECT value FROM settings WHERE key = 'self.seat') FROM self_group g WHERE g.id = 1`);
+    return !!row && row[1] !== row[0];
+  } catch {
+    return false;
+  }
+}
+
 async function selfIsOwner(tx: Db, bookId: string): Promise<boolean> {
   return (await viewRoleOfDevice(tx, bookId, await localDeviceId(tx))) === 'owner';
 }
@@ -66,9 +80,24 @@ export class MemberNameError extends Error {
  * transaction that tried, so the write is rolled back.
  */
 export class BookReadOnlyError extends Error {
-  constructor(readonly bookId: string) {
-    super('This workspace is no longer shared, and is kept read-only');
+  constructor(
+    readonly bookId: string,
+    message = 'This workspace is no longer shared, and is kept read-only',
+  ) {
+    super(message);
     this.name = 'BookReadOnlyError';
+  }
+}
+
+/**
+ * Link my devices (spec §3.4): a write, on one of the owner's linked devices, to a workspace shared with someone else,
+ * where another of the owner's devices — the seat — keeps it in step with the household. Until editing there comes
+ * (Drop 6) the workspace is view-only here; the seat is where it is changed.
+ */
+export class SeatElsewhereError extends BookReadOnlyError {
+  constructor(bookId: string) {
+    super(bookId, 'This shared workspace is changed on the device that keeps it shared');
+    this.name = 'SeatElsewhereError';
   }
 }
 
@@ -252,7 +281,9 @@ const sessions = new WeakMap<object, CaptureSession>();
 export class CaptureSession {
   private enabled: boolean;
   private books: SharedBook[] | undefined;
-  private unshared: ReadonlySet<string> = new Set();
+  private unshared: Set<string> = new Set();
+  /** Active shared books another of the owner's devices keeps in step (link my devices): view-only here. */
+  private elsewhere: ReadonlySet<string> = new Set();
   private readonly slots: Slot[] = [];
   private readonly lineages = new Map<string, LineageTouch>();
   /** Joint net worth §5.3: the item the ledger was told a row's money side is on (`PostTransactionInput.paidFrom`). */
@@ -305,11 +336,22 @@ export class CaptureSession {
       );
       this.books = rows.filter((r) => r[3] === 'active').map(([bookId, memberId, epoch]) => ({ bookId, memberId, epoch: Number(epoch) }));
       this.unshared = new Set(rows.filter((r) => r[3] === 'unshared').map(([bookId]) => bookId));
+      if (this.books.length > 0 && (await seatIsElsewhere(this.tx))) {
+        // Link my devices (§3.4): another of the owner's devices keeps these in step; here they are view-only.
+        this.elsewhere = new Set(this.books.map((b) => b.bookId));
+        for (const bookId of this.elsewhere) this.unshared.add(bookId);
+        this.books = [];
+      }
     } catch {
       // A database stopped before migration 0056 has no sharing at all.
       this.books = [];
     }
     return this.books;
+  }
+
+  /** The refusal of a write to a read-only book: kept read-only (§8.6), or changed on the seat (link my devices). */
+  refusal(bookId: string): BookReadOnlyError {
+    return this.elsewhere.has(bookId) ? new SeatElsewhereError(bookId) : new BookReadOnlyError(bookId);
   }
 
   /** The books no longer shared here, read-only (§8.6). Read by the same one lookup as `sharedBooks`. */
@@ -930,9 +972,9 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
       const now = await snapshot(tx, frozen, frozenTargets);
       for (const [key, row] of was) {
         const after = now.get(key);
-        if (!after || JSON.stringify([after.values, after.derived]) !== JSON.stringify([row.values, row.derived])) throw new BookReadOnlyError(row.bookId);
+        if (!after || JSON.stringify([after.values, after.derived]) !== JSON.stringify([row.values, row.derived])) throw session.refusal(row.bookId);
       }
-      for (const [key, row] of now) if (!was.has(key)) throw new BookReadOnlyError(row.bookId);
+      for (const [key, row] of now) if (!was.has(key)) throw session.refusal(row.bookId);
       return result;
     };
   }
@@ -1582,9 +1624,9 @@ export async function capturePostedTx(
   if (bookId === null && (books.length > 0 || readOnly.size > 0)) bookId = await bookOfTransaction(tx, transactionId);
   if (readOnly.size > 0) {
     // §8.6: nothing is posted into a book no longer shared, nor does anything in it change.
-    if (bookId && readOnly.has(bookId)) throw new BookReadOnlyError(bookId);
+    if (bookId && readOnly.has(bookId)) throw session.refusal(bookId);
     const replaced = replacesTransactionId ? await bookOfTransaction(tx, replacesTransactionId) : null;
-    if (replaced && readOnly.has(replaced)) throw new BookReadOnlyError(replaced);
+    if (replaced && readOnly.has(replaced)) throw session.refusal(replaced);
   }
   if (books.length === 0) return;
   if (replacesTransactionId === null) {
@@ -1624,7 +1666,7 @@ export async function captureCardChangingTx(tx: Db, transactionId: string): Prom
   const readOnly = await session.readOnlyBooks();
   if (books.length === 0 && readOnly.size === 0) return;
   const bookId = await bookOfTransaction(tx, transactionId);
-  if (bookId && readOnly.has(bookId)) throw new BookReadOnlyError(bookId);
+  if (bookId && readOnly.has(bookId)) throw session.refusal(bookId);
   if (books.length === 0) return;
   const lineageId = await lineageOfTransaction(tx, transactionId);
   const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
@@ -1665,7 +1707,7 @@ export async function captureVoidingTx(tx: Db, transactionId: string): Promise<v
   const readOnly = await session.readOnlyBooks();
   if (books.length === 0 && readOnly.size === 0) return;
   const bookId = await bookOfTransaction(tx, transactionId);
-  if (bookId && readOnly.has(bookId)) throw new BookReadOnlyError(bookId); // §8.6
+  if (bookId && readOnly.has(bookId)) throw session.refusal(bookId); // §8.6
   if (books.length === 0) return;
   const lineageId = await lineageOfTransaction(tx, transactionId);
   const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;

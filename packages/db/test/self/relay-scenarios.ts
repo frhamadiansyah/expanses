@@ -19,7 +19,7 @@ export interface Party {
 export type MakeParty = () => Promise<Party>;
 
 /** An invite to the book signed by its owner (the relay checks the signature, never what is sealed inside). */
-async function invite(owner: Party, bookId: string): Promise<string> {
+async function invite(owner: Party, bookId: string, extra: Partial<InviteRecord> = {}): Promise<string> {
   const unsigned: Omit<InviteRecord, 'sig'> = {
     inviteId: crypto.randomUUID(),
     keys: { iv: 'aXY', ct: 'Y3Q' },
@@ -27,6 +27,7 @@ async function invite(owner: Party, bookId: string): Promise<string> {
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     sameMember: true,
     memberId: 'self',
+    ...extra,
   };
   const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, owner.keys.sign.privateKey, inviteSigningBytes(unsigned) as BufferSource);
   await owner.transport.putInvite(bookId, { ...unsigned, sig: bytesToBase64Url(new Uint8Array(sig)) });
@@ -134,4 +135,21 @@ export async function pruning(make: MakeParty): Promise<void> {
   const { bookId: household } = await phone.transport.createBook(phone.keys.public);
   await phone.transport.append(household, change(phone, 1));
   await refused(phone.transport.ack(household, 1), 400);
+}
+
+/** A copy taken at seq 2 for a device still to claim its invite holds the log after 2; the claim starts it there. */
+export async function copyHold(make: MakeParty): Promise<void> {
+  const [phone, mac] = [await make(), await make()];
+  const { bookId } = await phone.transport.createSelfBook(phone.keys.public);
+  const change = (n: number) => ({ kind: 'change' as const, deviceId: phone.keys.deviceId, epoch: 1, hlc: `${n.toString(16).padStart(12, '0')}0000-${phone.keys.deviceId}`, iv: 'aXY', ct: 'Y3Q', sig: 'c2ln' });
+  for (let n = 1; n <= 2; n += 1) await phone.transport.append(bookId, change(n));
+  const inviteId = await invite(phone, bookId, { startSeq: 2 });
+  for (let n = 3; n <= 5; n += 1) await phone.transport.append(bookId, change(n));
+  await phone.transport.ack(bookId, 5);
+  // Only what the copy already holds went; what came after waits for the new device.
+  await refused(phone.transport.pull(bookId, 1), 410);
+  expect((await phone.transport.pull(bookId, 2)).entries.map((e) => e.seq)).toEqual([3, 4, 5]);
+  const claim = await mac.transport.claimInvite(inviteId, mac.keys.public);
+  expect(claim.seq).toBe(2);
+  expect((await mac.transport.pull(bookId, 2)).entries.map((e) => e.seq)).toEqual([3, 4, 5]);
 }

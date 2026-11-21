@@ -1,4 +1,5 @@
 import {
+  seatIsElsewhere,
   type BookSyncStatus as EngineBookStatus,
   type CreatedInvite,
   BookError,
@@ -197,6 +198,8 @@ export class SyncService {
   /** Per book, when this device's own last-heard time was last written: written again only once it moves by more than a minute (minor 4). */
   private readonly ownSeenWritten = new Map<string, number>();
   private started = false;
+  /** Link my devices: another of the owner's devices is the seat; sharing never runs here (`prepare`). */
+  elsewhere = false;
   private readonly onVisible = () => {
     if (typeof document === 'undefined' || document.visibilityState === 'visible') this.triggerAll();
     // §6.1: the cursor reaches each share record when the app goes to the background, not only every 30 s.
@@ -267,6 +270,12 @@ export class SyncService {
   prepare(): Promise<void> {
     this.prepared ??= (async () => {
       if (devSampleLoaded()) return;
+      // Link my devices (§3.4): another of the owner's devices keeps the shared workspaces in step. Nothing of sharing
+      // runs here — no restore check, no record, no sync — or the copied bookkeeping would be taken for this device's.
+      if (await seatIsElsewhere(this.database.db)) {
+        this.elsewhere = true;
+        return;
+      }
       try {
         const books = await listSharedBooks(this.database);
         if (books.length === 0 && !(await this.hasKeys())) return;
@@ -335,7 +344,9 @@ export class SyncService {
 
   /** Brings the schedulers in line with `shared_books`: one per active book, none for any other. */
   async refresh(): Promise<void> {
-    const active = new Set((await listSharedBooks(this.database)).filter((book) => book.state === 'active' && !devSampleLoaded()).map((book) => book.bookId));
+    const active = new Set(
+      this.elsewhere ? [] : (await listSharedBooks(this.database)).filter((book) => book.state === 'active' && !devSampleLoaded()).map((book) => book.bookId),
+    );
     for (const [bookId, scheduler] of this.schedulers) {
       if (!active.has(bookId)) {
         scheduler.stop();

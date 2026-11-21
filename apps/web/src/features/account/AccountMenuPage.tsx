@@ -18,6 +18,7 @@ import { AddWorkspaceSheet } from './AddWorkspaceSheet';
 import { paymentLabel } from '../transactions/PaymentSheet';
 import { resolveDefaultPaidWith, usePayableOptions, useStoredDefaultPaidWith } from './default-paid-with';
 import { lateNote } from '../debt-plan/plan-view';
+import { useSelfStatus } from '../devices/use-self';
 import { useLateDebtCount } from '../debt-plan/queries';
 
 /** How long ago the last backup was, in the fewest words that still answer "am I covered?". */
@@ -85,6 +86,7 @@ export function AccountMenuPage() {
   const archived = useArchivedBooks();
   const pending = usePendingDraftCount().data ?? 0;
   const lastBackup = useQuery({ queryKey: ['last-backup'], queryFn: () => getLastBackupAt(database) });
+  const selfStatus = useSelfStatus();
   const storedDefault = useStoredDefaultPaidWith();
   const payable = usePayableOptions();
   const [adding, setAdding] = useState(false);
@@ -109,6 +111,7 @@ export function AccountMenuPage() {
   const lateDebts = useLateDebtCount();
   const note = (to: string) => {
     if (to === '/backup') return lastBackup.isSuccess ? backupNote(lastBackup.data) : undefined;
+    if (to === '/account/devices') return String(Math.max(1, selfStatus.devices.filter((d) => d.removedAt === null).length));
     if (to === '/review' && pending > 0) return `${pending} waiting`;
     if (to === '/net-worth/plan') {
       const late = lateNote(lateDebts);

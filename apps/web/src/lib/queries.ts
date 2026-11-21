@@ -113,12 +113,14 @@ export async function refreshAfterWrite(queryClient: QueryClient): Promise<void>
 
 export function useInvalidateAll() {
   const queryClient = useQueryClient();
-  const { sync } = useApp();
-  // Every write in the app ends here, so this is also where a shared book hears that it has something to send.
+  const { sync, self } = useApp();
+  // Every write in the app ends here, so this is also where a shared book — and the owner's other devices — hear that
+  // there is something to send.
   return useCallback(() => {
     sync.nudge();
+    self?.nudge();
     return refreshAfterWrite(queryClient);
-  }, [queryClient, sync]);
+  }, [queryClient, sync, self]);
 }
 
 export function useResolveRates() {

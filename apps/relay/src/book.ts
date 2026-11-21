@@ -111,7 +111,10 @@ export class Book {
     const devices = await this.store.list<DeviceRecord>({ prefix: 'device:' });
     const acks = await this.store.list<number>({ prefix: 'ack:' });
     const active = [...devices.entries()].filter(([, d]) => d.removedAt === undefined).map(([key]) => key.slice('device:'.length));
-    const floor = Math.min(...active.map((id) => acks.get(ackKey(id)) ?? 0));
+    // A new device's copy taken at `startSeq` and not yet claimed holds everything after it — `MemoryTransport.ack`.
+    const invites = await this.store.list<StoredInvite>({ prefix: 'invite:' });
+    const waiting = [...invites.values()].filter((i) => i.startSeq !== undefined && i.claimedAt === undefined && Date.parse(i.expiresAt) > this.now().getTime()).map((i) => i.startSeq!);
+    const floor = Math.min(...active.map((id) => acks.get(ackKey(id)) ?? 0), ...waiting);
     const from = meta.prunedThrough ?? 0;
     if (floor <= from) return;
     const keys: string[] = [];
@@ -269,6 +272,7 @@ export class Book {
     if (invite.claimedAt !== undefined) throw new RelayError(409, 'invite already claimed');
     if (Date.parse(invite.expiresAt) <= this.now().getTime()) throw new RelayError(410, 'invite expired');
     if (!(await this.signedByAnOwner(invite, meta.owners))) throw new RelayError(403, 'bad owner signature');
+    if (meta.self && invite.startSeq !== undefined && invite.startSeq < (meta.prunedThrough ?? 0)) throw new RelayError(410, 'pruned');
 
     const devices = await this.store.list<DeviceRecord>({ prefix: 'device:' });
     const active = [...devices.values()].filter((d) => d.removedAt === undefined).length;
@@ -279,8 +283,9 @@ export class Book {
     await this.store.put({ [deviceKey(deviceId)]: record, [inviteKey(inviteId)]: { ...invite, claimedAt: now } });
     // A self book: each of the owner's devices is an owner, and starts reading the log where it joined.
     if (meta.self) {
-      await this.store.put({ meta: { ...meta, owners: [...new Set([...meta.owners, deviceId])] }, [ackKey(deviceId)]: meta.seq });
-      return { bookId: meta.bookId, epoch: meta.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId, seq: meta.seq };
+      const from = invite.startSeq ?? meta.seq;
+      await this.store.put({ meta: { ...meta, owners: [...new Set([...meta.owners, deviceId])] }, [ackKey(deviceId)]: from });
+      return { bookId: meta.bookId, epoch: meta.epoch, keys: invite.keys, sameMember: invite.sameMember, memberId: invite.memberId ?? deviceId, seq: from };
     }
     return {
       bookId: meta.bookId,

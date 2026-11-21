@@ -47,6 +47,7 @@ export function isInviteRecord(value: unknown): value is InviteRecord {
     !Number.isNaN(Date.parse(value.expiresAt)) &&
     typeof value.sameMember === 'boolean' &&
     (value.memberId === undefined || typeof value.memberId === 'string') &&
+    (value.startSeq === undefined || (typeof value.startSeq === 'number' && Number.isSafeInteger(value.startSeq) && value.startSeq >= 0)) &&
     typeof value.sig === 'string'
   );
 }

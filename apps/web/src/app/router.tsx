@@ -127,6 +127,8 @@ import { ReportPage } from '../features/debt-plan/ReportPage';
 import type { ReportPeriod } from '../features/debt-plan/report-view';
 import { SchedulePage } from '../features/debt-plan/SchedulePage';
 import { Layout } from './Layout';
+import { DevicesPage } from '../features/devices/DevicesPage';
+import { DevicePage } from '../features/devices/DevicePage';
 
 /** The card page's old tabs, still read from a link made before they became pages of their own. */
 export interface CardSearch {
@@ -565,6 +567,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup/icloud', component: ICloudRestorePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountMenuPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/devices', component: DevicesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account/devices/$deviceId', component: DevicePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId', component: WorkspacePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/month-start', component: MonthStartPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/account/workspaces/$bookId/share', component: SharePage }),

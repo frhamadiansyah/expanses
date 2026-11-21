@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '../database';
-import { aesGcmDecrypt, aesGcmEncrypt, fromUtf8, openSealedKey, randomBytes, sealKeyFor, utf8 } from '../sync/crypto';
+import { aesGcmDecrypt, aesGcmEncrypt, AT_REST_INFO, fromUtf8, openSealedKey, randomBytes, sealKeyFor, utf8 } from '../sync/crypto';
 import { inviteAad, inviteKeyOf, newInviteSecret, openInviteJson, sealInviteJson, type InviteKey } from '../sync/invite';
 import type { DeviceKeys } from '../sync/keys';
 import { base64UrlToBytes, bytesToBase64Url, deviceIdOf, inviteSigningBytes, sha256Hex } from '../sync/relay-signing';
@@ -63,7 +63,8 @@ export type SourceStage =
 export type JoinStage =
   | { stage: 'waiting' }
   | { stage: 'confirm'; digits: string }
-  | { stage: 'linked'; relayBookId: string }
+  /** Allowed: the copy is on the relay. The app takes a backup, replaces this device's data with it (`acceptLink`). */
+  | { stage: 'allowed' }
   | { stage: 'ended'; why: 'expired' | 'burned' | 'declined' };
 
 export interface SelfSyncResult {
@@ -82,6 +83,31 @@ export interface CopyManifest {
   bytes: number;
   sha256: string;
 }
+
+/** What the source hands the new device on Allow, sealed for its key. */
+interface Welcome {
+  relayBookId: string;
+  inviteId: string;
+  secret: string;
+  copy: CopyManifest;
+}
+
+/**
+ * Everything the new device needs to become a device of the group once its data is the copy: kept by the app across
+ * the replace (it lives outside the database), applied by `completeLinkedCopy` at the next open.
+ */
+export interface JoinPlan {
+  deviceId: string;
+  relayBookId: string;
+  epoch: number;
+  startSeq: number;
+  /** The group's epoch keys, sealed at rest for this device's own key (never in the clear outside the database). */
+  keys: { epoch: number; sealedJson: string }[];
+  copy: CopyManifest;
+}
+
+/** The settings key naming the seat: the one of the owner's devices that keeps shared workspaces in step (§3.4). */
+export const SEAT_KEY = 'self.seat';
 
 export class SelfError extends Error {
   constructor(
@@ -134,6 +160,12 @@ export class SelfEngine {
     return row ? { relayBookId: row[0], epoch: Number(row[1]), cursor: Number(row[2]), state: row[3] as SelfGroup['state'] } : null;
   }
 
+  /** The device that keeps workspaces shared with other people in step (§3.4), or null with no group. */
+  async seat(): Promise<string | null> {
+    const [row] = await this.database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = ${SEAT_KEY}`);
+    return row?.[0] ?? null;
+  }
+
   async devices(): Promise<SelfDeviceRow[]> {
     const rows = await this.database.db.values<[string, string, string, string | null, string, string | null, string | null]>(
       sql`SELECT device_id, name, kind, app_version, added_at, last_synced_at, removed_at FROM self_devices ORDER BY added_at, device_id`,
@@ -144,7 +176,7 @@ export class SelfEngine {
   }
 
   /** This device's own row of the Devices list, written by itself (and so sent to the others). */
-  private async writeOwnRow(lastSyncedAt: string | null): Promise<void> {
+  async writeOwnRow(lastSyncedAt: string | null): Promise<void> {
     const iso = new Date(this.now()).toISOString();
     await this.database.db.run(sql`
       INSERT INTO self_devices (device_id, name, kind, sign_jwk, agree_jwk, app_version, added_at, last_synced_at)
@@ -163,7 +195,9 @@ export class SelfEngine {
     const key = randomBytes(32);
     await this.database.transaction(async (tx) => {
       await this.sealer.storeEpochKeyTx(tx, selfBookId(relayBookId), 1, key);
-      await tx.run(sql`INSERT INTO self_group (id, relay_book_id, epoch, cursor, state, joined_at) VALUES (1, ${relayBookId}, 1, 0, 'active', ${new Date(this.now()).toISOString()})`);
+      await tx.run(sql`INSERT INTO self_group (id, device_id, relay_book_id, epoch, cursor, state, joined_at) VALUES (1, ${this.deviceId}, ${relayBookId}, 1, 0, 'active', ${new Date(this.now()).toISOString()})`);
+      // The device that made the group keeps the workspaces shared with other people in step (§3.4): the seat.
+      await tx.run(sql`INSERT OR IGNORE INTO settings (key, value) VALUES (${SEAT_KEY}, ${this.deviceId})`);
     });
     await installSelfCapture(this.database);
     await this.writeOwnRow(null);
@@ -213,12 +247,17 @@ export class SelfEngine {
    * Allow, after the owner saw the same digits on both screens: an invite to the group's book, its keys sealed with a
    * fresh secret, and that secret handed to the new device sealed for its own key.
    */
-  async allowLinking(sessionId: string): Promise<void> {
+  async allowLinking(sessionId: string, onProgress?: (done: number, total: number) => void): Promise<void> {
     const stage = await this.checkLinking(sessionId);
     if (stage.stage !== 'confirm') throw new SelfError('MISMATCH', 'This link is not waiting to be allowed');
     const view = await this.transport.readLink(sessionId);
+    // Everything sent and everything read first: the copy is then this device at `startSeq`, and the new device reads
+    // the log from there (§4.1). What is written from now on goes out after it, and the relay keeps it for the new one.
+    await this.sync();
     const group = (await this.group())!;
     const bookId = selfBookId(group.relayBookId);
+    const startSeq = group.cursor;
+    const copy = await this.uploadCopy(await this.database.exportBytes(), onProgress);
     const inviteId = crypto.randomUUID();
     const secret = newInviteSecret();
     const inviteKey = await inviteKeyOf(secret, inviteId);
@@ -228,9 +267,10 @@ export class SelfEngine {
       inviteId,
       keys: await sealInviteJson(inviteKey, epochKeys, inviteAad('keys', inviteId)),
       preview: await sealInviteJson(inviteKey, { self: true }, inviteAad('preview', inviteId)),
-      expiresAt: new Date(this.now() + 10 * 60 * 1000).toISOString(),
+      expiresAt: new Date(this.now() + 24 * 60 * 60 * 1000).toISOString(),
       sameMember: true,
       memberId: 'self',
+      startSeq,
     };
     const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, this.device.sign.privateKey, inviteSigningBytes(unsigned) as BufferSource);
     await this.transport.putInvite(group.relayBookId, { ...unsigned, sig: bytesToBase64Url(new Uint8Array(sig)) });
@@ -239,9 +279,11 @@ export class SelfEngine {
       { deviceId: joiner.deviceId, agreeJwk: joiner.agreeJwk },
       `link:${sessionId}`,
       1,
-      utf8(JSON.stringify({ relayBookId: group.relayBookId, inviteId, secret: bytesToBase64Url(secret) })),
+      utf8(JSON.stringify({ relayBookId: group.relayBookId, inviteId, secret: bytesToBase64Url(secret), copy } satisfies Welcome)),
     );
     await this.transport.allowLink(sessionId, welcome);
+    // It gave its data: from now on it never takes another device's, even before the new device's row arrives.
+    await this.database.db.run(sql`INSERT OR REPLACE INTO self_state (key, value) VALUES ('gave', '1')`);
     this.sourcing.delete(sessionId);
   }
 
@@ -256,8 +298,11 @@ export class SelfEngine {
 
   /** Settings › Devices › Link…: the code typed (or scanned) on the new device. */
   async joinWithCode(text: string): Promise<{ sessionId: string }> {
-    const current = await this.group();
-    if (current?.state === 'active') throw new SelfError('ALREADY_LINKED', 'This device is already linked to other devices');
+    // A device that gives its data never takes another's: one linked to others, or one showing a code right now. One
+    // that showed a code nobody used (its group holds only itself) may still take one.
+    const others = (await this.group())?.state === 'active' ? (await this.devices()).filter((d) => !d.thisDevice && d.removedAt === null) : [];
+    const gave = (await this.database.db.values(sql`SELECT 1 FROM self_state WHERE key = 'gave'`)).length > 0;
+    if (others.length > 0 || gave || this.sourcing.size > 0) throw new SelfError('ALREADY_LINKED', 'This device is already linked to other devices');
     const code = parseLinkCode(text);
     if (!code) throw new SelfError('BAD_CODE', 'That is not a 6-digit code');
     const nonce = newNonce();
@@ -272,7 +317,7 @@ export class SelfEngine {
     let view = await this.transport.readLink(sessionId);
     if (!mine) return { stage: 'ended', why: 'expired' };
     if (view.status === 'expired' || view.status === 'burned' || view.status === 'declined') return { stage: 'ended', why: view.status };
-    if (view.status === 'allowed' && view.welcome) return this.finishJoining(sessionId, view.welcome);
+    if (view.status === 'allowed' && view.welcome) return { stage: 'allowed' };
     if (!view.sourceNonce) return { stage: 'waiting' };
     if (!mine.revealed) {
       const name = await sealKeyFor({ deviceId: view.source.deviceId, agreeJwk: view.source.agreeJwk }, `link:${sessionId}`, 0, utf8(this.info.name));
@@ -282,21 +327,31 @@ export class SelfEngine {
     return { stage: 'confirm', digits: await checkDigits({ source: view.source, joiner: this.device.public, sourceNonce: view.sourceNonce!, joinerNonce: mine.nonce }) };
   }
 
-  private async finishJoining(sessionId: string, welcome: SealedFor): Promise<JoinStage> {
-    const opened = JSON.parse(fromUtf8(await openSealedKey(this.device.agree.privateKey, `link:${sessionId}`, welcome))) as { relayBookId: string; inviteId: string; secret: string };
+  /**
+   * After Allow, on the new device: joins the group's book with the keys it was handed, and answers what the app needs
+   * to replace this device's data — the copy to download, where the log is read from, and the group's keys sealed for
+   * this device to keep at rest (`completeLinkedCopy` writes them into the copy once it is this device's data). This
+   * device's own data is not touched here.
+   */
+  async acceptLink(sessionId: string): Promise<JoinPlan> {
+    const view = await this.transport.readLink(sessionId);
+    if (view.status !== 'allowed' || !view.welcome) throw new SelfError('MISMATCH', 'This link has not been allowed');
+    const opened = JSON.parse(fromUtf8(await openSealedKey(this.device.agree.privateKey, `link:${sessionId}`, view.welcome))) as Welcome;
     const claim = await this.transport.claimInvite(opened.inviteId, this.device.public);
     const keys = await openInviteJson<InviteKey[]>(await inviteKeyOf(base64UrlToBytes(opened.secret), opened.inviteId), claim.keys, inviteAad('keys', opened.inviteId));
     const bookId = selfBookId(opened.relayBookId);
-    await this.database.transaction(async (tx) => {
-      for (const { epoch, key } of keys) await this.sealer.storeEpochKeyTx(tx, bookId, epoch, base64UrlToBytes(key));
-      await tx.run(sql`DELETE FROM self_group`);
-      await tx.run(sql`INSERT INTO self_group (id, relay_book_id, epoch, cursor, state, joined_at)
-        VALUES (1, ${opened.relayBookId}, ${claim.epoch}, ${claim.seq ?? 0}, 'active', ${new Date(this.now()).toISOString()})`);
-    });
-    await installSelfCapture(this.database);
-    await this.writeOwnRow(null);
+    const sealed: { epoch: number; sealedJson: string }[] = [];
+    for (const { epoch, key } of keys) {
+      const atRest = await sealKeyFor({ deviceId: this.deviceId, agreeJwk: this.device.public.agreeJwk }, bookId, epoch, base64UrlToBytes(key), AT_REST_INFO);
+      sealed.push({ epoch, sealedJson: JSON.stringify(atRest) });
+    }
     this.joining.delete(sessionId);
-    return { stage: 'linked', relayBookId: opened.relayBookId };
+    return { deviceId: this.deviceId, relayBookId: opened.relayBookId, epoch: claim.epoch, startSeq: claim.seq ?? 0, keys: sealed, copy: opened.copy };
+  }
+
+  /** The copy of a plan, from the relay; it is the new device's to fetch before it is a device of any group here. */
+  downloadPlanCopy(plan: JoinPlan, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
+    return this.downloadCopy(plan.copy, onProgress, plan.relayBookId);
   }
 
   /* ------------------------------------------------------------------------------------------- syncing */
@@ -430,7 +485,7 @@ export class SelfEngine {
   /* ------------------------------------------------------------------------------------------- the copy */
 
   /** Bytes (a copy of this device's data) sealed under a one-off key, as blobs of at most 700 KB, kept 24 hours. */
-  async uploadCopy(bytes: Uint8Array): Promise<CopyManifest> {
+  async uploadCopy(bytes: Uint8Array, onProgress?: (done: number, total: number) => void): Promise<CopyManifest> {
     const group = await this.group();
     if (!group || group.state !== 'active') throw new SelfError('NOT_LINKED', 'This device is not linked to other devices');
     const key = randomBytes(32);
@@ -446,13 +501,14 @@ export class SelfEngine {
       const hash = await sha256Hex(blob);
       await this.transport.putBlob(group.relayBookId, hash, bytesToBase64Url(blob), expiresAt);
       hashes.push(hash);
+      onProgress?.(Math.min(at + room, bytes.length), bytes.length);
     }
     return { hashes, key: bytesToBase64Url(key), bytes: bytes.length, sha256: await sha256Hex(bytes) };
   }
 
   /** The copy back, each blob checked against its hash, the whole against the sha-256 it was sent with. */
-  async downloadCopy(manifest: CopyManifest, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
-    const group = await this.group();
+  async downloadCopy(manifest: CopyManifest, onProgress?: (done: number, total: number) => void, relayBookId?: string): Promise<Uint8Array> {
+    const group = relayBookId ? { relayBookId } : await this.group();
     if (!group) throw new SelfError('NOT_LINKED', 'This device is not linked to other devices');
     const key = base64UrlToBytes(manifest.key);
     const out = new Uint8Array(manifest.bytes);
@@ -470,8 +526,8 @@ export class SelfEngine {
   }
 
   /** Once the new device has the copy: the blobs go from the relay. */
-  async deleteCopy(manifest: CopyManifest): Promise<void> {
-    const group = await this.group();
+  async deleteCopy(manifest: CopyManifest, relayBookId?: string): Promise<void> {
+    const group = relayBookId ? { relayBookId } : await this.group();
     if (!group) return;
     for (const hash of manifest.hashes) await this.transport.deleteBlob(group.relayBookId, hash).catch(() => undefined);
   }

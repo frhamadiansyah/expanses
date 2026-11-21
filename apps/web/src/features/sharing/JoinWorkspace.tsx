@@ -7,6 +7,7 @@ import { InsetGroup, InsetRow, ReadOnlyRow, SubmitRow, TextRow } from '../../ui/
 import { JoinEvent } from './JoinEvent';
 import { copyLabel, currencyRefusal, otherCopyLine, replaceConfirm, sayError } from './sharing-copy';
 import { thisDeviceName } from './SharingSection';
+import { mirrorPref } from '../../lib/synced-prefs';
 
 /*
  * Join a workspace (household sharing spec §8.2, §11): a code pasted or arrived by a `cicis://join/…` link, then the
@@ -94,6 +95,7 @@ export function JoinWorkspace({
       if (!linking) {
         try {
           localStorage.setItem(NAME_KEY, memberName);
+          mirrorPref(NAME_KEY, memberName);
         } catch {
           // Remembered only as a convenience.
         }

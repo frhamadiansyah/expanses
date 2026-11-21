@@ -22,6 +22,8 @@ import {
 } from '@expanses/db';
 import { deviceSyncLog, noteSkippedCopy } from '../sync/sync-log-device';
 import { SyncService } from '../sync/sync-service';
+import { SelfService } from '../sync/self-service';
+import { hydratePrefs, setPrefDatabase } from '../lib/synced-prefs';
 import { type OpenResult, type OpenStage, openSafely, type RecoveryReason, type Safety, say } from './open';
 import { opfsSnapshots } from './snapshots';
 import { createWorkerExecutor } from './worker-executor';
@@ -46,6 +48,8 @@ export interface AppDb {
    * else can write into that book, and a restored backup is caught (§8.7) before anything syncs (final review, I3).
    */
   sync: SyncService;
+  /** Link my devices: the owner's own devices as one group (spec §3.5). Readied before `sync`. */
+  self: SelfService;
   /** Where this app's safety copies go. Absent only where a caller opened a database without a store. */
   safety?: Safety;
   /** Absent only where a caller opened a database without going through `openSafely`. */
@@ -116,8 +120,15 @@ export async function openAppDb(
    * write into a shared book would then refuse (`localDeviceId`) rather than stamp a stand-in id.
    */
   // Sharing failures are kept on the device (expanses-safety/sync-log.json), outside the database: never synced.
+  // Link my devices first (spec §4.2): a copy that just replaced this device's data is made this device's own before
+  // anything reads it — household sharing then sees which device keeps shared workspaces in step.
+  const self = new SelfService({ database, ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
+  await self.prepare().catch((error: unknown) => console.warn('Linking could not finish', error));
   const sync = new SyncService({ database, log: deviceSyncLog(), ...(options.keyStore ? { keyStore: options.keyStore } : {}) });
   await sync.prepare().catch((error: unknown) => console.warn('Sharing could not get ready', error));
+  // The choices kept on the device that also go to the owner's other devices (lib/synced-prefs.ts).
+  setPrefDatabase(database);
+  await hydratePrefs(database).catch((error: unknown) => console.warn('Choices could not be read across devices', error));
   // `window.__expansesSync` for Safari's Web Inspector (src/sync/sync-console.ts): reads only, loaded aside, off the
   // open. Diagnostic builds only (CICIS_INSPECTABLE=1, capacitor.config.ts); any other build has none of it.
   if (import.meta.env.VITE_INSPECTABLE === '1') {
@@ -165,7 +176,7 @@ export async function openAppDb(
   }
   // The set of books last open, or Personal. Owner-level screens ignore it; book-scoped ones read it.
   const opened = inBook(ws, await activeBookId(database, ws));
-  return { database, ws: opened, workspaceName: workspace!.name, sync };
+  return { database, ws: opened, workspaceName: workspace!.name, sync, self };
 }
 
 export function createWorker(): Worker {

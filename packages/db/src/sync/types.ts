@@ -105,6 +105,11 @@ export interface InviteRecord {
   expiresAt: string;
   sameMember: boolean;
   memberId?: string;
+  /**
+   * A self book's invite (link my devices): the seq the new device's copy was taken at. Until the invite is claimed or
+   * expires the relay prunes nothing after it, and the claim starts the device's reading there.
+   */
+  startSeq?: number;
   sig: string;
 }
 

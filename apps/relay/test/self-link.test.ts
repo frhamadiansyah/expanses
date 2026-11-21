@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import { blobs, linkDeclined, linkMeeting, linkWrongCodes, pruning, type MakeParty } from '../../../packages/db/test/self/relay-scenarios';
+import { blobs, copyHold, linkDeclined, linkMeeting, linkWrongCodes, pruning, type MakeParty } from '../../../packages/db/test/self/relay-scenarios';
 import { makeDevice, startRelay } from './helpers';
 
 /*
@@ -27,5 +27,6 @@ describe('the relay Worker', () => {
   it('burns a code after five wrong ones, and stops the guesser', () => linkWrongCodes(parties));
   it('ends a declined link and its code', () => linkDeclined(parties));
   it('keeps blobs by their hash, 700 KB at most, for the book’s own devices', () => blobs(parties));
+  it('holds the log after a copy for the device still to claim it', () => copyHold(parties));
   it('prunes a self book below every device’s ack, never a household book', () => pruning(parties));
 });

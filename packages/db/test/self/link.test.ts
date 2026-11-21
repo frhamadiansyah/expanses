@@ -11,7 +11,8 @@ import type { LinkView } from '../../src/self/link-hub';
 import type { SelfTransport } from '../../src/self/transport';
 import { dumpForSelf } from '../../src/self/dump';
 import { setupDb } from '../helpers';
-import { copyOf } from './devices';
+import { completeLinkedCopy, JoinRefused, planWaitsHere } from '../../src/self/join';
+import { SeatElsewhereError } from '../../src/sync/capture';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -27,6 +28,7 @@ interface Owned {
   ws: WorkspaceContext;
   keys: DeviceKeys;
   transport: SelfTransport;
+  info: SelfDeviceInfo;
   engine: SelfEngine;
 }
 
@@ -36,10 +38,17 @@ async function household(names: { name: string; kind: SelfDeviceInfo['kind'] }[]
   const groceries = (await listAccounts(t.database, t.ws)).find((a) => a.name === 'Groceries')!.id;
   const devices: Owned[] = [];
   for (const [i, { name, kind }] of names.entries()) {
-    const database = i === 0 ? t.database : await copyOf(t.database);
+    // Every other device holds data of its own, which linking replaces with the first device's.
+    let database = t.database;
+    if (i > 0) {
+      const other = await setupDb();
+      await createAccount(other.database, other.ws, { name: `Old ${name} wallet`, kind: 'asset', subtype: 'cash', currency: 'IDR' });
+      database = other.database;
+    }
     const keys = await generateDevice();
     const transport = relay.as(requestSignerOf(keys));
-    devices.push({ name, database, ws: t.ws, keys, transport, engine: new SelfEngine(database, transport, keys, { name, kind, appVersion: '0.5.7' }) });
+    const info: SelfDeviceInfo = { name, kind, appVersion: '0.5.7' };
+    devices.push({ name, database, ws: t.ws, keys, transport, info, engine: new SelfEngine(database, transport, keys, info) });
   }
   const spend = (d: Owned, amountMinor: number, description = 'Test shop') =>
     postTransaction(d.database, d.ws, { occurredOn: '2026-11-18', description, lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor, currency: 'IDR' }) });
@@ -55,7 +64,12 @@ async function link(source: Owned, joiner: Owned): Promise<{ sourceDigits: strin
   const sourceSide = await source.engine.checkLinking(sessionId);
   if (joinerSide.stage !== 'confirm' || sourceSide.stage !== 'confirm') throw new Error(`not confirming: ${joinerSide.stage} / ${sourceSide.stage}`);
   await source.engine.allowLinking(sessionId);
-  expect(await joiner.engine.checkJoining(sessionId)).toMatchObject({ stage: 'linked' });
+  expect(await joiner.engine.checkJoining(sessionId)).toEqual({ stage: 'allowed' });
+  // What the app does on the new device: take the plan, fetch the copy, replace its data, make the copy its own.
+  const plan = await joiner.engine.acceptLink(sessionId);
+  const copy = await joiner.engine.downloadPlanCopy(plan);
+  await joiner.database.importBytes(copy);
+  joiner.engine = await completeLinkedCopy(joiner.database, plan, joiner.transport, joiner.keys, joiner.info);
   return { sourceDigits: sourceSide.digits, joinerDigits: joinerSide.digits, deviceName: sourceSide.deviceName };
 }
 
@@ -229,5 +243,94 @@ describe('the relay’s log of the group', () => {
     expect(book.log.size).toBe(0);
     expect(book.prunedThrough).toBe(book.seq);
     expect(selfBookId('x')).toBe('self:x');
+  });
+});
+
+describe('replacing the new device’s data', () => {
+  it('leaves the new device holding the linking device’s data, its own old data gone; the linking device unchanged', async () => {
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    // What linking itself adds on the iPhone: the Devices list and the seat. Everything else is as it was.
+    const without = (dump: Record<string, unknown[][]>) =>
+      Object.fromEntries(Object.entries(dump).filter(([t]) => t !== 'self_devices').map(([t, rows]) => [t, t === 'settings' ? rows.filter((r) => r[0] !== 'self.seat') : rows]));
+    const before = without(await dumpForSelf(phone!.database));
+    await link(phone!, mac!);
+    expect(without(await dumpForSelf(phone!.database))).toEqual(before);
+    expect(await mac!.database.db.values(sql`SELECT name FROM accounts WHERE name = 'Old MacBook Air wallet'`)).toEqual([]);
+    expect(without(await dumpForSelf(mac!.database))).toEqual(before);
+    // Nothing of the Mac's old data ever reaches the iPhone.
+    await mac!.engine.sync();
+    await phone!.engine.sync();
+    expect(await phone!.database.db.values(sql`SELECT name FROM accounts WHERE name = 'Old MacBook Air wallet'`)).toEqual([]);
+    expect(await sameRows(phone!, mac!)).toEqual([]);
+  });
+
+  it('the linking install’s own rows and keys are not kept: the new device has its own place and keys', async () => {
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    await link(phone!, mac!);
+    expect(await mac!.database.db.values(sql`SELECT device_id, state FROM self_group`)).toEqual([[mac!.keys.deviceId, 'active']]);
+    expect(await mac!.database.db.values(sql`SELECT count(*) FROM self_outbox`)).toEqual([[0]]);
+    expect(await mac!.database.db.values(sql`SELECT value FROM settings WHERE key = 'self.seat'`)).toEqual([[phone!.keys.deviceId]]);
+    expect(await mac!.database.db.values(sql`SELECT count(*) FROM settings WHERE key = 'sync.hlc'`)).toEqual([[1]]); // its own clock
+  });
+
+  it('a copy that never arrived (the old data still here) is refused and left exactly as it was', async () => {
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    const { sessionId, code } = await phone!.engine.startLinking();
+    await mac!.engine.joinWithCode(code);
+    await phone!.engine.checkLinking(sessionId);
+    await mac!.engine.checkJoining(sessionId);
+    await phone!.engine.checkLinking(sessionId);
+    await phone!.engine.allowLinking(sessionId);
+    const plan = await mac!.engine.acceptLink(sessionId);
+    const before = await dumpForSelf(mac!.database);
+    expect(await planWaitsHere(mac!.database, plan)).toBe('not-the-copy');
+    await expect(completeLinkedCopy(mac!.database, plan, mac!.transport, mac!.keys, mac!.info)).rejects.toBeInstanceOf(JoinRefused);
+    expect(await dumpForSelf(mac!.database)).toEqual(before);
+  });
+
+  it('done twice (the app closed before it forgot the plan) changes nothing the second time', async () => {
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    await link(phone!, mac!);
+    const once = await dumpForSelf(mac!.database);
+    const group = await mac!.engine.group();
+    const plan = { deviceId: mac!.keys.deviceId, relayBookId: group!.relayBookId, epoch: 1, startSeq: 0, keys: [], copy: { hashes: [], key: '', bytes: 0, sha256: '' } };
+    expect(await planWaitsHere(mac!.database, plan)).toBe('done');
+    await completeLinkedCopy(mac!.database, plan, mac!.transport, mac!.keys, mac!.info);
+    expect(await dumpForSelf(mac!.database)).toEqual(once);
+  });
+
+  it('what the iPhone writes while the Mac fetches its copy still reaches the Mac', async () => {
+    const { devices: [phone, mac], spend } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    const { sessionId, code } = await phone!.engine.startLinking();
+    await mac!.engine.joinWithCode(code);
+    await phone!.engine.checkLinking(sessionId);
+    await mac!.engine.checkJoining(sessionId);
+    await phone!.engine.checkLinking(sessionId);
+    await phone!.engine.allowLinking(sessionId);
+    const meanwhile = await spend(phone!, 33_000, 'While the Mac was fetching');
+    await phone!.engine.sync(); // sent and acked: the relay keeps it for the Mac all the same
+    const plan = await mac!.engine.acceptLink(sessionId);
+    await mac!.database.importBytes(await mac!.engine.downloadPlanCopy(plan));
+    mac!.engine = await completeLinkedCopy(mac!.database, plan, mac!.transport, mac!.keys, mac!.info);
+    await mac!.engine.sync();
+    expect(await mac!.database.db.values(sql`SELECT description FROM transactions WHERE id = ${meanwhile}`)).toEqual([['While the Mac was fetching']]);
+  });
+});
+
+describe('the seat', () => {
+  it('a workspace shared with someone else is view-only on the linked Mac; its private workspaces are not', async () => {
+    const { devices: [phone, mac] } = await household([{ name: 'iPhone', kind: 'phone' }, { name: 'MacBook Air', kind: 'mac' }]);
+    // The iPhone shares Personal with another person (as household sharing leaves it: an active shared_books row).
+    const bookId = (await phone!.database.db.values<[string]>(sql`SELECT id FROM books ORDER BY created_at LIMIT 1`))[0]![0];
+    await phone!.database.db.run(sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, 'test-relay', 1, 'test-member', 'active', '2026-11-01T00:00:00Z')`);
+    await link(phone!, mac!);
+    const groceries = (await listAccounts(mac!.database, mac!.ws)).find((a) => a.name === 'Groceries')!.id;
+    const bank = (await listAccounts(mac!.database, mac!.ws)).find((a) => a.name === 'Test Bank')!.id;
+    await expect(
+      postTransaction(mac!.database, mac!.ws, { occurredOn: '2026-11-19', description: 'Test shop', lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank, amountMinor: 12_000, currency: 'IDR' }) }),
+    ).rejects.toBeInstanceOf(SeatElsewhereError);
+    // An account is the owner's, in no workspace: it changes on the Mac as anywhere.
+    await renameAccount(mac!.database, mac!.ws, bank, 'Test Bank Renamed On Mac');
+    expect(await mac!.database.db.values(sql`SELECT name FROM accounts WHERE id = ${bank}`)).toEqual([['Test Bank Renamed On Mac']]);
   });
 });
