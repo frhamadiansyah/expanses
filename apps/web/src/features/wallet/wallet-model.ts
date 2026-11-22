@@ -36,6 +36,17 @@ export function walletCredit(accounts: readonly AccountRow[]): AccountRow[] {
 }
 
 /**
+ * The credit card open on its page that Wallet does not hold because it is switched off "For spending" (owner,
+ * 22 Nov 2026): reached from Net worth's Liabilities, Debts or its own Settings, it is raised as a Wallet card is — the
+ * bar with ✕ and ⚙, the big face that turns over, its page under it — and it is still in none of Wallet's views, its
+ * Balance box, filters or totals. An archived card, or anything that is not a credit card, is not one.
+ */
+export function walletAsideCredit(accounts: readonly AccountRow[], id: string | undefined): AccountRow | undefined {
+  if (id === undefined) return undefined;
+  return accounts.find((a) => a.id === id && a.archivedAt === null && a.kind === 'liability' && a.subtype === 'credit_card' && !spendingSwitchOn(a));
+}
+
+/**
  * Every Wallet card, in the order all three views draw them — the stack top to bottom, the grid left to right, the
  * carousel first to last.
  *

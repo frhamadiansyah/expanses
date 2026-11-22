@@ -1,7 +1,7 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { faceFor, TIERS } from '../cards/debit-art/faces';
-import { bankOf, faceKindsOf, moneyChip, moneyFaceOf, readBalanceHidden, walletCredit, walletMoney, walletOrder, writeBalanceHidden } from './wallet-model';
+import { bankOf, faceKindsOf, moneyChip, moneyFaceOf, readBalanceHidden, walletAsideCredit, walletCredit, walletMoney, walletOrder, writeBalanceHidden } from './wallet-model';
 
 const row = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
   ({ id, name: id, parentId: null, kind: 'asset', subtype, currency: 'IDR', archivedAt: null, sortOrder: 0, forSpending: 1, ...extra }) as AccountRow;
@@ -47,6 +47,27 @@ describe('the cards Wallet holds', () => {
 
   it('holds credit cards only of what is owed: a loan and a person are read on Net worth', () => {
     expect(walletCredit(book).map((a) => a.id)).toEqual(['blue']);
+  });
+});
+
+describe('a credit card switched off "For spending", opened from elsewhere', () => {
+  const book = [
+    row('blue', 'credit_card', { kind: 'liability' }),
+    row('rare', 'credit_card', { kind: 'liability', forSpending: 0 }),
+    row('shut', 'credit_card', { kind: 'liability', forSpending: 0, archivedAt: '2026-03-01' }),
+    row('rainy', 'savings', { forSpending: 0 }),
+    row('loan', 'loan', { kind: 'liability', forSpending: 0 }),
+  ];
+
+  it('is raised by Wallet as its own cards are, while it stays out of the cards Wallet holds', () => {
+    expect(walletAsideCredit(book, 'rare')?.id).toBe('rare');
+    expect(walletCredit(book).map((a) => a.id)).toEqual(['blue']);
+    expect(walletOrder(book).map((a) => a.id)).toEqual(['blue']);
+  });
+
+  it('is never a card Wallet already holds, an archived card, savings kept aside or a loan', () => {
+    for (const id of ['blue', 'shut', 'rainy', 'loan', 'missing']) expect(walletAsideCredit(book, id)).toBeUndefined();
+    expect(walletAsideCredit(book, undefined)).toBeUndefined();
   });
 });
 
