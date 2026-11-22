@@ -57,16 +57,34 @@ export function JoinLinkSheet({ onClose }: { onClose: () => void }) {
   const ready = held.isSuccess;
   const sharing = held.data?.shared ?? [];
 
+  // Two steps the owner sees (22 Nov 2026): Save backup, then Link. Link waits for the backup file while there is
+  // anything here to lose; a fresh install has nothing to back up and links straight away.
+  const [backedUp, setBackedUp] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const codeOk = /^\d{6}$/.test(code.replace(/\s/g, ''));
+  const canLink = ready && codeOk && (!holdsData || backedUp);
+
+  const saveBackup = async () => {
+    setError(null);
+    if (!ready || saving) return;
+    setSaving(true);
+    try {
+      // This device's data, as it is now, in a file of its own outside the app.
+      const bytes = await database.exportBytes();
+      await saveBytes(bytes, `cicis-${deviceName.toLowerCase()}-before-link-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
+      await setLastBackupAt(database, new Date().toISOString());
+      setBackedUp(true);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const start = async () => {
     setError(null);
-    if (!ready) return;
+    if (!canLink) return;
     try {
-      if (holdsData) {
-        // The backup file first, before anything is asked of the relay: this device's data, as it is now.
-        const bytes = await database.exportBytes();
-        await saveBytes(bytes, `cicis-${deviceName.toLowerCase()}-before-link-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
-        await setLastBackupAt(database, new Date().toISOString());
-      }
       const { sessionId } = await self.joinWithCode(code);
       setStep({ kind: 'waiting', sessionId });
     } catch (e) {
@@ -126,15 +144,26 @@ export function JoinLinkSheet({ onClose }: { onClose: () => void }) {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (ready && /^\d{6}$/.test(code.replace(/\s/g, ''))) void start();
+              if (canLink) void start();
             }}
           >
             <p className="mb-3 text-center text-[14px] text-[var(--ph-ink-3)]">Type the code shown on the other device, under Account › Devices › Link another device.</p>
             <InsetGroup wide footer={holdsData && held.data ? replaceWarning({ deviceName, workspaces: held.data.workspaces, transactions: held.data.transactions, sourceHint: 'other device' }) : undefined}>
               <TextRow label="Code" data-testid="join-link-code" inputMode="numeric" pattern="[0-9 ]*" autoComplete="one-time-code" placeholder="6 digits" className="tabular min-w-[8ch]" value={code} onChange={(event) => setCode(event.target.value.replace(/[^\d\s]/g, '').slice(0, 7))} autoFocus />
             </InsetGroup>
+            {holdsData && (
+              <InsetGroup wide footer={backedUp ? undefined : 'Link turns on once the backup is saved.'}>
+                <InsetRow
+                  action
+                  testId="join-link-backup"
+                  title={backedUp ? 'Backup saved ✓' : saving ? 'Saving…' : 'Save backup'}
+                  disabled={!ready || saving}
+                  onClick={() => void saveBackup()}
+                />
+              </InsetGroup>
+            )}
             <InsetGroup wide>
-              <InsetRow action testId="join-link-go" title={holdsData ? 'Save backup and link' : 'Link'} disabled={!ready || !/^\d{6}$/.test(code.replace(/\s/g, ''))} onClick={() => void start()} />
+              <InsetRow action testId="join-link-go" title="Link" disabled={!canLink} onClick={() => void start()} />
             </InsetGroup>
           </form>
         )}

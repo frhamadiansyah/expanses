@@ -59,11 +59,15 @@ test('an iPhone links a Mac: same digits on both, the Mac takes the iPhone’s d
   expect((await mac.getByTestId('join-link-code').boundingBox())?.width ?? 0).toBeGreaterThan(55);
   await expect(mac.getByTestId('join-link-sheet')).toContainText('(1 workspace, 1 transaction)');
   await mac.getByTestId('join-link-code').fill(code);
-  await expect(mac.getByTestId('join-link-go')).toHaveText(/Save backup and link/);
+  // Two steps (owner, 22 Nov 2026): Save backup, then Link, which waits for the backup.
+  await expect(mac.getByTestId('join-link-go')).toHaveText('Link');
+  await expect(mac.getByTestId('join-link-go')).toBeDisabled();
   await shot(mac, '3-mac-code');
   const backup = mac.waitForEvent('download');
-  await mac.getByTestId('join-link-go').click();
+  await mac.getByTestId('join-link-backup').click();
   expect((await backup).suggestedFilename()).toMatch(/^cicis-mac-before-link-\d{4}-\d{2}-\d{2}\.sqlite3$/);
+  await expect(mac.getByTestId('join-link-backup')).toHaveText('Backup saved ✓');
+  await mac.getByTestId('join-link-go').click();
 
   // Both screens show the same 4 digits; the iPhone asks to link the Mac.
   await expect(phone.getByTestId('link-check-digits')).toBeVisible({ timeout: 30_000 });
