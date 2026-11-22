@@ -16,7 +16,7 @@ import { useInstallments } from '../loans/queries';
 import { owedMinor } from '../networth/debt-rows';
 import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
 import { jointChip, readJointOrder, walletJoint, walletKeys } from './wallet-joint';
-import { bankOf, moneyChip, moneyFaceOf, walletCredit, walletMoney } from './wallet-model';
+import { bankOf, moneyChip, moneyFaceOf, walletAsideCredit, walletCredit, walletMoney } from './wallet-model';
 
 /** What a credit card's points are counted in, for the line beside the stack. */
 const unitOf = (cp: CardPoints) => cp.programme?.unit ?? cp.program?.unit ?? 'points';
@@ -25,8 +25,12 @@ const unitOf = (cp: CardPoints) => cp.programme?.unit ?? cp.program?.unit ?? 'po
  * Wallet's cards, each drawn as every view draws it — its face, its figure, where a tap goes — and in the order all
  * three views and Reorder cards read them (`walletOrder`). With them, what they were read from, so Wallet's Balance box
  * counts the same money the cards show.
+ *
+ * `openId` is the card or account open on its page. When it is a credit card switched off "For spending"
+ * (`walletAsideCredit`), that card is drawn too, as `aside`, so Wallet can raise it over its page as it raises its own
+ * cards — and it is in none of `cards`, `credit` or the figures read from them.
  */
-export function useWalletCards() {
+export function useWalletCards(openId?: string) {
   const { database, ws } = useApp();
   const accounts = useAccounts();
   const balances = useBalances();
@@ -68,6 +72,13 @@ export function useWalletCards() {
     enabled: accounts.isSuccess,
     queryFn: () => Promise.all(credit.map((card) => loadCardPoints(database, ws, card, everything, today))),
   });
+  // The card kept aside that is open, read on its own so opening it never reads every card's points again.
+  const asideAccount = walletAsideCredit(everything, openId);
+  const asideData = useQuery({
+    queryKey: ['card-points-list', ws.workspaceId, today, 'aside', asideAccount?.id ?? ''],
+    enabled: accounts.isSuccess && asideAccount !== undefined,
+    queryFn: () => loadCardPoints(database, ws, asideAccount!, everything, today),
+  });
 
   /**
    * A money card's figure: its balance, or — for an account with pockets — what its pockets kept for spending come to
@@ -106,7 +117,7 @@ export function useWalletCards() {
       label: account.name,
     };
   });
-  const creditCards: WalletCard[] = (data.data ?? []).map((cp) => {
+  const creditCard = (cp: CardPoints): WalletCard => {
     const own = [...plastic.filter((card) => card.accountId === cp.card.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     const points = cp.current?.earn.totalPoints ?? 0;
     const value = pointsValue(points, cp);
@@ -141,7 +152,9 @@ export function useWalletCards() {
       // The card's own name, so a link to it reads as the card rather than as a sentence about it.
       label: cp.card.name,
     };
-  });
+  };
+  const creditCards: WalletCard[] = (data.data ?? []).map(creditCard);
+  const aside = asideAccount && asideData.data ? creditCard(asideData.data) : undefined;
   /*
    * The partner's joint cards, drawn like an own card of their kind from what the summary carries — its name, its kind,
    * its currency, its bank and card tier, and the last four digits of its card or its number — and "· Rina’s" after
@@ -181,7 +194,7 @@ export function useWalletCards() {
    */
   const byKey = new Map([...moneyCards, ...creditCards, ...jointCards].map((card) => [card.key, card]));
   const cards = walletKeys(everything, joint, readJointOrder()).flatMap((key) => byKey.get(key) ?? []);
-  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess && !plans.isPending && !shared.isPending;
+  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess && !plans.isPending && !shared.isPending && (asideAccount === undefined || !asideData.isPending);
 
-  return { accounts, balances, everything, all, parents, book, money, credit, joint, rates, held, today, cards, ready, laterOnCards, plansRead: !plans.isPending };
+  return { accounts, balances, everything, all, parents, book, money, credit, joint, rates, held, today, cards, aside, ready, laterOnCards, plansRead: !plans.isPending };
 }

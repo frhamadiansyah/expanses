@@ -1671,8 +1671,8 @@ export function amountFace(value: string, currency: string, refund = false, frac
   return read.minor < 0 ? `−${face}` : face;
 }
 
-/** The dock's keys, read left to right, top to bottom. DONE spans two rows; there is deliberately no Save. */
-export const KEYPAD_KEYS = ['C', '÷', '×', '⌫', '7', '8', '9', '−', '4', '5', '6', '+', '1', '2', '3', 'DONE', '0', '000', '00'] as const;
+/** The dock's keys, read left to right, top to bottom: the digits in the iPhone's order, 1 2 3 on top (owner, 22 Nov 2026). DONE spans two rows; there is deliberately no Save. */
+export const KEYPAD_KEYS = ['C', '÷', '×', '⌫', '1', '2', '3', '−', '4', '5', '6', '+', '7', '8', '9', 'DONE', '0', '000', '00'] as const;
 
 export type KeypadKey = (typeof KEYPAD_KEYS)[number] | ',';
 

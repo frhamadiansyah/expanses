@@ -248,6 +248,74 @@ export async function changeOpeningDate(database: Database, ws: WorkspaceContext
   });
 }
 
+/**
+ * Changes a money account's starting balance (Settings › Balance, the figure on its "As of" day): the opening entry is
+ * replaced on the same day at the same rate with the new amount, in one database transaction, as `changeOpeningDate`
+ * replaces it for the day. Nothing else is rewritten — every balance from that day on moves by the difference, and
+ * Cashflow, which never counts an opening, stays as it was.
+ *
+ * An account opened at nothing has no entry: it is given one on its As of day (`counted_from`, else the day it was
+ * added); in a foreign currency that needs `rateToBase`, as the add form's opening does. Zero takes the entry away and
+ * keeps its day as the As of day. An account with pockets holds nothing itself, so it has no balance to change.
+ */
+export async function changeOpeningBalance(
+  database: Database,
+  ws: WorkspaceContext,
+  accountId: string,
+  balanceMinor: number,
+  rateToBase?: number,
+): Promise<void> {
+  if (!Number.isSafeInteger(balanceMinor)) throw new AssetError('That is not an amount');
+  await database.transaction(async (tx) => {
+    await assertAccountInWorkspace(tx, ws, accountId, 'Account');
+    const [account] = await tx
+      .select({ kind: accounts.kind, currency: accounts.currency, name: accounts.name, createdAt: accounts.createdAt })
+      .from(accounts)
+      .where(eq(accounts.id, accountId));
+    if (!account || account.kind !== 'asset' || !account.currency) throw new AssetError('Only money held has a starting balance here');
+    const pockets = await tx.values(sql`SELECT 1 FROM accounts WHERE parent_id = ${accountId} AND kind = 'asset' LIMIT 1`);
+    if (pockets.length > 0) throw new AssetError('Each pocket keeps its own starting balance');
+    const equityId = await systemAccountId(tx, ws, 'opening_balance');
+    const opening = await openingOfTx(tx, ws, accountId);
+    if (opening) {
+      const lines = await tx
+        .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, fxRateToBase: entries.fxRateToBase })
+        .from(entries)
+        .where(and(eq(entries.transactionId, opening.id), eq(entries.workspaceId, ws.workspaceId)));
+      const own = lines.find((line) => line.accountId === accountId);
+      // Only the plain two-line opening is rewritten: anything more was posted by something else, and is left to it.
+      if (!own || lines.length !== 2 || !lines.some((line) => line.accountId === equityId)) throw new AssetError('This opening entry has more than one part, so it is left as it is');
+      if (own.amountMinor === balanceMinor) return;
+      if (balanceMinor === 0) {
+        await voidTransactionTx(tx, ws, opening.id);
+        // The day stays the As of day: an account opened at nothing keeps its own (0107).
+        if (await countedColumnExists(tx)) await tx.run(sql`UPDATE accounts SET counted_from = ${opening.occurredOn} WHERE id = ${accountId}`);
+        return;
+      }
+      await replaceTransactionTx(tx, ws, opening.id, {
+        occurredOn: opening.occurredOn,
+        description: opening.description,
+        lines: openingBalanceLines({ accountId, kind: 'asset', balanceMinor, currency: own.currency, equityAccountId: equityId }),
+        ratesToBase: own.currency !== ws.baseCurrency ? { [own.currency]: own.fxRateToBase } : {},
+      });
+      return;
+    }
+    if (balanceMinor === 0) return;
+    if (account.currency !== ws.baseCurrency && !rateToBase) throw new AssetError('A rate to the base currency is needed for a balance in another currency');
+    let on = account.createdAt.slice(0, 10);
+    if (await countedColumnExists(tx)) {
+      const [row] = await tx.values<[string | null]>(sql`SELECT counted_from FROM accounts WHERE id = ${accountId}`);
+      if (row?.[0]) on = row[0];
+    }
+    await postTransactionTx(tx, ws, {
+      occurredOn: on,
+      description: `Opening balance: ${account.name}`,
+      lines: openingBalanceLines({ accountId, kind: 'asset', balanceMinor, currency: account.currency, equityAccountId: equityId }),
+      ratesToBase: account.currency !== ws.baseCurrency ? { [account.currency]: rateToBase! } : {},
+    });
+  });
+}
+
 const countedColumn = new WeakMap<object, boolean>();
 async function countedColumnExists(tx: Db): Promise<boolean> {
   if (countedColumn.get(tx)) return true;

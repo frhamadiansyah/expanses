@@ -696,8 +696,8 @@ describe("the amount row's face on a phone", () => {
 });
 
 describe('the keypad', () => {
-  it('lays its keys out as the dock draws them, with no Save', () => {
-    expect(KEYPAD_KEYS).toEqual(['C', '÷', '×', '⌫', '7', '8', '9', '−', '4', '5', '6', '+', '1', '2', '3', 'DONE', '0', '000', '00']);
+  it('lays its keys out as the dock draws them, digits in the iPhone order, with no Save', () => {
+    expect(KEYPAD_KEYS).toEqual(['C', '÷', '×', '⌫', '1', '2', '3', '−', '4', '5', '6', '+', '7', '8', '9', 'DONE', '0', '000', '00']);
     expect(KEYPAD_KEYS).not.toContain('Save');
   });
 
