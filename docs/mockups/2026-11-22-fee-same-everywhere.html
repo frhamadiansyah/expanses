@@ -1,0 +1,112 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Annual fee: the same on every card</title>
+<style>
+  :root { --ink:#1c1c1e; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; --red:#c0392b; --green:#2e8b3e; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1180px; line-height:1.4; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; }
+  .col { width:360px; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:68px; line-height:1.4; }
+  .phone { background:var(--ground); border-radius:26px; padding:8px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .hd { display:flex; justify-content:space-between; font-size:12px; letter-spacing:.05em; color:var(--ink3); margin:12px 12px 6px; font-weight:600; }
+  .hd b { color:var(--ink); font-weight:700; letter-spacing:0; font-size:13px; font-variant-numeric:tabular-nums; }
+  .grp { background:#fff; border-radius:14px; overflow:hidden; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:10px 12px 10px 14px; gap:8px; }
+  .r + .r { border-top:.5px solid var(--hair); }
+  .v { color:var(--ink3); white-space:nowrap; font-size:14px; }
+  .tx { display:flex; align-items:center; gap:10px; padding:9px 12px; }
+  .tx + .tx { border-top:.5px solid var(--hair); }
+  .ic { width:34px; height:34px; border-radius:50%; background:#e9ebef; display:flex; align-items:center; justify-content:center; position:relative; flex-shrink:0; }
+  .ic svg { width:17px; height:17px; color:#56607a; }
+  .ic .badge { position:absolute; right:-3px; bottom:-3px; width:15px; height:15px; border-radius:50%; background:#1c1c1e; color:#fff; font-size:9px; display:flex; align-items:center; justify-content:center; }
+  .tt { flex:1; min-width:0; } .tt .n { font-size:15px; } .tt .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .am { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; } .am .m { font-size:15px; } .am .x { font-size:12.5px; color:var(--ink3); }
+  .red { color:var(--red); } .grn { color:var(--green); } .gry { color:var(--ink3); }
+  .bad { outline:2px solid #ff9f0a; outline-offset:-2px; border-radius:10px; }
+  .newrow { outline:2px dashed #8e8e93; outline-offset:-2px; border-radius:10px; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#2e8b3e; border-radius:9px; padding:1px 7px; margin-left:6px; vertical-align:2px; }
+  .warn { background:#ff9f0a; } .grey { background:#8e8e93; }
+  .divider { width:1px; background:#c7c7cc; align-self:stretch; }
+  .foot { font-size:12.5px; color:#555; margin:10px 4px 0; line-height:1.4; }
+  .foot b { color:var(--ink); }
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute"><symbol id="card" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="11" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 16c.6-1.6 1.7-2.3 3-2.3s2.4.7 3 2.3M14 10h4M14 13h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol></svg>
+<h1>Annual fee · the same on every card</h1>
+<p class="sub">Card 1111 was in the app when its fee came (6 Oct). Card 2222 was added later, so its fee (12 Aug) is inside its starting balance. Both fees were reversed on 3 Nov. Other spending: October Rp1.508.250, November Rp2.000.000. The header of each month shows that month's spending. Invented cards and figures.</p>
+
+<div class="wrap">
+  <!-- TODAY -->
+  <div class="col">
+    <p class="cap">Today <span class="tag warn">DIFFERENT</span></p>
+    <p class="note">The two cards look different (orange). Card 1111's fee pushes October up, and its reversal pulls November down by the same amount.</p>
+    <div class="phone">
+      <div class="hd"><span>FEE PAGE</span></div>
+      <div class="grp">
+        <div class="r"><span>1111 · Charged</span><span class="v">6 Oct · Rp 800.000</span></div>
+        <div class="r bad"><span>2222 · Charged</span><span class="v">12 Aug · before the app</span></div>
+      </div>
+      <div class="hd"><span>OCTOBER</span><b class="red">Rp2.308.250</b></div>
+      <div class="grp">
+        <div class="tx"><span class="ic"><svg><use href="#card"/></svg></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee · 1111</div></div><div class="am"><div class="m red">Rp800.000</div></div></div>
+      </div>
+      <div class="hd"><span>NOVEMBER</span><b>Rp1.200.000</b></div>
+      <div class="grp">
+        <div class="tx"><span class="ic"><svg><use href="#card"/></svg><span class="badge">↺</span></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee reversal · 1111</div></div><div class="am"><div class="m grn">+Rp800.000</div></div></div>
+        <div class="tx bad"><span class="ic"><svg><use href="#card"/></svg><span class="badge">↺</span></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee reversal · 2222</div></div><div class="am"><div class="m gry">Rp0</div><div class="x">⊘ Rp800.000</div></div></div>
+      </div>
+      <p class="foot">October looks Rp800.000 higher and November Rp800.000 lower than what was really spent.</p>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <!-- OPTION 1 -->
+  <div class="col">
+    <p class="cap">1 · A reversed fee is left out <span class="tag">SUGGESTED</span></p>
+    <p class="note">Once a fee is reversed, the fee and its reversal both turn grey (Rp0 ⊘) on every card: as if it was never charged. Starting balances are not touched. A fee that is not reversed still counts.</p>
+    <div class="phone">
+      <div class="hd"><span>FEE PAGE</span></div>
+      <div class="grp">
+        <div class="r"><span>1111 · Charged</span><span class="v">6 Oct · Rp 800.000</span></div>
+        <div class="r"><span>2222 · Charged</span><span class="v">12 Aug · Rp 800.000</span></div>
+      </div>
+      <div class="hd"><span>OCTOBER</span><b>Rp1.508.250</b></div>
+      <div class="grp">
+        <div class="tx"><span class="ic"><svg><use href="#card"/></svg></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee · 1111</div></div><div class="am"><div class="m gry">Rp0</div><div class="x">⊘ Rp800.000</div></div></div>
+      </div>
+      <div class="hd"><span>NOVEMBER</span><b>Rp2.000.000</b></div>
+      <div class="grp">
+        <div class="tx"><span class="ic"><svg><use href="#card"/></svg><span class="badge">↺</span></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee reversal · 1111</div></div><div class="am"><div class="m gry">Rp0</div><div class="x">⊘ Rp800.000</div></div></div>
+        <div class="tx"><span class="ic"><svg><use href="#card"/></svg><span class="badge">↺</span></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee reversal · 2222</div></div><div class="am"><div class="m gry">Rp0</div><div class="x">⊘ Rp800.000</div></div></div>
+      </div>
+      <p class="foot"><b>Each month shows only what was really spent.</b> Both reversals look the same. The fee page shows the card's fee amount for 2222 too, in place of “before the app”.</p>
+    </div>
+  </div>
+  <!-- OPTION 2 -->
+  <div class="col">
+    <p class="cap">2 · Fee and reversal both count <span class="tag grey">EARLIER IDEA</span></p>
+    <p class="note">Card 2222's fee gets its own row on 12 Aug (dashed), taken off its starting balance; owed today is unchanged. Both reversals count, so November drops by Rp1.600.000.</p>
+    <div class="phone">
+      <div class="hd"><span>FEE PAGE</span></div>
+      <div class="grp">
+        <div class="r"><span>1111 · Charged</span><span class="v">6 Oct · Rp 800.000</span></div>
+        <div class="r"><span>2222 · Charged</span><span class="v">12 Aug · Rp 800.000</span></div>
+      </div>
+      <div class="hd"><span>AUGUST · NEW ROW</span><b></b></div>
+      <div class="grp">
+        <div class="tx newrow"><span class="ic"><svg><use href="#card"/></svg></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee · 2222</div></div><div class="am"><div class="m red">Rp800.000</div></div></div>
+      </div>
+      <div class="hd"><span>OCTOBER</span><b class="red">Rp2.308.250</b></div>
+      <div class="grp">
+        <div class="tx"><span class="ic"><svg><use href="#card"/></svg></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee · 1111</div></div><div class="am"><div class="m red">Rp800.000</div></div></div>
+      </div>
+      <div class="hd"><span>NOVEMBER</span><b>Rp400.000</b></div>
+      <div class="grp">
+        <div class="tx"><span class="ic"><svg><use href="#card"/></svg><span class="badge">↺</span></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee reversal · 1111</div></div><div class="am"><div class="m grn">+Rp800.000</div></div></div>
+        <div class="tx"><span class="ic"><svg><use href="#card"/></svg><span class="badge">↺</span></span><div class="tt"><div class="n">Membership fee</div><div class="s">Annual fee reversal · 2222</div></div><div class="am"><div class="m grn">+Rp800.000</div></div></div>
+      </div>
+      <p class="foot">Same look on both cards, but August and October look higher and November much lower than what was really spent.</p>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -1375,6 +1375,15 @@ export function refiledPost(tx: TransactionView, accounts: readonly AccountRow[]
 }
 
 /**
+ * The purchase's own exclude mark. A reversed annual fee reads excluded by the fee rule (`feeLeftOut`), worked out and
+ * never stored: the form shows and saves the mark beneath it, so saving an edit never turns the rule into a mark that
+ * would outlive the reversal.
+ */
+export function markedExcluded(tx: Pick<TransactionView, 'excluded' | 'feeLeftOut' | 'excludedMark'>): boolean {
+  return (tx.feeLeftOut ? tx.excludedMark : tx.excluded) ?? false;
+}
+
+/**
  * A transaction reopened as a draft: the typed currency is what the merchant charged, when there was one.
  *
  * `photoIds` are the pictures the transaction already has, in the order they were taken. They are a caller's
@@ -1394,7 +1403,8 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     cardId: tx.cardId ?? '',
     eventId: tx.eventId ?? '',
     channel: tx.channel ?? '',
-    excluded: tx.excluded ?? false,
+    // The purchase's own mark: a reversed fee is out of the reports by the fee rule, never by a mark the form would save.
+    excluded: markedExcluded(tx),
     goalId: tx.goalId ?? '',
     editing: true,
   };
@@ -1430,7 +1440,7 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     const notCounted = c.type === 'expense' ? tx.entries.filter((e) => e.accountKind === 'equity' && isNotCountedKey(e.accountSystemKey)) : [];
     if (c.type === 'expense' && category.length + notCounted.length > 1) {
       // Each line left out of its workspace's reports (0090, 0096) says so itself; the purchase's own flag is every line's.
-      const partOff = (e: (typeof category)[number]) => (tx.excluded ?? false) || e.excluded === true || (tx.splitBooks?.some((book) => book.id === e.bookId && book.excluded) ?? false);
+      const partOff = (e: (typeof category)[number]) => markedExcluded(tx) || e.excluded === true || (tx.splitBooks?.some((book) => book.id === e.bookId && book.excluded) ?? false);
       const splits: SplitRow[] = [
         ...category.map((e) => ({ categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency), ...(partOff(e) ? { excluded: true } : {}) })),
         ...notCounted.map((e) => ({ categoryId: NOT_COUNTED, amount: minorToMajorString(e.amountMinor, e.currency) })),

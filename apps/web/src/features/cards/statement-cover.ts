@@ -64,6 +64,8 @@ export function paidHowText(line: StatementLine, cover: ReadonlyMap<string, Line
     if (covered.by) return `Paid with the ${shortDay(covered.by.occurredOn)} ${covered.by.spending ? 'refund' : 'payment'}`;
     return 'Paid with earlier credit';
   }
+  // An annual fee's money back, and the fee row added beside one reversed before the app, are settled on their own.
+  if (line.feeSettled) return 'Settled';
   if (line.paidOff) return line.instalment ? 'Paid' : line.owedMinor < 0 ? 'Settled' : 'Paid before cicis';
   if (line.paidBy) return `Paid ${shortDay(line.paidBy.paidOn)}`;
   return null;

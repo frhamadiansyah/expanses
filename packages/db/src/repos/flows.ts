@@ -13,6 +13,7 @@ import { resolvedCategoryNeeds } from './category-needs';
 import { isInvestmentPlan, plansWithStatementDays, purchaseWholes, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
 import { homeLoanAccountIds } from './loans';
 import { extrasTablesExist } from './transaction-extras';
+import { feeLeftOutIds } from './fee-left-out';
 import { lineExclusionExists, splitExclusionExists } from './book-splits';
 
 export interface MonthFlow {
@@ -142,9 +143,12 @@ export async function periodFlows(
   // What was marked "not my spending". Narrowed the same two ways `rows` above is: this workspace, this period — or,
   // for the purchases a plan spreads each month, those purchases whatever their date.
   const extras = await extrasTablesExist(database.db);
+  // …and a reversed annual fee, its charge and its money back (owner, 22 Nov 2026): worked out, never marked.
+  const feeOut = await feeLeftOutIds(database, ws);
   const excludedWhere = async (which: SQL) =>
-    new Set<string>(
-      extras
+    new Set<string>([
+      ...feeOut,
+      ...(extras
         ? (
             await database.db.values<[string]>(sql`
               SELECT tf.transaction_id FROM transaction_flags tf
@@ -154,8 +158,8 @@ export async function periodFlows(
                 AND t.workspace_id = ${ws.workspaceId}
                 AND ${which}`)
           ).map((row) => String(row[0]))
-        : [],
-    );
+        : []),
+    ]);
   const inRange = sql`t.occurred_on BETWEEN ${range.from} AND ${range.to}`;
   const excludedIds = await excludedWhere(inRange);
 

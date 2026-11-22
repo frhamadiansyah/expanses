@@ -11,6 +11,7 @@ import { partCountedWhere } from './book-splits';
 import { eventOnlyExists, notEventOnly } from './event-only';
 import { notExchangeResult } from './exchange-result';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
+import { notFeeLeftOut } from './fee-left-out';
 import { isInvestmentPlan, type PlanWithDay, plansWithStatementDays, purchaseWholes, type SpreadLine, spreadLinesIn, spreadPurchaseIds } from './instalment-spending';
 
 /** What narrows a category total beyond its kind and its dates. */
@@ -85,6 +86,8 @@ async function categoryRows(
       // What was marked "not my spending" leaves the chart, the rings and the budgets. It is still on the card,
       // still in the balance, still earning points: only this reading of it changes.
       ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
+      // A reversed annual fee leaves too, its charge and its money back (owner, 22 Nov 2026): worked out, never marked.
+      ...(await notFeeLeftOut(database, ws)),
       // …and so does one workspace's part of a purchase split across workspaces, marked so on its own (0090): the
       // other parts count, each in its own workspace.
       ...(await partCountedWhere(database.db, transactions.id, entries.accountId)),
@@ -497,6 +500,7 @@ export async function eventSpendingBetween(
     ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
     // Same clause as `categoryRows`: the event's Spent and the category report must drop the same rows.
     ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
+    ...(await notFeeLeftOut(database, ws)),
     ...(await partCountedWhere(database.db, transactions.id, entries.accountId)),
     // A shared event's own share is counted on the event page, never on a workspace's event line (§5.1).
     ...((await eventOnlyExists(database.db)) ? [notEventOnly(transactions.id)] : []),

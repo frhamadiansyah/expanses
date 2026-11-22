@@ -50,8 +50,12 @@ describe('the fee lines', () => {
       { kind: 'reversal', title: 'Reversal', value: `2 Feb 2027 · ${rp(1_100_000)}`, transactionId: 'r' },
     ]);
   });
-  it('reads a charge before the app as such, with no money of its own', () => {
+  it('reads a charge before the app as any charge, with the card’s fee (owner, 22 Nov 2026)', () => {
     const rows = feeRows(record({ beforeApp: true, reversal: { transactionId: 'r', on: '2026-11-13', amountMinor: 1_150_000, ours: true }, lines: ['charged-before-app', 'reversal'], state: 'waived' }), 1_150_000, 'IDR');
+    expect(rows[0]).toEqual({ kind: 'charged-before-app', title: 'Charged', value: `15 Oct · ${rp(1_150_000)}`, transactionId: null });
+  });
+  it('reads a charge before the app as such when the card has no fee amount', () => {
+    const rows = feeRows(record({ beforeApp: true, reversal: { transactionId: 'r', on: '2026-11-13', amountMinor: 1_150_000, ours: true }, lines: ['charged-before-app', 'reversal'], state: 'waived' }), null, 'IDR');
     expect(rows[0]).toEqual({ kind: 'charged-before-app', title: 'Charged', value: '15 Oct · before the app', transactionId: null });
   });
   it('reads Waived as not charged', () => {

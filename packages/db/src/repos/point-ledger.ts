@@ -576,6 +576,8 @@ export async function firstCardPurchaseOn(database: Database, ws: WorkspaceConte
     FROM transactions t
     WHERE t.workspace_id = ${ws.workspaceId}
       AND t.status = 'posted'
+      -- The annual fee row the app adds for a fee charged before the app (card-fee.ts) is no purchase of the card's.
+      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE 'fee-before-app:%')
       AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
       AND EXISTS (
         SELECT 1 FROM entries x JOIN accounts a ON a.id = x.account_id

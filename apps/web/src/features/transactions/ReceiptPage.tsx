@@ -180,7 +180,9 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         )}
         {tx.excluded && (
           <p data-testid="excluded-note" className="max-w-sm text-xs text-slate-500">
-            Excluded from the chart and budgets. Still counted in balances, statements and points.
+            {tx.feeLeftOut
+              ? 'Annual fee reversed: the fee and its reversal are left out of the chart and budgets. Still counted in balances and statements.'
+              : 'Excluded from the chart and budgets. Still counted in balances, statements and points.'}
           </p>
         )}
       </section>
