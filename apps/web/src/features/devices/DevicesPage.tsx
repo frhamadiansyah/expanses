@@ -22,6 +22,7 @@ import {
   workspaceLine,
 } from './devices-copy';
 import { JoinLinkSheet } from './JoinLinkSheet';
+import { clearLinkOnOpen, linkOnOpenWanted } from './link-on-open';
 import { LinkSheet } from './LinkSheet';
 import { useSelfStatus } from './use-self';
 
@@ -50,7 +51,8 @@ export function DevicesPage() {
   const books = useBooks();
   const shared = useSharedBooks();
   const [linking, setLinking] = useState(false);
-  const [joining, setJoining] = useState(false);
+  // Opened from the first screen's Link to another device: the sheet is already showing (link-on-open.ts).
+  const [joining, setJoining] = useState(linkOnOpenWanted);
   const [failed, setFailed] = useState(readFailed);
   const now = Date.now();
   const devices = linkedDevices(status.devices);
@@ -117,7 +119,14 @@ export function DevicesPage() {
         </InsetGroup>
       </div>
       {linking && <LinkSheet onClose={() => setLinking(false)} />}
-      {joining && <JoinLinkSheet onClose={() => setJoining(false)} />}
+      {joining && (
+        <JoinLinkSheet
+          onClose={() => {
+            clearLinkOnOpen();
+            setJoining(false);
+          }}
+        />
+      )}
     </div>
   );
 }
