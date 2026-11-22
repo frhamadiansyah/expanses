@@ -5,7 +5,7 @@ import { LATEST_VERSION } from '../migrations';
 import { voidTransactionTx } from '../repos/ledger';
 import { settleTwicePaidBillsTx } from '../repos/bill-settle';
 import { AuthorityError } from '../sync/authority';
-import { BookReadOnlyError, SyncNotReadyError, capturePostedTx, captureCardChangingTx, captureVoidingTx, LastOwnerError, MemberNameError, seatIsElsewhere, withCapture, withCapturePaused } from '../sync/capture';
+import { BookReadOnlyError, SyncNotReadyError, capturePostedTx, captureCardChangingTx, captureVoidingTx, LastOwnerError, MemberNameError, seatIsElsewhere, withCapture, withCapturePaused, withCaptureSuspended } from '../sync/capture';
 import { OP_ID_SEPARATOR, SHARED_ENTITIES, type RowEntity } from '../sync/shared-entities';
 import { compareHlc, decodeHlc, localTick, receiveHlc } from '../sync/hlc';
 import { stableId } from './stable-id';
@@ -315,7 +315,7 @@ async function applyOnce(database: Database, changeSet: SelfChangeSet, share: bo
       await settleTwiceEdited(run);
       // A bill month paid on two devices before they met keeps one payment, the same on both (bill-settle.ts).
       const paying = changeSet.ops.filter((op) => op.t === 'bill_payments' || op.t === 'transactions').map((op) => String(op.k[0]));
-      if (paying.length > 0) await withCapturePaused(tx, () => settleTwicePaidBillsTx(tx, paying));
+      if (paying.length > 0) await withCaptureSuspended(tx, () => settleTwicePaidBillsTx(tx, paying));
       for (const note of run.notes) {
         await tx.run(sql`INSERT INTO self_notes (at, kind, tbl, pk, other_pk) VALUES (${new Date().toISOString()}, ${note.kind}, ${note.table}, ${note.pk}, ${note.other ?? null})`);
       }
