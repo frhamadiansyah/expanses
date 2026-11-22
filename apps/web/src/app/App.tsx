@@ -8,6 +8,7 @@ import type { AppDb } from '../db/bootstrap';
 import { backgroundCopyFor, watchLeaving } from '../db/background-copy';
 import { scheduleDailyCopy } from '../db/snapshots';
 import { watchNetWorthAutoSteps } from '../features/sharing/household';
+import { linkOnOpenWanted } from '../features/devices/link-on-open';
 import { listenForAddLinks, listenForJoinLinks, listenForReviewLinks, listenForStatementLinks } from '../native/deep-link';
 import type { SyncService } from '../sync/sync-service';
 import { type AppState, AppContext } from './context';
@@ -70,6 +71,10 @@ export function App({ app, sync: given }: { app: AppDb; sync?: SyncService }) {
   // A `cicis://join/…` link opened while the shell runs, or the one it was launched by, lands on Join a workspace, the code in
   // the fragment rather than the path.
   useEffect(() => listenForJoinLinks((code) => void router.navigate({ to: '/join', hash: code })), []);
+  // The first screen's Link to another device (ICloudWelcome): the app opens on Devices, the sheet already showing.
+  useEffect(() => {
+    if (linkOnOpenWanted()) void router.navigate({ to: '/account/devices', replace: true });
+  }, []);
   useEffect(() => listenForReviewLinks(() => void router.navigate({ to: '/review' })), []);
   // Several statement screenshots shared from Photos: already read on the phone, they wait for the owner to say which
   // card they belong to (statement-check S2).
