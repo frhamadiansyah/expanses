@@ -266,6 +266,7 @@ export function SplitSheet({
   };
 
   const current = part !== null ? splits[part] : undefined;
+  const billOffered = !!current && part !== null && !isNotCountedRow(current) && draft.mode === 'expense' && (!!current.bill || billChoicesForPart(billChoices, splits, part).length > 0);
   return (
     <Sheet grouped title="Split" onClose={onClose} confirm={{ label: 'Done', disabled: !!refusal, run: onClose }}>
       <div className="mb-[14px] rounded-[11px] bg-[var(--ph-surface)] px-[16px] py-[12px]">
@@ -360,22 +361,19 @@ export function SplitSheet({
                 }}
               />
             )}
+            {/* The bill this part pays: a month of a recurring bill, or None. Pay's own bill is the payment's, and stays. */}
+            {billOffered && (current.bill?.own ? (
+              <ReadOnlyRow label="Bill" value={billOf(current) ?? 'Linked'} />
+            ) : (
+              <PickerRow label="Bill" testId="split-part-bill" value={billOf(current) ?? 'None'} onOpen={() => setChoosingBill(true)} />
+            ))}
           </InsetGroup>
           {over && (
             <p role="alert" className="-mt-[8px] mb-[14px] px-[13px] text-[12.5px] leading-4 text-[var(--ph-warn)]">
               {over}
             </p>
           )}
-          {/* The bill this part pays: a month of a recurring bill, or None. Pay's own bill is the payment's, and stays. */}
-          {!isNotCountedRow(current) && draft.mode === 'expense' && (current.bill || billChoicesForPart(billChoices, splits, part).length > 0) && (
-            <InsetGroup>
-              {current.bill?.own ? (
-                <ReadOnlyRow label="Bill" value={billOf(current) ?? 'Linked'} />
-              ) : (
-                <PickerRow label="Bill" testId="split-part-bill" value={billOf(current) ?? 'None'} onOpen={() => setChoosingBill(true)} />
-              )}
-            </InsetGroup>
-          )}
+
           {current.categoryId && !isNotCountedRow(current) && (
             <InsetGroup>
               <SwitchRow
