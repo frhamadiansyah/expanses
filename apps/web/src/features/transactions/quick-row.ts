@@ -1,6 +1,6 @@
 import { expenseLines, minorToMajorString, parseLooseAmount, parseLooseDate, type PaymentOption, type PostingLine } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
-import { canPayWith } from '../../lib/account-types';
+import { canPasteAsPaidWith, canPayWith } from '../../lib/account-types';
 import { classify } from './classify';
 
 /**
@@ -158,6 +158,17 @@ export function paymentOptions(accounts: readonly AccountRow[], cards: readonly 
 export const paymentKey = (accountId: string, cardId: string | null | undefined) => (cardId ? `${accountId}:${cardId}` : accountId);
 
 /**
+ * The key a row's Paid with cell shows its value by: the one `paymentOptions` offers for it. An account with fewer
+ * than two cards is one choice, keyed by the account alone, but a purchase recorded on it names its only card (posting
+ * fills it in), so the row reads "account:card" — a key no choice has, and the cell read as empty. Only what the cell
+ * shows is keyed this way; the row's own account and card, and what is written, are left as they are.
+ */
+export function shownPaymentKey(accountId: string, cardId: string | null | undefined, cards: readonly CardRow[]): string {
+  if (!cardId) return accountId;
+  return cards.filter((card) => card.accountId === accountId).length < 2 ? accountId : paymentKey(accountId, cardId);
+}
+
+/**
  * A placeholder — an account another member's purchase is posted against here, which this device's own list leaves
  * out (household sharing spec §4.4) — is never offered as a way to pay: only the one the row already names stays, as
  * its current value (final review, minor 2). `listed` is what this device lists; `current` the account the row names.
@@ -186,6 +197,27 @@ export function payerOptions(accounts: readonly AccountRow[], cards: readonly Ca
     cards,
     current,
   );
+}
+
+/**
+ * Every way to pay a pasted Paid with cell may name (`canPasteAsPaidWith`): `payerOptions`'s, and the cards and accounts
+ * switched off "For spending" too. A paste reads what is for spending first and turns to these only when nothing there
+ * matches (`matchPasted`), so a name or digits that matched before still match the same way.
+ */
+export function pastedPayerOptions(accounts: readonly AccountRow[], cards: readonly CardRow[]): PaymentOption[] {
+  return paymentOptions(
+    accounts.filter((account) => canPasteAsPaidWith(account)),
+    cards,
+  );
+}
+
+/**
+ * A pasted cell read by `read` against `offered` (what picking by hand offers), else against `pasteable` (what a paste
+ * may name, `pastedPayerOptions`). Several matches stay no answer: `pasteable` holds every one of `offered`, so text
+ * that names two of those names two of these too.
+ */
+export function matchPasted<T>(read: (options: readonly PaymentOption[]) => T | null, offered: readonly PaymentOption[], pasteable: readonly PaymentOption[]): T | null {
+  return read(offered) ?? read(pasteable);
 }
 
 /**
