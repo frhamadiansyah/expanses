@@ -241,6 +241,7 @@ test('a Notion copy reads right: its header names, YYYY/MM/DD dates, a card by i
 test('a paste names a card switched off For spending, by name or last four digits, and records on it; picking by hand does not offer it', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await openCard(page, { name: 'Kartu Simpan', owed: '0', last4: '4417' });
+  const cardId = /\/cards\/([^/?#]+)$/.exec(page.url())?.[1];
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).first().click();
   await page.getByRole('checkbox', { name: 'For spending' }).click();
   await expect(page.getByRole('checkbox', { name: 'For spending' })).not.toBeChecked();
@@ -262,6 +263,12 @@ test('a paste names a card switched off For spending, by name or last four digit
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Toko Lama' })).toHaveCount(1);
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Toko Lama' })).toContainText('Kartu Simpan');
+
+  // On the card's own table, cell by cell, the recorded row names its only plastic and the cell shows the card.
+  await page.goto(`/transactions?account=${cardId}`);
+  await page.getByRole('button', { name: 'Table' }).click();
+  const recorded = page.getByTestId('table-row').filter({ has: page.locator('input[value="Toko Lama"]') });
+  await expect(recorded.getByLabel('Row payment method')).toHaveValue('Kartu Simpan');
 });
 
 test('Notion’s whole rows (page links, no cells) are not pasted as notes: a line says how to copy cells', async ({ page }) => {

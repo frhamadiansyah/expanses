@@ -188,6 +188,17 @@ export function paymentOptions(accounts: readonly AccountRow[], cards: readonly 
 export const paymentKey = (accountId: string, cardId: string | null | undefined) => (cardId ? `${accountId}:${cardId}` : accountId);
 
 /**
+ * The key a row's Paid with cell shows its value by: the one `paymentOptions` offers for it. An account with fewer
+ * than two cards is one choice, keyed by the account alone, but a purchase recorded on it names its only card (posting
+ * fills it in), so the row reads "account:card" — a key no choice has, and the cell read as empty. Only what the cell
+ * shows is keyed this way; the row's own account and card, and what is written, are left as they are.
+ */
+export function shownPaymentKey(accountId: string, cardId: string | null | undefined, cards: readonly CardRow[]): string {
+  if (!cardId) return accountId;
+  return cards.filter((card) => card.accountId === accountId).length < 2 ? accountId : paymentKey(accountId, cardId);
+}
+
+/**
  * A placeholder — an account another member's purchase is posted against here, which this device's own list leaves
  * out (household sharing spec §4.4) — is never offered as a way to pay: only the one the row already names stays, as
  * its current value (final review, minor 2). `listed` is what this device lists; `current` the account the row names.
