@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
-import { addForm, addTransaction, choosePayment, openAmount, saveButton } from './add-transaction';
+import { addForm, addTransaction, choosePayment, openAmount, saveButton, setPaidOff } from './add-transaction';
 import { cardPage, closePaidBubble, openPaidBubble, paidTick, payCard, payStatementPurchases, startPlan } from './card-section';
 
 /*
@@ -70,6 +70,8 @@ test('every paid purchase wears one green ✓, and a tap on it says how it was p
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Refund Toko Contoh');
   await form.getByLabel('Date').fill(lastMonth(27));
+  // Still to settle on the card, an old date or not: the statement settles it below.
+  await setPaidOff(form, false);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
