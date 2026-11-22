@@ -16,6 +16,8 @@ import { useSharedBooks } from '../sharing/queries';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
 import { excludedWhole, type FormDraft, isNotCountedRow, NOT_COUNTED, splitCentsRefusal, type SplitRow, splitTotalMinor, typedCurrency, withPartExcluded, withSplitCategory } from './tx-form';
+import { useBillChoices, useBillTemplates } from '../bills/queries';
+import { billChoicesForPart, billLabel, partBillLabel, withPartBill } from './split-bills';
 
 /**
  * "None", or "2 splits · Total Rp 85.000" — what the Split row says without being opened.
@@ -217,6 +219,11 @@ export function SplitSheet({
    */
   const notCountedOffered = !(ws.bookId && shared.has(ws.bookId));
   const [part, setPart] = useState<number | null>(null);
+  // A part's Bill list (one payment, several bills; 0127): the bills not paid yet for the purchase's month.
+  const [choosingBill, setChoosingBill] = useState(false);
+  const billChoices = useBillChoices(draft.occurredOn, draft.billsOpened?.transactionId ?? null).data ?? [];
+  const billNames = new Map((useBillTemplates().data ?? []).map((bill) => [bill.id, bill.name] as const));
+  const billOf = (row: SplitRow) => partBillLabel(row.bill, billChoices, billNames);
   const [picking, setPicking] = useState<{ index: number; workspaceFirst: boolean } | null>(null);
   // Why the last typed figure was not taken ("Over by …"): the field keeps its last good value meanwhile.
   const [over, setOver] = useState<string | null>(null);
@@ -248,6 +255,8 @@ export function SplitSheet({
   const nameOf = (row: SplitRow) => (isNotCountedRow(row) ? 'Not counted' : row.categoryId ? (accounts.find((a) => a.id === row.categoryId)?.name ?? 'Category') : 'Choose a category');
   const noteOf = (row: SplitRow, i: number) => {
     const notes: string[] = [];
+    const bill = billOf(row);
+    if (bill) notes.push(`Bill: ${bill}`);
     if (isNotCountedRow(row)) notes.push('Not counted');
     else if (row.categoryId) {
       const book = bookOf(row.categoryId);
@@ -257,6 +266,7 @@ export function SplitSheet({
   };
 
   const current = part !== null ? splits[part] : undefined;
+  const billOffered = !!current && part !== null && !isNotCountedRow(current) && draft.mode === 'expense' && (!!current.bill || billChoicesForPart(billChoices, splits, part).length > 0);
   return (
     <Sheet grouped title="Split" onClose={onClose} confirm={{ label: 'Done', disabled: !!refusal, run: onClose }}>
       <div className="mb-[14px] rounded-[11px] bg-[var(--ph-surface)] px-[16px] py-[12px]">
@@ -293,6 +303,7 @@ export function SplitSheet({
                 valueTone={i === at ? 'ink-3' : 'ink'}
                 onClick={() => {
                   setOver(null);
+                  setChoosingBill(false);
                   setPart(i);
                 }}
               />
@@ -350,12 +361,19 @@ export function SplitSheet({
                 }}
               />
             )}
+            {/* The bill this part pays: a month of a recurring bill, or None. Pay's own bill is the payment's, and stays. */}
+            {billOffered && (current.bill?.own ? (
+              <ReadOnlyRow label="Bill" value={billOf(current) ?? 'Linked'} />
+            ) : (
+              <PickerRow label="Bill" testId="split-part-bill" value={billOf(current) ?? 'None'} onOpen={() => setChoosingBill(true)} />
+            ))}
           </InsetGroup>
           {over && (
             <p role="alert" className="-mt-[8px] mb-[14px] px-[13px] text-[12.5px] leading-4 text-[var(--ph-warn)]">
               {over}
             </p>
           )}
+
           {current.categoryId && !isNotCountedRow(current) && (
             <InsetGroup>
               <SwitchRow
@@ -380,6 +398,27 @@ export function SplitSheet({
                 setSplits(removePart(splits, part, total, currency));
               }}
             />
+          </InsetGroup>
+        </Sheet>
+      )}
+      {current && part !== null && choosingBill && (
+        <Sheet grouped title="Bill" onClose={() => setChoosingBill(false)}>
+          <InsetGroup>
+            {[null, ...billChoicesForPart(billChoices, splits, part)].map((choice) => {
+              const picked = choice === null ? !current.bill : !!current.bill && current.bill.templateId === choice.templateId && current.bill.billMonth === choice.billMonth;
+              return (
+                <InsetRow
+                  key={choice ? `${choice.templateId}|${choice.billMonth}` : 'none'}
+                  testId="split-bill-choice"
+                  title={choice ? billLabel(choice) : 'None'}
+                  value={picked ? <Check size={18} aria-label="Chosen" className="text-[var(--ph-tint)]" /> : undefined}
+                  onClick={() => {
+                    setSplits(withPartBill(splits, part, choice));
+                    setChoosingBill(false);
+                  }}
+                />
+              );
+            })}
           </InsetGroup>
         </Sheet>
       )}

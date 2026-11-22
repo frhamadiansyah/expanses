@@ -1,4 +1,4 @@
-import { billDetail, billLinkCandidates, billLinkMonths, billLinkRefusal, billMonthsBefore, billOfPurchase, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
+import { billChoicesForPurchase, billDetail, billLinkCandidates, billLinkMonths, billLinkRefusal, billMonthsBefore, billOfPurchase, bookMoneyFor, listExpenseTemplates, monthlyBills, sinkingFundViews, yearlyBills } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -60,6 +60,16 @@ export function useBillLinkMonths(billIds: readonly string[], purchasedOn: strin
     queryKey: ['bill-link-month', ws.workspaceId, ws.bookId ?? null, [...billIds], purchasedOn, today],
     queryFn: () => billLinkMonths(database, ws, { templateIds: billIds, purchasedOn: purchasedOn!, today }),
     enabled: purchasedOn !== null && billIds.length > 0,
+  });
+}
+
+/** The bills a split's part may pay, for a purchase on that day (see `billChoicesForPurchase`). */
+export function useBillChoices(purchasedOn: string, transactionId: string | null) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['bill-choices', ws.workspaceId, purchasedOn, transactionId],
+    queryFn: () => billChoicesForPurchase(database, ws, { purchasedOn, transactionId }),
+    enabled: /^\d{4}-\d{2}-\d{2}$/.test(purchasedOn),
   });
 }
 

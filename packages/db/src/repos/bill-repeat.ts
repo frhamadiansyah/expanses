@@ -89,9 +89,15 @@ export async function notMonthlyBillsReadable(db: Db): Promise<boolean> {
  * bills, only yearly ones. Ask `notMonthlyBillsReadable` first.
  */
 export async function notMonthlyBillPaymentIds(db: Db): Promise<SQL> {
-  return (await billRepeatEveryExists(db))
-    ? sql`SELECT bp.transaction_id FROM bill_payments bp JOIN expense_templates et ON et.id = bp.template_id WHERE (et.repeat = 'yearly' OR (et.repeat = 'months' AND et.repeat_every >= 2))`
-    : sql`SELECT bp.transaction_id FROM bill_payments bp JOIN expense_templates et ON et.id = bp.template_id WHERE et.repeat = 'yearly'`;
+  const everyFew = await billRepeatEveryExists(db);
+  const notMonthly = (alias: string) =>
+    sql.raw(everyFew ? `COALESCE(${alias}.repeat = 'yearly' OR (${alias}.repeat = 'months' AND ${alias}.repeat_every >= 2), 0)` : `COALESCE(${alias}.repeat = 'yearly', 0)`);
+  // One payment of several bills (0127) is a not-monthly one only when every bill it settles is: paid with a monthly
+  // bill, it is that month's spending too.
+  const every = (cond: (alias: string) => SQL) =>
+    sql`SELECT bp.transaction_id FROM bill_payments bp JOIN expense_templates et ON et.id = bp.template_id WHERE ${cond('et')}
+      AND NOT EXISTS (SELECT 1 FROM bill_payments obp JOIN expense_templates oet ON oet.id = obp.template_id WHERE obp.transaction_id = bp.transaction_id AND NOT ${cond('oet')})`;
+  return every(notMonthly);
 }
 
 /** Of these purchases, the ones that paid a bill that is not monthly. Empty on a database that cannot say. */

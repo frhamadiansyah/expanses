@@ -124,6 +124,7 @@ import planSpreads from '../migrations/0123_plan_spreads.sql?raw';
 import planPaidSoFar from '../migrations/0124_plan_paid_so_far.sql?raw';
 import exchangeFeeOnly from '../migrations/0125_exchange_fee_only.sql?raw';
 import selfSync from '../migrations/0126_self_sync.sql?raw';
+import billPaymentsSeveral from '../migrations/0127_bill_payments_several.sql?raw';
 import type { Database } from './database';
 import { dropSelfTriggers, installSelfCapture, selfCaptureOn } from './self/triggers';
 
@@ -259,6 +260,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 124, name: 'plan_paid_so_far', sql: planPaidSoFar },
   { version: 125, name: 'exchange_fee_only', sql: exchangeFeeOnly },
   { version: 126, name: 'self_sync', sql: selfSync },
+  { version: 127, name: 'bill_payments_several', sql: billPaymentsSeveral },
 ];
 
 /** The highest version this build of the app knows how to produce. */

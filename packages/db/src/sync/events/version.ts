@@ -70,3 +70,15 @@ export function meetsVersion(have: string | null, want: string): boolean {
  * Ship order: every build that says 0.5.6 must contain migration 0123.
  */
 export const PLAN_SPREAD_MIN_APP_VERSION = '0.5.6';
+
+/**
+ * The first app version that reads a purchase's `severalBills` (one payment, several bills; 0127): a purchase that
+ * settles two bills or more — one marketplace checkout paying the internet and two phone bills. An older build would
+ * not refuse the field — it takes its clock and drops it — and would read only the first bill paid (`bill` or
+ * `billLink` still names it), for good. So, as a spread is, `severalBills` is kept out of a shared book's log until
+ * every other phone there says this version or later (capture.ts, `writeChangeSetsTx`), its clock kept as if sent, and
+ * goes at that clock once they do (repairs.ts, R10).
+ *
+ * Ship order: every build that says 0.5.7 must contain migration 0127.
+ */
+export const SEVERAL_BILLS_MIN_APP_VERSION = '0.5.7';
