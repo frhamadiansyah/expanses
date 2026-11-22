@@ -1,0 +1,147 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mac add forms</title><style>
+:root{--ink:#1d1d1f;--ink2:#3c3c43;--ink3:#86868b;--hair:#e5e5ea;--accent:#0a7cff;--up:#248a3d}
+*{box-sizing:border-box}
+body{margin:0;padding:28px;background:#d9d9de;font:13px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+h1{font-size:22px;margin:0 0 4px}.sub{color:#555;margin:0 0 22px;max-width:1180px;line-height:1.45;font-size:14px}
+h2{font-size:18px;margin:38px 0 4px}.lead{color:#555;margin:0 0 14px;max-width:1180px;line-height:1.45;font-size:14px}
+.pair{display:flex;gap:24px;flex-wrap:wrap}
+.win{width:1060px;height:640px;background:#fff;border-radius:11px;box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 22px 60px rgba(0,0,0,.25);display:flex;overflow:hidden;position:relative}
+.side{width:200px;background:#ececef;border-right:.5px solid #d6d6db;padding:14px 10px;display:flex;flex-direction:column;flex-shrink:0}
+.ws{display:flex;align-items:center;gap:8px;padding:4px 8px 12px}.ws b{font-size:13px;display:block}.ws span{color:var(--ink3);font-size:11px}
+.av{width:22px;height:22px;border-radius:50%;background:#1d1d1f;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sh{font-size:11px;font-weight:600;color:var(--ink3);padding:10px 8px 4px}
+.it{padding:3px 8px;border-radius:6px;height:25px;display:flex;align-items:center;gap:8px;font-size:12.5px}.it i{width:13px;height:13px;border:1.5px solid var(--accent);border-radius:3px;display:block;flex-shrink:0}
+.it{white-space:nowrap;overflow:hidden}.it .n{margin-left:auto;flex-shrink:0;color:var(--ink3);font-size:11.5px}.it.on{background:rgba(0,0,0,.08)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:#f5f5f7;position:relative}
+.tb{height:52px;display:flex;align-items:center;gap:10px;padding:0 14px 0 18px;border-bottom:.5px solid var(--hair);background:#fff;flex-shrink:0}
+.tb .t{font-size:16px;font-weight:600}.tb .ts{color:var(--ink3);font-size:12px}.sp{flex:1}
+.back{color:var(--ink3);font-size:15px;margin-right:2px}
+.ob{border:.5px solid #c7c7cc;border-radius:6px;padding:3px 10px;font-size:12px;background:#fff;white-space:nowrap}
+.blk{background:#1d1d1f;color:#fff;border-radius:6px;padding:4px 11px;font-size:12px;font-weight:500;white-space:nowrap}
+.blk.off{background:#c7c7cc}
+.form{width:560px;margin:22px auto 0;display:flex;flex-direction:column;gap:16px}
+.gt{font-size:11.5px;font-weight:600;color:var(--ink3);margin:0 0 5px 4px}
+.grp{background:#fff;border:.5px solid #e2e2e7;border-radius:10px;overflow:hidden}
+.fr{display:flex;align-items:center;min-height:38px;padding:0 12px;border-top:.5px solid var(--hair);gap:10px}.fr:first-child{border-top:0}
+.fr .l{width:150px;flex-shrink:0;color:var(--ink)}
+.in{flex:1;height:24px;border:.5px solid #c7c7cc;border-radius:5px;padding:0 8px;display:flex;align-items:center;color:var(--ink3);background:#fff;font-size:12.5px}
+.in.v{color:var(--ink)}
+.pop{flex:1;height:24px;border:.5px solid #c7c7cc;border-radius:5px;padding:0 8px;display:flex;align-items:center;justify-content:space-between;color:var(--ink);background:#fff;font-size:12.5px;box-shadow:0 .5px 1px rgba(0,0,0,.06)}
+.pop:after{content:"⌃⌄";font-size:9px;color:var(--ink3);letter-spacing:-1px}
+.pop.ph{color:var(--ink3)}
+.foot{font-size:11.5px;color:var(--ink3);margin:5px 4px 0;line-height:1.4}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:22px 24px}
+.tile{background:#fff;border:.5px solid #e2e2e7;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:104px}
+.tile b{font-size:13.5px}.tile span{color:var(--ink3);font-size:12px;line-height:1.35}
+.ic{width:28px;height:28px;border-radius:50%;background:#f0f0f3;display:flex;align-items:center;justify-content:center;font-size:14px}
+.tile.alt{background:transparent;border-style:dashed}
+.search{margin:18px 24px 0;height:28px;border-radius:7px;background:#e9e9ec;display:flex;align-items:center;padding:0 10px;color:var(--ink3);font-size:12.5px}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.18);z-index:2}
+.sheet{position:absolute;left:50%;top:52px;transform:translateX(-50%);width:520px;background:#f5f5f7;border-radius:0 0 11px 11px;box-shadow:0 12px 40px rgba(0,0,0,.3),0 0 0 .5px rgba(0,0,0,.2);z-index:3;padding:18px 20px 16px}
+.sheet h3{margin:0 0 14px;font-size:14px;text-align:center}
+.sheet .form{width:auto;margin:0}
+.btns{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.bgpage{padding:16px 20px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;opacity:.9}
+.bgbox{background:#fff;border:.5px solid #e2e2e7;border-radius:10px;height:120px}
+.bgtable{grid-column:1/-1;background:#fff;border:.5px solid #e2e2e7;border-radius:10px;height:300px}
+.callout{position:absolute;background:#fff4c2;border:1px solid #e6c84a;color:#5c4a00;font-size:12px;padding:5px 9px;border-radius:7px;max-width:230px;line-height:1.35;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:5}
+.note{font-size:12.5px;color:#555;margin:10px 0 0;max-width:1060px;line-height:1.45}
+.bug{background:#fff;border-radius:10px;padding:14px 16px;max-width:1060px;font-size:13.5px;line-height:1.5;border:.5px solid #c7c7cc}
+.bug b{color:#b25000}
+ul{margin:6px 0 0;padding-left:18px}li{margin:2px 0}
+</style></head><body>
+<h1>Mac: Add asset, Add debt, Add card and the other phone screens</h1>
+<p class="sub">Today these open the iPhone screen in a narrow column (big round back button, big round notices). Two ways to make them Mac screens. Shown with Add card (a form) and Add asset (a list to pick from). Invented data. Yellow notes are for this mockup only.</p>
+
+<h2>A · Own page, like Mac System Settings</h2>
+<p class="lead">Same top bar as the other Mac pages: ‹ back, title, buttons on the right. Fields in grouped boxes with the label on the left and a box to type in on the right. Pickers are drop-down menus. Add (black) sits in the top bar.</p>
+<div class="pair">
+<div class="win"><div class="side" data-on="Wallet"></div><div class="main">
+<div class="tb"><span class="back">‹</span><span class="t">New credit card</span><span class="sp"></span><span class="ob">Cancel</span><span class="blk off">Add card</span></div>
+<div class="form">
+<div><div class="gt">Card</div><div class="grp">
+<div class="fr"><span class="l">Bank</span><span class="pop ph">Choose a bank</span></div>
+<div class="fr"><span class="l">Card name</span><span class="in">Name on the card face</span></div>
+<div class="fr"><span class="l">Last 4 digits</span><span class="in">Four digits</span></div>
+</div></div>
+<div><div class="gt">Money</div><div class="grp">
+<div class="fr"><span class="l">Current balance</span><span class="in">Amount owed today</span></div>
+<div class="fr"><span class="l">Credit limit</span><span class="in">Amount</span></div>
+</div></div>
+<div><div class="gt">Statement</div><div class="grp">
+<div class="fr"><span class="l">Billing date</span><span class="pop ph">Day of month</span></div>
+<div class="fr"><span class="l">Due date</span><span class="pop ph">Day of month</span></div>
+</div><div class="foot">Add card turns on once Bank and Card name are filled.</div></div>
+</div>
+<div class="callout" style="left:340px;top:500px">Add card in the top bar, grey until it can be saved; Return also saves</div>
+</div></div>
+
+<div class="win"><div class="side" data-on="Net worth"></div><div class="main">
+<div class="tb"><span class="back">‹</span><span class="t">New asset</span><span class="ts">what can be owned</span><span class="sp"></span><span class="ob">Add an account instead</span><span class="ob">Add a debt instead</span></div>
+<div class="search">⌕&nbsp; Search everything that can be owned</div>
+<div class="cards">
+<div class="tile"><div class="ic">🤝</div><b>Receivables</b><span>money owed</span></div>
+<div class="tile"><div class="ic">📈</div><b>Investments</b><span>shares, bonds, funds, insurance</span></div>
+<div class="tile"><div class="ic">🚗</div><b>Movable property</b><span>vehicles and machinery</span></div>
+<div class="tile"><div class="ic">🏠</div><b>Immovable property</b><span>land and buildings</span></div>
+<div class="tile"><div class="ic">💎</div><b>Intangible and other</b><span>gold, jewellery, patents, things</span></div>
+</div>
+<div class="callout" style="left:24px;top:390px">Picking a tile opens its form as a page like the card one (left)</div>
+</div></div>
+</div>
+
+<h2>B · A sheet over the page it came from</h2>
+<p class="lead">The page stays behind, dimmed. A small window slides down from the top bar with the same fields, and Cancel / Add at the bottom (how Mac apps like Calendar or Mail ask for a new item). Esc closes it.</p>
+<div class="pair">
+<div class="win"><div class="side" data-on="Wallet"></div><div class="main">
+<div class="tb"><span class="t">Wallet</span><span class="sp"></span><span class="blk">＋ Add</span></div>
+<div class="bgpage"><div class="bgbox"></div><div class="bgbox"></div><div class="bgbox"></div><div class="bgtable"></div></div>
+<div class="dim"></div>
+<div class="sheet"><h3>New credit card</h3><div class="form">
+<div class="grp">
+<div class="fr"><span class="l">Bank</span><span class="pop ph">Choose a bank</span></div>
+<div class="fr"><span class="l">Card name</span><span class="in">Name on the card face</span></div>
+<div class="fr"><span class="l">Last 4 digits</span><span class="in">Four digits</span></div>
+</div>
+<div class="grp">
+<div class="fr"><span class="l">Current balance</span><span class="in">Amount owed today</span></div>
+<div class="fr"><span class="l">Credit limit</span><span class="in">Amount</span></div>
+</div>
+<div class="grp">
+<div class="fr"><span class="l">Billing date</span><span class="pop ph">Day of month</span></div>
+<div class="fr"><span class="l">Due date</span><span class="pop ph">Day of month</span></div>
+</div></div>
+<div class="btns"><span class="ob">Cancel</span><span class="blk off">Add card</span></div></div>
+</div></div>
+
+<div class="win"><div class="side" data-on="Net worth"></div><div class="main">
+<div class="tb"><span class="t">Net worth</span><span class="sp"></span><span class="blk">＋ Add</span></div>
+<div class="bgpage"><div class="bgbox"></div><div class="bgbox"></div><div class="bgbox"></div><div class="bgtable"></div></div>
+<div class="dim"></div>
+<div class="sheet"><h3>New asset</h3>
+<div class="search" style="margin:0 0 10px">⌕&nbsp; Search everything that can be owned</div>
+<div class="grp">
+<div class="fr"><span class="ic">🤝</span><span class="l" style="width:auto">Receivables <span style="color:#86868b">· money owed</span></span><span class="sp"></span><span style="color:#86868b">›</span></div>
+<div class="fr"><span class="ic">📈</span><span class="l" style="width:auto">Investments <span style="color:#86868b">· shares, bonds, funds</span></span><span class="sp"></span><span style="color:#86868b">›</span></div>
+<div class="fr"><span class="ic">🚗</span><span class="l" style="width:auto">Movable property <span style="color:#86868b">· vehicles</span></span><span class="sp"></span><span style="color:#86868b">›</span></div>
+<div class="fr"><span class="ic">🏠</span><span class="l" style="width:auto">Immovable property <span style="color:#86868b">· land, buildings</span></span><span class="sp"></span><span style="color:#86868b">›</span></div>
+<div class="fr"><span class="ic">💎</span><span class="l" style="width:auto">Intangible and other <span style="color:#86868b">· gold, things</span></span><span class="sp"></span><span style="color:#86868b">›</span></div>
+</div>
+<div class="btns"><span class="ob">Cancel</span></div></div>
+<div class="callout" style="left:24px;bottom:22px">Picking a row turns the sheet into that asset's form, with ‹ to go back</div>
+</div></div>
+</div>
+<p class="note">A fits long forms (Add transaction, Add holding, Edit budgets, Goal) and screens that are pages anyway (Goal detail, Card statement, Categories). B feels lighter for short adds but long forms would scroll inside the sheet.</p>
+
+<h2>Either way, for every other phone screen on the Mac</h2>
+<div class="bug">About 40 screens still show the phone layout on the Mac, for example Goal detail, Edit budgets, Assets, Card statement, Card settings, Event plan, Loan calculator, Categories, Workspace, Capture settings, Tax report and Import. Step 1 gives all of them the Mac frame at once: the Mac top bar with ‹ back and the page's buttons on the right, the thin notice lines, and boxes that use the width. Then the add and edit forms get A or B, one group at a time.
+<ul><li><b>Bug found:</b> on the Mac, Add card slides under the sidebar and cuts off the account balances. Fixed in step 1.</li></ul></div>
+
+<script>
+const items=['Overview','Cashflow','Budget','Bills','Review','#Money','Wallet','Net worth','Points','#Plans','Goals','Events','Debt-free plan','#Accounts'];
+const accts=[['BCA Tahapan','306 jt'],['Jenius Maxi','92,5 jt'],['Wise','34,8 jt'],['Wallet cash','Rp 193.000'],['GoPay','Rp 669.000'],['BCA KrisFlyer','−7,2 jt'],['CIMB Accor','−3,9 jt']];
+document.querySelectorAll('.side').forEach(s=>{const on=s.dataset.on;let h='<div class="ws"><div class="av">P</div><div><b>Personal</b><span>IDR · on this device</span></div></div>';
+items.forEach(i=>{h+=i[0]==='#'?`<div class="sh">${i.slice(1)}</div>`:`<div class="it${i===on?' on':''}"><i></i>${i}</div>`});
+accts.forEach(([n,v])=>{h+=`<div class="it"><i></i>${n}<span class="n">${v}</span></div>`});s.innerHTML=h;});
+</script>
+</body></html>
