@@ -1,0 +1,86 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>This year's fee: one menu on every card</title>
+<style>
+  :root { --ink:#000; --ink3:#8e8e93; --hair:#c6c6c8; --ground:#f2f2f7; --surface:#fff; --tint:#007aff; --green:#248a3d; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1240px; }
+  h2 { font-size:16px; margin:26px 0 10px; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; }
+  .col { width:300px; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:52px; }
+  .phone { background:var(--ground); border-radius:26px; padding:12px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; }
+  .hd { font-size:12px; letter-spacing:.05em; color:var(--ink3); margin:6px 14px 6px; font-weight:600; }
+  .grp { background:var(--surface); border-radius:12px; overflow:visible; position:relative; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 12px 11px 14px; font-size:15px; gap:8px; position:relative; }
+  .r + .r { border-top:.5px solid var(--hair); }
+  .v { color:var(--ink3); white-space:nowrap; font-size:14px; }
+  .more { width:24px; height:24px; border-radius:50%; background:#eef0f4; color:#3c3c43; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex-shrink:0; letter-spacing:1px; }
+  .more.on { background:#d7e7ff; color:var(--tint); }
+  .menu { position:absolute; right:8px; top:42px; z-index:4; width:210px; background:rgba(250,250,252,.98); border-radius:13px; box-shadow:0 10px 30px rgba(0,0,0,.22), 0 0 0 .5px rgba(0,0,0,.08); overflow:hidden; }
+  .menu div { padding:11px 14px; font-size:15px; } .menu div + div { border-top:.5px solid var(--hair); }
+  .menu .x { color:#3c3c43; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#ff9f0a; border-radius:9px; padding:1px 7px; margin-left:6px; vertical-align:2px; }
+  .same { background:var(--green); }
+  .spacer { height:96px; }
+  .t { border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:13.5px; max-width:930px; }
+  .t th, .t td { text-align:left; padding:9px 12px; border-top:.5px solid var(--hair); vertical-align:top; }
+  .t th { background:#f7f7f9; font-weight:600; border-top:0; }
+  .divider { width:1px; background:#c7c7cc; align-self:stretch; margin:0 4px; }
+</style></head>
+<body>
+<h1>This year's fee · one menu on every card</h1>
+<p class="sub">Today the ⋯ on “Pending” offers different things on different cards, depending on when the card's start day in the app is. After: every card offers the same two, and the next ⋯ always offers “Add reversal”. The app does the right thing behind it. Invented cards and figures.</p>
+
+<div class="wrap">
+  <div class="col">
+    <p class="cap">Today · card started before the fee</p>
+    <p class="note">Fee date 12 Dec, card counted from 1 Oct. The charge belongs in the app, so the menu offers to add it.</p>
+    <div class="phone">
+      <div class="hd">THIS YEAR'S FEE</div>
+      <div class="grp"><div class="r"><span>Pending</span><span style="display:flex;gap:8px;align-items:center"><span class="v">12 Dec · Rp 800.000</span><span class="more on">···</span></span>
+        <div class="menu"><div>Waived, not charged</div><div>Add the charge</div></div></div></div>
+      <div class="spacer"></div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap">Today · fee before the card's start</p>
+    <p class="note">Fee date 12 Aug, card counted from 1 Oct. The charge is in the starting balance, so the menu offers a reversal instead.</p>
+    <div class="phone">
+      <div class="hd">THIS YEAR'S FEE</div>
+      <div class="grp"><div class="r"><span>Pending</span><span style="display:flex;gap:8px;align-items:center"><span class="v">12 Aug · Rp 800.000</span><span class="more on">···</span></span>
+        <div class="menu"><div>Waived, not charged</div><div>Add reversal</div></div></div></div>
+      <div class="spacer"></div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="col">
+    <p class="cap">After · every card <span class="tag same">SAME</span></p>
+    <p class="note">The same two choices on Pending, whatever the dates. Pick what the bank did.</p>
+    <div class="phone">
+      <div class="hd">THIS YEAR'S FEE</div>
+      <div class="grp"><div class="r"><span>Pending</span><span style="display:flex;gap:8px;align-items:center"><span class="v">12 Dec · Rp 800.000</span><span class="more on">···</span></span>
+        <div class="menu"><div>Waived, not charged</div><div>Charged</div></div></div></div>
+      <div class="spacer"></div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap">After · once Charged <span class="tag same">SAME</span></p>
+    <p class="note">The line says Charged on every card. Its ⋯ always offers Add reversal, for when the bank gives it back.</p>
+    <div class="phone">
+      <div class="hd">THIS YEAR'S FEE</div>
+      <div class="grp"><div class="r"><span>Charged</span><span style="display:flex;gap:8px;align-items:center"><span class="v">12 Dec · Rp 800.000</span><span class="more on">···</span></span>
+        <div class="menu"><div>Add reversal</div><div class="x">Open the charge</div></div></div></div>
+      <div class="spacer"></div>
+    </div>
+  </div>
+</div>
+
+<h2>What each choice does behind it</h2>
+<table class="t">
+  <tr><th></th><th>Card started before the fee (12 Dec)</th><th>Fee before the card's start (12 Aug)</th></tr>
+  <tr><td><b>Waived, not charged</b></td><td>Marks the year waived.</td><td>Marks the year waived.</td></tr>
+  <tr><td><b>Charged</b></td><td>Opens Amount + Date, then adds the fee as spending.</td><td>Nothing to type: the fee is already in the card's starting balance. The line reads “Charged · 12 Aug · before the app”.</td></tr>
+  <tr><td><b>Add reversal</b> (on Charged)</td><td>Adds the money back; it cancels the fee in totals.</td><td>Adds the money back; left out of totals (⊘), since the fee never counted.</td></tr>
+</table>
+</body></html>
