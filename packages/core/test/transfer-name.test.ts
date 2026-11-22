@@ -65,6 +65,20 @@ describe('transferSideOf', () => {
     expect(transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true, partnerSubtype: null })).toBeNull();
   });
 
+  it('names a partner side only by a bank, a saving account or a card: handing a partner cash is no withdrawal', () => {
+    const bank = transferSideOf({ accountSubtype: 'bank', currency: 'IDR' });
+    const cash = transferSideOf({ accountSubtype: 'cash', currency: 'IDR' });
+    for (const partnerSubtype of ['cash', 'ewallet', 'emoney', 'other_cash', 'time_deposit', 'loan']) {
+      const partner = transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true, partnerSubtype });
+      expect(partner).toBeNull();
+      expect(transferName(bank, partner)).toBeNull();
+      expect(transferName(partner, bank)).toBeNull();
+      expect(transferName(cash, partner)).toBeNull();
+    }
+    // cash into a partner's card is still the card paid
+    expect(transferName(cash, transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true, partnerSubtype: 'credit_card' }))).toBe('Credit card payment');
+  });
+
   it('a bank into a partner’s placeholder is never a Cash withdrawal', () => {
     const bank = transferSideOf({ accountSubtype: 'bank', currency: 'IDR' });
     expect(transferName(bank, transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true }))).toBeNull();

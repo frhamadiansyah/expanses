@@ -15,8 +15,9 @@
  * A fee or an exchange spread beside the transfer is not a side, so it never changes the name.
  *
  * A household placeholder (another member's money posted here, household sharing §4.4) is 'cash' in the ledger and
- * says nothing by it: `transferSideOf` reads it as the partner's shared item it stands for, when that is known, else as
- * no side at all — so a transfer to a partner is never a Cash withdrawal.
+ * says nothing by it: `transferSideOf` reads it as the partner's shared bank, saving account or card it stands for,
+ * else as no side at all — so a transfer to or from a partner is Bank transfer, Credit card payment or Transfer, never a
+ * Cash withdrawal or a Cash deposit.
  */
 export interface TransferSide {
   subtype: string;
@@ -41,11 +42,16 @@ export function transferName(from: TransferSide | null | undefined, to: Transfer
   return null;
 }
 
+/** The partner's items a transfer between partners is named by: money handed to a partner's cash is no withdrawal. */
+const PARTNER_NAMED = new Set(['bank', 'savings', 'credit_card']);
+
 /**
  * One ledger line as a side of a transfer. A household placeholder is read as the partner's shared item it stands for
- * (`partnerSubtype`, a transfer between partners), or as no side when that is not known here: never by its own subtype.
+ * (`partnerSubtype`, a transfer between partners) only when that is a bank, a saving account or a card — so such a
+ * transfer reads Bank transfer, Credit card payment or plain Transfer (owner, 22 Nov 2026) — and otherwise, or when the
+ * item is not known here, as no side: never by its own subtype.
  */
 export function transferSideOf(line: { accountSubtype?: string | null; currency: string; placeholder?: boolean; partnerSubtype?: string | null }): TransferSide | null {
-  if (line.placeholder) return line.partnerSubtype ? { subtype: line.partnerSubtype, currency: line.currency } : null;
+  if (line.placeholder) return line.partnerSubtype && PARTNER_NAMED.has(line.partnerSubtype) ? { subtype: line.partnerSubtype, currency: line.currency } : null;
   return { subtype: line.accountSubtype ?? '', currency: line.currency };
 }
