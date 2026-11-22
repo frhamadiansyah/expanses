@@ -116,7 +116,8 @@ test('a second tab says so plainly, and offers nothing that cannot work', async 
 
   const second = await context.newPage();
   await second.goto('/');
-  await expect(second.getByRole('heading', { name: 'Expanses is already open in another tab', exact: true })).toBeVisible();
+  // It waits a few seconds for the first tab to let go (a reload's old page can still hold it) before saying so.
+  await expect(second.getByRole('heading', { name: 'Expanses is already open in another tab', exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(second.getByText('Close the other Expanses tab or window, then try again here.')).toBeVisible();
 
   await expect(second.getByRole('button', { name: /Restore the last good copy/ })).toHaveCount(0);

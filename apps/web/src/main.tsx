@@ -188,9 +188,23 @@ if (recoveryMode) {
     />,
   );
 } else if ('locks' in navigator) {
-  // opfs-sahpool allows one connection; a second tab must not open the database.
-  void navigator.locks.request('expanses-db', { ifAvailable: true }, async (lock) => {
-    if (!lock) {
+  /*
+   * opfs-sahpool allows one connection; a second tab must not open the database. A page that reloads itself (after
+   * Link to another device, after an update, the Mac app reopened at once) can find the page it replaces still
+   * letting go of the data for a moment, so it waits a few seconds for it before saying another tab has it
+   * (owner, 22 Nov 2026: the Mac app showed "already open in another tab" with no other tab open).
+   */
+  const LOCK_WAIT_MS = 3_000;
+  const giveUp = new AbortController();
+  const timer = setTimeout(() => giveUp.abort(), LOCK_WAIT_MS);
+  void navigator.locks
+    .request('expanses-db', { signal: giveUp.signal }, async () => {
+      clearTimeout(timer);
+      await start();
+      await new Promise(() => undefined);
+    })
+    .catch((failure: unknown) => {
+      if (!(failure instanceof DOMException && failure.name === 'AbortError')) throw failure;
       /*
        * The tab that got here first holds every one of the database's files open, so this one can read
        * them and write none of them. That is why it is the `locked` screen and not the recovery tools:
@@ -208,11 +222,7 @@ if (recoveryMode) {
           snapshots={snapshots}
         />,
       );
-      return;
-    }
-    await start();
-    await new Promise(() => undefined);
-  });
+    });
 } else {
   void start();
 }
