@@ -1628,18 +1628,22 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
           amountMinor: expenseTemplates.amountMinor,
         })
         .from(billPayments)
-        .innerJoin(expenseTemplates, eq(expenseTemplates.id, billPayments.templateId))
+        .leftJoin(expenseTemplates, eq(expenseTemplates.id, billPayments.templateId))
         .where(inArray(billPayments.transactionId, txs.map((t) => t.id)))
     : [];
   const ownBill = new Map(txs.map((t) => [t.id, t.templateId] as const));
   const billsOf = new Map<string, TransactionBill[]>();
+  // The month a row names stands even when its bill is no longer here (a bill a partner removed): it is listed by none.
+  const anyMonth = new Map<string, string>();
   for (const row of billRows) {
+    if (!anyMonth.has(row.transactionId) || ownBill.get(row.transactionId) === row.templateId) anyMonth.set(row.transactionId, row.billMonth);
+    if (row.name === null || row.categoryAccountId === null) continue;
     const list = billsOf.get(row.transactionId) ?? [];
     list.push({ templateId: row.templateId, billMonth: row.billMonth, name: row.name, categoryAccountId: row.categoryAccountId, amountMinor: row.amountMinor, own: ownBill.get(row.transactionId) === row.templateId });
     billsOf.set(row.transactionId, list);
   }
   for (const list of billsOf.values()) list.sort((a, b) => Number(b.own) - Number(a.own) || a.billMonth.localeCompare(b.billMonth) || a.name.localeCompare(b.name) || a.templateId.localeCompare(b.templateId));
-  const billMonths = new Map([...billsOf].map(([id, list]) => [id, list[0]!.billMonth]));
+  const billMonths = new Map([...anyMonth].map(([id, month]) => [id, billsOf.get(id)?.[0]?.billMonth ?? month]));
 
   // Which of them paid a bill that is not monthly: one small query, as bill months are.
   const notMonthly = await notMonthlyBillPaymentsOf(database.db, txs.map((t) => t.id));
