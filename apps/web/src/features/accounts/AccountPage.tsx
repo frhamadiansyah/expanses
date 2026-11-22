@@ -59,7 +59,6 @@ import { BalanceHero } from './BalanceHero';
 import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
 import { currencyName, parentActionKeys, parentTotal, pocketsOf } from './pockets';
 import { LINE_DAYS, RECENT_LIMIT, useAccountFlows, useHeldRates, useOpenings, useRecentTransactions } from './queries';
-import { OwnJointRows } from '../sharing/JointAccountRows';
 import { ownerRing } from '../networth/joint-rows';
 import { useOwnerRings } from '../networth/queries';
 
@@ -236,7 +235,6 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           takesCurrency ? <InsetRow key="currency" testId="add-currency" icon={<Plus size={16} aria-hidden />} title="Add a currency" onClick={() => setAddingCurrency(true)} /> : null,
         ]}
       />
-      <OwnJointRows accountId={account.id} />
       {/* An interest payment recorded by hand can be put back as a proposal: rare, so after everything else. */}
       {deposit && <RecordedByHand accountId={account.id} currency={account.currency!} />}
       {addingCurrency && (

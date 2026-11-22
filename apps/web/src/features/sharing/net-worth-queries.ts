@@ -1,4 +1,4 @@
-import { activeNetWorthGroup, getJointAccount, getShareSetting, itemIdOf, jointAccountIds, jointAccountRows, paidWithItems, pendingHidden, reviewedFor, reviewItems, sharingDetail } from '@expanses/db';
+import { activeNetWorthGroup, getJointAccount, getShareSetting, jointAccountIds, jointAccountRows, paidWithItems, pendingHidden, reviewedFor, reviewItems, sharingDetail } from '@expanses/db';
 import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 import { useApp } from '../../app/context';
@@ -119,14 +119,3 @@ export function useJointRows(of: { workspaceBookId: string; itemId: string; owne
   });
 }
 
-/** The joint rows of one of this person's own accounts: the item is the account's, in the active group's workspace. */
-export function useOwnJointRows(accountId: string, joint: boolean) {
-  const group = useActiveNetWorthGroup();
-  const g = group.data ?? null;
-  const item = useQuery({
-    queryKey: ['net-worth', 'own-item', accountId, g?.groupBookId ?? null],
-    enabled: g !== null && joint,
-    queryFn: () => itemIdOf(g!.groupBookId, accountId),
-  });
-  return useJointRows(g && joint && item.data ? { workspaceBookId: g.workspaceBookId, itemId: item.data, owner: g.me } : null);
-}

@@ -7,7 +7,6 @@ import { InstallmentList } from '../loans/InstallmentList';
 import { useInstallments } from '../loans/queries';
 import { creditMinor, owedMinor } from '../networth/debt-rows';
 import { useCardPage } from './card-page';
-import { OwnJointRows } from '../sharing/JointAccountRows';
 import { CardHero } from './CardHero';
 
 // The card page hangs off Wallet's layout, which has an id and no path, so its route is named through it.
@@ -75,7 +74,6 @@ export function CardDetailPage() {
         instalments={(plans.data ?? []).length > 0 ? <InstallmentList cardAccountId={card.id} currency={currency} /> : undefined}
         lines={[...(cp.current?.lines ?? []), ...(cp.previous?.lines ?? [])]}
       />
-      {!isDebit && <OwnJointRows accountId={card.id} />}
     </Ground>
   );
 }
