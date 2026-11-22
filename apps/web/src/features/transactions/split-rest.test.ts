@@ -1,6 +1,6 @@
 import { evaluateAmount } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { addPart, assignment, assignmentLine, barShares, editAmount, hasRest, removePart, restIndex, settleRest, splitTotal } from './split-rest';
+import { addPart, assignment, assignmentLine, barShares, editAmount, editOriginal, hasRest, removePart, restIndex, settleRest, splitTotal } from './split-rest';
 import type { SplitRow } from './tx-form';
 
 const row = (categoryId: string, amount: string, extra: Partial<SplitRow> = {}): SplitRow => ({ categoryId, amount, ...extra });
@@ -171,5 +171,116 @@ describe('the line under the bar', () => {
     expect(barShares([row('a', '120.000'), row('b', '80.000'), row('c', '50.000')], 250_000, 'IDR')).toEqual([0.48, 0.32, 0.2]);
     // Over the total, the bar is scaled to what the parts hold, so it never overflows.
     expect(barShares([row('a', '300.000'), row('b', '100.000')], 200_000, 'IDR')).toEqual([0.75, 0.25]);
+  });
+});
+
+describe('a split bought in another currency: both figures on every part', () => {
+  // An invented hotel bill: USD 120,00 charged Rp 1.944.000 on an IDR card, 16.200 rupiah to the dollar.
+  const total = 1_944_000;
+  const usd = { currency: 'USD', total: 12_000 };
+  const read = (text: string | undefined, currency: string) => (text && /^0(,0+)?$/.test(text) ? 0 : text ? evaluateAmount(text, currency) : null);
+  const both = (rows: readonly SplitRow[]) => rows.map((r) => [read(r.amount, 'IDR'), read(r.original, 'USD')]);
+  const start = () => addPart([], { categoryId: 'hotel', amount: '120' }, false, total, 'IDR', usd);
+
+  it('starts with part one holding the whole charge in both figures, never the foreign amount read as rupiah', () => {
+    expect(both(start())).toEqual([
+      [1_944_000, 12_000],
+      [0, 0],
+    ]);
+  });
+
+  it('works out rupiah from a part typed in USD, and the Rest takes what is left in both', () => {
+    const next = edited(editOriginal(start(), 0, '80', total, 'IDR', usd));
+    expect(both(next)).toEqual([
+      [1_296_000, 8_000],
+      [648_000, 4_000],
+    ]);
+    expect(next[0]).toMatchObject({ typedOriginal: true, original: '80' });
+    expect(next[1]).toMatchObject({ rest: true });
+  });
+
+  it('works out USD from a part typed in rupiah', () => {
+    const next = edited(editAmount(start(), 0, '1.296.000', total, 'IDR', usd));
+    expect(both(next)).toEqual([
+      [1_296_000, 8_000],
+      [648_000, 4_000],
+    ]);
+    expect(next[0]?.typedOriginal).toBeUndefined();
+  });
+
+  it('lets the last figure typed win: typing over the worked-out one makes it the typed one', () => {
+    const inUsd = edited(editOriginal(start(), 0, '80', total, 'IDR', usd));
+    const inRupiah = edited(editAmount(inUsd, 0, '1.300.000', total, 'IDR', usd));
+    expect(inRupiah[0]?.typedOriginal).toBeUndefined();
+    // 1.300.000 ÷ 16.200 = 80,246… → USD 80,25.
+    expect(both(inRupiah)).toEqual([
+      [1_300_000, 8_025],
+      [644_000, 3_975],
+    ]);
+  });
+
+  it('takes one part in USD and another in rupiah (mixed), the Rest closing both', () => {
+    const three = addPart(start(), { categoryId: '', amount: '' }, false, total, 'IDR', usd);
+    const a = edited(editOriginal(three, 0, '50', total, 'IDR', usd));
+    const b = edited(editAmount(a, 1, '400.000', total, 'IDR', usd));
+    expect(both(b)).toEqual([
+      [810_000, 5_000],
+      [400_000, 2_469],
+      [734_000, 4_531],
+    ]);
+    const sums = both(b).reduce((s, [r, u]) => [s[0]! + r!, s[1]! + u!], [0, 0]);
+    expect(sums).toEqual([1_944_000, 12_000]);
+  });
+
+  it('lands rounding on the Rest so the parts add up exactly, at an uneven rate', () => {
+    // USD 123,45 charged Rp 2.017.523: 16.342,83… to the dollar.
+    const odd = { currency: 'USD', total: 12_345 };
+    const parts = addPart(addPart([], { categoryId: 'a', amount: '' }, false, 2_017_523, 'IDR', odd), { categoryId: '', amount: '' }, false, 2_017_523, 'IDR', odd);
+    const next = edited(editOriginal(edited(editOriginal(parts, 0, '33.33', 2_017_523, 'IDR', odd)), 1, '33.33', 2_017_523, 'IDR', odd));
+    const figures = both(next);
+    expect(figures[0]).toEqual(figures[1]);
+    expect(figures.reduce((s, [r]) => s + r!, 0)).toBe(2_017_523);
+    expect(figures.reduce((s, [, u]) => s + u!, 0)).toBe(12_345);
+  });
+
+  it('refuses a USD figure past the whole, in the currency it was typed in', () => {
+    const refused = editOriginal(start(), 0, '121', total, 'IDR', usd);
+    expect('refusal' in refused && plain(refused.refusal)).toMatch(/^Over by US\$\s?1,00$/);
+  });
+
+  it('typing into the Rest fixes it in both, and the part before it becomes the Rest', () => {
+    const next = edited(editOriginal(start(), 1, '20', total, 'IDR', usd));
+    expect(restIndex(next)).toBe(0);
+    expect(both(next)).toEqual([
+      [1_620_000, 10_000],
+      [324_000, 2_000],
+    ]);
+  });
+
+  it('reprices parts typed in USD when the charged figure moves, the parts typed in rupiah staying', () => {
+    const typed = edited(editOriginal(start(), 0, '80', total, 'IDR', usd));
+    expect(both(settleRest(typed, 1_950_000, 'IDR', usd))).toEqual([
+      [1_300_000, 8_000],
+      [650_000, 4_000],
+    ]);
+    const inRupiah = edited(editAmount(start(), 0, '1.296.000', total, 'IDR', usd));
+    expect(both(settleRest(inRupiah, 1_950_000, 'IDR', usd))).toEqual([
+      [1_296_000, 7_975],
+      [654_000, 4_025],
+    ]);
+  });
+
+  it('leaves a settled split as it is (opening the sheet changes nothing)', () => {
+    const typed = edited(editOriginal(start(), 0, '80', total, 'IDR', usd));
+    expect(settleRest(typed, total, 'IDR', usd)).toEqual(typed);
+  });
+
+  it('works the Rest out afresh in both when a part is removed', () => {
+    const three = addPart(edited(editOriginal(start(), 0, '80', total, 'IDR', usd)), { categoryId: '', amount: '' }, false, total, 'IDR', usd);
+    const typed = edited(editOriginal(three, 1, '10', total, 'IDR', usd));
+    expect(both(removePart(typed, 1, total, 'IDR', usd))).toEqual([
+      [1_296_000, 8_000],
+      [648_000, 4_000],
+    ]);
   });
 });

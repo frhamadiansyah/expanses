@@ -16,6 +16,7 @@ import {
   matchBillsToLines,
   minorToMajorString,
   NOT_COUNTED_LINE,
+  partFigures,
   parseMajor,
   type PostingLine,
   refundLines,
@@ -29,7 +30,7 @@ import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './
 import { classify } from './classify';
 import { isEditable } from './draft';
 import { postedAgainstPlaceholder } from '../sharing/sharing-copy';
-import { hasRest, settleRest, splitTotal } from './split-rest';
+import { type ForeignTotal, needsSettling, settleRest, splitTotal } from './split-rest';
 import { mirrorPref } from '../../lib/synced-prefs';
 
 export type FormMode = 'expense' | 'income' | 'transfer' | 'trade';
@@ -53,6 +54,14 @@ export interface SplitRow {
    * marks Pay's own bill — the payment was recorded from it — which the part keeps; the save always does.
    */
   bill?: SplitBill | null;
+  /**
+   * A purchase in another currency (the flag on USD, the account charged in rupiah): this part's share of the foreign
+   * figure, in the flag's currency. Never saved — the ledger keeps the whole's pair only, and each part's share is
+   * read back from it (`partFigures`). `amount` stays the figure that posts.
+   */
+  original?: string;
+  /** `original` is the figure typed and `amount` is worked out from it, at the whole charge's own rate (last typed wins). */
+  typedOriginal?: boolean;
 }
 
 /** A month of a recurring bill a split's part pays. */
@@ -813,21 +822,31 @@ function figureOf(
  * A split by category, read once. The lines are built from these rows and the total is their sum, so the split
  * is parsed in one place rather than once for the lines and once for the figure that posts.
  *
- * The rows are read in `currency` — the account's own, because that is what posts. A split has no second row
- * to carry what the merchant charged, so §3.3's original pair has nowhere to live and a figure typed in
- * another currency is refused in words here, before `parseMajor` answers a USD figure on an IDR account with
- * "IDR allows 0 decimal places": a core error about exponents, where what the user chose was a currency.
+ * The rows are read in `currency` — the account's own, because that is what posts. A purchase in another currency
+ * keeps its foreign figure on the whole (`amounts`); each part's `original` is the Split sheet's, never posted.
  */
-function splitRowsOf(draft: FormDraft, currency: string, typed: string): { categoryAccountId: string; amountMinor: number }[] {
-  if (typed && typed !== currency) {
-    throw new Error(`A split is entered in ${currency}. Change the currency back to ${currency}, or remove the split.`);
-  }
+function splitRowsOf(draft: FormDraft, currency: string): { categoryAccountId: string; amountMinor: number }[] {
   // A Not counted part is money spent that no workspace counts; a purchase none of which counts is excluded whole.
   if (draft.splits.length > 0 && draft.splits.every(isNotCountedRow)) throw new Error(NOT_COUNTED_ALONE);
   return draft.splits.map((row, i) => {
     if (!row.categoryId) throw new Error(`Choose a category for split ${i + 1}`);
     return { categoryAccountId: row.categoryId, amountMinor: positive(row.amount, currency, `Split ${i + 1} amount`) };
   });
+}
+
+/**
+ * What a split divides: the figure that posts (`total`, in the account's currency `settled`) and, for a purchase typed in
+ * another currency, the foreign whole beside it. In the account's own currency it is the amount row, as ever, and null
+ * while that is empty. In another it is the "Charged in …" row with the amount row as the foreign whole — and until both
+ * read, `needs` says which to type first: a part cannot be worked out at a rate the purchase does not have yet.
+ */
+export function splitBasis(draft: Pick<FormDraft, 'amount' | 'chargedAmount'>, settled: string, typed: string): { total: number | null; foreign: ForeignTotal | null; needs: string | null } {
+  if (!typed || typed === settled) return { total: splitTotal(draft.amount, settled), foreign: null, needs: null };
+  const whole = splitTotal(draft.amount, typed);
+  if (whole === null) return { total: null, foreign: null, needs: `Enter the amount in ${typed}` };
+  const total = splitTotal(draft.chargedAmount, settled);
+  if (total === null) return { total: null, foreign: null, needs: `Enter the amount charged in ${settled}` };
+  return { total, foreign: { currency: typed, total: whole }, needs: null };
 }
 
 /** Why a split of Not counted rows alone is refused, in the ledger's own words. */
@@ -899,8 +918,18 @@ function amounts(
   splitTotalMinor: number | null,
 ): { amountMinor: number; exactHundredths: number | null; originalCurrency: string | null; originalAmountMinor: number | null } {
   const settled = account.currency!;
+  if (splitTotalMinor !== null && typed && typed !== settled) {
+    // A split in another currency: the parts post in `settled` and add up to what was charged; the foreign figure is
+    // the whole purchase's, kept as its original pair.
+    if (!draft.chargedAmount.trim()) throw new Error(`Enter the amount charged in ${settled}`);
+    if (evaluateAmount(draft.chargedAmount, settled) !== splitTotalMinor) {
+      if (hasCents(draft.chargedAmount, settled, false)) throw new Error(DECIMALS_REFUSAL);
+      throw new Error('The splits must add up to the amount charged');
+    }
+    return { amountMinor: splitTotalMinor, exactHundredths: null, originalCurrency: typed, originalAmountMinor: figureOf(draft.amount, typed, 'Amount', { wholeOnly: 'own' }).minor };
+  }
   if (splitTotalMinor !== null) {
-    // `splitRowsOf` has already refused a split typed in another currency, so the figure here is in `settled`.
+    // The figure here is in `settled`.
     // The kit's one reader, not a second weaker one. `parseMajor` cannot read `250000+150000`, which the amount
     // row is built to accept, so a sum that agrees perfectly well was refused with a raw `MoneyError`.
     if (draft.amount.trim() && evaluateAmount(draft.amount, settled) !== splitTotalMinor) {
@@ -1219,10 +1248,12 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
 
   // The split is read before the figure is asked for, because on a split the rows *are* the figure — the order
   // `draftToLines` had, and losing it is what made a split impossible to save.
-  // A Rest part follows the amount: if the total moved after the split was made, its figure is worked out afresh here.
-  const total = hasRest(draft.splits) && (!typed || typed === account.currency) ? splitTotal(draft.amount, account.currency) : null;
-  if (total !== null) draft = { ...draft, splits: settleRest(draft.splits, total, account.currency) };
-  const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency, typed) : null;
+  // A Rest part follows the amount: if the total moved after the split was made, its figure is worked out afresh here —
+  // and in another currency, so does every part typed in the foreign figure, at the rate the charged figure now gives.
+  const basis = splitByCategory(draft) ? splitBasis(draft, account.currency, typed) : null;
+  if (basis?.needs) throw new Error(basis.needs);
+  if (basis && basis.total !== null && needsSettling(draft.splits)) draft = { ...draft, splits: settleRest(draft.splits, basis.total, account.currency, basis.foreign) };
+  const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency) : null;
   const splitTotalMinor = splits ? splits.reduce((sum, row) => sum + row.amountMinor, 0) : null;
   const { amountMinor, exactHundredths, originalCurrency, originalAmountMinor } = amounts(draft, account, typed, splitTotalMinor);
 
@@ -1516,13 +1547,19 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
         const bill = bills[b]!;
         return { templateId: bill.templateId, billMonth: bill.billMonth, ...(bill.own ? { own: true } : {}) };
       };
-      const splits: SplitRow[] = [
+      const parted: SplitRow[] = [
         ...category.map((e, i) => {
           const bill = billOfPart(i);
           return { categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency), ...(partOff(e) ? { excluded: true } : {}), ...(bill ? { bill } : {}) };
         }),
         ...notCounted.map((e) => ({ categoryId: NOT_COUNTED, amount: minorToMajorString(e.amountMinor, e.currency) })),
       ];
+      // Bought in another currency: the whole's foreign figure back on the amount row, what was charged on its own row,
+      // and each part's share of the foreign figure read back from the whole's (`partFigures`), the last taking the rest.
+      const original = foreignWhole(tx, settledOf(payment));
+      const charged = -payment.amountMinor;
+      const shares = original ? partFigures([...category, ...notCounted].map((e) => e.amountMinor), charged, original.minor) : [];
+      const splits = original ? parted.map((row, i) => ({ ...row, original: minorToMajorString(shares[i]!, original.currency) })) : parted;
       const counted = splits.filter((row) => !isNotCountedRow(row));
       return withOpened({
         ...base,
@@ -1533,6 +1570,7 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
         excluded: counted.length > 0 && counted.every((row) => row.excluded),
         moneyId: payment.accountId,
         currency: settledOf(payment),
+        ...(original ? { currency: original.currency, amount: minorToMajorString(original.minor, original.currency), chargedAmount: minorToMajorString(charged, settledOf(payment)) } : {}),
         splits,
       }, tx, accounts);
     }
@@ -1561,6 +1599,12 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     ...(fee ?? {}),
     toAmount: to && from && to.currency !== from.currency ? minorToMajorString(to.amountMinor, to.currency) : '',
   }, tx, accounts);
+}
+
+/** A purchase's foreign figure, when it was bought in a currency other than the one it was charged in (`settled`). */
+function foreignWhole(tx: Pick<TransactionView, 'originalCurrency' | 'originalAmountMinor'>, settled: string): { currency: string; minor: number } | null {
+  if (!tx.originalCurrency || tx.originalAmountMinor === null || tx.originalAmountMinor === undefined || tx.originalCurrency === settled) return null;
+  return { currency: tx.originalCurrency, minor: Math.abs(tx.originalAmountMinor) };
 }
 
 /** A reopened draft with the figure it opened on (`FormDraft.opened`). */
@@ -1604,7 +1648,9 @@ export function duplicateDraft(tx: TransactionView, accounts: readonly AccountRo
   // The bills are the original's: a copy pays none of them again.
   const { billsOpened: _bills, ...rest } = draft;
   void _bills;
-  return { ...rest, splits: rest.splits.map(({ bill: _bill, ...row }) => row), editing: false, photoIds: [], goalId: '', chargedAmount: '' };
+  // A split bought in another currency starts from its foreign figures: the new charge reprices the parts, the Rest last.
+  const splits = rest.splits.map(({ bill: _bill, ...row }, i, all) => (row.original !== undefined && i < all.length - 1 ? { ...row, typedOriginal: true } : row));
+  return { ...rest, splits, editing: false, photoIds: [], goalId: '', chargedAmount: '' };
 }
 
 /**

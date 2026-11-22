@@ -46,7 +46,9 @@ import {
   refiledPost,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
+  splitBasis,
   splitCentsRefusal,
+  type SplitRow,
   splitTotalMinor,
   suggestedRate,
   typedCurrency,
@@ -84,6 +86,12 @@ const draft: FormDraft = {
 };
 /** The same expense typed in CNY off an IDR account, so C2's "Charged in IDR" row applies. */
 const foreign: FormDraft = { ...draft, currency: 'CNY', amount: '120', chargedAmount: '272400' };
+/** The accounts with a Hotel category and a Groceries one, for a purchase split in two or three. */
+const withHotel = [
+  ...accounts,
+  { id: 'cat-hotel', name: 'Hotel', kind: 'expense', subtype: 'category', currency: null },
+  { id: 'cat-groceries', name: 'Groceries', kind: 'expense', subtype: 'category', currency: null },
+] as AccountRow[];
 /** A transfer with no From chosen yet, for the error message. */
 const transfer: FormDraft = { ...emptyForm('ws-1'), mode: 'transfer', toId: 'acct-card', amount: '500000' };
 /** The same accounts plus the system account `exchangeLines` books a cross-currency difference against. */
@@ -399,16 +407,157 @@ describe('a bill spread over several categories', () => {
     ).toMatchObject({ kind: 'post' });
   });
 
-  it('refuses a split typed in a currency the account does not settle in, in words', () => {
-    // A split's rows *are* the figure and they post in the account's own currency; there is no second row to
-    // carry what the merchant charged, so the pair §3.3 keeps has nowhere to live. Reachable since the currency
-    // sheet arrived, and it used to answer with a core error about decimal places.
-    expect(() =>
-      formToPost(
-        { ...emptyForm('ws-1'), moneyId: 'acct-bank', currency: 'USD', splits: [{ categoryId: 'cat-restaurants', amount: '10.50' }, { categoryId: 'cat-groceries', amount: '5.25' }] },
-        accounts,
-      ),
-    ).toThrow('A split is entered in IDR. Change the currency back to IDR, or remove the split.');
+  describe('a split bought in another currency (option C, owner 22 Nov 2026)', () => {
+    // An invented hotel bill: USD 120,00 on an IDR card, charged Rp 1.944.000 — 16.200 rupiah to the dollar.
+    const hotel: FormDraft = {
+      ...emptyForm('ws-1'),
+      moneyId: 'acct-card',
+      currency: 'USD',
+      amount: '120',
+      chargedAmount: '1944000',
+      description: 'Hotel',
+      occurredOn: '2026-09-14',
+    };
+    const twoParts = (first: Partial<SplitRow>, second: Partial<SplitRow> = {}): FormDraft => ({
+      ...hotel,
+      splits: [
+        { categoryId: 'cat-hotel', amount: '', ...first },
+        { categoryId: 'cat-restaurants', amount: '', rest: true, ...second },
+      ],
+    });
+
+    it('divides what was charged, with the foreign whole beside it', () => {
+      expect(splitBasis(hotel, 'IDR', 'USD')).toEqual({ total: 1_944_000, foreign: { currency: 'USD', total: 12_000 }, needs: null });
+      expect(splitBasis({ ...hotel, chargedAmount: '' }, 'IDR', 'USD')).toEqual({ total: null, foreign: null, needs: 'Enter the amount charged in IDR' });
+      expect(splitBasis({ ...hotel, amount: '' }, 'IDR', 'USD')).toEqual({ total: null, foreign: null, needs: 'Enter the amount in USD' });
+      // In the account's own currency it is the amount row, as it always was.
+      expect(splitBasis({ ...hotel, amount: '500000' }, 'IDR', 'IDR')).toEqual({ total: 500_000, foreign: null, needs: null });
+    });
+
+    it('saves rupiah lines and keeps the whole foreign figure as the original pair, a part typed in USD', () => {
+      const post = formToPost(twoParts({ original: '80', typedOriginal: true }), withHotel);
+      expect(post).toMatchObject({
+        kind: 'post',
+        input: {
+          originalCurrency: 'USD',
+          originalAmountMinor: 12_000,
+          lines: splitExpenseLines({
+            paymentAccountId: 'acct-card',
+            currency: 'IDR',
+            splits: [
+              { categoryAccountId: 'cat-hotel', amountMinor: 1_296_000 },
+              { categoryAccountId: 'cat-restaurants', amountMinor: 648_000 },
+            ],
+          }),
+        },
+      });
+    });
+
+    it('saves a part typed in rupiah and one typed in USD side by side (mixed parts)', () => {
+      const mixed: FormDraft = {
+        ...hotel,
+        splits: [
+          { categoryId: 'cat-hotel', amount: '1000000' },
+          { categoryId: 'cat-groceries', amount: '', original: '30', typedOriginal: true },
+          { categoryId: 'cat-restaurants', amount: '', rest: true },
+        ],
+      };
+      const post = formToPost(mixed, withHotel);
+      if (post.kind !== 'post') throw new Error('expected a post');
+      expect(post.input.lines.filter((line) => line.amountMinor > 0).map((line) => line.amountMinor)).toEqual([1_000_000, 486_000, 458_000]);
+      expect(post.input).toMatchObject({ originalCurrency: 'USD', originalAmountMinor: 12_000 });
+    });
+
+    it('follows a charged figure changed after the parts were typed: USD parts repriced, the Rest takes the rest', () => {
+      const post = formToPost({ ...twoParts({ original: '80', amount: '1296000', typedOriginal: true }, { amount: '648000', original: '40' }), chargedAmount: '1950000' }, withHotel);
+      if (post.kind !== 'post') throw new Error('expected a post');
+      expect(post.input.lines.filter((line) => line.amountMinor > 0).map((line) => line.amountMinor)).toEqual([1_300_000, 650_000]);
+    });
+
+    it('asks for the charged figure before a split in another currency can be saved', () => {
+      expect(() => formToPost({ ...twoParts({ amount: '1296000' }), chargedAmount: '' }, withHotel)).toThrow('Enter the amount charged in IDR');
+    });
+
+    it('refuses parts that do not add up to what was charged, in words', () => {
+      const off: FormDraft = { ...hotel, splits: [{ categoryId: 'cat-hotel', amount: '1296000' }, { categoryId: 'cat-restaurants', amount: '600000' }] };
+      expect(() => formToPost(off, withHotel)).toThrow('The splits must add up to the amount charged');
+    });
+
+    it('reopens an edit with both figures on every part, and saves it again as the same posting', () => {
+      const saved = view({
+        description: 'Hotel',
+        originalCurrency: 'USD',
+        originalAmountMinor: 12_000,
+        entries: [paid(-1_944_000), spent('cat-hotel', 1_296_000), spent('cat-restaurants', 648_000)] as TransactionView['entries'],
+      });
+      const form = formFromTransaction(saved, withHotel);
+      expect(form).toMatchObject({
+        currency: 'USD',
+        chargedAmount: '1944000',
+        splits: [
+          { categoryId: 'cat-hotel', amount: '1296000' },
+          { categoryId: 'cat-restaurants', amount: '648000' },
+        ],
+      });
+      expect(form.splits.map((row) => evaluateAmount(row.original!, 'USD'))).toEqual([8_000, 4_000]);
+      expect(evaluateAmount(form.amount, 'USD')).toBe(12_000);
+      expect(formToPost(form, withHotel)).toMatchObject({
+        input: {
+          originalCurrency: 'USD',
+          originalAmountMinor: 12_000,
+          lines: splitExpenseLines({
+            paymentAccountId: 'acct-card',
+            currency: 'IDR',
+            splits: [
+              { categoryAccountId: 'cat-hotel', amountMinor: 1_296_000 },
+              { categoryAccountId: 'cat-restaurants', amountMinor: 648_000 },
+            ],
+          }),
+        },
+      });
+    });
+
+    it('reads a part typed in cents back as typed, for any cents figure (no figure is stored per part)', () => {
+      // An invented charge at an uneven rate: USD 123,45 charged Rp 2.017.523.
+      for (const cents of [1, 99, 4_321, 6_172, 12_344]) {
+        const typed: FormDraft = {
+          ...hotel,
+          amount: '123.45',
+          chargedAmount: '2017523',
+          splits: [
+            { categoryId: 'cat-hotel', amount: '', original: (cents / 100).toFixed(2), typedOriginal: true },
+            { categoryId: 'cat-restaurants', amount: '', rest: true },
+          ],
+        };
+        const post = formToPost(typed, withHotel);
+        if (post.kind !== 'post') throw new Error('expected a post');
+        const reopened = formFromTransaction(
+          view({
+            originalCurrency: 'USD',
+            originalAmountMinor: post.input.originalAmountMinor ?? null,
+            entries: post.input.lines.map((line) => (line.accountId === 'acct-card' ? paid(line.amountMinor) : spent(line.accountId, line.amountMinor))) as TransactionView['entries'],
+          }),
+          withHotel,
+        );
+        expect(reopened.splits.map((row) => evaluateAmount(row.original!, 'USD'))).toEqual([cents, 12_345 - cents]);
+      }
+    });
+
+    it('starts a Duplicate from the foreign figures, so the new charge reprices the parts', () => {
+      const saved = view({
+        originalCurrency: 'USD',
+        originalAmountMinor: 12_000,
+        entries: [paid(-1_944_000), spent('cat-hotel', 1_296_000), spent('cat-restaurants', 648_000)] as TransactionView['entries'],
+      });
+      const copy = duplicateDraft(saved, withHotel, 'ws-1');
+      expect(copy.chargedAmount).toBe('');
+      expect(copy.splits[0]).toMatchObject({ typedOriginal: true });
+      expect(copy.splits[1]?.typedOriginal).toBeUndefined();
+      expect(() => formToPost(copy, withHotel)).toThrow('Enter the amount charged in IDR');
+      const post = formToPost({ ...copy, chargedAmount: '1980000' }, withHotel);
+      if (post.kind !== 'post') throw new Error('expected a post');
+      expect(post.input.lines.filter((line) => line.amountMinor > 0).map((line) => line.amountMinor)).toEqual([1_320_000, 660_000]);
+    });
   });
 
   it('will not let the amount row and the splits disagree in silence', () => {
