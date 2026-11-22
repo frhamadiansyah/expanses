@@ -25,6 +25,7 @@ import {
   UNLINKED_TITLE,
 } from './devices-copy';
 import { JoinLinkSheet } from './JoinLinkSheet';
+import { clearLinkOnOpen, linkOnOpenWanted } from './link-on-open';
 import { LinkSheet } from './LinkSheet';
 import { UnlinkSheet } from './UnlinkSheet';
 import { useSelfStatus } from './use-self';
@@ -68,7 +69,8 @@ export function DeskLinkedDevices() {
   const { status, others, unlinked, actions, thisRow, workspaces, failed, dismissFailed } = useDevicesState();
   const shared = (useSharedBooks().data ?? []).filter((each) => each.state === 'active');
   const [linking, setLinking] = useState(false);
-  const [joining, setJoining] = useState(false);
+  // Opened from the first screen's Link to another device: the sheet is already showing (link-on-open.ts).
+  const [joining, setJoining] = useState(linkOnOpenWanted);
   const unlink = useUnlink();
   const now = Date.now();
 
@@ -145,7 +147,14 @@ export function DeskLinkedDevices() {
         <BookDevices key={each.bookId} bookId={each.bookId} />
       ))}
       {linking && <LinkSheet onClose={() => setLinking(false)} />}
-      {joining && <JoinLinkSheet onClose={() => setJoining(false)} />}
+      {joining && (
+        <JoinLinkSheet
+          onClose={() => {
+            clearLinkOnOpen();
+            setJoining(false);
+          }}
+        />
+      )}
       {unlink.sheet}
     </div>
   );

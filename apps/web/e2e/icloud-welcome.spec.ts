@@ -100,7 +100,8 @@ test('the first screen offers Restore, Link to another device and Start fresh; L
   // Closed without linking: the Devices page as it always is, and the sheet does not come back on its own.
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(page.getByTestId('devices-page')).toBeVisible();
+  // The phone's Devices page, or on a wide screen the Mac Settings at Devices.
+  await expect(page.getByTestId('devices-page').or(page.getByTestId('settings-devices'))).toBeVisible();
   await page.goto('/');
   // Not remembered like Start fresh: the app is still empty, so the next open asks again.
   await expect(page.getByRole('heading', { name: 'Backup found in iCloud' })).toBeVisible({ timeout: 30_000 });
