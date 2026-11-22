@@ -22,5 +22,6 @@ export async function showRepeating(page: Page) {
 /** Slides Recurring's hero back to its Monthly page (the first dot). */
 export async function showMonthly(page: Page) {
   await page.getByRole('group', { name: 'Page' }).getByRole('button', { name: 'Monthly' }).click();
-  await expect(page.getByTestId('bills-summary').or(page.getByText('No monthly bills yet'))).toBeVisible();
+  // The box is there in every state now, "No monthly bills yet" inside it (owner, 22 Nov 2026).
+  await expect(page.getByTestId('bills-summary')).toBeVisible();
 }
