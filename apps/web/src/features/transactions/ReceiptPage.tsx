@@ -503,7 +503,17 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
                         : 'In no workspace and no report'}
                     </span>
                   </span>
-                  <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>
+                  {part.original ? (
+                    // Bought in another currency: what the part posted, with its share of the foreign figure under it.
+                    <span className="flex flex-col items-end">
+                      <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>
+                      <span data-testid="split-part-original" className="tabular text-right text-xs text-slate-500">
+                        {formatMinor(part.original.minor, part.original.currency)}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className={cx('tabular text-right', part.excluded && 'text-slate-500 line-through')}>{formatMinor(part.amountMinor, part.currency)}</span>
+                  )}
                 </div>
               ))}
             </Card>

@@ -8,14 +8,14 @@ import { DestructiveRow, InsetGroup, InsetRow, PickerRow, ReadOnlyRow, SwitchRow
 import { categoryMark, useCategoryMarkColour } from '../categories/CategoryIcon';
 import { useCategoryColours } from '../../lib/queries';
 import { OTHER_COLOUR } from './category-colours';
-import { addPart, assignment, assignmentLine, barShares, editAmount, removePart, restIndex, settleRest, splitTotal } from './split-rest';
+import { addPart, assignment, assignmentLine, barShares, editAmount, editOriginal, removePart, restIndex, settleRest } from './split-rest';
 import { CategoryPicker } from './CategoryPicker';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useSharedBooks } from '../sharing/queries';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useBooks, useCategoryBooks } from '../workspaces/queries';
-import { excludedWhole, type FormDraft, isNotCountedRow, NOT_COUNTED, splitCentsRefusal, type SplitRow, splitTotalMinor, typedCurrency, withPartExcluded, withSplitCategory } from './tx-form';
+import { excludedWhole, type FormDraft, isNotCountedRow, NOT_COUNTED, splitBasis, splitCentsRefusal, type SplitRow, splitTotalMinor, typedCurrency, withPartExcluded, withSplitCategory } from './tx-form';
 import { useBillChoices, useBillTemplates } from '../bills/queries';
 import { billChoicesForPart, billLabel, partBillLabel, withPartBill } from './split-bills';
 
@@ -170,8 +170,9 @@ function PartCategorySheet({
  * One bill across several categories — B3a, §4's Split row, drawn as a total with a proportion bar over one compact row
  * per part. A part opens on a sheet of its own (category, workspace, amount, Exclude from report, Remove).
  *
- * The rows are read in the paying account's own currency, because that is what posts: `formToPost` refuses a split typed in
- * any other, so the total here is read in the same currency the save will read it in. The first **Add a part** carries the
+ * The rows are read in the paying account's own currency, because that is what posts. A purchase typed in another currency
+ * (the flag on USD, the card charged in rupiah) divides what was charged, with the foreign whole under the Total: each
+ * part then has both figures, typed in either, the other worked out at the whole charge's rate and shown grey with ≈. The first **Add a part** carries the
  * category and figure already on the card into part one, so splitting a bill that has been filled in does not start by
  * throwing that away.
  *
@@ -196,9 +197,9 @@ export function SplitSheet({
   const splits = draft.splits;
   const refusal = splitCentsRefusal(splits, currency);
   const setSplits = (next: SplitRow[]) => onChange({ ...draft, splits: next });
-  // The purchase amount, when it is in the paying account's own currency and reads: what the Rest is worked out against.
-  const typed = typedCurrency(draft, accounts);
-  const total = !typed || typed === currency ? splitTotal(draft.amount, currency) : null;
+  // What the Rest is worked out against: the amount, or in another currency what was charged with the foreign whole beside it.
+  // `needs` names the figure still to type before a part can be worked out at the purchase's own rate.
+  const { total, foreign, needs } = splitBasis(draft, currency, typedCurrency(draft, accounts));
   // Excluded whole (More details' switch): a part added now is excluded with the rest.
   const whole = excludedWhole(draft);
   /*
@@ -234,7 +235,7 @@ export function SplitSheet({
   // The Rest follows the amount: if it moved while this was shut, the parts are put right as the sheet opens.
   useEffect(() => {
     if (total === null || splits.length === 0) return;
-    const next = settleRest(splits, total, currency);
+    const next = settleRest(splits, total, currency, foreign);
     if (JSON.stringify(next) !== JSON.stringify(splits)) setSplits(next);
     // Once, as the sheet opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,6 +246,9 @@ export function SplitSheet({
   const shares = barShares(splits, total, currency);
   const shown = total ?? splitTotalMinor(splits, currency);
   const amountOf = (row: SplitRow) => (row.amount.trim() ? (evaluateAmount(row.amount, currency) ?? 0) : null);
+  const originalOf = (row: SplitRow) => (foreign && row.original?.trim() ? (evaluateAmount(row.original, foreign.currency) ?? 0) : null);
+  /** Which of a part's two figures was worked out rather than typed — none on the Rest, which is what is left of both. */
+  const workedOut = (row: SplitRow, i: number): 'amount' | 'original' | null => (!foreign || i === at ? null : row.typedOriginal ? 'amount' : 'original');
 
   const chosenColours = useCategoryColours().data;
   const markOf = (row: SplitRow) => {
@@ -276,6 +280,11 @@ export function SplitSheet({
             {formatMinor(shown, currency)}
           </span>
         </div>
+        {foreign && (
+          <p data-testid="split-total-original" className="tabular text-right text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
+            {formatMinor(foreign.total, foreign.currency)}
+          </p>
+        )}
         <div aria-hidden data-testid="split-bar" className="mt-[10px] flex h-[8px] gap-[2px] overflow-hidden rounded-full bg-[var(--ph-fill)]">
           {splits.map((row, i) => (
             <i key={i} style={{ width: `${(shares[i] ?? 0) * 100}%`, background: isNotCountedRow(row) ? OTHER_COLOUR : colourOf(row.categoryId || null) }} />
@@ -286,11 +295,18 @@ export function SplitSheet({
             {status}
           </p>
         )}
+        {needs && (
+          <p role="alert" data-testid="split-needs" className="mt-[8px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
+            {needs}
+          </p>
+        )}
       </div>
       {splits.length > 0 && (
         <InsetGroup>
           {splits.map((row, i) => {
             const minor = amountOf(row);
+            const original = originalOf(row);
+            const figure = minor === null ? '—' : formatMinor(minor, currency);
             return (
               <InsetRow
                 key={i}
@@ -299,7 +315,19 @@ export function SplitSheet({
                 iconColour={markOf(row).colour}
                 title={nameOf(row)}
                 subtitle={noteOf(row, i)}
-                value={minor === null ? '—' : formatMinor(minor, currency)}
+                value={
+                  original === null ? (
+                    figure
+                  ) : (
+                    // The figure that posts, with the part's share of the foreign figure under it — ≈ when worked out.
+                    <span className="flex flex-col items-end">
+                      <span>{figure}</span>
+                      <span data-testid="split-row-original" className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+                        {`${workedOut(row, i) === 'original' ? '≈ ' : ''}${formatMinor(original, foreign!.currency)}`}
+                      </span>
+                    </span>
+                  )
+                }
                 valueTone={i === at ? 'ink-3' : 'ink'}
                 onClick={() => {
                   setOver(null);
@@ -315,9 +343,10 @@ export function SplitSheet({
         <InsetRow
           action
           title="＋ Add a part"
+          disabled={!!needs}
           onClick={() => {
             setOver(null);
-            setSplits(addPart(splits, { categoryId: draft.categoryId, amount: draft.amount }, whole, total, currency));
+            setSplits(addPart(splits, { categoryId: draft.categoryId, amount: draft.amount }, whole, total, currency, foreign));
           }}
         />
       </InsetGroup>
@@ -343,23 +372,51 @@ export function SplitSheet({
                 onOpen={() => setPicking({ index: part, workspaceFirst: true })}
               />
             )}
-            {total !== null && splits.length === 1 ? (
-              <ReadOnlyRow label="Amount" value={formatMinor(total, currency)} />
+            {needs ? (
+              // In another currency, no part is worked out until the purchase has both figures to give it a rate.
+              <ReadOnlyRow label="Amount" value={amountOf(current) === null ? null : formatMinor(amountOf(current)!, currency)} />
+            ) : total !== null && splits.length === 1 ? (
+              <>
+                <ReadOnlyRow label="Amount" value={formatMinor(total, currency)} />
+                {foreign && <ReadOnlyRow label={`In ${foreign.currency}`} value={formatMinor(foreign.total, foreign.currency)} />}
+              </>
             ) : (
-              <TextRow
-                label="Amount"
-                prefix={currency}
-                value={current.amount}
-                inputMode="decimal"
-                placeholder="Amount"
-                info={part === at ? 'Works out from the other parts. Typing an amount here fixes it, and the part before it becomes the Rest.' : undefined}
-                onChange={(e) => {
-                  const edit = editAmount(splits, part, groupTypedAmount(e.target.value, currency), total, currency);
-                  if ('refusal' in edit) return setOver(edit.refusal);
-                  setOver(null);
-                  setSplits(edit.splits);
-                }}
-              />
+              <>
+                <TextRow
+                  label="Amount"
+                  prefix={workedOut(current, part) === 'amount' ? `≈ ${currency}` : currency}
+                  value={current.amount}
+                  inputMode="decimal"
+                  placeholder="Amount"
+                  className={workedOut(current, part) === 'amount' ? '!text-[var(--ph-ink-3)]' : undefined}
+                  info={part === at ? 'Works out from the other parts. Typing an amount here fixes it, and the part before it becomes the Rest.' : undefined}
+                  // A worked-out figure is typed over whole, not added to.
+                  onFocus={(e) => workedOut(current, part) === 'amount' && e.currentTarget.select()}
+                  onChange={(e) => {
+                    const edit = editAmount(splits, part, groupTypedAmount(e.target.value, currency), total, currency, foreign);
+                    if ('refusal' in edit) return setOver(edit.refusal);
+                    setOver(null);
+                    setSplits(edit.splits);
+                  }}
+                />
+                {foreign && (
+                  <TextRow
+                    label={`In ${foreign.currency}`}
+                    prefix={workedOut(current, part) === 'original' ? `≈ ${foreign.currency}` : foreign.currency}
+                    value={current.original ?? ''}
+                    inputMode="decimal"
+                    placeholder="Amount"
+                    className={workedOut(current, part) === 'original' ? '!text-[var(--ph-ink-3)]' : undefined}
+                    onFocus={(e) => workedOut(current, part) === 'original' && e.currentTarget.select()}
+                    onChange={(e) => {
+                      const edit = editOriginal(splits, part, groupTypedAmount(e.target.value, foreign.currency), total, currency, foreign);
+                      if ('refusal' in edit) return setOver(edit.refusal);
+                      setOver(null);
+                      setSplits(edit.splits);
+                    }}
+                  />
+                )}
+              </>
             )}
             {/* The bill this part pays: a month of a recurring bill, or None. Pay's own bill is the payment's, and stays. */}
             {billOffered && (current.bill?.own ? (
@@ -368,9 +425,9 @@ export function SplitSheet({
               <PickerRow label="Bill" testId="split-part-bill" value={billOf(current) ?? 'None'} onOpen={() => setChoosingBill(true)} />
             ))}
           </InsetGroup>
-          {over && (
+          {(over ?? needs) && (
             <p role="alert" className="-mt-[8px] mb-[14px] px-[13px] text-[12.5px] leading-4 text-[var(--ph-warn)]">
-              {over}
+              {over ?? needs}
             </p>
           )}
 
@@ -395,7 +452,7 @@ export function SplitSheet({
               onClick={() => {
                 setPart(null);
                 setOver(null);
-                setSplits(removePart(splits, part, total, currency));
+                setSplits(removePart(splits, part, total, currency, foreign));
               }}
             />
           </InsetGroup>
