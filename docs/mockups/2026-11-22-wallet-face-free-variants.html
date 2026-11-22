@@ -1,0 +1,89 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Wallet A: where the set-aside money shows</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1240px; line-height:1.4; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; }
+  .col { width:310px; flex:none; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .cap b { display:inline-block; min-width:26px; height:22px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:22px; font-size:12px; margin-right:6px; padding:0 4px; }
+  .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:70px; line-height:1.4; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#2e8b3e; border-radius:9px; padding:1px 7px; margin-left:4px; vertical-align:2px; }
+  .phone { background:var(--ground); border-radius:24px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .box { background:#fff; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
+  .box .r { display:flex; justify-content:space-between; font-size:14px; padding:4px 0; font-variant-numeric:tabular-nums; } .box .r span:first-child { color:var(--ink2); }
+  .box .q { color:var(--ink3); font-size:13px; }
+  .box .hero { font-size:26px; line-height:32px; font-weight:700; margin:0 0 6px; font-variant-numeric:tabular-nums; } .box .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px; vertical-align:1px; } .box .cap2 { white-space:nowrap; font-size:11.5px; color:var(--ink3); margin:-2px 0 4px 15px; padding:1px 3px; } .box .r { white-space:nowrap; gap:8px; font-size:13px; }
+  .box .lbl { font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--ink3); text-transform:uppercase; margin:0 0 4px; }
+  .card { height:150px; border-radius:14px; padding:12px 14px; color:#fff; position:relative; margin-bottom:-96px; box-shadow:0 -2px 8px rgba(0,0,0,.18); overflow:hidden; }
+  .card:last-child { margin-bottom:0; }
+  .card .nm { position:absolute; left:14px; top:14px; font-weight:700; font-size:13px; letter-spacing:.04em; }
+  .card .fig { position:absolute; right:14px; top:10px; font-variant-numeric:tabular-nums; font-size:16px; font-weight:600; display:flex; align-items:center; gap:6px; }
+  .card .pin { display:inline-flex; width:20px; height:20px; border-radius:50%; background:rgba(255,255,255,.25); align-items:center; justify-content:center; font-size:11px; }
+  .card .seg { position:absolute; left:14px; right:14px; top:40px; height:4px; border-radius:2px; background:rgba(255,255,255,.35); overflow:hidden; display:flex; }
+  .card .seg i { display:block; height:100%; background:#fff; }
+  .a { background:linear-gradient(135deg,#1f4e9c,#3a78d8); } .b { background:linear-gradient(135deg,#7a1f3d,#c0456b); } .c { background:linear-gradient(135deg,#3b3b3f,#6b6b72); }
+  .new { outline:2px solid #ff9f0a; outline-offset:2px; border-radius:6px; }
+  .sheet { background:#fff; border-radius:14px; margin-top:12px; padding:10px 14px; font-size:14px; }
+  .sheet .r { display:flex; justify-content:space-between; padding:6px 0; font-variant-numeric:tabular-nums; } .sheet .r + .r { border-top:.5px solid var(--hair); } .sheet .r span:first-child { color:var(--ink2); }
+  .sum { font-size:12.5px; color:#555; margin:10px 4px 0; line-height:1.4; }
+</style></head>
+<body>
+<h1>Option A without the words on the card: where the set-aside money shows</h1>
+<p class="sub">In every version the card's figure is what is free (Rp 8.000.000), so the cards add up to Spending money. Only the way the Rp 2.000.000 set aside is shown differs. New parts outlined in orange. Invented accounts and figures.</p>
+
+<div class="wrap">
+  <div class="col">
+    <p class="cap"><b>A1</b>In the Balance box <span class="tag">SUGGESTED</span></p>
+    <p class="note">Nothing extra on the card. The Balance box gets one quiet line under Spending money saying how much set-aside money is left out. Tapping the card shows its own split.</p>
+    <div class="phone">
+      <div class="box"><p class="lbl">Balance</p><p class="hero">Rp 5.300.000</p><div class="r"><span><i class="dot" style="background:#248a3d"></i>Spending money</span><span>Rp 9.050.000</span></div><p class="cap2 new">Rp 2.000.000 set aside for goals left out</p><div class="r"><span><i class="dot" style="background:#d70015"></i>Outstanding on cards</span><span>− Rp 2.400.000</span></div><div class="r"><span><i class="dot" style="background:#c77700"></i>Bills still to pay</span><span>− Rp 1.350.000 ›</span></div></div>
+      <div>
+        <div class="card a"><span class="nm">CONTOH</span><span class="fig">Rp 8.000.000</span></div>
+        <div class="card b"><span class="nm">TABUNGAN</span><span class="fig">Rp 650.000</span></div>
+        <div class="card c"><span class="nm">CASH</span><span class="fig">Rp 400.000</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><b>A2</b>A small mark on the card</p>
+    <p class="note">A small goal mark beside the figure on a card that holds set-aside money. No figure, no words. Tapping the card shows how much.</p>
+    <div class="phone">
+      <div class="box"><p class="lbl">Balance</p><p class="hero">Rp 5.300.000</p><div class="r"><span><i class="dot" style="background:#248a3d"></i>Spending money</span><span>Rp 9.050.000</span></div><div class="r"><span><i class="dot" style="background:#d70015"></i>Outstanding on cards</span><span>− Rp 2.400.000</span></div><div class="r"><span><i class="dot" style="background:#c77700"></i>Bills still to pay</span><span>− Rp 1.350.000 ›</span></div></div>
+      <div>
+        <div class="card a"><span class="nm">CONTOH</span><span class="fig"><span class="pin new">◎</span>Rp 8.000.000</span></div>
+        <div class="card b"><span class="nm">TABUNGAN</span><span class="fig">Rp 650.000</span></div>
+        <div class="card c"><span class="nm">CASH</span><span class="fig">Rp 400.000</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><b>A3</b>A thin bar on the card</p>
+    <p class="note">A thin bar across the card: the bright part is what is free, the faint part what is set aside. No figure, no words.</p>
+    <div class="phone">
+      <div class="box"><p class="lbl">Balance</p><p class="hero">Rp 5.300.000</p><div class="r"><span><i class="dot" style="background:#248a3d"></i>Spending money</span><span>Rp 9.050.000</span></div><div class="r"><span><i class="dot" style="background:#d70015"></i>Outstanding on cards</span><span>− Rp 2.400.000</span></div><div class="r"><span><i class="dot" style="background:#c77700"></i>Bills still to pay</span><span>− Rp 1.350.000 ›</span></div></div>
+      <div>
+        <div class="card a"><span class="nm">CONTOH</span><span class="fig">Rp 8.000.000</span><span class="seg new"><i style="width:80%"></i></span></div>
+        <div class="card b"><span class="nm">TABUNGAN</span><span class="fig">Rp 650.000</span></div>
+        <div class="card c"><span class="nm">CASH</span><span class="fig">Rp 400.000</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap">Any of them: the card tapped</p>
+    <p class="note">The raised card lists its own figures, so the bank's balance is always one tap away.</p>
+    <div class="phone">
+      <div class="card a" style="margin-bottom:0"><span class="nm">CONTOH</span><span class="fig">Rp 8.000.000</span></div>
+      <div class="sheet new">
+        <div class="r"><span>Balance</span><span>Rp 10.000.000</span></div>
+        <div class="r"><span>Set aside for goals</span><span>− Rp 2.000.000</span></div>
+        <div class="r"><span><b>Free to spend</b></span><span><b>Rp 8.000.000</b></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>
