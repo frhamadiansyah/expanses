@@ -8,7 +8,8 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 /**
  * The fee year on the Fee waiver page, on a phone (owner, 13 Nov 2026). Its lines come from the card's own
  * transactions; ⋮ on a line opens a few plain choices. The owner's case (build 118): the fee was charged before the
- * app, so its line says so once the reversal is in, and the reversal is left out of reports. Names and figures are
+ * app, so once the reversal is in the app adds the fee as its own row, paid off before the app, and both are left out of
+ * reports. Names and figures are
  * invented.
  */
 
@@ -27,7 +28,7 @@ async function cardWithPastFee(page: Page, name: string, owed?: string) {
 /** "15 Oct" in the fee year the line is about, "2 Feb 2027" in another. */
 const lineDate = (d: Date, feeYear: number) => `${d.getDate()} ${MONTHS[d.getMonth()]}${d.getFullYear() === feeYear ? '' : ` ${d.getFullYear()}`}`;
 
-test('phone: the charge before the app, then the reversal: Charged reads before the app, the card owes less, and Settings reads waived', async ({ page }) => {
+test('phone: the charge before the app, then the reversal: the fee gets its row, the card owes less by the reversal only, and Settings reads waived', async ({ page }) => {
   const charged = await cardWithPastFee(page, 'Nusa Sample', '3000000');
   const year = charged.getFullYear();
   await expect(page.getByTestId('fee-waiver-row')).toContainText('None');
@@ -44,7 +45,8 @@ test('phone: the charge before the app, then the reversal: Charged reads before 
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
 
-  await expect(page.getByTestId('fee-line-charged-before-app-value')).toHaveText(`${lineDate(charged, year)} · before the app`);
+  // The fee gets its row beside the reversal, on its own day, and reads as any charge (owner, 22 Nov 2026).
+  await expect(page.getByTestId('fee-line-charged-value')).toHaveText(`${lineDate(charged, year)} · Rp 1.200.000`);
   await expect(page.getByTestId('fee-line-reversal-value')).toHaveText(`${lineDate(new Date(), year)} · Rp 1.200.000`);
   await page.screenshot({ path: test.info().outputPath('before-the-app.png') });
   await page.goBack();

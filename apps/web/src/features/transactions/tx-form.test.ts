@@ -617,6 +617,13 @@ describe('what a transaction reads back as', () => {
     const form = formFromTransaction(view({ ...plainExpense, channel: 'offline', excluded: true, eventId: 'ev-1' }), accounts);
     expect(form).toMatchObject({ channel: 'offline', excluded: true, eventId: 'ev-1' });
   });
+
+  it('reopens a reversed fee with its own exclude mark, never the fee rule’s reading, so saving stores no mark', () => {
+    const fee = view({ ...plainExpense, excluded: true, feeLeftOut: true, excludedMark: false });
+    expect(formFromTransaction(fee, accounts).excluded).toBe(false);
+    expect(formToPost(formFromTransaction(fee, accounts), accounts)).toMatchObject({ input: { excludedFromReport: false } });
+    expect(formFromTransaction(view({ ...plainExpense, excluded: true, feeLeftOut: true, excludedMark: true }), accounts).excluded).toBe(true);
+  });
 });
 
 describe('the amount row on a desktop keyboard', () => {

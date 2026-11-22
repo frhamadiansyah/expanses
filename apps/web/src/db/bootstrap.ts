@@ -10,6 +10,7 @@ import {
   ensureDefaultCategorySets,
   retireDefaultSetCategories,
   moveHeldAtToInstitutions,
+  pairBeforeAppFees,
   inBook,
   listWorkspaces,
   migrate,
@@ -170,6 +171,13 @@ export async function openAppDb(
       await upgradeCalculatorGoals(database, contextOf(each), isoDate());
     } catch (error) {
       console.warn(`Upgrading worked-out goals in ${each.name} failed`, error);
+    }
+    // A fee reversed before the app gets its fee row beside it, once (owner, 22 Nov 2026). Asking again makes nothing;
+    // a failure leaves the card as it was and the next open tries again.
+    try {
+      await pairBeforeAppFees(database, contextOf(each), isoDate());
+    } catch (error) {
+      console.warn(`Adding the fee rows beside fees reversed before the app in ${each.name} failed`, error);
     }
   }
   // Shared goals' daily resend waits for the first screen, and the open does not wait for it.

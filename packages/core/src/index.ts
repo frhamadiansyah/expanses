@@ -757,6 +757,8 @@ export {
   FEE_REVERSAL_DAYS_AFTER,
   FEE_REVERSAL_DESCRIPTION,
   feeCandidateWindow,
+  feeLeftOut,
+  type FeeMoneyLine,
   type FeeYearFacts,
   type FeeYearLine,
   type FeeYearState,
