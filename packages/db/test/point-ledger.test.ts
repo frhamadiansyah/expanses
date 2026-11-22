@@ -17,6 +17,7 @@ import {
   recordTransactionPointActual,
   saveCardTerms,
   saveEarnRule,
+  setPostedOn,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -262,5 +263,51 @@ describe('catching a card up', () => {
     const { database, ws, program } = await withOldSpending();
 
     expect(await backfillCycles(database, ws, program.id, 4, TODAY)).toBe(4);
+  });
+});
+
+describe('a purchase the bank posted on a later statement (owner, 22 Nov 2026)', () => {
+  /*
+   * A card cycle takes its purchases by the day the bank posted them (`cardSpendLines`), but a purchase's points are
+   * dated the day it was made. A purchase made on the last day of one cycle and posted in the next had its points
+   * dated outside the cycle that earns them: working that cycle out again never found them, wrote them a second time
+   * under the same id, and the Points page failed with "Failed query: insert into point_entries".
+   */
+  async function postedLater() {
+    const setup = await cardWithSpending();
+    const { database, ws, card } = setup;
+    const all = await listAccounts(database, ws);
+    const groceries = all.find((account) => account.name === 'Groceries')!.id;
+    const late = await postTransaction(database, ws, {
+      occurredOn: '2026-09-20',
+      description: 'Bought on statement day',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: card.id, amountMinor: 800_000, currency: 'IDR' }),
+    });
+    await setPostedOn(database, ws, late, '2026-09-22');
+    return { ...setup, late, next: statementCycleFor('2026-10-01', 20), previous: statementCycleFor('2026-09-20', 20) };
+  }
+
+  it('works the cycle it was posted in out again without writing its points twice', async () => {
+    const { database, ws, program, next, late } = await postedLater();
+    await deriveCycleEntries(database, ws, program.id, next);
+    await deriveCycleEntries(database, ws, program.id, next);
+    const mine = (await listPointEntries(database, ws, program.id)).filter((entry) => entry.transactionId === late);
+    expect(mine.map((entry) => [entry.quantity, entry.occurredOn])).toEqual([[80, '2026-09-20']]);
+  });
+
+  it('the cycle its date falls in neither earns it nor takes its points away', async () => {
+    const { database, ws, program, next, previous, late } = await postedLater();
+    await deriveCycleEntries(database, ws, program.id, next);
+    const [before] = (await listPointEntries(database, ws, program.id)).filter((entry) => entry.transactionId === late);
+    await deriveCycleEntries(database, ws, program.id, previous);
+    await deriveCycleEntries(database, ws, program.id, next);
+    const after = (await listPointEntries(database, ws, program.id)).filter((entry) => entry.transactionId === late);
+    expect(after.map((entry) => entry.id)).toEqual([before!.id]);
+  });
+
+  it('Points opening twice (backfill) goes through', async () => {
+    const { database, ws, program } = await postedLater();
+    await backfillCycles(database, ws, program.id, 2, '2026-10-05');
+    await expect(backfillCycles(database, ws, program.id, 2, '2026-10-05')).resolves.toBeTypeOf('number');
   });
 });

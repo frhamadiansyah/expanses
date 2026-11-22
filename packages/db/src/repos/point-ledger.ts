@@ -186,8 +186,16 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
           eq(pointEntries.earnedById, programId),
           eq(pointEntries.kind, 'earn'),
           inArray(pointEntries.source, [...DERIVED_SOURCES]),
-          gte(pointEntries.occurredOn, cycle.start),
-          lte(pointEntries.occurredOn, cycle.end),
+          // A purchase's points belong to the cycle its purchase does: the one the bank posted it in, as
+          // `cardSpendLines` takes it (owner, 22 Nov 2026). Its points are dated the day it was made, so a purchase made
+          // on the last day of one cycle and posted in the next has its points dated outside the cycle that earns them;
+          // read by that date alone they were never found again, and were written a second time under the same id
+          // ("Failed query: insert into point_entries"). A purchase since deleted falls back to the points' own date,
+          // and a cycle's own figures (a statement's total, a bonus) name no purchase and are read by their date.
+          sql`COALESCE(
+            (SELECT COALESCE(cp.posted_on, t.occurred_on) FROM transactions t LEFT JOIN card_postings cp ON cp.transaction_id = t.id WHERE t.id = ${pointEntries.transactionId}),
+            ${pointEntries.occurredOn}
+          ) BETWEEN ${cycle.start} AND ${cycle.end}`,
         ),
       )
       .orderBy(pointEntries.id);
