@@ -40,7 +40,7 @@ describe('a card purchase paid off by the date rule, in a shared workspace', () 
     expect(await rows(b, bookId)).toEqual(['Old groceries:210000', 'Ticked groceries:90000']);
     // The card holder's phone keeps the settlements beside the spending (and the card's opening), the same two for
     // either way the mark was made; the card still owes what it did when it was added.
-    expect(await rows(a, bookId)).toEqual(['Old groceries:210000', 'Opening balance: Kartu Contoh:', 'Settled before the app:', 'Settled before the app:', 'Ticked groceries:90000']);
+    expect(await rows(a, bookId)).toEqual(['Old groceries:210000', 'Opening balance: Kartu Contoh:', 'Paid off:', 'Paid off:', 'Ticked groceries:90000']);
     expect(await owed()).toBe(1_500_000);
   });
 });

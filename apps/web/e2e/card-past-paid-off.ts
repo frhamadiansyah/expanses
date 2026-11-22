@@ -74,8 +74,8 @@ export async function addFormHintAndToggle(page: Page, info: TestInfo) {
   await expect(paidOff).toHaveAttribute('aria-pressed', 'true');
   await expect(form.getByTestId('paid-off-tick')).toBeVisible();
   await expect(form.getByRole('img', { name: 'Paid off' })).toBeVisible();
-  // No sentence about the rule anywhere on the form.
-  await expect(form).not.toContainText(/before the app|was added/i);
+  // No sentence about the rule anywhere on the form: the ✓ is all.
+  await expect(form).not.toContainText(/before the app|was added|paid off/i);
   await page.screenshot({ path: info.outputPath('add-form-card-paid-off.png') });
   // The card's own day is an ordinary, owed purchase; back to the old date, ticked again until a tap says otherwise.
   await form.getByLabel('Date').fill('2026-09-20');
@@ -103,5 +103,5 @@ export async function addFormKeepsTicked(page: Page) {
   await expectWalletFigure(page, CARD, '1.500.000');
   await page.goto('/transactions?month=2026-09');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Bakmi Contoh' })).toHaveCount(1);
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Settled before the app' })).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Paid off' })).toHaveCount(0);
 }
