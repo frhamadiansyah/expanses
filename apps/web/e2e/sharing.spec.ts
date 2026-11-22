@@ -996,16 +996,18 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Fandri water', paidWith: 'Fandri Bank', category: 'Groceries', amount: '50000' });
 
-  // Both account pages list the same two rows, each with who recorded it; the balance is the holder's.
+  // The holder's own page lists the rows under Recent only — no second joint list (owner, 22 Nov 2026); the partner's
+  // page lists both with who recorded each; the balance is the holder's.
   await accountReads(page, 'Fandri Bank', '9.770.000');
   const rowsOn = (p: Page) => p.getByTestId('joint-row');
   await eventually(page, async () => {
     await page.goto('/wallet');
     await walletCard(page, 'Fandri Bank').click();
-    await expect(rowsOn(page)).toHaveCount(2, { timeout: 2_000 });
+    await expect(page.locator('main')).toContainText('Dewi groceries', { timeout: 2_000 });
   });
-  await expect(rowsOn(page).filter({ hasText: 'Dewi groceries' })).toContainText('by Dewi');
-  await expect(rowsOn(page).filter({ hasText: 'Fandri water' })).toContainText('by me');
+  await expect(page.locator('main')).toContainText('Fandri water');
+  await expect(rowsOn(page)).toHaveCount(0);
+  await expect(page.locator('main')).not.toContainText('Joint account ·');
   await shot(page, info, 'j3-holder-rows');
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
@@ -1032,7 +1034,8 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await expect(page).toHaveURL(/\/transactions$/);
   await page.goto('/wallet');
   await walletCard(page, 'Fandri Bank').click();
-  await expect(page.getByTestId('joint-row-deleted')).toContainText('deleted by me');
+  await expect(page.locator('main')).not.toContainText('Dewi groceries');
+  await expect(page.getByTestId('joint-row-deleted')).toHaveCount(0);
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
     await openDrawers(dewi);
@@ -1045,8 +1048,7 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await eventually(page, async () => {
     await page.goto('/wallet');
     await walletCard(page, 'Fandri Bank').click();
-    await expect(page.getByTestId('joint-row-deleted')).toHaveCount(0, { timeout: 1_000 });
-    await expect(rowsOn(page)).toHaveCount(2, { timeout: 1_000 });
+    await expect(page.locator('main')).toContainText('Dewi groceries', { timeout: 1_000 });
   });
   await shot(page, info, 'j4-restored');
 
@@ -1073,10 +1075,9 @@ test('a joint account: the partner pays from it, both list the same rows with wh
   await eventually(page, async () => {
     await page.goto('/wallet');
     await walletCard(page, 'Fandri Bank').click();
-    await expect(rowsOn(page).filter({ hasText: 'Cash withdrawal' })).toHaveCount(1, { timeout: 1_000 });
+    await expect(page.locator('main')).toContainText('Cash withdrawal', { timeout: 1_000 });
   });
-  await expect(rowsOn(page).filter({ hasText: 'Cash withdrawal' })).toContainText('by Dewi');
-  await expect(rowsOn(page).filter({ hasText: 'Cash withdrawal' })).not.toContainText('Dewi Cash');
+  await expect(page.locator('main')).not.toContainText('Dewi Cash');
   await eventually(dewi, async () => {
     await dewi.goto('/net-worth');
     await openDrawers(dewi);
