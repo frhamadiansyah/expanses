@@ -1,15 +1,17 @@
-import { type AccountRow, changeOpeningDate, firstCountedDay, setAccountCardTier, setAccountForSpending, setCountedFrom, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
+import { type AccountRow, changeOpeningBalance, changeOpeningDate, firstCountedDay, setAccountCardTier, setAccountForSpending, setCountedFrom, setAccountNumberLast4, setWalletLast4 } from '@expanses/db';
 import { CATALOG } from '@expanses/catalog';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { formatMinor, isoDate } from '@expanses/core';
+import { useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { openingRateFor } from '../../lib/rates';
+import { formatMinor, isoDate, parseGroupedMajor } from '@expanses/core';
 import { InsetGroup, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { useCountedFrom, useOpenings } from './queries';
 import { errorHint } from '../networth/AssetSettings';
 import { useAssetProfile, useAssetProfiles } from '../networth/queries';
+import { MoneyRow } from '../networth/AssetRows';
 import { useAccountNumberLast4, useCardTiers, useProgramByAccount, useWalletLast4 } from '../cards/card-queries';
 import { CardRewardsSheet } from '../cards/CardRewardsSheet';
 import { rewardsLabel } from '../cards/catalog-picker';
@@ -18,6 +20,7 @@ import { bankOf } from '../wallet/wallet-model';
 import { setKasField } from './kas-fields';
 import { spendsFrom } from './pockets';
 import { last4Field, readAccountNumberLast4, readWalletLast4 } from './wallet-last4';
+import { POCKETS_BALANCE_INFO, startingBalanceQuestion, startingBalanceText } from './starting-balance';
 
 /**
  * What a money account is, in one box on its settings: whether it is for spending, its last four digits (a bank
@@ -43,6 +46,10 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
   const countedFrom = useCountedFrom();
   // As of never moves past a transaction already counted (owner, 13 Nov 2026): the picker stops at its day.
   const firstDay = useQuery({ queryKey: ['first-counted-day', ws.workspaceId, account.id], queryFn: () => firstCountedDay(database, ws, account.id) });
+  const balances = useBalances();
+  const resolveRates = useResolveRates();
+  // The starting balance as typed while its row is being edited; null shows what is stored.
+  const [balanceDraft, setBalanceDraft] = useState<string | null>(null);
 
   const all = accounts.data ?? [];
   const bank = account.subtype === 'bank' || account.subtype === 'savings';
@@ -175,12 +182,60 @@ export function AccountSettingsBox({ account, onError }: { account: AccountRow; 
       : zero
         ? { amountMinor: 0, currency: account.currency!, occurredOn: countedFrom.data![account.id] ?? account.createdAt.slice(0, 10), stored: true }
         : null;
+  // An account with pockets holds nothing itself: each pocket's balance is its own, so its Balance stays read-only.
+  const pocketParent = all.some((row) => row.parentId === account.id && row.kind === 'asset');
+
+  /**
+   * Saved when the row is left, once the confirm says what moves: every balance from the As of day by the difference,
+   * and the balance today with it. Cancel, an unchanged or an unreadable figure writes nothing; emptied reads as zero.
+   */
+  const saveBalance = (from: NonNullable<typeof asOf>) => {
+    if (balanceDraft === null) return;
+    const typed = balanceDraft;
+    let toMinor: number;
+    try {
+      toMinor = typed.trim() === '' || typed.trim() === '-' ? 0 : parseGroupedMajor(typed, from.currency);
+    } catch (e) {
+      setBalanceDraft(null);
+      return onError(e);
+    }
+    if (toMinor === from.amountMinor) return setBalanceDraft(null);
+    const todayMinor = balances.data?.[account.id] ?? 0;
+    if (!window.confirm(startingBalanceQuestion({ on: from.occurredOn, fromMinor: from.amountMinor, toMinor, todayMinor, currency: from.currency }))) return setBalanceDraft(null);
+    void (async () => {
+      onError(null);
+      try {
+        // An account opened at nothing in another currency is given the rate of its As of day, as Add asset gives its opening.
+        const rate = from.stored
+          ? await openingRateFor({ database, ws, currency: from.currency, openedOn: from.occurredOn, openingBalanceMinor: toMinor, typed: '', resolveRates })
+          : undefined;
+        await changeOpeningBalance(database, ws, account.id, toMinor, rate);
+        await invalidate();
+      } catch (e) {
+        onError(e);
+      } finally {
+        // Only once the stored figure is read again, so the old one never shows in between.
+        setBalanceDraft(null);
+      }
+    })();
+  };
   if (rows.length === 0 && !asOf) return null;
   return (
     <>
       {asOf && (
         <InsetGroup>
-          <ReadOnlyRow label="Balance" value={formatMinor(asOf.amountMinor, asOf.currency)} />
+          {pocketParent ? (
+            <ReadOnlyRow label="Balance" value={formatMinor(asOf.amountMinor, asOf.currency)} info={POCKETS_BALANCE_INFO} />
+          ) : (
+            <MoneyRow
+              label="Balance"
+              value={balanceDraft ?? startingBalanceText(asOf.amountMinor, asOf.currency)}
+              onChange={setBalanceDraft}
+              onBlur={() => saveBalance(asOf)}
+              currency={asOf.currency}
+              placeholder="Amount"
+            />
+          )}
           <TextRow
             key={`asof-${asOf.occurredOn}`}
             label="As of"

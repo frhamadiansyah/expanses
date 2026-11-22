@@ -140,7 +140,7 @@ test('an account opened at nothing shows its As of, and moving it back moves whe
   await openSettings(page);
   const asOf = page.getByLabel('As of');
   await expect(asOf).toHaveValue('2026-09-20');
-  await expect(page.getByText('Rp 0').first()).toBeVisible();
+  await expect(page.getByLabel('Balance', { exact: true })).toHaveValue('0');
   await asOf.fill('2026-09-01');
   await asOf.blur();
   await expect(asOf).toHaveValue('2026-09-01');
