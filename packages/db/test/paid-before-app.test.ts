@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAccount, listTransactions, nativeBalances, paidOffMarkOf, postTransaction, replaceTransaction, setSettledBeforeApp, settledBeforeAppOf, voidTransaction } from '../src/index';
+import { sql } from 'drizzle-orm';
 import { setupDb } from './helpers';
 
 async function card() {
@@ -20,7 +21,7 @@ describe('a card purchase already paid off before the app', () => {
     const id = await postTransaction(t.database, t.ws, { occurredOn: '2026-03-12', description: 'Dinner', lines: t.lines(850_000), settledBeforeApp: true });
     expect(await t.owed()).toBe(0);
     const posted = await listTransactions(t.database, t.ws, {});
-    expect(posted.map((tx) => tx.description).sort()).toEqual(['Dinner', 'Settled before the app']);
+    expect(posted.map((tx) => tx.description).sort()).toEqual(['Dinner', 'Paid off']);
     expect(posted.find((tx) => tx.id === id)!.entries.find((e) => e.accountId === t.dining.id)!.amountMinor).toBe(850_000);
   });
 
@@ -29,11 +30,25 @@ describe('a card purchase already paid off before the app', () => {
     const id = await postTransaction(t.database, t.ws, { occurredOn: '2026-03-12', description: 'Dinner', lines: t.lines(850_000), settledBeforeApp: true });
     const edited = await replaceTransaction(t.database, t.ws, id, { occurredOn: '2026-03-13', description: 'Dinner', lines: t.lines(900_000) });
     expect(await t.owed()).toBe(0);
-    const settlement = (await listTransactions(t.database, t.ws, {})).find((tx) => tx.description === 'Settled before the app')!;
+    const settlement = (await listTransactions(t.database, t.ws, {})).find((tx) => tx.description === 'Paid off')!;
     expect(settlement.occurredOn).toBe('2026-03-13');
     await voidTransaction(t.database, t.ws, edited);
     expect(await t.owed()).toBe(0);
     expect((await listTransactions(t.database, t.ws, {})).length).toBe(0);
+  });
+
+  it('reads an older settlement, saved with the words before the app, as Paid off (owner, 22 Nov 2026)', async () => {
+    const t = await card();
+    await postTransaction(t.database, t.ws, { occurredOn: '2026-03-12', description: 'Dinner', lines: t.lines(850_000), settledBeforeApp: true });
+    await t.database.db.run(sql`UPDATE transactions SET description = 'Settled before the app' WHERE external_ref LIKE 'before-app:%'`);
+    const posted = await listTransactions(t.database, t.ws, {});
+    expect(posted.map((tx) => tx.description).sort()).toEqual(['Dinner', 'Paid off']);
+  });
+
+  it('keeps a typed description that only looks like the old words', async () => {
+    const t = await card();
+    await postTransaction(t.database, t.ws, { occurredOn: '2026-03-12', description: 'Settled before the app', lines: t.lines(850_000) });
+    expect((await listTransactions(t.database, t.ws, {})).map((tx) => tx.description)).toEqual(['Settled before the app']);
   });
 
   it('owes as usual when not marked', async () => {
@@ -50,7 +65,7 @@ describe('a card purchase already paid off before the app', () => {
     await setSettledBeforeApp(t.database, t.ws, id, true);
     expect(await t.owed()).toBe(0);
     expect(await settledBeforeAppOf(t.database, t.ws, id)).toBe(true);
-    const settlement = (await listTransactions(t.database, t.ws, {})).find((tx) => tx.description === 'Settled before the app')!;
+    const settlement = (await listTransactions(t.database, t.ws, {})).find((tx) => tx.description === 'Paid off')!;
     expect(settlement.occurredOn).toBe('2026-03-12');
     await setSettledBeforeApp(t.database, t.ws, id, false);
     expect(await t.owed()).toBe(-850_000);
@@ -82,7 +97,7 @@ describe('a card purchase already paid off before the app', () => {
     const refund = await postTransaction(t.database, t.ws, { occurredOn: '2026-03-14', description: 'Dinner refund', lines: t.lines(-200_000) });
     expect(await paidOffMarkOf(t.database, t.ws, refund)).toEqual({ refund: true, settled: false });
     // The balancing settlement itself, a cash purchase and a transaction not here carry no mark.
-    const settlement = (await listTransactions(t.database, t.ws, {})).find((tx) => tx.description === 'Settled before the app')!;
+    const settlement = (await listTransactions(t.database, t.ws, {})).find((tx) => tx.description === 'Paid off')!;
     expect(await paidOffMarkOf(t.database, t.ws, settlement.id)).toBeNull();
     const cash = await createAccount(t.database, t.ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
     const snack = await postTransaction(t.database, t.ws, {

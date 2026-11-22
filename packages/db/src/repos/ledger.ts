@@ -608,6 +608,16 @@ export async function billLinksOfTx(tx: Db, transactionId: string): Promise<(Bil
 /** The settlement that keeps a card even beside a purchase paid off before the app: found by the purchase's id. */
 const beforeAppRef = (purchaseId: string) => `before-app:${purchaseId}`;
 
+/** What a past purchase's balancing pair is called (owner, 22 Nov 2026: no "before the app" words anywhere). */
+export const PAID_OFF_PAIR_DESCRIPTION = 'Paid off';
+/** What older pairs were saved with, on this phone or a synced one; read as `PAID_OFF_PAIR_DESCRIPTION`. */
+const OLD_PAIR_DESCRIPTION = 'Settled before the app';
+
+/** A row's description as shown: an older balancing pair's stored words read as the current ones. */
+export function shownDescription(description: string, externalRef: string | null | undefined): string {
+  return description === OLD_PAIR_DESCRIPTION && externalRef?.startsWith('before-app:') ? PAID_OFF_PAIR_DESCRIPTION : description;
+}
+
 /** The credit card line of a purchase's postings: what the card took on, and in which currency. Null when none. */
 async function cardLineOf(tx: Db, ws: WorkspaceContext, lines: readonly PostingLine[]): Promise<PostingLine | null> {
   for (const line of lines) {
@@ -649,7 +659,7 @@ async function settlementInputOf(tx: Db, ws: WorkspaceContext, purchaseId: strin
     const opening = await systemAccountId(tx, ws, 'opening_balance');
     return {
       occurredOn: input.occurredOn,
-      description: 'Settled before the app',
+      description: PAID_OFF_PAIR_DESCRIPTION,
       lines: [
         { accountId: card.accountId, amountMinor: -card.amountMinor, currency: card.currency },
         { accountId: opening, amountMinor: card.amountMinor, currency: card.currency },
@@ -665,7 +675,7 @@ async function settlementInputOf(tx: Db, ws: WorkspaceContext, purchaseId: strin
   for (const line of money) counter.set(line.currency, (counter.get(line.currency) ?? 0) + line.amountMinor);
   return {
     occurredOn: input.occurredOn,
-    description: 'Settled before the app',
+    description: PAID_OFF_PAIR_DESCRIPTION,
     lines: [
       ...money.map((line) => ({ accountId: line.accountId, amountMinor: -line.amountMinor, currency: line.currency })),
       ...[...counter].filter(([, minor]) => minor !== 0).map(([currency, minor]) => ({ accountId: before, amountMinor: minor, currency })),
@@ -763,7 +773,7 @@ async function startSidesInputOf(tx: Db, ws: WorkspaceContext, purchaseId: strin
   const before = await ensureSystemAccountTx(tx, ws, 'before_the_app');
   return {
     occurredOn: input.occurredOn,
-    description: 'Settled before the app',
+    description: PAID_OFF_PAIR_DESCRIPTION,
     lines: sides.flatMap((line) => [
       { accountId: line.accountId, amountMinor: -line.amountMinor, currency: line.currency },
       { accountId: before, amountMinor: line.amountMinor, currency: line.currency },
@@ -854,7 +864,7 @@ export function setSettledBeforeApp(database: Database, ws: WorkspaceContext, pu
       ratesToBase: Object.fromEntries(rows.map((row) => [row.currency, row.rate])),
     };
     if (!(await cardLineOf(tx, ws, input.lines)) || (await movesOwnMoneyTx(tx, ws, input.lines))) {
-      throw new LedgerError('NOT_A_CARD_PURCHASE', 'Only a credit card purchase can be paid off before the app');
+      throw new LedgerError('NOT_A_CARD_PURCHASE', 'Only a credit card purchase can be marked paid off');
     }
     await settleBeforeAppTx(tx, ws, purchaseId, input);
   });
@@ -1959,7 +1969,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     id: t.id,
     ...(past.has(t.id) ? { past: true, pastAccountIds: past.get(t.id)! } : {}),
     occurredOn: t.occurredOn,
-    description: t.description,
+    description: shownDescription(t.description, t.externalRef),
     source: t.source,
     status: t.status,
     externalRef: t.externalRef,

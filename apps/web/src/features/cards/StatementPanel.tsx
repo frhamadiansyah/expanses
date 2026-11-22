@@ -508,8 +508,8 @@ export function StatementPanel({
                         planRow(line)
                           ? 'Paid: this instalment and every one before it'
                           : line.owedMinor < 0
-                            ? 'Credit used up before the app: nothing to take off the bill'
-                            : 'Already paid off before the app: nothing to pay'
+                            ? 'Credit already used: nothing to take off the bill'
+                            : 'Already paid off: nothing to pay'
                       }
                       glyph={<CircleCheck size={17} aria-hidden />}
                       disabled={busy}
@@ -849,7 +849,7 @@ export function StatementPanel({
           <p className="px-[14px] pb-[10px] text-center text-[13px] leading-[18px] text-[var(--ph-ink-3)]">
             {planRow(unmarking)
               ? `${unmarking.description} · ${unmarking.instalment!.number} of ${unmarking.instalment!.of} · ${money(unmarking.owedMinor)} is ticked paid. Not paid puts it back on what is owed.`
-              : `${unmarking.description} · ${money(Math.abs(unmarking.owedMinor))} is recorded as ${settledWord(unmarking)} before the app.`}
+              : `${unmarking.description} · ${money(Math.abs(unmarking.owedMinor))} is marked ${settledWord(unmarking)}.`}
           </p>
           <button
             type="button"
