@@ -16,7 +16,7 @@ import { useInstallments } from '../loans/queries';
 import { owedMinor } from '../networth/debt-rows';
 import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
 import { jointChip, readJointOrder, walletJoint, walletKeys } from './wallet-joint';
-import { bankOf, moneyChip, moneyFaceOf, walletAsideCredit, walletCredit, walletMoney } from './wallet-model';
+import { bankOf, moneyChip, moneyFaceOf, walletAsideCredit, walletAsideMoney, walletCredit, walletMoney } from './wallet-model';
 
 /** What a credit card's points are counted in, for the line beside the stack. */
 const unitOf = (cp: CardPoints) => cp.programme?.unit ?? cp.program?.unit ?? 'points';
@@ -26,11 +26,12 @@ const unitOf = (cp: CardPoints) => cp.programme?.unit ?? cp.program?.unit ?? 'po
  * three views and Reorder cards read them (`walletOrder`). With them, what they were read from, so Wallet's Balance box
  * counts the same money the cards show.
  *
- * `openId` is the card or account open on its page. When it is a credit card switched off "For spending"
- * (`walletAsideCredit`), that card is drawn too, as `aside`, so Wallet can raise it over its page as it raises its own
- * cards — and it is in none of `cards`, `credit` or the figures read from them.
+ * `open` is the card or account open on its page. When it is a credit card switched off "For spending"
+ * (`walletAsideCredit`), or money switched off (`walletAsideMoney`), that card is drawn too, as `aside`, so Wallet can
+ * raise it over its page as it raises its own cards — and it is in none of `cards`, `money`, `credit` or the figures
+ * read from them.
  */
-export function useWalletCards(openId?: string) {
+export function useWalletCards(open: { cardId?: string; accountId?: string } = {}) {
   const { database, ws } = useApp();
   const accounts = useAccounts();
   const balances = useBalances();
@@ -61,8 +62,16 @@ export function useWalletCards(openId?: string) {
   const book = spendingBook(everything);
   const money = walletMoney(everything);
   const credit = walletCredit(everything);
-  // Every currency the cards and the box convert: the money's, a pocket's, a card's.
-  const rates = useHeldRates([...book.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!), ...credit.map((a) => a.currency ?? ws.baseCurrency), ...joint.map((card) => card.currency)]);
+  // The money kept aside that is open: its pockets are all of its open ones, as its own page and Assets count them.
+  const asideMoney = walletAsideMoney(everything, open.accountId);
+  const asidePockets = asideMoney ? pocketsOf(asideMoney.id, everything) : [];
+  // Every currency the cards and the box convert: the money's, a pocket's, a card's — and the open money kept aside's.
+  const rates = useHeldRates([
+    ...book.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!),
+    ...credit.map((a) => a.currency ?? ws.baseCurrency),
+    ...joint.map((card) => card.currency),
+    ...asidePockets.map((a) => a.currency!),
+  ]);
   const held = rates.data?.rates ?? {};
 
   /* Each credit card's points, for the line beside the stack and its catalogue art. */
@@ -73,7 +82,7 @@ export function useWalletCards(openId?: string) {
     queryFn: () => Promise.all(credit.map((card) => loadCardPoints(database, ws, card, everything, today))),
   });
   // The card kept aside that is open, read on its own so opening it never reads every card's points again.
-  const asideAccount = walletAsideCredit(everything, openId);
+  const asideAccount = walletAsideCredit(everything, open.cardId);
   const asideData = useQuery({
     queryKey: ['card-points-list', ws.workspaceId, today, 'aside', asideAccount?.id ?? ''],
     enabled: accounts.isSuccess && asideAccount !== undefined,
@@ -83,11 +92,12 @@ export function useWalletCards(openId?: string) {
   /**
    * A money card's figure: its balance, or — for an account with pockets — what its pockets kept for spending come to
    * here. A pocket switched off (the lira left after a trip) is savings, so it is not in the card's figure any more than
-   * in the Balance box; the account's page and Assets still count it.
+   * in the Balance box; the account's page and Assets still count it. Money kept aside is read from `pool`, its every
+   * open pocket, as its page reads it.
    */
-  const moneyFigure = (account: AccountRow) => {
+  const moneyFigure = (account: AccountRow, pool: readonly AccountRow[] = book) => {
     if (!parents.has(account.id)) return formatMinor(all[account.id] ?? 0, account.currency!);
-    const pockets = pocketsOf(account.id, book);
+    const pockets = pocketsOf(account.id, pool);
     return groupedFigure(parentTotal(pockets, all, ws.baseCurrency, held), ws.baseCurrency, pockets.some((p) => p.currency !== ws.baseCurrency)).text;
   };
   /*
@@ -98,7 +108,7 @@ export function useWalletCards(openId?: string) {
    * are its phone's. Money nothing is drawn for keeps the plain face with its chip of words ("E-money").
    */
   const faceOf = (account: AccountRow) => moneyFaceOf(bankOf(account.id, everything, profiles), account.name, account.subtype, tiers[account.id]);
-  const moneyCards: WalletCard[] = money.map((account) => {
+  const moneyCard = (account: AccountRow, pool: readonly AccountRow[] = book): WalletCard => {
     const face = faceOf(account);
     const debit = face?.kind === 'debit' ? [...plastic.filter((card) => card.accountId === account.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0] : undefined;
     return {
@@ -109,14 +119,15 @@ export function useWalletCards(openId?: string) {
       holderName: face?.kind === 'debit' ? (debit?.holderName ?? account.name) : undefined,
       kind: moneyChip(account, digits[account.id]),
       face: face ?? undefined,
-      figure: moneyFigure(account),
+      figure: moneyFigure(account, pool),
       figureLabel: 'Balance',
-      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, book).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
+      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, pool).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
       to: '/accounts/$accountId' as const,
       params: { accountId: account.id },
       label: account.name,
     };
-  });
+  };
+  const moneyCards: WalletCard[] = money.map((account) => moneyCard(account));
   const creditCard = (cp: CardPoints): WalletCard => {
     const own = [...plastic.filter((card) => card.accountId === cp.card.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     const points = cp.current?.earn.totalPoints ?? 0;
@@ -154,7 +165,7 @@ export function useWalletCards(openId?: string) {
     };
   };
   const creditCards: WalletCard[] = (data.data ?? []).map(creditCard);
-  const aside = asideAccount && asideData.data ? creditCard(asideData.data) : undefined;
+  const aside = asideMoney ? moneyCard(asideMoney, everything) : asideAccount && asideData.data ? creditCard(asideData.data) : undefined;
   /*
    * The partner's joint cards, drawn like an own card of their kind from what the summary carries — its name, its kind,
    * its currency, its bank and card tier, and the last four digits of its card or its number — and "· Rina’s" after

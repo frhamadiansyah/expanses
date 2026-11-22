@@ -21,7 +21,7 @@ import { BillsToPaySheet } from './BillsToPaySheet';
 import { useWalletCards } from './useWalletCards';
 import { filteredCards, toggleFilter, walletBox, type WalletFilter, walletFilterSets } from './wallet-balance';
 import { jointKey } from './wallet-joint';
-import { walletAsideCredit } from './wallet-model';
+import { walletAsideCredit, walletAsideMoney } from './wallet-model';
 import { WALLET_VIEW_LABELS, WALLET_VIEWS, changeWalletView, useWalletView } from './wallet-view';
 import { WalletCarousel, WalletGrid } from './WalletViews';
 
@@ -128,10 +128,10 @@ const FILTER_LABELS: Record<WalletFilter, string> = { spending: 'Spending money'
  * child, so the card's own element rises to the top, the others slide away, and the page fades in below it. A credit
  * card opens its card page (`/cards/$cardId`); money opens its account page (`/accounts/$accountId`), drawn under the
  * raised card in the same layout — its round actions, what is set aside and free, and its recent rows. ✕, Back, Escape
- * or a tap on the raised card put it back; ⚙ opens its settings. An account or a card that is not in the stack — a
- * deposit, savings kept aside, a pocket — opens its page on its own, as it always has. The one exception is a credit
- * card switched off "For spending": it is not in the stack, but it is raised alone over its page all the same, so a
- * card reads the same whichever way it was opened.
+ * or a tap on the raised card put it back; ⚙ opens its settings. A credit card or money switched off "For spending"
+ * is not in the stack, but it is raised alone over its page all the same, so it reads the same whichever way it was
+ * opened (owner, 22 Nov 2026). Anything that was never a Wallet card — a deposit, a broker's cash, a pocket, an
+ * archived account — opens its page on its own, as it always has.
  */
 export function WalletPage() {
   const { database, ws } = useApp();
@@ -141,7 +141,7 @@ export function WalletPage() {
   // A partner's joint card is opened by its item id, and known in the stack by its own key.
   const openId = cardId ?? accountId ?? (itemId !== undefined ? jointKey(itemId) : undefined);
   // Wallet's cards, drawn and in order (`useWalletCards`), and the money they were read from.
-  const { accounts, balances, everything, all, book, money, credit, joint, rates, held, today, cards: wallet, aside, ready, laterOnCards, plansRead } = useWalletCards(cardId);
+  const { accounts, balances, everything, all, book, money, credit, joint, rates, held, today, cards: wallet, aside, ready, laterOnCards, plansRead } = useWalletCards({ cardId, accountId });
   const setAsides = useSetAsideViews();
   const shared = useSharedNetWorth().data;
   const together = useOwnedTogether();
@@ -233,8 +233,8 @@ export function WalletPage() {
   const crossed = series ? crossing(series) : null;
 
   /*
-   * The open card: one of the stack's, or a credit card switched off "For spending" (`aside`), raised the same way
-   * though it is in none of the views, the Balance box or its filters (owner, 22 Nov 2026).
+   * The open card: one of the stack's, or a credit card or money switched off "For spending" (`aside`), raised the
+   * same way though it is in none of the views, the Balance box or its filters (owner, 22 Nov 2026).
    */
   const raised = openId !== undefined ? (wallet.find((card) => card.key === openId) ?? (aside?.key === openId ? aside : undefined)) : undefined;
   /*
@@ -269,14 +269,14 @@ export function WalletPage() {
   }, [raisedKey]);
 
   /*
-   * A page for an account or a card the stack does not hold — a deposit, savings kept aside, a pocket, an archived
-   * card — stands on its own, as it always has, as soon as the accounts say so. One the stack does hold waits for the
-   * stack, so the card rises out of it rather than a page being drawn and then moved under a card; so does a credit
-   * card switched off "For spending", which is raised alone, as a card opened from elsewhere is.
+   * A page for an account or a card the stack does not hold — a deposit, a broker's cash, a pocket, an archived
+   * account — stands on its own, as it always has, as soon as the accounts say so. One the stack does hold waits for
+   * the stack, so the card rises out of it rather than a page being drawn and then moved under a card; so does a credit
+   * card or money switched off "For spending", which is raised alone, as a card opened from elsewhere is.
    */
   if (openId !== undefined) {
     if (!accounts.isSuccess) return accounts.isError ? <Outlet /> : null;
-    const asideCard = cardId !== undefined && walletAsideCredit(everything, cardId) !== undefined;
+    const asideCard = walletAsideCredit(everything, cardId) !== undefined || walletAsideMoney(everything, accountId) !== undefined;
     if (![...money, ...credit].some((account) => account.id === openId) && !joint.some((card) => card.key === openId) && !asideCard) return <Outlet />;
     if (!raised) return ready ? <Outlet /> : null;
   }
