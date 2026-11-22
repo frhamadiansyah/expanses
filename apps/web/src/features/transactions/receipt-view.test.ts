@@ -34,6 +34,17 @@ const dinner = (over: Partial<TransactionView> = {}): TransactionView =>
     ...over,
   }) as TransactionView;
 
+/** A transfer to a partner (joint net worth §7.2): the bank out, the partner's hidden placeholder in, listed nowhere here and named after the member when made. */
+const partnerTransfer = () =>
+  dinner({
+    description: 'Sekolah Contoh',
+    cardId: null,
+    entries: [
+      { accountId: 'acct-bank', accountName: 'BCA Tahapan', accountKind: 'asset', accountSubtype: 'bank', amountMinor: -1_800_000, amountBaseMinor: -1_800_000, currency: 'IDR' },
+      { accountId: 'ph-dewi', accountName: 'Dewi', accountKind: 'asset', accountSubtype: 'cash', placeholder: true, partnerSubtype: 'bank', amountMinor: 1_800_000, amountBaseMinor: 1_800_000, currency: 'IDR' },
+    ],
+  } as Partial<TransactionView>);
+
 describe('what a receipt says', () => {
   it('says what was paid with, what it came to, and who owes what', () => {
     const lines = receiptLines({
@@ -179,15 +190,7 @@ describe('the figures a receipt has to get right', () => {
 
   it('names the partner a transfer between partners went to, though this phone lists no account of theirs', () => {
     const toPartner = receiptLines({
-      tx: dinner({
-        description: 'Sekolah Contoh',
-        cardId: null,
-        entries: [
-          { accountId: 'acct-bank', accountName: 'BCA Tahapan', accountKind: 'asset', accountSubtype: 'bank', amountMinor: -1_800_000, amountBaseMinor: -1_800_000, currency: 'IDR' },
-          // the partner's hidden placeholder: listed nowhere here, named after the member it stands for
-          { accountId: 'ph-dewi', accountName: 'Dewi', accountKind: 'asset', accountSubtype: 'cash', placeholder: true, partnerSubtype: 'bank', amountMinor: 1_800_000, amountBaseMinor: 1_800_000, currency: 'IDR' },
-        ],
-      } as Partial<TransactionView>),
+      tx: partnerTransfer(),
       accounts,
       cards: [card],
       currency: 'IDR',
@@ -199,6 +202,37 @@ describe('the figures a receipt has to get right', () => {
       ['Into', 'Dewi'],
       ['Total', 'Rp 1.800.000'],
     ]);
+    // The member's name as the workspace holds it now: a rename since reaches the receipt.
+    const renamed = receiptLines({
+      tx: partnerTransfer(),
+      accounts,
+      cards: [card],
+      currency: 'IDR',
+      points: null,
+      owed: [],
+      memberNames: new Map([['ph-dewi', { name: 'Dewi Ayu' }]]),
+    });
+    expect(valueOf(renamed, 'Into')).toBe('Dewi Ayu');
+  });
+
+  it('never names a placeholder as what paid for a purchase, even before its payer is read', () => {
+    const lines = receiptLines({
+      tx: dinner({
+        cardId: null,
+        entries: [
+          { accountId: 'ph-dewi', accountName: 'Dewi', accountKind: 'asset', accountSubtype: 'cash', placeholder: true, amountMinor: -400_000, amountBaseMinor: -400_000, currency: 'IDR' },
+          { accountId: 'cat-restaurants', accountName: 'Restaurants', accountKind: 'expense', amountMinor: 400_000, amountBaseMinor: 400_000, currency: 'IDR' },
+        ],
+      } as Partial<TransactionView>),
+      accounts,
+      cards: [card],
+      currency: 'IDR',
+      points: null,
+      owed: [],
+      payer: null,
+      memberNames: new Map([['ph-dewi', { name: 'Dewi Ayu' }]]),
+    });
+    expect(valueOf(lines, 'Payment method')).not.toMatch(/Dewi/);
   });
 
   it('says money arrived rather than that it was paid with', () => {

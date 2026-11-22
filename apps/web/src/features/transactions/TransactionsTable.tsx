@@ -7,7 +7,7 @@ import { payerLine } from '../sharing/sharing-copy';
 import type { RowBook } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { isEditable } from './draft';
-import type { ListRow } from './list-model';
+import { type ListRow, showsPaidWith } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
 import { needWords } from './need-words';
 import { ReceiptLink } from './ReceiptLink';
@@ -242,7 +242,8 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
         <span className="truncate px-2 text-slate-600">
           {handlers.payerOf?.(tx) ? (
             payerLine(handlers.payerOf(tx)!)
-          ) : handlers.paidByOther?.(tx) ? null : (
+          ) : // A transfer to a partner names both sides ("BCA → Dewi"), as the list's row does.
+          !showsPaidWith(row, handlers.paidByOther?.(tx) ?? false) ? null : (
             <>
               {row.accountLabel}
               {row.last4 && <span className="tabular ml-1 text-xs">{row.last4}</span>}

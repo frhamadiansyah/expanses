@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions, sharedTransferRow, instalmentRows, markSpread, transferNote } from './list-model';
+import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions, sharedTransferRow, instalmentRows, markSpread, showsPaidWith, transferNote } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -863,6 +863,24 @@ describe('a transfer named by its accounts', () => {
     expect(unknown.accountLabel).toBe('BCA Tahapan → Dewi');
     expect(toPartner({ partnerSubtype: 'bank' }).transferName).toBe('Bank transfer');
     expect(toPartner({ partnerSubtype: 'credit_card' }).transferName).toBe('Credit card payment');
+  });
+});
+
+describe('showsPaidWith', () => {
+  const row = (type: ListRow['type'], accountLabel = 'BCA Tahapan → Dewi', last4: string | null = null) => ({ type, accountLabel, last4 });
+
+  it('names what paid, but never a purchase another member paid for (posted against their placeholder)', () => {
+    expect(showsPaidWith(row('expense', 'BCA Tahapan'), false)).toBe(true);
+    expect(showsPaidWith(row('expense', 'Dewi'), true)).toBe(false);
+  });
+
+  it('names both sides of a transfer to a partner, on the list and the wide table alike', () => {
+    expect(showsPaidWith(row('transfer'), true)).toBe(true);
+  });
+
+  it('says nothing when there is nothing to name', () => {
+    expect(showsPaidWith(row('transfer', ''), false)).toBe(false);
+    expect(showsPaidWith(row('expense', '', '4417'), false)).toBe(true);
   });
 });
 

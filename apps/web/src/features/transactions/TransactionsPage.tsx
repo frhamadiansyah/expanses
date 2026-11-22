@@ -70,7 +70,7 @@ import { AmountExtra, DraftSubtitle, PaidWith, TransactionRow, useRecategorise }
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, leaveOutNotMonthly, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, notMonthlyOutCount, sortRows, totals, transferNote } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, leaveOutNotMonthly, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, notMonthlyOutCount, showsPaidWith, sortRows, totals, transferNote } from './list-model';
 import { leavesOutNotMonthly, notMonthlyNote, periodCountsNotMonthly, readNotMonthlyShown, writeNotMonthlyShown } from './not-monthly';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
@@ -434,12 +434,8 @@ export function TransactionsPage() {
   // The payer line a row shows instead of its own Paid with: never on a purchase paid from this member's own account,
   // which reads by its digits as in a private workspace.
   const payerShown = (tx: TransactionView) => payerToShow(payerOf(tx.id), tx, knownAccounts);
-  /*
-   * Whether a row's second line names what paid (`PaidWith`): not a purchase posted against another member's
-   * placeholder, which is never named. A transfer between partners is: its placeholder side reads as the partner
-   * ("BCA → Dewi"), as its edit form's To does.
-   */
-  const paidWithShown = (tx: TransactionView, row: ListRow) => (!onPlaceholder(tx) || row.type === 'transfer') && !!(row.accountLabel || row.last4);
+  // Whether a row's second line names what paid (`showsPaidWith`): a transfer to a partner names both sides.
+  const paidWithShown = (tx: TransactionView, row: ListRow) => showsPaidWith(row, onPlaceholder(tx));
   const paidByOther = (tx: TransactionView) => {
     const payer = payerOf(tx.id);
     return onPlaceholder(tx) || (payer !== null && !payer.mine);

@@ -664,6 +664,15 @@ export function amountLook(row: ListRow, view: AmountView = 'report'): { sign: -
 }
 
 /**
+ * Whether a row names what paid (its accounts, or a card's digits). Not a purchase another member paid for, posted here
+ * against their placeholder (`otherPaid`), which is never named; a transfer between partners is, both sides — its
+ * placeholder reads as the partner ("BCA → Dewi"), as its edit form's To does. Nothing to name, nothing shown.
+ */
+export function showsPaidWith(row: Pick<ListRow, 'type' | 'accountLabel' | 'last4'>, otherPaid: boolean): boolean {
+  return (!otherPaid || row.type === 'transfer') && !!(row.accountLabel || row.last4);
+}
+
+/**
  * A transfer's note on its grey line, or '' when it only repeats the row's title: the note "Credit card payment" under
  * the title Credit card payment, or the default note "Transfer" under any transfer's. A different note still shows.
  * Anything but a transfer keeps its note as it is.
