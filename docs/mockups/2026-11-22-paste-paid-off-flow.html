@@ -1,0 +1,95 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Paste then Paid off: the two flows</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:14px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1300px; line-height:1.4; }
+  h2 { font-size:17px; margin:22px 0 10px; } h2 small { font-weight:400; color:#666; font-size:13px; margin-left:8px; }
+  .flow { display:flex; gap:10px; align-items:stretch; }
+  .step { width:250px; flex:none; display:flex; flex-direction:column; }
+  .arrow { align-self:center; font-size:22px; color:#8e8e93; }
+  .num { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--ink); color:#fff; text-align:center; line-height:22px; font-size:12px; font-weight:700; margin-right:6px; }
+  .cap { font-weight:600; margin:0 0 6px; font-size:13.5px; min-height:38px; }
+  .scr { background:#fff; border-radius:12px; border:1px solid #d4d4d8; overflow:hidden; flex:1; min-height:230px; position:relative; }
+  .tt { display:flex; justify-content:space-between; align-items:center; padding:9px 11px; border-bottom:.5px solid var(--hair); font-weight:600; font-size:13px; }
+  .bt { background:#1c1c1e; color:#fff; border-radius:7px; padding:3px 9px; font-size:11.5px; font-weight:600; }
+  .bt.w { background:#fff; color:#1c1c1e; border:1px solid #c7c7cc; }
+  .r { display:flex; align-items:center; gap:7px; padding:7px 11px; font-size:12px; border-bottom:.5px solid #f0f0f3; }
+  .r .n { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .r .a { font-variant-numeric:tabular-nums; }
+  .r .d { color:var(--ink3); width:40px; }
+  .tk { width:14px; height:14px; border-radius:50%; border:1.5px solid #c7c7cc; flex:none; font-size:9px; color:#fff; display:flex; align-items:center; justify-content:center; }
+  .tk.on { background:#1c1c1e; border-color:#1c1c1e; }
+  .cb { width:14px; height:14px; border-radius:3px; border:1.5px solid #c7c7cc; flex:none; font-size:9px; color:#fff; display:flex; align-items:center; justify-content:center; }
+  .cb.on { background:#1c1c1e; border-color:#1c1c1e; }
+  .po { color:var(--ink3); } .po .a { text-decoration:line-through; }
+  .hl { outline:2px solid #ff9f0a; outline-offset:1px; border-radius:6px; }
+  .bar { position:absolute; left:50%; bottom:10px; transform:translateX(-50%); background:#1c1c1e; color:#fff; border-radius:10px; padding:6px 7px 6px 11px; display:flex; gap:7px; align-items:center; font-size:11.5px; white-space:nowrap; }
+  .bar .p { background:#3a3a3c; border-radius:7px; padding:3px 8px; font-weight:600; } .bar .q { background:#fff; color:#1c1c1e; border-radius:7px; padding:3px 8px; font-weight:600; }
+  .side { font-size:11.5px; color:var(--ink3); padding:9px 11px; }
+  .mo { font-size:11px; color:var(--ink3); padding:6px 11px 2px; letter-spacing:.04em; text-transform:uppercase; font-weight:600; }
+  .note { font-size:12px; color:#555; margin-top:6px; line-height:1.35; }
+  .rep { background:#fff4e5; border:1px dashed #ff9f0a; border-radius:8px; padding:6px 8px; font-size:12px; color:#8a5300; margin-top:6px; }
+  .done { color:#2e7d32; font-weight:600; }
+  .sw { display:inline-block; width:24px; height:14px; border-radius:7px; background:#34c759; position:relative; vertical-align:middle; } .sw::after { content:""; position:absolute; right:2px; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; }
+</style></head>
+<body>
+<h1>Pasted card purchases that were already paid: the two flows</h1>
+<p class="sub">Three card purchases pasted from a sheet, from September and October, all already paid; one bank purchase. Invented card and figures. Orange marks the new parts.</p>
+
+<h2>A · Mark them on the card after recording <small>5 steps, and steps 4–5 again for each month</small></h2>
+<div class="flow">
+  <div class="step"><p class="cap"><span class="num">1</span>Paste into Cashflow</p>
+    <div class="scr"><div class="tt">Transactions <span class="bt">Record all 4</span></div>
+      <div class="r"><span class="d">16 Oct</span><span class="n">Toko Buah</span><span class="a">412.300</span></div>
+      <div class="r"><span class="d">15 Oct</span><span class="n">Bioskop</span><span class="a">120.000</span></div>
+      <div class="r"><span class="d">20 Sep</span><span class="n">Kedai Kopi</span><span class="a">58.000</span></div>
+      <div class="r"><span class="d">12 Oct</span><span class="n">Parkir · Bank</span><span class="a">15.000</span></div></div></div>
+  <span class="arrow">→</span>
+  <div class="step"><p class="cap"><span class="num">2</span>Record all</p>
+    <div class="scr"><div class="side">All 4 recorded. The 3 card purchases are owed on the card.</div></div></div>
+  <span class="arrow">→</span>
+  <div class="step"><p class="cap"><span class="num">3</span>Wallet › the card › statement</p>
+    <div class="scr"><div class="tt">Kartu Contoh <span class="bt w hl">Select</span></div><div class="mo">Statement 17 Sep – 16 Oct</div>
+      <div class="r"><span class="d">16 Oct</span><span class="n">Toko Buah</span><span class="a">412.300</span></div>
+      <div class="r"><span class="d">15 Oct</span><span class="n">Bioskop</span><span class="a">120.000</span></div>
+      <div class="r"><span class="d">20 Sep</span><span class="n">Kedai Kopi</span><span class="a">58.000</span></div></div></div>
+  <span class="arrow">→</span>
+  <div class="step"><p class="cap"><span class="num">4</span>Tick the paid ones</p>
+    <div class="scr"><div class="tt">Kartu Contoh <span class="bt w">Cancel</span></div><div class="mo">Statement 17 Sep – 16 Oct</div>
+      <div class="r"><span class="tk on">✓</span><span class="d">16 Oct</span><span class="n">Toko Buah</span><span class="a">412.300</span></div>
+      <div class="r"><span class="tk on">✓</span><span class="d">15 Oct</span><span class="n">Bioskop</span><span class="a">120.000</span></div>
+      <div class="r"><span class="tk on">✓</span><span class="d">20 Sep</span><span class="n">Kedai Kopi</span><span class="a">58.000</span></div>
+      <div class="bar hl"><span>3 · 590.300</span><span class="p">Paid off</span><span class="q">Pay</span></div></div></div>
+  <span class="arrow">→</span>
+  <div class="step"><p class="cap"><span class="num">5</span>Paid off</p>
+    <div class="scr"><div class="tt">Kartu Contoh <span class="bt w">Select</span></div><div class="mo">Statement 17 Sep – 16 Oct</div>
+      <div class="r po"><span class="d">16 Oct</span><span class="n">Toko Buah</span><span class="a">412.300</span></div>
+      <div class="r po"><span class="d">15 Oct</span><span class="n">Bioskop</span><span class="a">120.000</span></div>
+      <div class="r po"><span class="d">20 Sep</span><span class="n">Kedai Kopi</span><span class="a">58.000</span></div>
+      <div class="side done">The card no longer owes these 3.</div></div>
+    <div class="rep">If the paste went back to August, open the August statement and do 4–5 again.</div></div>
+</div>
+
+<h2>B · Tick them in the paste table before recording <small>3 steps, all months at once</small></h2>
+<div class="flow">
+  <div class="step"><p class="cap"><span class="num">1</span>Paste into Cashflow</p>
+    <div class="scr"><div class="tt">Transactions <span class="bt">Record all 4</span></div>
+      <div class="r"><span class="d">16 Oct</span><span class="n">Toko Buah · Card</span><span class="cb"></span></div>
+      <div class="r"><span class="d">15 Oct</span><span class="n">Bioskop · Card</span><span class="cb"></span></div>
+      <div class="r"><span class="d">20 Sep</span><span class="n">Kedai Kopi · Card</span><span class="cb"></span></div>
+      <div class="r"><span class="d">12 Oct</span><span class="n">Parkir · Bank</span><span style="color:#c7c7cc;width:14px">—</span></div>
+      <div class="side">A Paid off tick sits at the end of each card row.</div></div></div>
+  <span class="arrow">→</span>
+  <div class="step"><p class="cap"><span class="num">2</span>Tick the paid ones, or flip "all card rows"</p>
+    <div class="scr"><div class="tt">Transactions <span class="bt">Record all 4</span></div><div class="r" style="justify-content:flex-end"><span class="hl" style="padding:1px 4px;white-space:nowrap">Paid off, all card rows <span class="sw"></span></span></div>
+      <div class="r"><span class="d">16 Oct</span><span class="n">Toko Buah · Card</span><span class="cb on hl">✓</span></div>
+      <div class="r"><span class="d">15 Oct</span><span class="n">Bioskop · Card</span><span class="cb on">✓</span></div>
+      <div class="r"><span class="d">20 Sep</span><span class="n">Kedai Kopi · Card</span><span class="cb on">✓</span></div>
+      <div class="r"><span class="d">12 Oct</span><span class="n">Parkir · Bank</span><span style="color:#c7c7cc;width:14px">—</span></div></div></div>
+  <span class="arrow">→</span>
+  <div class="step"><p class="cap"><span class="num">3</span>Record all</p>
+    <div class="scr"><div class="side">All 4 recorded. <span class="done">The 3 card purchases are already paid off</span>; on the card's statements they show greyed with "Paid off ✓", in September and October alike.</div></div></div>
+</div>
+<p class="note">Either way a Paid off mark can be taken back later from the purchase's row on the statement, as today.</p>
+</body></html>
