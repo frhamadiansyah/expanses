@@ -68,6 +68,24 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
   return source;
 }
 
+/** A bill a listed transaction settles a month of, with what the Split sheet and Cashflow name it by. */
+export interface TransactionBill {
+  templateId: string;
+  billMonth: string;
+  name: string;
+  categoryAccountId: string;
+  /** The bill's own fixed amount; null for one that varies. */
+  amountMinor: number | null;
+  /** Pay's own bill (transactions.template_id): the one its Undo is about. */
+  own: boolean;
+}
+
+/** A month of a bill a purchase settles: the bill, and its month (YYYY-MM). */
+export interface BillLink {
+  templateId: string;
+  billMonth: string;
+}
+
 export type LedgerErrorCode =
   | 'INVALID_DATE'
   | 'SHARED_EVENT_TAG'
@@ -84,6 +102,7 @@ export type LedgerErrorCode =
   | 'NOT_COUNTED'
   | 'NOT_COUNTED_SHARED'
   | 'INVALID_BILL_MONTH'
+  | 'BILL_SETTLED'
   | 'POCKET_PARENT'
   | 'OTHER_DAY'
   | 'INVALID_EXACT'
@@ -124,6 +143,13 @@ export interface PostTransactionInput {
   templateId?: string | null;
   /** YYYY-MM: the month whose bill a template payment settles. Defaults to the month of occurredOn. */
   billMonth?: string | null;
+  /**
+   * Every bill's month this purchase settles (one payment, several bills; 0127), the template's own included or not:
+   * what a split saved from the form, Pay several's One payment or an undo says outright. On an edit it replaces the
+   * links the purchase had (the template's own is always kept); absent, an edit carries them all. A month another
+   * posted transaction already settles is refused (BILL_SETTLED): a bill is never paid twice.
+   */
+  billLinks?: readonly BillLink[] | null;
   /** Online or offline, when the user said; null when they did not. Never guessed. */
   channel?: 'online' | 'offline' | null;
   /** Leaves the chart, the budgets and the category totals; balances, statements, points and net worth keep it. */
@@ -500,6 +526,8 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
       });
     }
   }
+  // The other bills it settles beside its own (one payment, several bills), each checked as Pay checks one.
+  if (input.billLinks && input.billLinks.length > 0 && (await billTablesExist(tx))) await writeBillLinksTx(tx, ws, id, input.billLinks);
   // What the purchase was, beside what it cost: the channel, the exclusion, and the photos a form wrote before
   // this transaction had an id. Their own tables, so a database stopped before 0048 simply has none of it.
   if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, { ...input, excludedFromReport: excludedWhole });
@@ -514,6 +542,43 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   await audit(tx, ws, 'post', id, input);
   if (input.settledBeforeApp || input.pastPurchase) await settleBeforeAppTx(tx, ws, id, input);
   return id;
+}
+
+/**
+ * Writes the bills' months a purchase settles beside its own (`billLinks`): each a `bill_payments` row, once. A bill
+ * not in this workspace links nothing; a month another posted transaction already settles is refused, so the save
+ * rolls back whole rather than pay a bill twice.
+ */
+async function writeBillLinksTx(tx: Db, ws: WorkspaceContext, transactionId: string, links: readonly BillLink[]): Promise<void> {
+  const seen = new Set<string>();
+  for (const link of links) {
+    const key = `${link.templateId}|${link.billMonth}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!BILL_MONTH.test(link.billMonth)) throw new LedgerError('INVALID_BILL_MONTH', 'A bill month is written YYYY-MM');
+    const [bill] = await tx
+      .select({ id: expenseTemplates.id, name: expenseTemplates.name })
+      .from(expenseTemplates)
+      .where(and(eq(expenseTemplates.id, link.templateId), eq(expenseTemplates.workspaceId, ws.workspaceId)));
+    if (!bill) continue;
+    const [paid] = await tx.values(sql`
+      SELECT 1 FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
+      WHERE p.workspace_id = ${ws.workspaceId} AND p.template_id = ${bill.id} AND p.bill_month = ${link.billMonth}
+        AND p.transaction_id <> ${transactionId} AND t.status = 'posted' LIMIT 1`);
+    if (paid) throw new LedgerError('BILL_SETTLED', `${bill.name} is already paid for that month`);
+    await tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId: bill.id, billMonth: link.billMonth }).onConflictDoNothing();
+  }
+}
+
+/** Every bill's month a transaction settles, its own bill's first (Pay's), then by month and bill: the order sync names them in. */
+export async function billLinksOfTx(tx: Db, transactionId: string): Promise<(BillLink & { own: boolean })[]> {
+  if (!(await billTablesExist(tx))) return [];
+  const rows = await tx.values<[string, string, number]>(sql`
+    SELECT p.template_id, p.bill_month, CASE WHEN p.template_id = t.template_id THEN 1 ELSE 0 END
+    FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
+    WHERE p.transaction_id = ${transactionId}
+    ORDER BY 3 DESC, p.bill_month, p.template_id`);
+  return rows.map(([templateId, billMonth, own]) => ({ templateId, billMonth, own: Number(own) === 1 }));
 }
 
 /** The settlement that keeps a card even beside a purchase paid off before the app: found by the purchase's id. */
@@ -1044,9 +1109,9 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
   const [placed] = (await dayOrderExists(tx)) ? await tx.values<[number | null]>(sql`SELECT day_order FROM transactions WHERE id = ${id}`) : [];
   const [typed] = (await exactExists(tx)) ? await tx.values<[number | null]>(sql`SELECT exact_hundredths FROM transactions WHERE id = ${id}`) : [];
-  const [settles] = (await billTablesExist(tx))
-    ? await tx.select({ billMonth: billPayments.billMonth, templateId: billPayments.templateId }).from(billPayments).where(eq(billPayments.transactionId, id))
-    : [];
+  // Every bill's month it settles (0127: several, for one payment of several bills); its own bill's (Pay's) first.
+  const settled = await billLinksOfTx(tx, id);
+  const settles = settled.find((link) => link.own) ?? settled[0];
   // Two workspaces can hold copies of one category, alike on any screen. An edit is a correction to the same
   // spending, so it stays where it was filed: a category from another workspace is refused here, before
   // anything is voided, whatever form or import offered it.
@@ -1147,9 +1212,14 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.exactHundredths === undefined ? { exactHundredths: await carriedExactTx(tx, typed?.[0] ?? null, oldLines, input.lines) } : {}),
     setAside,
   });
-  // A purchase linked to a bill's month after the fact has no bill of its own, so posting would drop the link: carry it.
-  if (settles && !original?.templateId && !input.templateId) {
-    await tx.insert(billPayments).values({ transactionId: replacement, workspaceId: ws.workspaceId, templateId: settles.templateId, billMonth: settles.billMonth }).onConflictDoNothing();
+  // A purchase linked to a bill's month after the fact, or the other bills one payment settled beside its own, are no
+  // bill of the posting's own, so posting would drop them: carry them — unless the edit said its links outright.
+  // A purchase given a bill of its own by the edit (it was linked only) keeps only that one, as it always did.
+  if (input.billLinks === undefined && !(!original?.templateId && input.templateId)) {
+    for (const link of settled) {
+      if (link.own) continue;
+      await tx.insert(billPayments).values({ transactionId: replacement, workspaceId: ws.workspaceId, templateId: link.templateId, billMonth: link.billMonth }).onConflictDoNothing();
+    }
   }
   /*
    * A transfer has no category to file it by. Moved, it is filed in the chosen workspace (and so leaves the others'
@@ -1397,6 +1467,11 @@ export interface TransactionView {
    */
   billMonth?: string | null;
   /**
+   * Every bill this settles a month of (0127: one payment may settle several), its own bill's first, then by month and
+   * name. Absent when it settles none, and on a database without bill_payments.
+   */
+  bills?: TransactionBill[];
+  /**
    * A payment of a bill that is not monthly (its `bill_payments` row names a bill that repeats yearly, or every 2 months
    * or more: `isNotMonthlyRepeat`): what Cashflow leaves out of a month's ring and lists in grey. Absent on anything
    * else, and on a database without the tables.
@@ -1541,16 +1616,30 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     .where(inArray(entries.transactionId, txs.map((t) => t.id)));
 
   // Bill months come from their own table, keyed by transaction, so a list without bills pays one small query.
-  const billMonths = (await billTablesExist(database.db))
-    ? new Map(
-        (
-          await database.db
-            .select({ transactionId: billPayments.transactionId, billMonth: billPayments.billMonth })
-            .from(billPayments)
-            .where(inArray(billPayments.transactionId, txs.map((t) => t.id)))
-        ).map((row) => [row.transactionId, row.billMonth]),
-      )
-    : new Map<string, string>();
+  // Several rows for one payment of several bills (0127): its own bill's month speaks for it, and each bill is listed.
+  const billRows = (await billTablesExist(database.db))
+    ? await database.db
+        .select({
+          transactionId: billPayments.transactionId,
+          templateId: billPayments.templateId,
+          billMonth: billPayments.billMonth,
+          name: expenseTemplates.name,
+          categoryAccountId: expenseTemplates.categoryAccountId,
+          amountMinor: expenseTemplates.amountMinor,
+        })
+        .from(billPayments)
+        .innerJoin(expenseTemplates, eq(expenseTemplates.id, billPayments.templateId))
+        .where(inArray(billPayments.transactionId, txs.map((t) => t.id)))
+    : [];
+  const ownBill = new Map(txs.map((t) => [t.id, t.templateId] as const));
+  const billsOf = new Map<string, TransactionBill[]>();
+  for (const row of billRows) {
+    const list = billsOf.get(row.transactionId) ?? [];
+    list.push({ templateId: row.templateId, billMonth: row.billMonth, name: row.name, categoryAccountId: row.categoryAccountId, amountMinor: row.amountMinor, own: ownBill.get(row.transactionId) === row.templateId });
+    billsOf.set(row.transactionId, list);
+  }
+  for (const list of billsOf.values()) list.sort((a, b) => Number(b.own) - Number(a.own) || a.billMonth.localeCompare(b.billMonth) || a.name.localeCompare(b.name) || a.templateId.localeCompare(b.templateId));
+  const billMonths = new Map([...billsOf].map(([id, list]) => [id, list[0]!.billMonth]));
 
   // Which of them paid a bill that is not monthly: one small query, as bill months are.
   const notMonthly = await notMonthlyBillPaymentsOf(database.db, txs.map((t) => t.id));
@@ -1608,6 +1697,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     goalId: t.goalId,
     eventId: t.eventId,
     billMonth: billMonths.get(t.id) ?? null,
+    ...(billsOf.has(t.id) ? { bills: billsOf.get(t.id)! } : {}),
     ...(notMonthly.has(t.id) ? { notMonthlyBill: true } : {}),
     channel: extras?.get(t.id)?.channel ?? null,
     excluded: extras?.get(t.id)?.excluded ?? false,

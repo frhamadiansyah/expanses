@@ -9,7 +9,7 @@ import { excludedLinesTx, splitBooksOfTx } from './book-splits';
 import { dayOrderExists } from './day-order-column';
 import { eventPostingOfTx } from './event-only';
 import { exactExists } from './exact-column';
-import { type PostTransactionInput, postTransactionTx, replaceTransactionTx, voidTransactionTx } from './ledger';
+import { billLinksOfTx, type PostTransactionInput, postTransactionTx, replaceTransactionTx, voidTransactionTx } from './ledger';
 import { fileTransferTx } from './move-group';
 import { type DueCap, dueCapForEdit } from './goal-due-link';
 import { extrasForTx } from './transaction-extras';
@@ -391,7 +391,8 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
       : adjusting ? `${typeof event.payload.accountName === 'string' ? `${event.payload.accountName} ` : ''}${now.description === 'Counted cash' ? 'counted' : 'balance adjusted'}` : `${now.description} added`;
     if (op === 'payment') {
       const [bill] = await db.values<[string]>(sql`SELECT name FROM expense_templates WHERE id = ${String(event.payload.templateId ?? now.templateId ?? '')}`);
-      title = `${bill?.[0] ?? now.description} paid`;
+      const more = typeof event.payload.billCount === 'number' && event.payload.billCount > 1 ? ` and ${event.payload.billCount - 1} more` : '';
+      title = `${bill?.[0] ?? now.description}${more} paid`;
     }
     const open = !done && !(await tail());
     const state: ActivityState = done ? 'undone' : open ? (checked ? 'cannot' : 'open') : 'changed';
@@ -552,9 +553,8 @@ export async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promi
   const extras = await extrasForTx(tx, ws, id);
   const [placed] = (await dayOrderExists(tx)) ? await tx.values<[number | null]>(sql`SELECT day_order FROM transactions WHERE id = ${id}`) : [];
   const [typed] = (await exactExists(tx)) ? await tx.values<[number | null]>(sql`SELECT exact_hundredths FROM transactions WHERE id = ${id}`) : [];
-  const [bill] = (await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bill_payments'`)).length > 0
-    ? await tx.values<[string]>(sql`SELECT bill_month FROM bill_payments WHERE transaction_id = ${id}`)
-    : [];
+  // Every bill's month it settled (0127: one payment may settle several), its own bill's first.
+  const bills = await billLinksOfTx(tx, id);
   const excluded = await excludedLinesTx(tx, id);
   // A past purchase on a money account (its balancing pair, found by the ref and the Before the app line, voided or not)
   // goes back as one, so Undo of a delete or of an edit that changed the mark puts the mark back too.
@@ -585,7 +585,9 @@ export async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promi
     // A fact the row already had: a shared workspace drops it rather than refuse the write (sync gaps D1).
     eventIdCarried: true,
     templateId: v.templateId,
-    billMonth: bill?.[0] ?? null,
+    billMonth: (bills.find((link) => link.own) ?? bills[0])?.billMonth ?? null,
+    // Put back as they were: the other bills a payment of several settled, and a purchase's links made afterwards.
+    ...(bills.length > 0 ? { billLinks: bills.map(({ templateId, billMonth }) => ({ templateId, billMonth })) } : {}),
     channel: extras?.channel ?? null,
     excludedFromReport: extras?.excluded ?? false,
     excludedParts: [...excluded],

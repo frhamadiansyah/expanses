@@ -962,6 +962,8 @@ async function inPlaceOnly(tx: Db, winners: Record<string, unknown>): Promise<bo
     if (field === 'exactHundredths' && (await exactExists(tx))) continue;
     // A bill link (fix round 2) is a `bill_payments` row beside the purchase, never its money.
     if (field === 'billLink' && (await billPaymentsExist(tx))) continue;
+    // So is the list of several bills it settles (0127).
+    if (field === 'severalBills' && (await billPaymentsExist(tx))) continue;
     // A spread (card instalments C, 0121) is a way of counting it, kept beside the row: never its money either.
     if (field === 'spread' && (await purchaseSpreadsExist(tx))) continue;
     return false;
@@ -984,16 +986,65 @@ async function applyBillLinkTx(tx: Db, ctx: BookContext, transactionId: string, 
   if (!(await billPaymentsExist(tx))) return;
   const [row] = await tx.values<[string | null]>(sql`SELECT template_id FROM transactions WHERE id = ${transactionId}`);
   if (!row || row[0] !== null) return;
-  await tx.run(sql`DELETE FROM bill_payments WHERE transaction_id = ${transactionId}`);
   const given = link && typeof link === 'object' ? (link as Record<string, unknown>) : null;
   const templateId = typeof given?.templateId === 'string' ? given.templateId : null;
   const billMonth = typeof given?.billMonth === 'string' && /^\d{4}-\d{2}$/.test(given.billMonth) ? given.billMonth : null;
+  // A purchase that settles several bills here (0127) whose first is the one named keeps the others: the link said is
+  // what it already reads as, and the list is `severalBills`'s to change.
+  const here = await tx.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId} ORDER BY bill_month, template_id`);
+  if (here.length > 1 && here[0]![0] === templateId && here[0]![1] === billMonth) return;
+  await tx.run(sql`DELETE FROM bill_payments WHERE transaction_id = ${transactionId}`);
   if (!templateId || !billMonth) return;
   const known = await tx.values(sql`SELECT 1 FROM expense_templates WHERE id = ${templateId} AND workspace_id = ${ctx.ws.workspaceId}`);
   if (known.length === 0) return;
   await tx.run(sql`
     INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month)
     VALUES (${transactionId}, ${ctx.ws.workspaceId}, ${templateId}, ${billMonth}) ON CONFLICT DO NOTHING`);
+}
+
+/**
+ * The several bills a purchase settles as they arrived (one payment, several bills; 0127), written beside the row: a
+ * list makes its `bill_payments` rows exactly those — Pay's own bill's row (the `bill` field's) always stays. A bill
+ * this phone does not hold links nothing, and a month another posted payment here already settles is left to that one:
+ * never paid twice. Null (back to one bill or none) keeps only the first, as `bill` or `billLink` names it.
+ */
+async function applySeveralBillsTx(tx: Db, ctx: BookContext, transactionId: string, value: unknown): Promise<void> {
+  if (!(await billPaymentsExist(tx))) return;
+  const [row] = await tx.values<[string | null]>(sql`SELECT template_id FROM transactions WHERE id = ${transactionId}`);
+  if (!row) return;
+  const own = row[0];
+  if (!Array.isArray(value)) {
+    const here = await tx.values<[string, string]>(sql`
+      SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}
+      ORDER BY CASE WHEN template_id IS ${own} THEN 0 ELSE 1 END, bill_month, template_id`);
+    for (const [templateId, billMonth] of here.slice(1)) {
+      await tx.run(sql`DELETE FROM bill_payments WHERE transaction_id = ${transactionId} AND template_id = ${templateId} AND bill_month = ${billMonth}`);
+    }
+    return;
+  }
+  const wanted: { templateId: string; billMonth: string }[] = [];
+  for (const item of value) {
+    const given = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+    const templateId = typeof given?.templateId === 'string' ? given.templateId : null;
+    const billMonth = typeof given?.billMonth === 'string' && /^\d{4}-\d{2}$/.test(given.billMonth) ? given.billMonth : null;
+    if (!templateId || !billMonth) continue;
+    if ((await tx.values(sql`SELECT 1 FROM expense_templates WHERE id = ${templateId} AND workspace_id = ${ctx.ws.workspaceId}`)).length === 0) continue;
+    const other = await tx.values(sql`
+      SELECT 1 FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
+      WHERE p.template_id = ${templateId} AND p.bill_month = ${billMonth} AND p.transaction_id <> ${transactionId} AND t.status = 'posted' LIMIT 1`);
+    if (other.length > 0) continue;
+    wanted.push({ templateId, billMonth });
+  }
+  const here = await tx.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}`);
+  for (const [templateId, billMonth] of here) {
+    if (templateId === own || wanted.some((w) => w.templateId === templateId && w.billMonth === billMonth)) continue;
+    await tx.run(sql`DELETE FROM bill_payments WHERE transaction_id = ${transactionId} AND template_id = ${templateId} AND bill_month = ${billMonth}`);
+  }
+  for (const { templateId, billMonth } of wanted) {
+    await tx.run(sql`
+      INSERT INTO bill_payments (transaction_id, workspace_id, template_id, bill_month)
+      VALUES (${transactionId}, ${ctx.ws.workspaceId}, ${templateId}, ${billMonth}) ON CONFLICT DO NOTHING`);
+  }
 }
 
 /**
@@ -1105,6 +1156,7 @@ async function applyPurchase(
       await tx.run(sql`UPDATE transactions SET exact_hundredths = ${value} WHERE id = ${lineage.head!}`);
     }
     if ('billLink' in winners) await applyBillLinkTx(tx, ctx, lineage.head!, winners.billLink);
+    if ('severalBills' in winners) await applySeveralBillsTx(tx, ctx, lineage.head!, winners.severalBills);
     if ('spread' in winners) await applySpreadTx(tx, ctx, lineage.head!, winners.spread);
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
@@ -1150,6 +1202,7 @@ async function applyPurchase(
     const id = await postTransactionTx(tx, ctx.ws, { ...input, id: await freeTransactionIdTx(tx, ctx.bookId, op.id) });
     if (!kept) await fileInOwnBookTx(tx, ctx, id);
     if ('billLink' in winners) await applyBillLinkTx(tx, ctx, id, winners.billLink);
+    if ('severalBills' in winners) await applySeveralBillsTx(tx, ctx, id, winners.severalBills);
     if ('spread' in winners) await applySpreadTx(tx, ctx, id, winners.spread);
     await tx.run(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
@@ -1160,6 +1213,7 @@ async function applyPurchase(
     const id = await replaceTransactionTx(tx, ctx.ws, was, input);
     if (!kept) await fileInOwnBookTx(tx, ctx, id);
     if ('billLink' in winners) await applyBillLinkTx(tx, ctx, id, winners.billLink);
+    if ('severalBills' in winners) await applySeveralBillsTx(tx, ctx, id, winners.severalBills);
     if ('spread' in winners) await applySpreadTx(tx, ctx, id, winners.spread);
     if (parted) await postRemainderTx(tx, ctx, was, parted, changeSet.member);
     await tx.run(

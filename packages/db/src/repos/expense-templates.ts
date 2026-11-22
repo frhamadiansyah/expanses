@@ -8,6 +8,7 @@ import {
   currentBillMonth,
   latestLinkMonth as latestLinkMonthOf,
   linkChoice,
+  matchBillsToLines,
   nextOccurrenceMonth,
   isOwedMonth,
   expenseLines,
@@ -15,6 +16,7 @@ import {
   sinkingProgress,
   type SinkingSaveResult,
   sinkingSavePlan,
+  splitExpenseLines,
   transferLines,
   isoDate,
   monthOf,
@@ -564,6 +566,38 @@ interface BillFacts {
   startDay: MonthStartDay;
 }
 
+/**
+ * For each transaction among these that settles several bills (0127): which of its expense lines pays each, as
+ * `${transactionId}|${templateId}|${billMonth}` → the line, or null when no part is left for it. A transaction of one bill
+ * is not in it: the bill's own category line, or its first expense line, speaks for it as ever.
+ */
+async function billPartsOf<L extends { transactionId: string; accountId: string; amountMinor: number | bigint; kind: string }>(
+  db: Db,
+  transactionIds: readonly string[],
+  lines: readonly L[],
+): Promise<Map<string, L | null>> {
+  const out = new Map<string, L | null>();
+  const ids = [...new Set(transactionIds)];
+  if (ids.length === 0 || !(await billTablesExist(db))) return out;
+  const links = await db.values<[string, string, string, string, number | null, number]>(sql`
+    SELECT bp.transaction_id, bp.template_id, bp.bill_month, et.category_account_id, et.amount_minor, CASE WHEN bp.template_id = t.template_id THEN 1 ELSE 0 END
+    FROM bill_payments bp JOIN expense_templates et ON et.id = bp.template_id JOIN transactions t ON t.id = bp.transaction_id
+    WHERE bp.transaction_id IN ${ids}
+    ORDER BY bp.transaction_id, 6 DESC, bp.bill_month, et.name, bp.template_id`);
+  const byTx = new Map<string, typeof links>();
+  for (const link of links) byTx.set(link[0], [...(byTx.get(link[0]) ?? []), link]);
+  for (const [transactionId, list] of byTx) {
+    if (list.length < 2) continue;
+    const parts = lines.filter((l) => l.transactionId === transactionId && l.kind === 'expense' && Number(l.amountMinor) > 0);
+    const matched = matchBillsToLines(
+      list.map(([, , , categoryId, amountMinor]) => ({ categoryId, amountMinor: amountMinor === null ? null : Number(amountMinor) })),
+      parts.map((l) => ({ categoryId: l.accountId, amountMinor: Number(l.amountMinor) })),
+    );
+    list.forEach(([, templateId, billMonth], i) => out.set(`${transactionId}|${templateId}|${billMonth}`, matched[i] === null ? null : parts[matched[i]!]!));
+  }
+  return out;
+}
+
 /** Posted payments and skips for these bills. Without migration 0044 a payment settles the month it was made in. */
 async function billFacts(database: Database, ws: WorkspaceContext, templates: ExpenseTemplateRow[]): Promise<BillFacts> {
   const ids = templates.map((t) => t.id);
@@ -606,12 +640,16 @@ async function billFacts(database: Database, ws: WorkspaceContext, templates: Ex
         .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, kind: accounts.kind })
         .from(entries)
         .innerJoin(accounts, eq(accounts.id, entries.accountId))
-        .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.transactionId, rows.map((row) => row.transactionId))));
+        .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.transactionId, rows.map((row) => row.transactionId))))
+        .orderBy(sql`${entries}.rowid`);
   const categoryOf = new Map(templates.map((t) => [t.id, t.categoryAccountId]));
+  // One payment of several bills (0127): each bill is paid by its own part of the split, found by `matchBillsToLines`.
+  const partOf = await billPartsOf(database.db, rows.map((row) => row.transactionId), lines);
   for (const row of rows) {
     // A purchase linked from another category has no line in the bill's own: its first expense line speaks for it.
     const own = lines.filter((l) => l.transactionId === row.transactionId);
-    const line = own.find((l) => l.accountId === categoryOf.get(row.templateId)) ?? own.find((l) => l.kind === 'expense');
+    const part = partOf.get(`${row.transactionId}|${row.templateId}|${row.billMonth}`);
+    const line = part !== undefined ? (part ?? undefined) : (own.find((l) => l.accountId === categoryOf.get(row.templateId)) ?? own.find((l) => l.kind === 'expense'));
     const list = payments.get(row.templateId) ?? [];
     const others = own.filter((l) => l.accountId !== line?.accountId);
     const payer = others.find((l) => line && Math.sign(Number(l.amountMinor)) !== Math.sign(Number(line.amountMinor))) ?? others[0];
@@ -1013,6 +1051,95 @@ export function recordBillPayments(
   });
 }
 
+/**
+ * Pay several's One payment (2026-11-22): the ticked bills paid in one checkout, as the card's statement shows them —
+ * ONE transaction on one account, split into a part per bill (its category, its figure), settling every bill's month.
+ * It is a Pay payment of the first bill (transactions.template_id), so it counts in that bill's month as any Pay does
+ * (when every bill is of one month) and Undo takes the whole payment back; the other bills are settled beside it.
+ * Every bill must be written in the account's own money: a part has no room for another currency's figure.
+ * A bill saving up is let go, and with `payCardFromFund` its fund's account pays the card, as `recordBillPayments` does.
+ * All or nothing. Answers the ids it posted: the payment first, then any card payments from a fund.
+ */
+export function recordBillsAsOnePayment(
+  database: Database,
+  ws: WorkspaceContext,
+  input: {
+    paidOn: string;
+    moneyAccountId: string;
+    /** The Note: what the statement calls it. Empty says how many bills it paid ("3 bills"). */
+    description?: string;
+    payments: Omit<BillPaymentInput, 'moneyAccountId' | 'chargedMinor' | 'setAside'>[];
+    /** The paying account's set-aside answer, for the payment as a whole. */
+    setAside?: SetAsideChoice | null;
+    ratesToBase?: Record<string, number>;
+  },
+): Promise<string[]> {
+  return database.transaction(async (tx) => {
+    if (input.payments.length < 2) throw new RecurringError('ONE_PAYMENT_FEW', 'One payment pays two bills or more');
+    const [wallet] = await tx
+      .select({ id: accounts.id, name: accounts.name, kind: accounts.kind, currency: accounts.currency })
+      .from(accounts)
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.id, input.moneyAccountId)));
+    if (!wallet || (wallet.kind !== 'asset' && wallet.kind !== 'liability')) throw new RecurringError('NOT_A_WALLET', 'A bill is paid from an account or a card');
+    const currency = wallet.currency ?? ws.baseCurrency;
+    const currencies = await billCurrencies(tx, ws);
+    const seen = new Set<string>();
+    const bills: { template: typeof expenseTemplates.$inferSelect; payment: (typeof input.payments)[number] }[] = [];
+    for (const payment of input.payments) {
+      if (!BILL_MONTH.test(payment.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+      if (!(Number.isSafeInteger(payment.amountMinor) && payment.amountMinor > 0)) throw new RecurringError('AMOUNT_RANGE', 'Enter what the bill came to');
+      const key = `${payment.templateId}|${payment.billMonth}`;
+      if (seen.has(key)) throw new RecurringError('ALREADY_SETTLED', 'A bill is paid once for a month');
+      seen.add(key);
+      const [template] = await tx
+        .select()
+        .from(expenseTemplates)
+        .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, payment.templateId), sql`${expenseTemplates.archivedAt} IS NULL`));
+      if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
+      if (await isSettled(tx, ws, template.id, payment.billMonth)) throw new RecurringError('ALREADY_SETTLED', `${template.name} is already settled for that month`);
+      if ((currencies.get(template.id) ?? currency) !== currency) {
+        throw new RecurringError('ONE_PAYMENT_CURRENCY', `${template.name} is in ${currencies.get(template.id)}: One payment pays bills in ${currency} only`);
+      }
+      bills.push({ template, payment });
+    }
+    const first = bills[0]!;
+    const paid = await postTransactionTx(tx, ws, {
+      occurredOn: input.paidOn,
+      description: input.description?.trim() || `${bills.length} bills`,
+      templateId: first.template.id,
+      billMonth: first.payment.billMonth,
+      billLinks: bills.slice(1).map(({ template, payment }) => ({ templateId: template.id, billMonth: payment.billMonth })),
+      ratesToBase: input.ratesToBase,
+      setAside: input.setAside ?? null,
+      lines: splitExpenseLines({
+        paymentAccountId: wallet.id,
+        currency,
+        splits: bills.map(({ template, payment }) => ({ categoryAccountId: template.categoryAccountId, amountMinor: payment.amountMinor })),
+      }),
+    });
+    const ids = [paid];
+    // One line in Activity for the one payment: "Internet and 2 more paid".
+    await recordActivityTx(tx, ws, 'payment', paid, { templateId: first.template.id, billMonth: first.payment.billMonth, billCount: bills.length });
+    for (const { template, payment } of bills) {
+      const fund = await getSinkingFund(tx, ws, template.id);
+      if (!fund) continue;
+      if (payment.payCardFromFund && wallet.kind === 'liability' && wallet.id !== fund.accountId) {
+        if (((await accountCurrency(tx, ws, fund.accountId)) ?? ws.baseCurrency) !== currency) throw new RecurringError('FUND_CURRENCY', `The card is in ${currency}, the fund's account is not`);
+        ids.push(
+          await postTransactionTx(tx, ws, {
+            occurredOn: input.paidOn,
+            description: `${wallet.name} payment`,
+            lines: transferLines({ fromAccountId: fund.accountId, toAccountId: wallet.id, amountMinor: payment.amountMinor, currency }),
+            fileTransfer: true,
+          }),
+        );
+      }
+      await dropSinkingFund(tx, ws, template.id);
+    }
+    return ids;
+  });
+}
+
 /** Takes recorded payments back: they are voided, so the months they settled are owed again. */
 export function undoBillPayments(database: Database, ws: WorkspaceContext, transactionIds: readonly string[]): Promise<void> {
   return database.transaction(async (tx) => {
@@ -1171,44 +1298,76 @@ export async function relinkPurchaseToBill(database: Database, ws: WorkspaceCont
   await database.transaction(async (tx) => {
     await captureBillLinkingTx(tx, transactionId);
     // Read again inside the transaction: what is moved is the link as it stands now.
+    const thisLink = and(
+      eq(billPayments.transactionId, transactionId),
+      eq(billPayments.workspaceId, ws.workspaceId),
+      eq(billPayments.templateId, current.templateId),
+      eq(billPayments.billMonth, current.billMonth),
+    );
     const [row] = await tx
       .select({ paidBy: transactions.templateId, status: transactions.status })
       .from(billPayments)
       .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
-      .where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+      .where(thisLink);
     if (!row || row.status !== 'posted') throw new RecurringError('NOT_A_PURCHASE', 'That purchase is not here');
     if (row.paidBy !== null) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
-    await tx.delete(billPayments).where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+    // Only the link being moved: a purchase that settles several bills (0127) keeps the others.
+    await tx.delete(billPayments).where(thisLink);
     if (await isSettled(tx, ws, templateId, billMonth)) throw new RecurringError('ALREADY_SETTLED', 'That month is already settled');
     await tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId, billMonth });
   });
 }
 
-/** Takes a link back: only the bill's claim on the purchase goes, the purchase itself is untouched. A payment Pay recorded is refused (undo voids it). */
-export function unlinkPurchaseFromBill(database: Database, ws: WorkspaceContext, input: { transactionId: string }): Promise<void> {
+/**
+ * Takes a link back: only the bill's claim on the purchase goes, the purchase itself is untouched. A payment Pay recorded
+ * is refused (undo voids it). Naming a bill (and a month) lets only that one go, for a purchase that settles several
+ * (0127); without one every link it has goes.
+ */
+export function unlinkPurchaseFromBill(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { transactionId: string; templateId?: string; billMonth?: string },
+): Promise<void> {
   return database.transaction(async (tx) => {
+    const which = and(
+      eq(billPayments.transactionId, input.transactionId),
+      eq(billPayments.workspaceId, ws.workspaceId),
+      ...(input.templateId ? [eq(billPayments.templateId, input.templateId)] : []),
+      ...(input.billMonth ? [eq(billPayments.billMonth, input.billMonth)] : []),
+    );
     const [row] = await tx
       .select({ paidBy: transactions.templateId })
       .from(billPayments)
       .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
-      .where(and(eq(billPayments.transactionId, input.transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+      .where(which);
     if (!row) return;
     if (row.paidBy !== null) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
     await captureBillLinkingTx(tx, input.transactionId);
-    await tx.delete(billPayments).where(and(eq(billPayments.transactionId, input.transactionId), eq(billPayments.workspaceId, ws.workspaceId)));
+    await tx.delete(billPayments).where(which);
   });
 }
 
-/** The bill a purchase is linked to, and the month; null when it is linked to none. `linked` is false for a payment Pay recorded. */
-export async function billOfPurchase(database: Database, ws: WorkspaceContext, transactionId: string): Promise<{ templateId: string; name: string; billMonth: string; linked: boolean } | null> {
+/**
+ * The bill a purchase is linked to, and the month; null when it is linked to none. `linked` is false for a payment Pay
+ * recorded. A purchase that settles several bills (0127) answers with its own bill's (Pay's) first, else the first by
+ * month and name, and `count` says how many it settles.
+ */
+export async function billOfPurchase(
+  database: Database,
+  ws: WorkspaceContext,
+  transactionId: string,
+): Promise<{ templateId: string; name: string; billMonth: string; linked: boolean; count: number } | null> {
   if (!(await billTablesExist(database.db))) return null;
-  const [row] = await database.db
+  const rows = await database.db
     .select({ templateId: billPayments.templateId, billMonth: billPayments.billMonth, name: expenseTemplates.name, paidBy: transactions.templateId })
     .from(billPayments)
     .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
     .innerJoin(expenseTemplates, eq(expenseTemplates.id, billPayments.templateId))
     .where(and(eq(billPayments.transactionId, transactionId), eq(billPayments.workspaceId, ws.workspaceId), eq(transactions.status, 'posted')));
-  return row ? { templateId: row.templateId, name: row.name, billMonth: row.billMonth, linked: row.paidBy === null } : null;
+  if (rows.length === 0) return null;
+  rows.sort((a, b) => Number(b.templateId === b.paidBy) - Number(a.templateId === a.paidBy) || a.billMonth.localeCompare(b.billMonth) || a.name.localeCompare(b.name));
+  const row = rows[0]!;
+  return { templateId: row.templateId, name: row.name, billMonth: row.billMonth, linked: row.paidBy === null, count: rows.length };
 }
 
 export interface BillLinkCandidate {

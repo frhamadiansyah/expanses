@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const expenseTemplates = sqliteTable('expense_templates', {
   id: text('id').primaryKey(),
@@ -41,10 +41,17 @@ export const billWindows = sqliteTable('bill_windows', {
   startsMonth: text('starts_month').notNull(),
 });
 
-/** The month a bill payment settles. */
-export const billPayments = sqliteTable('bill_payments', {
-  transactionId: text('transaction_id').primaryKey(),
-  workspaceId: text('workspace_id').notNull(),
-  templateId: text('template_id').notNull(),
-  billMonth: text('bill_month').notNull(),
-});
+/**
+ * The month of a bill a payment settles. One transaction may settle several bills (0127: one checkout paying the
+ * internet and two phone bills), so the key is all three.
+ */
+export const billPayments = sqliteTable(
+  'bill_payments',
+  {
+    transactionId: text('transaction_id').notNull(),
+    workspaceId: text('workspace_id').notNull(),
+    templateId: text('template_id').notNull(),
+    billMonth: text('bill_month').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.transactionId, t.templateId, t.billMonth] })],
+);

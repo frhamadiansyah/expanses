@@ -154,7 +154,8 @@ export function collectSelfChanges(database: Database, deviceId: string): Promis
     for (const { table, key, made, columns } of rows.values()) {
       const meta = await tableMeta(tx, table);
       if (!meta) continue;
-      const row = await readRow(tx, meta, key);
+      // A key of another shape is a row gone before its table's key changed (0127's bill_payments): it goes as a removal.
+      const row = key.length === meta.keys.length ? await readRow(tx, meta, key) : null;
       const pk = pkText(key);
       if (!row) {
         // Merged into another row by an apply here: that row carries it now, and the other devices did the same.
@@ -306,7 +307,7 @@ async function applyOnce(database: Database, changeSet: SelfChangeSet, share: bo
         (await tx.values(sql`SELECT 1 FROM shared_books WHERE state IN ('active', 'unshared') LIMIT 1`)).length > 0;
       const run: Run = { tx, hlc: changeSet.hlc, notes: [], made: [], share: shares };
       const apply = async () => {
-        for (const op of changeSet.ops) await applyOp(run, op);
+        for (const op of changeSet.ops) for (const one of await opsUnderKeyHere(tx, op)) await applyOp(run, one);
       };
       if (shares) await apply();
       else await withCapturePaused(tx, apply);
@@ -326,6 +327,31 @@ async function noteNotSharedTx(database: Database, changeSet: SelfChangeSet, why
   if (!ws) return;
   await database.db.run(sql`INSERT OR IGNORE INTO audit_log (id, workspace_id, action, entity, entity_id, payload_json, created_at)
     VALUES (${await stableId(changeSet.hlc, 'linked:not-shared')}, ${ws[0]}, 'not_shared', 'linked', ${changeSet.hlc}, ${JSON.stringify({ why })}, ${new Date(decodeHlc(changeSet.hlc).ms).toISOString()})`);
+}
+
+/**
+ * An op keyed as an older device keys its row, read under this device's key. One table so far: bill_payments, keyed by
+ * the transaction alone before 0127 and by the transaction, the bill and the month since. A one-part key there says
+ * what the transaction's one bill link is — a removal: none; a row made: that one — so it becomes the removal of each of
+ * the transaction's other rows here (each by rule 2's clock test, so a link made here later stays) and, for a row
+ * made, that row under its full key. Any other op is applied as it came.
+ */
+async function opsUnderKeyHere(db: Db, op: SelfOp): Promise<SelfOp[]> {
+  if (op.t !== 'bill_payments' || op.k.length !== 1) return [op];
+  const meta = await tableMeta(db, op.t);
+  if (!meta || meta.keys.length === 1) return [op];
+  const transactionId = op.k[0] as string;
+  const here = await db.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}`);
+  const templateId = op.c?.template_id;
+  const billMonth = op.c?.bill_month;
+  if (!op.d && (typeof templateId !== 'string' || typeof billMonth !== 'string')) {
+    // Columns alone, no key: only the transaction's one row here can be the one meant.
+    return here.length === 1 ? [{ ...op, k: [transactionId, here[0]![0], here[0]![1]] }] : [];
+  }
+  const removals: SelfOp[] = here
+    .filter(([t, m]) => op.d || t !== templateId || m !== billMonth)
+    .map(([t, m]) => ({ t: op.t, k: [transactionId, t, m], d: true as const }));
+  return op.d ? removals : [...removals, { ...op, k: [transactionId, templateId, billMonth] }];
 }
 
 async function aliasOf(db: Db, table: string, pk: string): Promise<string> {

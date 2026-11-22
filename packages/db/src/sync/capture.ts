@@ -13,7 +13,7 @@ import { activeNetWorthGroup, NetWorthError } from '../repos/net-worth-sharing';
 import { localDate, sendSummariesTx } from './net-worth/summaries';
 import { sendGoalSummariesTx } from './goals/summaries';
 import { reserveAndSplit } from './split';
-import { INSTALMENT_SPREAD_MIN_APP_VERSION, meetsVersion, NEEDS_THIRD_MARK_MIN_APP_VERSION, PLAN_SPREAD_MIN_APP_VERSION } from './events/version';
+import { INSTALMENT_SPREAD_MIN_APP_VERSION, meetsVersion, NEEDS_THIRD_MARK_MIN_APP_VERSION, PLAN_SPREAD_MIN_APP_VERSION, SEVERAL_BILLS_MIN_APP_VERSION } from './events/version';
 import { type PurchaseSpread, purchaseSpreadOfTx } from '../repos/instalment-spending';
 import { holderLineageId } from './held';
 import type { ChangeSet, Op } from './types';
@@ -214,6 +214,13 @@ export interface PurchaseFields {
    * was, carrying its own links. Optional: an op from such a build carries none, and the receiver keeps what it has.
    */
   billLink?: { templateId: string; billMonth: string } | null;
+  /**
+   * Every bill's month the purchase settles, when it is two or more (one payment, several bills; 0127): its own bill's
+   * first, then by month and bill. `bill` or `billLink` still carries the first, so a build before this reads that one
+   * bill paid. Absent for one bill or none; going absent is said as null. A build before it would take the field's clock
+   * and drop it, so it is held from the log until every phone can read it (`severalBillsWaitTx`, repair R10).
+   */
+  severalBills?: { templateId: string; billMonth: string }[] | null;
   money: PurchaseMoney;
   /**
    * Its place within its day when moved there by hand, or null (0067). Optional: an op from a device without it carries
@@ -623,6 +630,9 @@ export async function writeChangeSetsTx(
   if (attach && changeSets[0]) changeSets[0] = { ...changeSets[0], ...attach };
   const hold = ops.some(isThirdMark) && (await thirdMarkWaitsTx(tx, book.bookId, deviceId));
   const holdSpread = ops.some(isSpreadOp) && (await spreadWaitsTx(tx, book.bookId, deviceId));
+  // Several bills (0127), held as a spread is: the rest of the op goes, and R10 sends the list once every phone reads it.
+  const holdBills = ops.some(isSeveralBillsOp) && (await severalBillsWaitTx(tx, book.bookId, deviceId));
+  if (holdBills) await tx.run(sql`DELETE FROM settings WHERE key = ${severalBillsCrossedKey(book.bookId)}`);
   // A spread held now was sent to nobody: the record of who R8 has sent spreads to goes, as R7's does for the marks.
   if (holdSpread) await tx.run(sql`DELETE FROM settings WHERE key = ${spreadsCrossedKey(book.bookId)}`);
   // A plan_spread (0123) is an entity an older build does not know at all: held back whole, as the marks are.
@@ -635,7 +645,8 @@ export async function writeChangeSetsTx(
   for (const changeSet of changeSets) {
     const marksOut = hold ? { ...changeSet, ops: changeSet.ops.filter((op) => !isThirdMark(op)) } : changeSet;
     const spreadsOut = holdSpread ? { ...marksOut, ops: marksOut.ops.flatMap(withoutSpread) } : marksOut;
-    const sent = holdPlans ? { ...spreadsOut, ops: spreadsOut.ops.filter((op) => !isPlanSpreadOp(op)) } : spreadsOut;
+    const billsOut = holdBills ? { ...spreadsOut, ops: spreadsOut.ops.flatMap(withoutSeveralBills) } : spreadsOut;
+    const sent = holdPlans ? { ...billsOut, ops: billsOut.ops.filter((op) => !isPlanSpreadOp(op)) } : billsOut;
     if (sent.ops.length > 0 || sent.invite) {
       // Plaintext: the engine seals it when it drains (§6.3, §6.6).
       await tx.run(
@@ -666,6 +677,38 @@ export async function planSpreadWaitsTx(tx: Db, bookId: string, selfDeviceId: st
     .values<[string, string | null]>(sql`SELECT device_id, app_version FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL AND device_id <> ${selfDeviceId}`)
     .catch(() => [] as [string, string | null][]);
   return others.length === 0 || others.some(([, version]) => !meetsVersion(version, PLAN_SPREAD_MIN_APP_VERSION));
+}
+
+/** Where repair R10 keeps the devices it has sent the book's several-bill lists to; cleared whenever one is held. */
+export const severalBillsCrossedKey = (bookId: string) => `repair.several-bills-crossed.v1.${bookId}`;
+
+/** A purchase op that says several bills (0127): what a build before `SEVERAL_BILLS_MIN_APP_VERSION` drops. */
+export const isSeveralBillsOp = (op: Op): boolean => op.entity === 'purchase' && op.op === 'upsert' && 'severalBills' in op.fields;
+
+/** A purchase op with its several bills taken out while they are held: the rest goes as ever, an op of nothing else not at all. */
+function withoutSeveralBills(op: Op): Op[] {
+  if (!isSeveralBillsOp(op) || op.op !== 'upsert') return [op];
+  const { severalBills: _held, ...fields } = op.fields;
+  if (Object.keys(fields).length === 0) return [];
+  const rest: Op = { ...op, fields };
+  if (rest.op === 'upsert' && rest.changed) rest.changed = rest.changed.filter((field) => field !== 'severalBills');
+  if (rest.op === 'upsert' && rest.clocks) {
+    const { severalBills: _clock, ...clocks } = rest.clocks;
+    rest.clocks = clocks;
+  }
+  return [rest];
+}
+
+/**
+ * Whether a purchase's several bills must wait before going into this book's log: some other phone in the book says a
+ * build before `SEVERAL_BILLS_MIN_APP_VERSION` (or none), or no other phone is in it yet. Such a build would take the
+ * field's clock and drop the list, reading one bill paid where this phone reads several — for good.
+ */
+export async function severalBillsWaitTx(tx: Db, bookId: string, selfDeviceId: string): Promise<boolean> {
+  const others = await tx
+    .values<[string, string | null]>(sql`SELECT device_id, app_version FROM book_devices WHERE book_id = ${bookId} AND removed_at IS NULL AND device_id <> ${selfDeviceId}`)
+    .catch(() => [] as [string, string | null][]);
+  return others.length === 0 || others.some(([, version]) => !meetsVersion(version, SEVERAL_BILLS_MIN_APP_VERSION));
 }
 
 /** Where repair R8 keeps the devices it has sent the book's instalment spreads to; cleared whenever a spread is held. */
@@ -1240,6 +1283,8 @@ function diffFields(before: Record<string, unknown> | null, after: Record<string
   if (before && Array.isArray(before.excludedLines) && before.excludedLines.length > 0 && after.excludedLines === undefined) out.excludedLines = [];
   // Likewise a spread that is no more (the plan back at purchase, removed, or tied to another purchase): said as null.
   if (before && before.spread && after.spread === undefined) out.spread = null;
+  // …and several bills that are one or none now.
+  if (before && Array.isArray(before.severalBills) && after.severalBills === undefined) out.severalBills = null;
   return out;
 }
 
@@ -1452,7 +1497,12 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
   if (!row) return null;
   const [occurredOn, description, templateId, originalCurrency, originalAmountMinor, cardId, dayOrder, exact] = row;
   const [flags] = await tx.values<[string | null, number]>(sql`SELECT channel, excluded FROM transaction_flags WHERE transaction_id = ${transactionId}`);
-  const [payment] = await tx.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}`);
+  // Every bill's month it settles (0127: one payment may settle several): its own bill's (Pay's) first, then by month
+  // and bill — the order every phone names them in. The first is what `bill` and `billLink` carry, as ever.
+  const settles = await tx.values<[string, string]>(sql`
+    SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}
+    ORDER BY CASE WHEN template_id IS ${templateId} THEN 0 ELSE 1 END, bill_month, template_id`);
+  const payment = settles[0];
   const entryRows = await tx.values<[string, number, string, number, string | null, string, string, string | null]>(sql`
     SELECT e.account_id, e.amount_minor, e.currency, e.amount_base_minor, e.memo, a.kind, a.name,
            (SELECT m.member_id FROM book_member_accounts m WHERE m.account_id = e.account_id)
@@ -1536,6 +1586,8 @@ export async function projectPurchase(tx: Db, transactionId: string, memberId: s
     // A part never names a bill: the bill it pays may be the private workspace's, and its id is not the partner's to see.
     bill: templateId && !part ? { templateId: payment?.[0] ?? templateId, billMonth: payment?.[1] ?? null } : null,
     billLink: !templateId && !part && payment ? { templateId: payment[0], billMonth: payment[1] } : null,
+    // Two bills or more (0127): the whole list, for a build that reads it. Absent otherwise.
+    ...(!part && settles.length > 1 ? { severalBills: settles.map(([id, month]) => ({ templateId: id, billMonth: month })) } : {}),
     money: {
       lines,
       originalCurrency: part ? null : originalCurrency,
