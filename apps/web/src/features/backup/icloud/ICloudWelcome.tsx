@@ -11,6 +11,7 @@ import type { CloudCopy } from './names';
 import { hasICloud, ICloudBackup } from './plugin';
 import { restoreContents } from './runner';
 import { RestoreCancelledError } from '../../../db/restore-sharing';
+import { askLinkOnOpen } from '../../devices/link-on-open';
 import { cloudCopies, openCopy } from './service';
 import { whenShort } from './words';
 
@@ -50,8 +51,13 @@ function dismiss() {
 const count = (n: number) => n.toLocaleString('id-ID');
 
 /**
- * The first screen on a new iPhone, or after reinstalling: a copy was found in iCloud, here is what is in it, and
- * Restore or Start fresh. Starting fresh leaves the iCloud copies exactly where they are.
+ * The first screen on a new iPhone or Mac, or after reinstalling: a copy was found in iCloud, here is what is in it, and
+ * Restore, Link to another device or Start fresh. Starting fresh leaves the iCloud copies exactly where they are.
+ *
+ * Link to another device (owner, 22 Nov 2026) is for a device that will run beside one already in use: restoring first
+ * and linking after replaced the restored data anyway, and left the device unlinked until then. It opens the app on
+ * Account › Devices with the join sheet showing (link-on-open.ts). It is not remembered like Start fresh: closed
+ * without linking, the app is still empty, and the next open asks again.
  */
 export function ICloudWelcome({ copy, database, safety, sync, onDone }: { copy: CloudCopy; database: Database; safety?: Safety; sync?: SyncService; onDone: () => void }) {
   const [contents, setContents] = useState<CopyContents | null>(null);
@@ -109,6 +115,17 @@ export function ICloudWelcome({ copy, database, safety, sync, onDone }: { copy: 
           className="ph-focus w-full rounded-[14px] bg-[var(--ph-tint)] p-[14px] text-[17px] font-semibold text-[var(--ph-surface)] disabled:opacity-40"
         >
           {busy ? 'Restoring…' : 'Restore'}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            askLinkOnOpen();
+            onDone();
+          }}
+          className="ph-focus mt-[10px] w-full rounded-[14px] bg-[var(--ph-surface)] p-[14px] text-[17px] font-semibold text-[var(--ph-tint)] disabled:opacity-40"
+        >
+          Link to another device
         </button>
         <button
           type="button"
