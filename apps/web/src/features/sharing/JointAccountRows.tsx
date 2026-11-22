@@ -5,11 +5,10 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow } from '../../ui/native';
 import { memberName } from '../networth/joint-rows';
-import { useActiveNetWorthGroup, useJointAccount, useOwnJointRows } from './net-worth-queries';
 
 /*
- * A joint account's rows (0097): what the shared workspace recorded against the account, on the holder's page and the
- * partner's alike, each with who recorded it, and either person can open and change any of them. Rows recorded in any other workspace are not among them.
+ * A joint account's rows (0097): what the shared workspace recorded against the account, on the partner's page (the
+ * holder's own page lists them under Recent; a deleted one is undone from Activity — owner, 22 Nov 2026), each with who recorded it, and either person can open and change any of them. Rows recorded in any other workspace are not among them.
  */
 
 const DAY_LABEL = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -97,13 +96,4 @@ export function JointRowsGroup({
       </InsetGroup>
     </>
   );
-}
-
-/** The holder's account page: the rows, only while the account is joint. */
-export function OwnJointRows({ accountId }: { accountId: string }) {
-  const group = useActiveNetWorthGroup();
-  const joint = useJointAccount(accountId);
-  const read = useOwnJointRows(accountId, joint.data === true);
-  if (joint.data !== true || !read.data || !group.data) return null;
-  return <JointRowsGroup rows={read.data.rows} me={group.data.me} names={read.data.names} workspaceBookId={group.data.workspaceBookId} />;
 }

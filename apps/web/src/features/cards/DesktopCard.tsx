@@ -15,7 +15,6 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { InstallmentList } from '../loans/InstallmentList';
 import { useInstallments } from '../loans/queries';
 import { creditMinor, owedMinor } from '../networth/debt-rows';
-import { OwnJointRows } from '../sharing/JointAccountRows';
 import { isEditable } from '../transactions/draft';
 import { buildRows, type ListRow } from '../transactions/list-model';
 import { ReceiptPeek } from '../transactions/ReceiptPeek';
@@ -389,9 +388,6 @@ export function DesktopCard({ page }: { page: CardPage }) {
             <InstallmentList cardAccountId={card.id} currency={currency} />
           </div>
         )}
-        <div className="max-w-[720px] empty:hidden">
-          <OwnJointRows accountId={card.id} />
-        </div>
       </div>
 
       {peekLine && (

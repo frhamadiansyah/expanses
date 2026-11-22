@@ -17,7 +17,6 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { useSetAsideView } from '../goals/queries';
 import { AssetSettingsPage } from '../networth/AssetSettingsPage';
 import { SetAsidePanel } from '../networth/SetAsidePanel';
-import { OwnJointRows } from '../sharing/JointAccountRows';
 import { isCardPayment } from '../cards/card-pay';
 import { isEditable } from '../transactions/draft';
 import { buildRows, type ListRow } from '../transactions/list-model';
@@ -321,10 +320,6 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
             <SetAsidePanel accountId={account.id} />
           </section>
         )}
-        {/* With a household: this account's rows as the partner sees them, when it is owned together — as on the phone's page. */}
-        <div className="max-w-[720px] empty:hidden">
-          <OwnJointRows accountId={account.id} />
-        </div>
         {/* Withdrawal rate §7: what the foreign money held cost, and the withdrawals still in it — as on the phone's page. */}
         {isFxLotAccount(account, ws.baseCurrency) && (
           <div className="max-w-[720px]">
