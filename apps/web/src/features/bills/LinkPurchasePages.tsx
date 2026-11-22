@@ -262,7 +262,7 @@ export function LinkToBillPage({ transactionId }: { transactionId: string }) {
     setError(null);
     setBusy(true);
     try {
-      await unlinkPurchaseFromBill(database, ws, { transactionId });
+      await unlinkPurchaseFromBill(database, ws, { transactionId, ...(current ? { templateId: current.templateId, billMonth: current.billMonth } : {}) });
       await invalidate();
       back();
     } catch (e) {

@@ -376,6 +376,7 @@ export {
   sinkingSavePlan,
   withPlan,
 } from './bills/sinking';
+export { type BillToMatch, type LineToMatch, matchBillsToLines } from './bills/match-lines';
 export { formatLots, lotsOf, unitsFromLots } from './assets/units';
 export { type GoldPriceChoice, GRAMS_PER_TROY_OUNCE, gramPriceMicroFromOunce, type PriceSource, wantsWorldPrice } from './assets/world-gold';
 export {

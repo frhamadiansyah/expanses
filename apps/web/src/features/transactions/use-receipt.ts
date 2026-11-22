@@ -34,6 +34,7 @@ import { useInstallments } from '../loans/queries';
 import { usePurchasePayers } from '../sharing/queries';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { classify } from './classify';
+import { pastMoveRow } from './tx-form';
 import { isCorrection } from './draft';
 import { useDuplicable } from './duplicable';
 import { deleteTransaction } from './member-transfer';
@@ -182,6 +183,11 @@ export function useReceipt(transactionId: string, exits: ReceiptExits) {
   if (!tx) return { ...base, view: null };
 
   const kind = classify(tx);
+  // A transfer or a card's payment whose pair keeps an account unchanged names that account; the other side moved.
+  const pastMove =
+    tx.past && kind.type === 'transfer'
+      ? pastMoveRow((tx.pastAccountIds ?? []).map((id) => accounts.find((account) => account.id === id)?.name ?? '').filter(Boolean), isCardPayment(tx))
+      : null;
   const categoryNames = kind.categoryIds.map((id) => accounts.find((account) => account.id === id)?.name).filter(Boolean);
   const book = badges.of(tx.id);
   // Who owes what on *this* transaction: its own debt entries, named by the person each debt account belongs to.
@@ -216,7 +222,8 @@ export function useReceipt(transactionId: string, exits: ReceiptExits) {
   // None, or a link this purchase may move or let go: the bill list, its ✓ on the current one. Pay's own payment, or a
   // link it may not change, opens the bill itself.
   const openBill = () => {
-    if (!bill || (bill.linked && changeable)) {
+    // A purchase that settles several bills (0127) opens the first of them: its parts' bills are changed in its Split.
+    if (!bill || (bill.linked && changeable && bill.count < 2)) {
       // Linking from the list comes back to this very entry (`stepsBackToReceipt`), not a second receipt on top.
       markReceiptAt(transactionId, historyIndex(router.history));
       void navigate({ to: '/transactions/$transactionId/bill', params: { transactionId } });
@@ -242,6 +249,7 @@ export function useReceipt(transactionId: string, exits: ReceiptExits) {
     ...base,
     view: {
       kind,
+      pastMove,
       categoryNames,
       book,
       lines,

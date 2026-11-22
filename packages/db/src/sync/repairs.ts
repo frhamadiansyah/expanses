@@ -7,7 +7,7 @@ import { eventBookOfEventTx } from '../repos/shared-event-records';
 import { moveIntoSharedEvent, refundMatchedByName } from '../repos/shared-event-moves';
 import { TRIP_TRANSFERS_MIN_APP_VERSION } from '../repos/shared-event-transfers';
 import { partnerPurchaseRefusalTx, sharedRowTx, untagSharedRowsTx } from '../repos/shared-workspace-rows';
-import { captureConfigOf, isThirdMark, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, type SharedBook, planSpreadsCrossedKey, planSpreadWaitsTx, spreadsCrossedKey, spreadWaitsTx, thirdMarksCrossedKey, thirdMarkWaitsTx, writeChangeSetsTx } from './capture';
+import { captureConfigOf, isThirdMark, lineageOfTransaction, localDeviceId, projectPurchase, rowUpsertsTx, type SharedBook, planSpreadsCrossedKey, planSpreadWaitsTx, severalBillsCrossedKey, severalBillsWaitTx, spreadsCrossedKey, spreadWaitsTx, thirdMarksCrossedKey, thirdMarkWaitsTx, writeChangeSetsTx } from './capture';
 import { purchaseSpreadOfTx } from '../repos/instalment-spending';
 import { memberOfDeviceTx } from './apply';
 import { itemsWithStaleFaceTx, sendSummariesTx } from './net-worth/summaries';
@@ -72,6 +72,11 @@ export function repairExpenseId(lineageId: string, eventId: string): Promise<str
  * `PLAN_SPREAD_MIN_APP_VERSION` (`planSpreadWaitsTx`), its clocks kept here as if sent. As R7, each time every other
  * phone is first seen at that version or later — and for each phone that joins at it — this phone sends every plan
  * spread of its own plans in the book at the clocks it holds them at.
+ *
+ * R10 several bills (0127): a shared purchase that settles two bills or more carries `severalBills`, held back from the
+ * book's log while any other phone in it says a build before `SEVERAL_BILLS_MIN_APP_VERSION` (`severalBillsWaitTx`), its
+ * clock kept here as if sent. As R8, each time every other phone is first seen at that version or later — and again for
+ * each phone that joins at it — this phone sends every such list it holds at the clock it holds it at.
  *
  * R4 card faces (fix/sync-card-tier): a joint account's summary now carries what its card face is drawn from (its bank,
  * its card tier, its number's last four: `ItemFace`). An account given a tier before this build sent none, and its
@@ -188,6 +193,8 @@ export interface RepairReport {
   thirdMarks?: number | null;
   /** R8: instalment spreads sent; null while a phone in the book cannot read one, or none had newly crossed. */
   instalmentSpreads?: number | null;
+  /** R10: the purchases whose several bills were sent, or null when nothing was due. */
+  severalBills?: number | null;
   /** R9: plan spreads sent; null while a phone in the book cannot read one, or none had newly crossed. */
   planSpreads?: number | null;
 }
@@ -457,6 +464,31 @@ async function resendSpreadsTx(tx: Tx, database: Database, book: SharedBook): Pr
   return ops.length;
 }
 
+/**
+ * R10's sending: every purchase in the book that settles several bills here (0127), its list at the clock this phone
+ * holds it at (none `changed`, so a later word still wins), or at a fresh one when it never had a clock.
+ */
+async function resendSeveralBillsTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
+  const heads = await tx
+    .values<[string, string, string, string]>(sql`
+      SELECT l.lineage_id, l.head_transaction_id, l.paid_by, l.paid_label FROM sync_lineage l JOIN transactions t ON t.id = l.head_transaction_id
+      WHERE l.book_id = ${book.bookId} AND t.status = 'posted'
+        AND (SELECT count(*) FROM bill_payments p WHERE p.transaction_id = l.head_transaction_id) > 1
+      ORDER BY l.lineage_id`)
+    .catch(() => [] as [string, string, string, string][]);
+  const ops: Op[] = [];
+  for (const [lineageId, head, paidBy, paidLabel] of heads) {
+    const severalBills = (await projectPurchase(tx, head, book.memberId, { paidBy, paidLabel }))?.severalBills;
+    if (!severalBills) continue;
+    const [clock] = await tx.values<[string]>(sql`
+      SELECT hlc FROM sync_field_clocks WHERE book_id = ${book.bookId} AND entity = 'purchase' AND id = ${lineageId} AND field = 'severalBills'`);
+    const fields = { severalBills };
+    ops.push(clock ? { entity: 'purchase', id: lineageId, op: 'upsert', fields, changed: [], clocks: { severalBills: clock[0] } } : { entity: 'purchase', id: lineageId, op: 'upsert', fields });
+  }
+  await writeChangeSetsTx(tx, captureConfigOf(database), book, ops);
+  return ops.length;
+}
+
 /** R9's sending: every plan spread of this phone's own plans in the book, at the clocks each field is held at. */
 async function resendPlanSpreadsTx(tx: Tx, database: Database, book: SharedBook): Promise<number> {
   const own = new Set((await tx.values<[string]>(sql`SELECT id FROM card_installments`).catch(() => [] as [string][])).map(([id]) => id));
@@ -656,6 +688,25 @@ export async function runSharedBookRepairs(database: Database, bookId: string, o
       const sent = await resendPlanSpreadsTx(tx, database, book);
       const all = [...new Set([...crossed, ...others])].sort();
       await tx.run(sql`INSERT INTO settings (key, value) VALUES (${planSpreadsCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
+      return sent;
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    report.severalBills = await database.transaction(async (tx) => {
+      const book = await activeBookTx(tx, bookId);
+      if (!book) return null;
+      if ((await tx.values(sql`SELECT 1 FROM pragma_table_info('bill_payments') WHERE name = 'template_id' AND pk = 2`)).length === 0) return null;
+      // As R8: only once every other phone reads the list, then once per phone newly seen there.
+      const self = await localDeviceId(tx);
+      if (await severalBillsWaitTx(tx, bookId, self)) return null;
+      const others = (await bookDevicesTx(tx, bookId)).filter((d) => d.deviceId !== self).map((d) => d.deviceId);
+      const crossed = await crossedTx(tx, bookId, severalBillsCrossedKey(bookId));
+      if (others.every((id) => crossed.has(id))) return null;
+      const sent = await resendSeveralBillsTx(tx, database, book);
+      const all = [...new Set([...crossed, ...others])].sort();
+      await tx.run(sql`INSERT INTO settings (key, value) VALUES (${severalBillsCrossedKey(bookId)}, ${JSON.stringify(all)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
       return sent;
     });
   } catch (error) {

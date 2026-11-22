@@ -1,0 +1,134 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Paid off, in part</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; --tint:#007aff; --green:#248a3d; --up:#248a3d; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:17px; margin:26px 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1200px; line-height:1.4; }
+  .wrap { display:flex; gap:20px; align-items:flex-start; }
+  .col { width:330px; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .cap b { display:inline-block; min-width:22px; height:20px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:20px; font-size:12px; margin-right:6px; padding:0 4px; }
+  .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:52px; line-height:1.4; }
+  .phone { background:var(--ground); border-radius:26px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); height:430px; position:relative; overflow:hidden; }
+  .capt { display:flex; justify-content:space-between; font-size:12px; letter-spacing:.05em; color:var(--ink3); font-weight:600; margin:4px 8px 6px; }
+  .box { background:#fff; border-radius:14px; overflow:hidden; }
+  .line { display:flex; align-items:center; gap:10px; padding:10px 8px 10px 10px; position:relative; }
+  .line + .line::before { content:""; position:absolute; top:0; left:42px; right:12px; height:.5px; background:var(--hair); }
+  .mk { width:22px; display:flex; justify-content:center; flex-shrink:0; }
+  .c { width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; } .c svg { width:12px; height:12px; }
+  .c.empty { border:1.5px solid var(--ink3); } .c.one { background:var(--up); color:#fff; }
+  .c.half { border:1.5px solid var(--up); background:linear-gradient(90deg, var(--up) 50%, transparent 50%); }
+  .tx { flex:1; min-width:0; } .tx .n { font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .tx .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .tx .s.g { color:var(--green); }
+  .am { font-size:16px; font-variant-numeric:tabular-nums; white-space:nowrap; } .am.done { color:var(--ink3); }
+  .dots { color:var(--ink2); font-weight:700; font-size:18px; width:22px; text-align:center; line-height:1; }
+  .dim { position:absolute; inset:0; background:rgba(0,0,0,.25); }
+  .sheet { position:absolute; left:0; right:0; bottom:0; background:var(--ground); border-radius:20px 20px 0 0; padding:10px 12px 16px; box-shadow:0 -6px 24px rgba(0,0,0,.16); }
+  .grab { width:38px; height:5px; border-radius:3px; background:#c7c7cc; margin:0 auto 10px; }
+  .sh { display:flex; justify-content:space-between; align-items:center; font-weight:700; font-size:17px; margin:0 4px 10px; } .sh .x { color:var(--ink3); font-weight:400; } .sh .ok { color:var(--tint); font-weight:600; font-size:15px; }
+  .grp { background:#fff; border-radius:12px; overflow:hidden; margin-bottom:8px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; gap:8px; font-size:16px; } .r + .r { border-top:.5px solid var(--hair); }
+  .r .v { color:var(--ink3); font-variant-numeric:tabular-nums; } .r .in { color:var(--ink); font-variant-numeric:tabular-nums; font-weight:500; }
+  .new { box-shadow:inset 0 0 0 2px #ff9f0a; border-radius:10px; }
+  .ft { font-size:12.5px; color:var(--ink3); margin:2px 6px 0; line-height:1.35; }
+  .toast { position:absolute; left:12px; right:12px; bottom:14px; background:#fff; border-radius:16px; padding:10px 10px 10px 14px; display:flex; align-items:center; gap:10px; box-shadow:0 6px 20px rgba(0,0,0,.16); }
+  .toast .t { flex:1; font-size:15px; } .toast .t small { display:block; color:var(--ink3); font-size:12.5px; }
+  .pill { background:#efeff2; border-radius:14px; padding:7px 12px; font-weight:600; font-size:14px; white-space:nowrap; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#2e8b3e; border-radius:9px; padding:1px 7px; margin-left:6px; vertical-align:2px; } .grey { background:#8e8e93; }
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute"><symbol id="ck" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></symbol></svg>
+<h1>Paid off, in part</h1>
+<p class="sub">“Paid off” stays one tap for the whole amount, as today. Only when the amount paid before the card was added is less than the purchase is anything typed. Example: a Rp3.000.000 purchase on 15 Oct, Rp1.800.000 of it paid before the card was added. New parts outlined in orange. Invented names and figures.</p>
+
+<h2>A · Two choices in the ⋮ menu <span class="tag">SUGGESTED</span></h2>
+<div class="wrap">
+  <div class="col">
+    <p class="cap"><b>A1</b>⋮ on the purchase</p>
+    <p class="note">“Paid off” works as today: one tap, the whole amount. A second choice under it, “Paid off in part…”, asks how much.</p>
+    <div class="phone">
+      <div class="capt"><span>PURCHASES</span><span>0 OF 2 PAID</span></div>
+      <div class="box">
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Obligasi Contoh</div><div class="s">15 Oct · ···· 4004</div></div><div class="am">Rp3.000.000</div><span class="dots">⋮</span></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Toko Contoh</div><div class="s">20 Nov · ···· 4004</div></div><div class="am">Rp210.000</div><span class="dots">⋮</span></div>
+      </div>
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="sh"><span>Obligasi Contoh</span><span class="x">✕</span></div>
+        <div class="grp">
+          <div class="r"><span>Paid off</span><span class="v">Rp3.000.000</span></div>
+          <div class="r new"><span>Paid off in part…</span><span class="v"></span></div>
+        </div>
+        <div class="grp"><div class="r"><span>Open purchase</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><b>A2</b>“Paid off in part…”</p>
+    <p class="note">One amount, starting empty. Save is dim until it is more than 0 and less than the purchase.</p>
+    <div class="phone">
+      <div class="dim" style="background:rgba(0,0,0,.12)"></div>
+      <div class="sheet" style="top:70px">
+        <div class="grab"></div>
+        <div class="sh"><span class="x">✕</span><span>Paid off in part</span><span class="ok">Save</span></div>
+        <div class="grp">
+          <div class="r"><span>Purchase</span><span class="v">Rp3.000.000</span></div>
+          <div class="r new"><span>Paid before the card was added</span><span class="in">1.800.000</span></div>
+          <div class="r"><span>Left on the card</span><span class="v">Rp1.200.000</span></div>
+        </div>
+        <p class="ft">The card owes Rp1.800.000 less. Nothing is added to Cashflow.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><b>A3</b>The statement after</p>
+    <p class="note">A half-filled circle, and what is left under the name. A later payment in the app pays the Rp1.200.000 left, and the circle turns into the green ✓.</p>
+    <div class="phone" style="height:auto;min-height:0">
+      <div class="capt"><span>PURCHASES</span><span>0 OF 2 PAID</span></div>
+      <div class="box">
+        <div class="line"><div class="mk"><span class="c half"></span></div><div class="tx"><div class="n">Obligasi Contoh</div><div class="s g">Rp1.200.000 left</div></div><div class="am">Rp3.000.000</div><span class="dots">⋮</span></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Toko Contoh</div><div class="s">20 Nov · ···· 4004</div></div><div class="am">Rp210.000</div><span class="dots">⋮</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>B · One “Paid off”, the amount changed afterwards <span class="tag grey">OTHER WAY</span></h2>
+<div class="wrap">
+  <div class="col">
+    <p class="cap"><b>B1</b>“Paid off” as today</p>
+    <p class="note">One tap marks the whole amount. The note at the bottom offers “Change amount” for a few seconds, beside Undo.</p>
+    <div class="phone">
+      <div class="capt"><span>PURCHASES</span><span>1 OF 2 PAID</span></div>
+      <div class="box">
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Obligasi Contoh</div><div class="s">15 Oct · ···· 4004</div></div><div class="am done">Rp3.000.000</div><span class="dots">⋮</span></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Toko Contoh</div><div class="s">20 Nov · ···· 4004</div></div><div class="am">Rp210.000</div><span class="dots">⋮</span></div>
+      </div>
+      <div class="toast"><span class="c one"><svg><use href="#ck"/></svg></span><div class="t">Paid off<small>Rp3.000.000</small></div><span class="pill new">Change amount</span><span class="pill">Undo</span></div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><b>B2</b>Later, from the ✓</p>
+    <p class="note">The note is gone after a few seconds; the amount can still be changed by tapping the ✓, from its small bubble.</p>
+    <div class="phone">
+      <div class="capt"><span>PURCHASES</span><span>1 OF 2 PAID</span></div>
+      <div class="box" style="overflow:visible">
+        <div class="line"><div class="mk"><span class="c one" style="box-shadow:0 0 0 4px rgba(36,138,61,.22)"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Obligasi Contoh</div><div class="s">15 Oct · ···· 4004</div></div><div class="am done">Rp3.000.000</div><span class="dots">⋮</span>
+          <div style="position:absolute;left:4px;top:52px;z-index:5;background:#1c1c1e;color:#fff;border-radius:12px;padding:10px 12px;width:250px;box-shadow:0 8px 24px rgba(0,0,0,.25)"><b style="display:block;font-size:13.5px">Paid off before the card was added</b><span style="color:#c7c7cc;font-size:12px">Rp3.000.000</span><div style="margin-top:6px;font-size:13px;text-decoration:underline" class="new">Change amount</div></div></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Toko Contoh</div><div class="s">20 Nov · ···· 4004</div></div><div class="am">Rp210.000</div><span class="dots">⋮</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><b>B3</b>The statement after</p>
+    <p class="note">Same as A3 once the amount is changed.</p>
+    <div class="phone" style="height:auto;min-height:0">
+      <div class="capt"><span>PURCHASES</span><span>0 OF 2 PAID</span></div>
+      <div class="box">
+        <div class="line"><div class="mk"><span class="c half"></span></div><div class="tx"><div class="n">Obligasi Contoh</div><div class="s g">Rp1.200.000 left</div></div><div class="am">Rp3.000.000</div><span class="dots">⋮</span></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Toko Contoh</div><div class="s">20 Nov · ···· 4004</div></div><div class="am">Rp210.000</div><span class="dots">⋮</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

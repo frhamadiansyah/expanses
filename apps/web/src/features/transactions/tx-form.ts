@@ -13,6 +13,7 @@ import {
   incomeLines,
   isNotCountedKey,
   isoDate,
+  matchBillsToLines,
   minorToMajorString,
   NOT_COUNTED_LINE,
   parseMajor,
@@ -47,6 +48,18 @@ export interface SplitRow {
    * At most one row has it; Save works it out again against the amount, so a total changed since is followed.
    */
   rest?: boolean;
+  /**
+   * The month of a recurring bill this part pays (one payment, several bills; 0127): the Split sheet's Bill row. `own`
+   * marks Pay's own bill — the payment was recorded from it — which the part keeps; the save always does.
+   */
+  bill?: SplitBill | null;
+}
+
+/** A month of a recurring bill a split's part pays. */
+export interface SplitBill {
+  templateId: string;
+  billMonth: string;
+  own?: boolean;
 }
 
 /**
@@ -172,6 +185,11 @@ export interface FormDraft {
   manualRate: string;
   /** True while correcting a transaction rather than adding one: With is not offered on an edit (§15.6). */
   editing: boolean;
+  /**
+   * The bills the transaction settled as the form opened on it (an edit): its id, which the Split sheet's Bill row
+   * offers its own months by, and the bills no part was found for — kept by the save, never let go unseen.
+   */
+  billsOpened?: { transactionId: string; kept: { templateId: string; billMonth: string }[] };
   purchase: PurchaseDraft; // buy-in-form.ts, unchanged
   /**
    * Joint net worth §7.1: the partner's shared item Paid with names (`moneyId` is then the partner's placeholder), null
@@ -609,6 +627,28 @@ export function receivedField(draft: FormDraft, accounts: readonly AccountRow[])
   const to = accounts.find((a) => a.id === draft.toId);
   if (!from?.currency || !to?.currency || from.currency === to.currency) return null;
   return { which: 'received', label: `Received amount (${to.currency})`, value: draft.toAmount, currency: to.currency };
+}
+
+/**
+ * The one line a transfer or a card's payment shows when it is dated before an account was added (owner, 22 Nov 2026):
+ * that account's balance stays, as a past purchase's does. `names` are the accounts the ledger keeps (`pastSidesOf`).
+ * Null when there are none.
+ */
+export function beforeStartLine(names: readonly string[]): string | null {
+  if (names.length === 0) return null;
+  if (names.length === 1) return `Before ${names[0]} was added: its balance stays.`;
+  return `Before ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} were added: their balances stay.`;
+}
+
+/**
+ * The receipt's row for a saved transfer or card payment whose pair keeps an account unchanged: the past purchase's
+ * row, naming which account, since the other side moved (a card owes less).
+ */
+export function pastMoveRow(names: readonly string[], cardPayment: boolean): { title: string; value: string } {
+  return {
+    title: cardPayment ? 'Past payment' : 'Past transfer',
+    value: names.length === 1 ? `${names[0]} unchanged` : names.length > 1 ? 'Balances unchanged' : 'Balance unchanged',
+  };
 }
 
 /**
@@ -1241,7 +1281,30 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
       ...exactField(draft, accounts, exactHundredths),
       // A split's lines may come from several workspaces: one purchase, each workspace counting its own part (0084).
       ...(splits ? { acrossBooks: true } : {}),
+      // The bills its parts pay, said outright (0127): a part's Bill row, and on an edit the bills no part showed.
+      ...billLinksOf(draft, !!splits),
     },
+  };
+}
+
+/**
+ * The bills a split's save says it settles (one payment, several bills; 0127): every part's Bill, and on an edit the
+ * bills the transaction settled that no part was shown with — so a part taken away lets its bill go, and nothing else
+ * does. Nothing when no part names a bill and the edit opened on none: an edit then carries what it had.
+ */
+export function billLinksOf(draft: Pick<FormDraft, 'splits' | 'editing' | 'billsOpened'>, split: boolean): { billLinks?: { templateId: string; billMonth: string }[] } {
+  if (!split) return {};
+  const parts = draft.splits.flatMap((row) => (row.bill ? [{ templateId: row.bill.templateId, billMonth: row.bill.billMonth }] : []));
+  const kept = draft.editing ? (draft.billsOpened?.kept ?? []) : [];
+  if (parts.length === 0 && !(draft.editing && draft.billsOpened)) return {};
+  const seen = new Set<string>();
+  return {
+    billLinks: [...parts, ...kept].filter((link) => {
+      const key = `${link.templateId}|${link.billMonth}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }),
   };
 }
 
@@ -1441,13 +1504,31 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     if (c.type === 'expense' && category.length + notCounted.length > 1) {
       // Each line left out of its workspace's reports (0090, 0096) says so itself; the purchase's own flag is every line's.
       const partOff = (e: (typeof category)[number]) => markedExcluded(tx) || e.excluded === true || (tx.splitBooks?.some((book) => book.id === e.bookId && book.excluded) ?? false);
+      // The bills it settles, each on the part that pays it (`matchBillsToLines`, as the Bills page reads them).
+      const bills = tx.bills ?? [];
+      const at = matchBillsToLines(
+        bills.map((bill) => ({ categoryId: bill.categoryAccountId, amountMinor: bill.amountMinor })),
+        category.map((e) => ({ categoryId: e.accountId, amountMinor: e.amountMinor })),
+      );
+      const billOfPart = (i: number): SplitBill | null => {
+        const b = at.indexOf(i);
+        if (b < 0) return null;
+        const bill = bills[b]!;
+        return { templateId: bill.templateId, billMonth: bill.billMonth, ...(bill.own ? { own: true } : {}) };
+      };
       const splits: SplitRow[] = [
-        ...category.map((e) => ({ categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency), ...(partOff(e) ? { excluded: true } : {}) })),
+        ...category.map((e, i) => {
+          const bill = billOfPart(i);
+          return { categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency), ...(partOff(e) ? { excluded: true } : {}), ...(bill ? { bill } : {}) };
+        }),
         ...notCounted.map((e) => ({ categoryId: NOT_COUNTED, amount: minorToMajorString(e.amountMinor, e.currency) })),
       ];
       const counted = splits.filter((row) => !isNotCountedRow(row));
       return withOpened({
         ...base,
+        ...(bills.length > 0
+          ? { billsOpened: { transactionId: tx.id, kept: bills.filter((_, b) => at[b] === null).map(({ templateId, billMonth }) => ({ templateId, billMonth })) } }
+          : {}),
         // Every part left out is the whole purchase left out: what More details would say once the split is taken away.
         excluded: counted.length > 0 && counted.every((row) => row.excluded),
         moneyId: payment.accountId,
@@ -1457,6 +1538,8 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     }
     const only = category[0]!;
     const total = c.type === 'expense' ? only.amountMinor : -only.amountMinor;
+    // No parts to show its bills on: every one is kept, should the edit split it.
+    if (tx.bills && tx.bills.length > 0) base.billsOpened = { transactionId: tx.id, kept: tx.bills.map(({ templateId, billMonth }) => ({ templateId, billMonth })) };
     // The whole figure that posted (B2): cents are shown only while they are being typed. The exact figure, when the
     // amount was typed with them, rides along with the texts it belongs to, so a save that leaves them alone keeps it.
     return withOpened({ ...base, mode: c.type, moneyId: payment.accountId, categoryId: only.accountId, ...foreign(payment, total) }, tx, accounts);
@@ -1517,7 +1600,11 @@ export function canDuplicate(tx: TransactionView, context: DuplicateContext): bo
  * new amount; a kept charge reads as typed by the user and would post the new amount with the old charge.
  */
 export function duplicateDraft(tx: TransactionView, accounts: readonly AccountRow[], bookId = ''): FormDraft {
-  return { ...formFromTransaction(tx, accounts, bookId, []), editing: false, photoIds: [], goalId: '', chargedAmount: '' };
+  const draft = formFromTransaction(tx, accounts, bookId, []);
+  // The bills are the original's: a copy pays none of them again.
+  const { billsOpened: _bills, ...rest } = draft;
+  void _bills;
+  return { ...rest, splits: rest.splits.map(({ bill: _bill, ...row }) => row), editing: false, photoIds: [], goalId: '', chargedAmount: '' };
 }
 
 /**
@@ -1584,8 +1671,8 @@ export function amountFace(value: string, currency: string, refund = false, frac
   return read.minor < 0 ? `−${face}` : face;
 }
 
-/** The dock's keys, read left to right, top to bottom. DONE spans two rows; there is deliberately no Save. */
-export const KEYPAD_KEYS = ['C', '÷', '×', '⌫', '7', '8', '9', '−', '4', '5', '6', '+', '1', '2', '3', 'DONE', '0', '000', '00'] as const;
+/** The dock's keys, read left to right, top to bottom: the digits in the iPhone's order, 1 2 3 on top (owner, 22 Nov 2026). DONE spans two rows; there is deliberately no Save. */
+export const KEYPAD_KEYS = ['C', '÷', '×', '⌫', '1', '2', '3', '−', '4', '5', '6', '+', '7', '8', '9', 'DONE', '0', '000', '00'] as const;
 
 export type KeypadKey = (typeof KEYPAD_KEYS)[number] | ',';
 

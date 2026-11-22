@@ -7,12 +7,13 @@ import { defineConfig } from 'vitest/config';
  * net-worth-tax-slice.test.ts counts calls through a module mock, which the setup file's own imports load before the
  * mock can take hold, so it too runs only in the default suite (its sends are captured in joint-tax.test.ts here).
  * test/self/ (link my devices) writes raw rows into byte copies of one database to test the self channel, which no
- * household share is part of, so it too runs only in the default suite.
+ * household share is part of, so it too runs only in the default suite. fee-before-app-pair.test.ts does the same for
+ * its two linked-devices cases (byte copies with a shared book and no sync device), so it runs only in the default suite.
  */
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
-    exclude: ['test/sync/capture.test.ts', 'test/sync/capture-harness.test.ts', 'test/sync/net-worth-tax-slice.test.ts', 'test/self/**'],
+    exclude: ['test/sync/capture.test.ts', 'test/sync/capture-harness.test.ts', 'test/sync/net-worth-tax-slice.test.ts', 'test/self/**', 'test/fee-before-app-pair.test.ts'],
     setupFiles: ['test/sync/capture-setup.ts'],
     // The watch is judged after every test: over a long history (2,000 transactions) that takes longer than a hook's
     // default 10 s on a loaded machine (G8).

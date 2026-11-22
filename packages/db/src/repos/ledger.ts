@@ -69,8 +69,27 @@ export function ledgerSourceOf(source: TransactionSource): LedgerSource {
   return source;
 }
 
+/** A bill a listed transaction settles a month of, with what the Split sheet and Cashflow name it by. */
+export interface TransactionBill {
+  templateId: string;
+  billMonth: string;
+  name: string;
+  categoryAccountId: string;
+  /** The bill's own fixed amount; null for one that varies. */
+  amountMinor: number | null;
+  /** Pay's own bill (transactions.template_id): the one its Undo is about. */
+  own: boolean;
+}
+
+/** A month of a bill a purchase settles: the bill, and its month (YYYY-MM). */
+export interface BillLink {
+  templateId: string;
+  billMonth: string;
+}
+
 export type LedgerErrorCode =
   | 'INVALID_DATE'
+  | 'GOAL_BEFORE_START'
   | 'SHARED_EVENT_TAG'
   | 'PAID_BY_PARTNER'
   | 'NOT_FOUND'
@@ -85,6 +104,7 @@ export type LedgerErrorCode =
   | 'NOT_COUNTED'
   | 'NOT_COUNTED_SHARED'
   | 'INVALID_BILL_MONTH'
+  | 'BILL_SETTLED'
   | 'POCKET_PARENT'
   | 'OTHER_DAY'
   | 'INVALID_EXACT'
@@ -125,6 +145,13 @@ export interface PostTransactionInput {
   templateId?: string | null;
   /** YYYY-MM: the month whose bill a template payment settles. Defaults to the month of occurredOn. */
   billMonth?: string | null;
+  /**
+   * Every bill's month this purchase settles (one payment, several bills; 0127), the template's own included or not:
+   * what a split saved from the form, Pay several's One payment or an undo says outright. On an edit it replaces the
+   * links the purchase had (the template's own is always kept); absent, an edit carries them all. A month another
+   * posted transaction already settles is refused (BILL_SETTLED): a bill is never paid twice.
+   */
+  billLinks?: readonly BillLink[] | null;
   /** Online or offline, when the user said; null when they did not. Never guessed. */
   channel?: 'online' | 'offline' | null;
   /** Leaves the chart, the budgets and the category totals; balances, statements, points and net worth keep it. */
@@ -150,6 +177,15 @@ export interface PostTransactionInput {
    * card keeps; a transfer, or a purchase on no money account, ignores it. On `replaceTransaction`, as `settledBeforeApp`.
    */
   pastPurchase?: boolean;
+  /**
+   * A transfer between the owner's own accounts, or a payment into a credit card, from a door that follows the start
+   * day rule (owner, 22 Nov 2026): each money account side (a bank, a wallet, cash) dated before that account's start
+   * day (`startDayOfTx`) keeps its balance, by the past purchase's own balancing pair against Before the app; every
+   * other side moves as usual. A card always moves: paid before its bank was added, it still owes less. Nothing when no
+   * side is before its start, or when the lines are no move between own accounts (`movesOwnMoneyTx`). On
+   * `replaceTransaction`: true decides again from the edit, false takes the pair away, left out it follows.
+   */
+  beforeStart?: boolean;
   /**
    * On `replaceTransaction`: the correction moves the transaction to the workspace its categories are in. Without it a
    * category from another workspace is refused, since an ordinary edit stays where it was filed. Never read by a post.
@@ -508,10 +544,14 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
       });
     }
   }
+  // The other bills it settles beside its own (one payment, several bills), each checked as Pay checks one.
+  if (input.billLinks && input.billLinks.length > 0 && (await billTablesExist(tx))) await writeBillLinksTx(tx, ws, id, input.billLinks);
   // What the purchase was, beside what it cost: the channel, the exclusion, and the photos a form wrote before
   // this transaction had an id. Their own tables, so a database stopped before 0048 simply has none of it.
   if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, { ...input, excludedFromReport: excludedWhole });
-  if (input.setAside && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
+  // No goal's money is drawn from a side that keeps its balance (start day rule): that money left before the account was added.
+  const drawFromPast = !!input.setAside && !!input.beforeStart && (await movesOwnMoneyTx(tx, ws, input.lines)) && (await pastSidesTx(tx, ws, [input.setAside.accountId], input.occurredOn)).length > 0;
+  if (input.setAside && !drawFromPast && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
   // Withdrawal rate §6: a foreign money account this touches is recalculated at the end of the db transaction, from
   // this date — before capture reads the figures, so a shared purchase goes out at the withdrawal rate (R9). Every
   // posting comes through here: a form, an import, a statement check, a conversion, a trade, a debt, a goal transfer,
@@ -520,8 +560,48 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   // Household sharing: the lineage this row joins, resolved by its net effect before the transaction commits (§6.3).
   await capturePostedTx(tx, id, bookId ?? null, input.replacesTransactionId ?? null, input.paidFrom);
   await audit(tx, ws, 'post', id, input);
-  if (input.settledBeforeApp || input.pastPurchase) await settleBeforeAppTx(tx, ws, id, input);
+  // A move between own accounts follows the start day rule alone; a purchase, its own mark. Asked only when one is said.
+  if (input.beforeStart || input.settledBeforeApp || input.pastPurchase) {
+    if ((await movesOwnMoneyTx(tx, ws, input.lines)) ? input.beforeStart : input.settledBeforeApp || input.pastPurchase) await settleBeforeAppTx(tx, ws, id, input);
+  }
   return id;
+}
+
+/**
+ * Writes the bills' months a purchase settles beside its own (`billLinks`): each a `bill_payments` row, once. A bill
+ * not in this workspace links nothing; a month another posted transaction already settles is refused, so the save
+ * rolls back whole rather than pay a bill twice.
+ */
+async function writeBillLinksTx(tx: Db, ws: WorkspaceContext, transactionId: string, links: readonly BillLink[]): Promise<void> {
+  const seen = new Set<string>();
+  for (const link of links) {
+    const key = `${link.templateId}|${link.billMonth}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!BILL_MONTH.test(link.billMonth)) throw new LedgerError('INVALID_BILL_MONTH', 'A bill month is written YYYY-MM');
+    const [bill] = await tx
+      .select({ id: expenseTemplates.id, name: expenseTemplates.name })
+      .from(expenseTemplates)
+      .where(and(eq(expenseTemplates.id, link.templateId), eq(expenseTemplates.workspaceId, ws.workspaceId)));
+    if (!bill) continue;
+    const [paid] = await tx.values(sql`
+      SELECT 1 FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
+      WHERE p.workspace_id = ${ws.workspaceId} AND p.template_id = ${bill.id} AND p.bill_month = ${link.billMonth}
+        AND p.transaction_id <> ${transactionId} AND t.status = 'posted' LIMIT 1`);
+    if (paid) throw new LedgerError('BILL_SETTLED', `${bill.name} is already paid for that month`);
+    await tx.insert(billPayments).values({ transactionId, workspaceId: ws.workspaceId, templateId: bill.id, billMonth: link.billMonth }).onConflictDoNothing();
+  }
+}
+
+/** Every bill's month a transaction settles, its own bill's first (Pay's), then by month and bill: the order sync names them in. */
+export async function billLinksOfTx(tx: Db, transactionId: string): Promise<(BillLink & { own: boolean })[]> {
+  if (!(await billTablesExist(tx))) return [];
+  const rows = await tx.values<[string, string, number]>(sql`
+    SELECT p.template_id, p.bill_month, CASE WHEN p.template_id = t.template_id THEN 1 ELSE 0 END
+    FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
+    WHERE p.transaction_id = ${transactionId}
+    ORDER BY 3 DESC, p.bill_month, p.template_id`);
+  return rows.map(([templateId, billMonth, own]) => ({ templateId, billMonth, own: Number(own) === 1 }));
 }
 
 /** The settlement that keeps a card even beside a purchase paid off before the app: found by the purchase's id. */
@@ -561,6 +641,8 @@ async function moneyLinesOf(tx: Db, ws: WorkspaceContext, lines: readonly Postin
  * the account ends where it started and the pair sums to zero per currency. Null when there is nothing to balance.
  */
 async function settlementInputOf(tx: Db, ws: WorkspaceContext, purchaseId: string, input: PostTransactionInput): Promise<PostTransactionInput | null> {
+  // A move between own accounts (a transfer, a card's payment): only its sides dated before their own start day.
+  if (await movesOwnMoneyTx(tx, ws, input.lines)) return startSidesInputOf(tx, ws, purchaseId, input);
   const card = await cardLineOf(tx, ws, input.lines);
   if (card) {
     const opening = await systemAccountId(tx, ws, 'opening_balance');
@@ -587,6 +669,104 @@ async function settlementInputOf(tx: Db, ws: WorkspaceContext, purchaseId: strin
       ...money.map((line) => ({ accountId: line.accountId, amountMinor: -line.amountMinor, currency: line.currency })),
       ...[...counter].filter(([, minor]) => minor !== 0).map(([currency, minor]) => ({ accountId: before, amountMinor: minor, currency })),
     ],
+    ratesToBase: input.ratesToBase,
+    externalRef: beforeAppRef(purchaseId),
+  };
+}
+
+/**
+ * The day an account's balance is counted from, as the Add form reads it (`useOpeningDay`): its opening entry's day (a
+ * plan's owed line and a before-the-app settlement aside, as `openingsOf` leaves them); else the As of day it was
+ * given (`counted_from`, 0107); else the day it was added. Null for an account not here.
+ */
+export async function startDayOfTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<string | null> {
+  const [opened] = await tx.values<[string | null]>(sql`
+    SELECT MIN(t.occurred_on) FROM transactions t JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${accountId}
+    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
+      AND (t.external_ref IS NULL OR (t.external_ref NOT LIKE 'plan-owed:%' AND t.external_ref NOT LIKE 'before-app:%'))
+      AND EXISTS (SELECT 1 FROM entries o JOIN accounts oa ON oa.id = o.account_id
+                  WHERE o.transaction_id = t.id AND oa.system_key = 'opening_balance' AND oa.workspace_id = ${ws.workspaceId})`);
+  if (opened?.[0]) return opened[0];
+  const counted = (await tx.values(sql`SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'counted_from'`)).length > 0;
+  const [row] = await tx.values<[string | null, string]>(
+    counted
+      ? sql`SELECT counted_from, created_at FROM accounts WHERE id = ${accountId} AND workspace_id = ${ws.workspaceId}`
+      : sql`SELECT NULL, created_at FROM accounts WHERE id = ${accountId} AND workspace_id = ${ws.workspaceId}`,
+  );
+  if (!row) return null;
+  return row[0] ?? (row[1] ? row[1].slice(0, 10) : null);
+}
+
+/**
+ * Which of these accounts keep their balance on a move between own accounts dated `occurredOn` (owner, 22 Nov 2026): a
+ * money account (a bank, a wallet, cash — never a card, a loan or a holding) whose start day is after it. The one rule
+ * the ledger posts by and the form's line reads.
+ */
+export async function pastSidesTx(tx: Db, ws: WorkspaceContext, accountIds: readonly string[], occurredOn: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const accountId of new Set(accountIds)) {
+    const [account] = await tx.select({ kind: accounts.kind, subtype: accounts.subtype }).from(accounts).where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
+    if (account?.kind !== 'asset' || !SPENDABLE_SUBTYPES.includes(account.subtype as AccountSubtype)) continue;
+    if (isPastDefault(await startDayOfTx(tx, ws, accountId), occurredOn)) out.push(accountId);
+  }
+  return out;
+}
+
+/** `pastSidesTx` for a screen: the accounts a transfer or a card's payment dated `occurredOn` would leave unchanged. */
+export function pastSidesOf(database: Database, ws: WorkspaceContext, accountIds: readonly string[], occurredOn: string): Promise<string[]> {
+  return pastSidesTx(database.db, ws, accountIds, occurredOn);
+}
+
+/**
+ * Whether lines move money between the owner's own accounts: out of an account that is not a credit card, onto another
+ * balance account — a transfer (a fee or an exchange beside it or not), or a payment into a card. A purchase or an income
+ * (one account and categories) is not, nor is a card's top-up of a wallet (the money leaves the card).
+ */
+async function movesOwnMoneyTx(tx: Db, ws: WorkspaceContext, lines: readonly PostingLine[]): Promise<boolean> {
+  const ids = [...new Set(lines.map((line) => line.accountId))];
+  if (ids.length < 2) return false;
+  const rows = await tx.select({ id: accounts.id, kind: accounts.kind, subtype: accounts.subtype }).from(accounts).where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids)));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const balance = (id: string) => ['asset', 'liability'].includes(byId.get(id)?.kind ?? '');
+  const out = lines.filter((line) => line.amountMinor < 0 && balance(line.accountId) && byId.get(line.accountId)?.subtype !== 'credit_card');
+  return out.some((from) => lines.some((line) => line.amountMinor > 0 && line.accountId !== from.accountId && balance(line.accountId)));
+}
+
+/** What a goal-tagged move refuses when a side is before its account's start day. */
+export const GOAL_BEFORE_START_TEXT = 'Money moved before an account was added cannot go toward a goal. Leave Goal empty, or change the date.';
+
+/** Which kind of balancing pair lines take: a move's start day pair, a card's settlement, a money account's past mark. */
+async function pairKindTx(tx: Db, ws: WorkspaceContext, lines: readonly PostingLine[]): Promise<'move' | 'card' | 'money' | 'none'> {
+  if (await movesOwnMoneyTx(tx, ws, lines)) return 'move';
+  if (await cardLineOf(tx, ws, lines)) return 'card';
+  return (await moneyLinesOf(tx, ws, lines)).length > 0 ? 'money' : 'none';
+}
+
+/** A move's balance account lines (account and amount), in one order: what says whether an edit changed the move. */
+async function moneyShapeTx(tx: Db, ws: WorkspaceContext, lines: readonly Pick<PostingLine, 'accountId' | 'amountMinor'>[]): Promise<string> {
+  const ids = [...new Set(lines.map((line) => line.accountId))];
+  const rows = ids.length ? await tx.select({ id: accounts.id, kind: accounts.kind }).from(accounts).where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids))) : [];
+  const balance = new Set(rows.filter((row) => row.kind === 'asset' || row.kind === 'liability').map((row) => row.id));
+  return lines.filter((line) => balance.has(line.accountId)).map((line) => `${line.accountId}:${line.amountMinor}`).sort().join('|');
+}
+
+/**
+ * The balancing pair of a move between own accounts: each side `pastSidesTx` names is reversed in its own currency
+ * against Before the app, line by line, so that account ends where it started; the other sides keep what they moved.
+ * Null when no side is before its start day.
+ */
+async function startSidesInputOf(tx: Db, ws: WorkspaceContext, purchaseId: string, input: PostTransactionInput): Promise<PostTransactionInput | null> {
+  const past = new Set(await pastSidesTx(tx, ws, input.lines.map((line) => line.accountId), input.occurredOn));
+  const sides = input.lines.filter((line) => past.has(line.accountId) && line.amountMinor !== 0);
+  if (sides.length === 0) return null;
+  const before = await ensureSystemAccountTx(tx, ws, 'before_the_app');
+  return {
+    occurredOn: input.occurredOn,
+    description: 'Settled before the app',
+    lines: sides.flatMap((line) => [
+      { accountId: line.accountId, amountMinor: -line.amountMinor, currency: line.currency },
+      { accountId: before, amountMinor: line.amountMinor, currency: line.currency },
+    ]),
     ratesToBase: input.ratesToBase,
     externalRef: beforeAppRef(purchaseId),
   };
@@ -672,7 +852,9 @@ export function setSettledBeforeApp(database: Database, ws: WorkspaceContext, pu
       lines: rows.map(({ accountId, amountMinor, currency }) => ({ accountId, amountMinor, currency })),
       ratesToBase: Object.fromEntries(rows.map((row) => [row.currency, row.rate])),
     };
-    if (!(await cardLineOf(tx, ws, input.lines))) throw new LedgerError('NOT_A_CARD_PURCHASE', 'Only a credit card purchase can be paid off before the app');
+    if (!(await cardLineOf(tx, ws, input.lines)) || (await movesOwnMoneyTx(tx, ws, input.lines))) {
+      throw new LedgerError('NOT_A_CARD_PURCHASE', 'Only a credit card purchase can be paid off before the app');
+    }
     await settleBeforeAppTx(tx, ws, purchaseId, input);
   });
 }
@@ -717,7 +899,7 @@ export function setPastPurchase(database: Database, ws: WorkspaceContext, purcha
       lines: rows.map(({ accountId, amountMinor, currency }) => ({ accountId, amountMinor, currency })),
       ratesToBase: Object.fromEntries(rows.map((row) => [row.currency, row.rate])),
     };
-    if ((await moneyLinesOf(tx, ws, input.lines)).length === 0 || (await cardLineOf(tx, ws, input.lines))) {
+    if ((await moneyLinesOf(tx, ws, input.lines)).length === 0 || (await cardLineOf(tx, ws, input.lines)) || (await movesOwnMoneyTx(tx, ws, input.lines))) {
       throw new LedgerError('NOT_A_MONEY_PURCHASE', 'Only an expense or income on a money account can be a past purchase');
     }
     await settleBeforeAppTx(tx, ws, purchaseId, input);
@@ -1057,10 +1239,9 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
    * An edit never posts a second settlement: the one a purchase paid off before the app has follows it below. Asked
    * outright (`settledBeforeApp` true or false), the edit adds the settlement or takes it away; left out, it follows.
    */
-  const { id: _ignored, settledBeforeApp: settleCard, pastPurchase, moveToBook, toBookId, fileTransfer: _file, acrossBooks, ...input } = withId;
+  const { id: _ignored, settledBeforeApp: settleCard, pastPurchase, beforeStart, moveToBook, toBookId, fileTransfer: _file, acrossBooks, ...input } = withId;
   void _file;
   void _ignored;
-  const settle = settleCard ?? pastPurchase;
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   // A due-month transfer's cap was worked from From's money before the transaction: refused if that money moved since.
@@ -1088,9 +1269,9 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
   const [placed] = (await dayOrderExists(tx)) ? await tx.values<[number | null]>(sql`SELECT day_order FROM transactions WHERE id = ${id}`) : [];
   const [typed] = (await exactExists(tx)) ? await tx.values<[number | null]>(sql`SELECT exact_hundredths FROM transactions WHERE id = ${id}`) : [];
-  const [settles] = (await billTablesExist(tx))
-    ? await tx.select({ billMonth: billPayments.billMonth, templateId: billPayments.templateId }).from(billPayments).where(eq(billPayments.transactionId, id))
-    : [];
+  // Every bill's month it settles (0127: several, for one payment of several bills); its own bill's (Pay's) first.
+  const settled = await billLinksOfTx(tx, id);
+  const settles = settled.find((link) => link.own) ?? settled[0];
   // Two workspaces can hold copies of one category, alike on any screen. An edit is a correction to the same
   // spending, so it stays where it was filed: a category from another workspace is refused here, before
   // anything is voided, whatever form or import offered it.
@@ -1131,21 +1312,40 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // the draw, re-pointed to the replacement. A different answer, or none, undoes the saved one and applies afresh.
   const tables = await setAsideTablesExist(tx);
   const oldLines = await tx
-    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency })
     .from(entries)
     .where(and(eq(entries.transactionId, id), eq(entries.workspaceId, ws.workspaceId)));
+  /*
+   * The balancing pair beside it (a past purchase, a card purchase paid off before the app, a move's side before its
+   * start day), read before the void. It follows the edit only while the edit is still its kind of row — a move between
+   * own accounts, a card purchase, a purchase on a money account — and is taken away otherwise: a payment edited into a
+   * card's top-up must never take a card settlement (review, 22 Nov 2026).
+   */
+  const moves = await movesOwnMoneyTx(tx, ws, input.lines);
+  const hadPair = await settlementOfTx(tx, ws, id);
+  const sameKind = hadPair !== null && (await pairKindTx(tx, ws, oldLines)) === (await pairKindTx(tx, ws, input.lines));
+  // A move with no pair (one recorded before the start day rule) keeps none when the edit leaves its day, accounts and
+  // amounts as they were: a new note or category never changes a balance. A move that changed is decided again.
+  const unmoved = moves && hadPair === null && original?.occurredOn === input.occurredOn && (await moneyShapeTx(tx, ws, oldLines)) === (await moneyShapeTx(tx, ws, input.lines));
+  // A move says the start day rule as `beforeStart`; a purchase its own mark.
+  const settle = moves ? (unmoved && beforeStart === true ? undefined : beforeStart) : (settleCard ?? pastPurchase);
+  // The sides the edited move keeps unchanged: no goal's money is drawn from them, and none is parked on them.
+  const pastNow = moves && (settle === true || (settle === undefined && sameKind)) ? await pastSidesTx(tx, ws, input.lines.map((line) => line.accountId), input.occurredOn) : [];
   const saved = tables ? await setAsideChoiceOfTx(tx, ws, id) : null;
   const carried = input.setAside === undefined ? saved : null;
   // A carried answer is dropped when the edit no longer pays from its account (or, a move, into its destination), or
-  // its goal was archived since: an edit that does not mention it is never refused over it.
-  const answered =
+  // its goal was archived since: an edit that does not mention it is never refused over it. Nor is one drawn from a
+  // side that keeps its balance: that money left before the account was added.
+  const asked =
     input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await goalActiveTx(tx, ws, carried.goalId)) ? carried : null;
+  const answered = asked && pastNow.includes(asked.accountId) ? null : asked;
   const keepAnswer = !!answered && !!saved && sameAnswer(answered, saved) && carryable(answered, input.lines) && (await goalActiveTx(tx, ws, answered.goalId));
   // A transfer tagged to a goal stays tagged when it is corrected. Between the same two accounts it is carried by the
   // difference; to another account, the old one is taken back and the new one parked.
   const [taggedGoal] = original?.goalId
     ? await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, original.goalId), eq(goals.workspaceId, ws.workspaceId)))
     : [];
+  if (taggedGoal && pastNow.length > 0) throw new LedgerError('GOAL_BEFORE_START', GOAL_BEFORE_START_TEXT);
   const nextMove = taggedGoal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
   const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
   const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
@@ -1191,9 +1391,14 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     ...(input.exactHundredths === undefined ? { exactHundredths: await carriedExactTx(tx, typed?.[0] ?? null, oldLines, input.lines) } : {}),
     setAside,
   });
-  // A purchase linked to a bill's month after the fact has no bill of its own, so posting would drop the link: carry it.
-  if (settles && !original?.templateId && !input.templateId) {
-    await tx.insert(billPayments).values({ transactionId: replacement, workspaceId: ws.workspaceId, templateId: settles.templateId, billMonth: settles.billMonth }).onConflictDoNothing();
+  // A purchase linked to a bill's month after the fact, or the other bills one payment settled beside its own, are no
+  // bill of the posting's own, so posting would drop them: carry them — unless the edit said its links outright.
+  // A purchase given a bill of its own by the edit (it was linked only) keeps only that one, as it always did.
+  if (input.billLinks === undefined && !(!original?.templateId && input.templateId)) {
+    for (const link of settled) {
+      if (link.own) continue;
+      await tx.insert(billPayments).values({ transactionId: replacement, workspaceId: ws.workspaceId, templateId: link.templateId, billMonth: link.billMonth }).onConflictDoNothing();
+    }
   }
   /*
    * A transfer has no category to file it by. Moved, it is filed in the chosen workspace (and so leaves the others'
@@ -1243,13 +1448,14 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   await followDepositEventTx(tx, ws, id, replacement);
   // A purchase paid off before the app keeps its settlement level with it: the edited figure, day and card — or, no
   // longer on a credit card, none at all.
-  const settlement = await settlementOfTx(tx, ws, id);
-  if (settlement && settle !== false) {
+  if (hadPair && sameKind && settle !== false) {
     const next = await settlementInputOf(tx, ws, replacement, input);
-    if (next) await replaceTransactionTx(tx, ws, settlement, next);
-    else await voidTransactionTx(tx, ws, settlement);
-  } else if (settlement) await voidTransactionTx(tx, ws, settlement);
-  else if (settle === true) await settleBeforeAppTx(tx, ws, replacement, input);
+    if (next) await replaceTransactionTx(tx, ws, hadPair, next);
+    else await voidTransactionTx(tx, ws, hadPair);
+  } else {
+    if (hadPair) await voidTransactionTx(tx, ws, hadPair);
+    if (settle === true) await settleBeforeAppTx(tx, ws, replacement, input);
+  }
   // A fee reversal before the app keeps the fee row beside it at its amount. Not on applying another device's edit:
   // that device's own change to the fee row comes with it.
   if (input.syncAuthor === undefined) await followFeePairsTx(tx, ws, id, replacement);
@@ -1490,6 +1696,11 @@ export interface TransactionView {
    */
   billMonth?: string | null;
   /**
+   * Every bill this settles a month of (0127: one payment may settle several), its own bill's first, then by month and
+   * name. Absent when it settles none, and on a database without bill_payments.
+   */
+  bills?: TransactionBill[];
+  /**
    * A payment of a bill that is not monthly (its `bill_payments` row names a bill that repeats yearly, or every 2 months
    * or more: `isNotMonthlyRepeat`): what Cashflow leaves out of a month's ring and lists in grey. Absent on anything
    * else, and on a database without the tables.
@@ -1520,6 +1731,11 @@ export interface TransactionView {
    * its account's balance does not hold it. Absent on anything else, so a view built by hand need not name it.
    */
   past?: boolean;
+  /**
+   * With `past`: the accounts its balancing pair keeps unchanged — the purchase's own account, or the sides of a
+   * transfer or a card's payment dated before their account's start day (never the card, which moves).
+   */
+  pastAccountIds?: string[];
   /**
    * The amount as typed with cents, in hundredths, when it had any (0068); null otherwise. Never shown: every screen
    * reads the whole figure on the lines. What card points are worked out from, and what an edit that keeps the amount
@@ -1642,16 +1858,34 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     .where(inArray(entries.transactionId, txs.map((t) => t.id)));
 
   // Bill months come from their own table, keyed by transaction, so a list without bills pays one small query.
-  const billMonths = (await billTablesExist(database.db))
-    ? new Map(
-        (
-          await database.db
-            .select({ transactionId: billPayments.transactionId, billMonth: billPayments.billMonth })
-            .from(billPayments)
-            .where(inArray(billPayments.transactionId, txs.map((t) => t.id)))
-        ).map((row) => [row.transactionId, row.billMonth]),
-      )
-    : new Map<string, string>();
+  // Several rows for one payment of several bills (0127): its own bill's month speaks for it, and each bill is listed.
+  const billRows = (await billTablesExist(database.db))
+    ? await database.db
+        .select({
+          transactionId: billPayments.transactionId,
+          templateId: billPayments.templateId,
+          billMonth: billPayments.billMonth,
+          name: expenseTemplates.name,
+          categoryAccountId: expenseTemplates.categoryAccountId,
+          amountMinor: expenseTemplates.amountMinor,
+        })
+        .from(billPayments)
+        .leftJoin(expenseTemplates, eq(expenseTemplates.id, billPayments.templateId))
+        .where(inArray(billPayments.transactionId, txs.map((t) => t.id)))
+    : [];
+  const ownBill = new Map(txs.map((t) => [t.id, t.templateId] as const));
+  const billsOf = new Map<string, TransactionBill[]>();
+  // The month a row names stands even when its bill is no longer here (a bill a partner removed): it is listed by none.
+  const anyMonth = new Map<string, string>();
+  for (const row of billRows) {
+    if (!anyMonth.has(row.transactionId) || ownBill.get(row.transactionId) === row.templateId) anyMonth.set(row.transactionId, row.billMonth);
+    if (row.name === null || row.categoryAccountId === null) continue;
+    const list = billsOf.get(row.transactionId) ?? [];
+    list.push({ templateId: row.templateId, billMonth: row.billMonth, name: row.name, categoryAccountId: row.categoryAccountId, amountMinor: row.amountMinor, own: ownBill.get(row.transactionId) === row.templateId });
+    billsOf.set(row.transactionId, list);
+  }
+  for (const list of billsOf.values()) list.sort((a, b) => Number(b.own) - Number(a.own) || a.billMonth.localeCompare(b.billMonth) || a.name.localeCompare(b.name) || a.templateId.localeCompare(b.templateId));
+  const billMonths = new Map([...anyMonth].map(([id, month]) => [id, billsOf.get(id)?.[0]?.billMonth ?? month]));
 
   // Which of them paid a bill that is not monthly: one small query, as bill months are.
   const notMonthly = await notMonthlyBillPaymentsOf(database.db, txs.map((t) => t.id));
@@ -1687,18 +1921,23 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     list.push({ ...entry, ...(filedIn ? { bookId: filedIn } : {}), ...(off ? { excluded: true } : {}) });
     byTx.set(transactionId, list);
   }
-  // Which of these carry the past mark: their balancing pair is posted, found by its ref and its Before the app line.
-  const past = new Set(
-    (
-      await database.db.values<[string]>(sql`
-        SELECT substr(t.external_ref, ${'before-app:'.length + 1}) FROM transactions t
-        WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.external_ref IN ${txs.map((t) => beforeAppRef(t.id))}
-          AND t.id IN (SELECT e.transaction_id FROM entries e JOIN accounts a ON a.id = e.account_id WHERE a.system_key = 'before_the_app')`)
-    ).map((row) => row[0]),
-  );
+  // Which of these carry the past mark: their balancing pair is posted, found by its ref and its Before the app line;
+  // and which accounts that pair keeps unchanged (every line of it but Before the app's).
+  const past = new Map<string, string[]>();
+  for (const [purchaseId, accountId] of await database.db.values<[string, string]>(sql`
+    SELECT substr(t.external_ref, ${'before-app:'.length + 1}), e.account_id FROM transactions t
+    JOIN entries e ON e.transaction_id = t.id JOIN accounts a ON a.id = e.account_id
+    WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.external_ref IN ${txs.map((t) => beforeAppRef(t.id))}
+      AND t.id IN (SELECT e.transaction_id FROM entries e JOIN accounts a ON a.id = e.account_id WHERE a.system_key = 'before_the_app')
+      AND (a.system_key IS NULL OR a.system_key <> 'before_the_app')
+    ORDER BY e.rowid`)) {
+    const kept = past.get(purchaseId) ?? [];
+    if (!kept.includes(accountId)) kept.push(accountId);
+    past.set(purchaseId, kept);
+  }
   const views = txs.map((t) => ({
     id: t.id,
-    ...(past.has(t.id) ? { past: true } : {}),
+    ...(past.has(t.id) ? { past: true, pastAccountIds: past.get(t.id)! } : {}),
     occurredOn: t.occurredOn,
     description: t.description,
     source: t.source,
@@ -1711,6 +1950,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     goalId: t.goalId,
     eventId: t.eventId,
     billMonth: billMonths.get(t.id) ?? null,
+    ...(billsOf.has(t.id) ? { bills: billsOf.get(t.id)! } : {}),
     ...(notMonthly.has(t.id) ? { notMonthlyBill: true } : {}),
     channel: extras?.get(t.id)?.channel ?? null,
     excluded: (extras?.get(t.id)?.excluded ?? false) || feeOut.has(t.id),

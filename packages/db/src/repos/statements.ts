@@ -665,6 +665,8 @@ export async function payCardPurchases(
       description: input.description?.trim() || `${card.name} payment`,
       lines: transferLines({ fromAccountId: from.id, toAccountId: card.id, amountMinor: totalMinor, currency: card.currency }),
       setAside: input.setAside,
+      // Paid before the bank was added: the bank's balance stays, the card owes less (owner, 22 Nov 2026).
+      beforeStart: true,
     });
     for (const id of settles) {
       // A settlement left behind by a payment since deleted is replaced, not kept beside this one.

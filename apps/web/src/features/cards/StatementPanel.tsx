@@ -2,7 +2,7 @@ import { formatMinor, matchesSearch, statementCycleFor } from '@expanses/core';
 import { type AccountRow, billOnNextStatement, cardPaymentSource, cardStatement, cardStatementLines, type CardRow, carriesPaidOffMark, setPlanPaidSoFar, setPostedOn, setSettledBeforeApp, setTransactionsCard, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowDown, Banknote, CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, Ellipsis, Receipt, RotateCcw, Undo2, X } from 'lucide-react';
+import { ArrowDown, Banknote, CalendarArrowUp, CalendarRange, Check, CircleCheck, CircleX, CreditCard, EllipsisVertical, Receipt, RotateCcw, Undo2, X } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
@@ -436,7 +436,7 @@ export function StatementPanel({
         </span>
         <span className="shrink-0 text-right text-[15px] leading-[20px] text-[var(--ph-ink)]">{amount(line, done(line))}</span>
         {/* The row's actions, found without a swipe: the ⋯ at its end lists what the swipe and the ✓ offer, and the receipt. */}
-        <GlyphButton label={`Actions for ${line.description}`} glyph={<Ellipsis size={17} aria-hidden />} disabled={busy} onClick={() => setActing(line)} />
+        <GlyphButton label={`Actions for ${line.description}`} glyph={<EllipsisVertical size={17} aria-hidden />} disabled={busy} onClick={() => setActing(line)} />
       </Line>
     );
   };

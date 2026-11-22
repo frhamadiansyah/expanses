@@ -69,7 +69,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   }
   if (!tx || !view) return <ErrorBox error={receipt.error} />;
 
-  const { kind, categoryNames, book, lines, billRow, openBill, caption, plan, instalmentCard, spread, parts } = view;
+  const { kind, pastMove, categoryNames, book, lines, billRow, openBill, caption, plan, instalmentCard, spread, parts } = view;
 
   /*
    * A phone's Edit is the Add screen, opened on this transaction: one full card for every kind of transaction,
@@ -217,7 +217,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         {(billRow || paidOffMark) && (
           <InsetGroup>
             {billRow && (
-              <InsetRow title="Bill" value={bill ? 'Linked' : 'None'} valueTone={bill ? 'ink-2' : 'ink-3'} chevron testId="receipt-bill" onClick={openBill} />
+              <InsetRow title="Bill" value={bill ? (bill.count > 1 ? `${bill.count} bills` : 'Linked') : 'None'} valueTone={bill ? 'ink-2' : 'ink-3'} chevron testId="receipt-bill" onClick={openBill} />
             )}
             {paidOffMark && (
               <SwitchRow label={paidOffMark.refund ? 'Settled' : 'Paid off'} checked={paidOffMark.settled} disabled={busy} onChange={(on) => void markPaidOff(on)} />
@@ -256,9 +256,15 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         )}
 
         {/* A past purchase on a money account: read here, changed on its form. */}
-        {tx.past && tx.status === 'posted' && (
+        {tx.past && tx.status === 'posted' && !pastMove && (
           <InsetGroup>
             <InsetRow title="Past purchase" value="Balance unchanged" chevron={false} testId="receipt-past" />
+          </InsetGroup>
+        )}
+        {/* A transfer or a card's payment dated before an account was added: that account stayed (owner, 22 Nov 2026). */}
+        {pastMove && tx.status === 'posted' && (
+          <InsetGroup>
+            <InsetRow title={pastMove.title} value={pastMove.value} chevron={false} testId="receipt-past" />
           </InsetGroup>
         )}
 

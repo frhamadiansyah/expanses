@@ -3,6 +3,8 @@ import type { AccountRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { doorOfForm } from '../goals/set-aside-question';
 import {
+  beforeStartLine,
+  pastMoveRow,
   amountAfterDone,
   amountAfterEnter,
   amountFace,
@@ -694,8 +696,8 @@ describe("the amount row's face on a phone", () => {
 });
 
 describe('the keypad', () => {
-  it('lays its keys out as the dock draws them, with no Save', () => {
-    expect(KEYPAD_KEYS).toEqual(['C', '÷', '×', '⌫', '7', '8', '9', '−', '4', '5', '6', '+', '1', '2', '3', 'DONE', '0', '000', '00']);
+  it('lays its keys out as the dock draws them, digits in the iPhone order, with no Save', () => {
+    expect(KEYPAD_KEYS).toEqual(['C', '÷', '×', '⌫', '1', '2', '3', '−', '4', '5', '6', '+', '7', '8', '9', 'DONE', '0', '000', '00']);
     expect(KEYPAD_KEYS).not.toContain('Save');
   });
 
@@ -1928,5 +1930,22 @@ describe('a split part left out of reports, or Not counted (0090)', () => {
     expect(withExcludedWhole(all, false).splits.map((row) => row.excluded ?? false)).toEqual([false, false, false, false]);
     // Not split: the purchase's own flag.
     expect(excludedWhole(withExcludedWhole({ ...draft }, true))).toBe(true);
+  });
+});
+
+describe('the start day line and receipt row (owner, 22 Nov 2026)', () => {
+  it('says which account keeps its balance, in plain words', () => {
+    expect(beforeStartLine([])).toBeNull();
+    expect(beforeStartLine(['Bank Contoh'])).toBe('Before Bank Contoh was added: its balance stays.');
+    expect(beforeStartLine(['Bank Contoh', 'Dompet Baru'])).toBe('Before Bank Contoh and Dompet Baru were added: their balances stay.');
+  });
+
+  it('names the account on the receipt, a payment or a transfer', () => {
+    expect(pastMoveRow(['Bank Contoh'], true)).toEqual({ title: 'Past payment', value: 'Bank Contoh unchanged' });
+    expect(pastMoveRow(['Bank Contoh', 'Dompet Baru'], false)).toEqual({ title: 'Past transfer', value: 'Balances unchanged' });
+  });
+
+  it('never says you', () => {
+    for (const text of [beforeStartLine(['A']), beforeStartLine(['A', 'B']), pastMoveRow(['A'], true).title, pastMoveRow(['A'], false).value]) expect(text).not.toMatch(/\byou(r)?\b/i);
   });
 });

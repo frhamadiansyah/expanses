@@ -78,7 +78,8 @@ import { useOwnerRings } from '../networth/queries';
  * Opened from Wallet, money kept for spending is a card in the stack, and this page is drawn under it the way a credit
  * card's page is: the raised card is the header (Wallet's bar carries ✕ and ⚙), and the page leaves the card a slot
  * of its size, then everything below exactly as it is on its own — the balance, the round actions, what is set aside
- * and free, Recent and the facts. Opened from anywhere else, or kept as savings, it stands alone with its own bar.
+ * and free, Recent and the facts. Money switched off "For spending" is raised the same way, alone, wherever it is
+ * opened from. A deposit, a broker's cash or a pocket stands alone with its own bar.
  */
 export function AccountPage() {
   const { accountId = '' } = useParams({ strict: false }) as { accountId?: string };

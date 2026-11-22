@@ -410,7 +410,8 @@ test('Pay several lists only the selected bills: 3 bills, 2 selected, 2 shown', 
   await addBill(page, { name: 'Gym', amount: '250000' });
 
   const sheet = await paySeveral(page, ['Phone', 'Gym']);
-  await expect(sheet.getByRole('checkbox')).toHaveCount(2);
+  // The bills' ticks: One payment's switch is a checkbox too.
+  await expect(sheet.getByRole('checkbox', { name: /^Pay / })).toHaveCount(2);
   await expect(sheet.getByRole('checkbox', { name: 'Pay Phone' })).toBeChecked();
   await expect(sheet.getByRole('checkbox', { name: 'Pay Gym' })).toBeChecked();
   await expect(sheet.getByRole('checkbox', { name: 'Pay Internet' })).toHaveCount(0);
