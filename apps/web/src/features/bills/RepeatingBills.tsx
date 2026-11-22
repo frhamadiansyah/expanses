@@ -34,22 +34,21 @@ export function RepeatingHero({ needs, currency }: { needs: RepeatingNeeds; curr
           <span aria-hidden className="block h-[17px]" />
         )}
       </div>
-      {needs.bills.length === 0 ? (
-        <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">No repeating bills yet</p>
-      ) : (
-        totalMinor > 0 && (
+      {/* The Monthly box's shape in every state (owner, 22 Nov 2026): no repeating bills keeps the bar, as an empty
+          track, and the key, saying so in one line, so sliding between the two never changes the card. */}
+      <span aria-hidden className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 8 }}>
+        {totalMinor > 0 && (
           <>
-            <span aria-hidden className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 8 }}>
-              <span className="block h-full" style={{ width: `${(fundedMinor / totalMinor) * 100}%`, background: 'var(--ph-up)' }} />
-              <span className="block h-full" style={{ width: `${(unfundedMinor / totalMinor) * 100}%`, background: 'var(--ph-warn)' }} />
-            </span>
-            <ul className="flex min-h-[78px] flex-col text-[12.5px] leading-[26px] text-[var(--ph-ink-3)]" data-testid="repeating-legend">
-              {fundedMinor > 0 && <KeyItem colour="var(--ph-up)" label="Set aside" minor={fundedMinor} currency={currency} />}
-              {unfundedMinor > 0 && <KeyItem colour="var(--ph-warn)" label="Not set aside" minor={unfundedMinor} currency={currency} />}
-            </ul>
+            <span className="block h-full" style={{ width: `${(fundedMinor / totalMinor) * 100}%`, background: 'var(--ph-up)' }} />
+            <span className="block h-full" style={{ width: `${(unfundedMinor / totalMinor) * 100}%`, background: 'var(--ph-warn)' }} />
           </>
-        )
-      )}
+        )}
+      </span>
+      <ul className="flex min-h-[78px] flex-col text-[12.5px] leading-[26px] text-[var(--ph-ink-3)]" data-testid="repeating-legend">
+        {needs.bills.length === 0 && <li className="flex h-[26px] items-center">No repeating bills yet</li>}
+        {fundedMinor > 0 && <KeyItem colour="var(--ph-up)" label="Set aside" minor={fundedMinor} currency={currency} />}
+        {unfundedMinor > 0 && <KeyItem colour="var(--ph-warn)" label="Not set aside" minor={unfundedMinor} currency={currency} />}
+      </ul>
     </Panel>
   );
 }
