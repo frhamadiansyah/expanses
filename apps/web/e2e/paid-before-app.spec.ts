@@ -35,7 +35,7 @@ test('an old card purchase already paid off is spending, and the card still owes
   // In its own month it is the spending it was; the settlement beside it is an opening entry, out of the list.
   await page.goto(`/transactions?month=${day.slice(0, 7)}`);
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Anniversary dinner' })).toHaveCount(1);
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Settled before the app' })).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Paid off' })).toHaveCount(0);
 });
 
 test('a recent card purchase can be ticked paid off by hand, and the card still owes what it owed', async ({ page }) => {

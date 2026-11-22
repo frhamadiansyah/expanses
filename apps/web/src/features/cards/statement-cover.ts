@@ -66,7 +66,7 @@ export function paidHowText(line: StatementLine, cover: ReadonlyMap<string, Line
   }
   // An annual fee's money back, and the fee row added beside one reversed before the app, are settled on their own.
   if (line.feeSettled) return 'Settled';
-  if (line.paidOff) return line.instalment ? 'Paid' : line.owedMinor < 0 ? 'Settled' : 'Paid before cicis';
+  if (line.paidOff) return line.instalment ? 'Paid' : line.owedMinor < 0 ? 'Settled' : 'Paid off';
   if (line.paidBy) return `Paid ${shortDay(line.paidBy.paidOn)}`;
   return null;
 }

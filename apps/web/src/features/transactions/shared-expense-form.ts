@@ -65,7 +65,8 @@ export function draftFromExpense(view: SharedEventView, e: SharedExpenseView): S
     rate: e.rateToEvent,
     payer: e.payerPersonId,
     accountId: e.posting?.accountId ?? '',
-    cardId: '',
+    // The card the posting names, so Payment method reads it and a move to another plastic on the same account shows.
+    cardId: e.posting?.cardId ?? '',
     charged: own && charged !== null ? minorToMajorString(charged, own) : '',
     splitMode: e.split.mode,
     ticked: e.split.mode === 'equal' ? [...e.split.people] : e.split.shares.map((s) => s.personId),
@@ -189,8 +190,12 @@ export function sharedDraftToInput(draft: SharedExpenseDraft, view: SharedEventV
   };
 }
 
-/** What an edit changed, and nothing else: an edit that does not touch the money never asks for its payer. */
-export function sharedDraftToPatch(draft: SharedExpenseDraft, view: SharedEventView, expenseId: string): SharedExpensePatch {
+/**
+ * What an edit changed, and nothing else: an edit that does not touch the money never asks for its payer. `accounts`
+ * reads a Payment method picked on the edit (owner, 22 Nov 2026), whose currency decides whether its charged figure is
+ * asked for, as on Add.
+ */
+export function sharedDraftToPatch(draft: SharedExpenseDraft, view: SharedEventView, expenseId: string, accounts: readonly AccountRow[] = []): SharedExpensePatch {
   const original = view.expenses.find((e) => e.expenseId === expenseId);
   if (!original) throw new Error('That expense was deleted');
   // A refund stays below zero: it is edited by its size and the sign put back here.
@@ -209,6 +214,22 @@ export function sharedDraftToPatch(draft: SharedExpenseDraft, view: SharedEventV
   if (split !== null && JSON.stringify(split) !== JSON.stringify(original.split)) patch.split = split;
   if ((draft.categoryId || null) !== original.categoryId) patch.categoryId = draft.categoryId || null;
   if ((draft.note.trim() || null) !== original.note) patch.note = draft.note.trim() || null;
+  // Another account, or another card on it, for what this person paid: the payment moves there. An account with one
+  // card is picked with none named (the ledger names its only card), so an empty card on the same account is no move.
+  const was = original.posting?.accountId ?? '';
+  const moved = draft.payer === view.me && !original.payerOnly && !!draft.accountId && (draft.accountId !== was || (!!draft.cardId && draft.cardId !== (original.posting?.cardId ?? '')));
+  if (moved) {
+    const account = moneyAccounts(accounts).find((a) => a.id === draft.accountId);
+    if (!account) throw new Error(`Choose the account ${view.myName} paid from`);
+    patch.paidFrom = { accountId: account.id, cardId: draft.cardId || null };
+    // A new account in another currency is asked what it was charged, as on Add; the same account keeps its figure.
+    if (draft.accountId !== was && account.currency !== draft.currency) {
+      if (!draft.charged.trim()) throw new Error(`Enter what ${account.name} was charged in ${account.currency}`);
+      patch.chargedMinor = sign * figure(draft.charged, account.currency!, `Charged in ${account.currency}`, true);
+      return patch;
+    }
+    if (draft.accountId !== was) return patch;
+  }
   // What this person's own account was charged, in its currency, when that is not the expense's (R5): sent only when
   // it says something new, so a note changed on a card purchase never re-writes what the bank took.
   const own = original.posting?.accountCurrency ?? null;

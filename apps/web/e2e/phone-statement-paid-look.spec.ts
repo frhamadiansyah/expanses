@@ -108,7 +108,7 @@ test('every paid purchase wears one green ✓, and a tap on it says how it was p
   const states: { what: string; how: string | RegExp; detail: string | RegExp | null; button: string | null }[] = [
     { what: 'Restoran Contoh', how: /^Paid \d+ \w+$/, detail: /^Rp\s520\.000 from Bank Contoh$/, button: 'Open payment' },
     { what: 'SPBU Contoh', how: /^Paid with the \d+ \w+ payment$/, detail: /^Rp\s340\.000 from Bank Contoh$/, button: 'Open payment' },
-    { what: 'Toko Sepatu Contoh', how: 'Paid before cicis', detail: null, button: 'Not paid off' },
+    { what: 'Toko Sepatu Contoh', how: 'Paid off', detail: null, button: 'Not paid off' },
     { what: 'Refund Toko Contoh', how: 'Settled', detail: null, button: 'Not settled' },
     { what: 'Kursi Contoh', how: 'Paid', detail: null, button: 'Not paid' },
   ];

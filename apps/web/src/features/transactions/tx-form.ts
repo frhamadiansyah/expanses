@@ -660,17 +660,6 @@ export function pastMarkOn(p: {
 }
 
 /**
- * The one line a transfer or a card's payment shows when it is dated before an account was added (owner, 22 Nov 2026):
- * that account's balance stays, as a past purchase's does. `names` are the accounts the ledger keeps (`pastSidesOf`).
- * Null when there are none.
- */
-export function beforeStartLine(names: readonly string[]): string | null {
-  if (names.length === 0) return null;
-  if (names.length === 1) return `Before ${names[0]} was added: its balance stays.`;
-  return `Before ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} were added: their balances stay.`;
-}
-
-/**
  * The receipt's row for a saved transfer or card payment whose pair keeps an account unchanged: the past purchase's
  * row, naming which account, since the other side moved (a card owes less).
  */

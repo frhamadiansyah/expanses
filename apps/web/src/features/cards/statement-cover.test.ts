@@ -192,8 +192,8 @@ describe('the words that say how a paid line was paid', () => {
     expect(paidHowText(line(), covered({ by: null, creditCount: 0 }))).toBe('Paid with earlier credit');
   });
 
-  it('says paid before cicis, settled for money back, and paid for a plan’s instalment', () => {
-    expect(paidHowText(line({ paidOff: true }), none)).toBe('Paid before cicis');
+  it('says paid off, settled for money back, and paid for a plan’s instalment', () => {
+    expect(paidHowText(line({ paidOff: true }), none)).toBe('Paid off');
     expect(paidHowText(line({ paidOff: true, owedMinor: -120_000, countedMinor: -120_000 }), none)).toBe('Settled');
     expect(paidHowText(line({ paidOff: true, instalment: { planId: 'plan', number: 1, of: 12, noPurchase: true, paidSoFar: 1 } }), none)).toBe('Paid');
   });

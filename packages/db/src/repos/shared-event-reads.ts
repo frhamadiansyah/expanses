@@ -50,6 +50,8 @@ export interface RecordPostingView {
   accountName?: string | null;
   /** What that account moved in its own currency, when that is not the record's (R5); null when it is. */
   accountAmountMinor?: number | null;
+  /** The card on that account the posted transaction names, local as the account is: the Add screen opens on it. */
+  cardId?: string | null;
 }
 
 export interface SharedExpenseView {
@@ -158,11 +160,11 @@ async function unsentIdsTx(db: Db, bookId: string): Promise<Set<string>> {
 }
 
 async function postingsTx(db: Db, bookId: string, names: Map<string, string>): Promise<Map<string, RecordPostingView>> {
-  const rows = await db.values<[string, string | null, string | null, string | null, string | null, string | null, number | null, string | null]>(sql`
-    SELECT p.record_id, p.transaction_id, p.unposted, p.changed_by, a.currency, p.account_id, p.account_amount_minor, a.name
-    FROM event_postings p LEFT JOIN accounts a ON a.id = p.account_id WHERE p.book_id = ${bookId}`);
+  const rows = await db.values<[string, string | null, string | null, string | null, string | null, string | null, number | null, string | null, string | null]>(sql`
+    SELECT p.record_id, p.transaction_id, p.unposted, p.changed_by, a.currency, p.account_id, p.account_amount_minor, a.name, t.card_id
+    FROM event_postings p LEFT JOIN accounts a ON a.id = p.account_id LEFT JOIN transactions t ON t.id = p.transaction_id WHERE p.book_id = ${bookId}`);
   return new Map(
-    rows.map(([id, transactionId, unposted, changedBy, accountCurrency, accountId, accountAmountMinor, accountName]) => [
+    rows.map(([id, transactionId, unposted, changedBy, accountCurrency, accountId, accountAmountMinor, accountName, cardId]) => [
       id,
       {
         transactionId,
@@ -172,6 +174,7 @@ async function postingsTx(db: Db, bookId: string, names: Map<string, string>): P
         accountId,
         accountAmountMinor: accountAmountMinor === null ? null : Number(accountAmountMinor),
         accountName,
+        cardId,
       },
     ]),
   );

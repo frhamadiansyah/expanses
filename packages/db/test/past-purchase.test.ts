@@ -108,7 +108,7 @@ describe('a past purchase on a money account', () => {
     expect(balancing).toHaveLength(1);
     expect(balancing[0]!.entries.some((e) => e.accountSystemKey === 'before_the_app')).toBe(true);
     const lines = await activityOf(w.database, w.ws, {});
-    expect(lines.map((line) => line.title)).not.toContain('Settled before the app');
+    expect(lines.some((line) => line.title.startsWith('Paid off'))).toBe(false);
     expect(lines.filter((line) => line.transactionId === balancing[0]!.id)).toHaveLength(0);
     // The balancing is equity: no category total and no spending report counts it.
     const expense = await categoryTotalsBetween(w.database, w.ws, 'expense', '2026-01-01', '2026-12-31');

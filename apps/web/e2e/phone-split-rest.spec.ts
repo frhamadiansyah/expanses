@@ -40,7 +40,7 @@ test('the last part is the Rest: it follows the other parts, and an edit that wo
   await expect(parts.nth(0)).toContainText('120.000');
   await expect(parts.nth(1)).toContainText('80.000');
   await expect(parts.nth(2)).toContainText('50.000');
-  await expect(split.getByTestId('split-status')).toHaveText('All of it assigned');
+  await expect(split.getByTestId('split-status')).toHaveCount(0);
 
   // Groceries to 150.000: the Rest falls to 20.000 on its own.
   await fillPart(page, 1, '150000');

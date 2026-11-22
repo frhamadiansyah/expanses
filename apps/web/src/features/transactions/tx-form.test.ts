@@ -3,7 +3,6 @@ import type { AccountRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { doorOfForm } from '../goals/set-aside-question';
 import {
-  beforeStartLine,
   pastMarkOn,
   pastMoveRow,
   amountAfterDone,
@@ -2132,20 +2131,14 @@ describe('a split part left out of reports, or Not counted (0090)', () => {
   });
 });
 
-describe('the start day line and receipt row (owner, 22 Nov 2026)', () => {
-  it('says which account keeps its balance, in plain words', () => {
-    expect(beforeStartLine([])).toBeNull();
-    expect(beforeStartLine(['Bank Contoh'])).toBe('Before Bank Contoh was added: its balance stays.');
-    expect(beforeStartLine(['Bank Contoh', 'Dompet Baru'])).toBe('Before Bank Contoh and Dompet Baru were added: their balances stay.');
-  });
-
+describe('the receipt row of a move whose account keeps its balance (owner, 22 Nov 2026)', () => {
   it('names the account on the receipt, a payment or a transfer', () => {
     expect(pastMoveRow(['Bank Contoh'], true)).toEqual({ title: 'Past payment', value: 'Bank Contoh unchanged' });
     expect(pastMoveRow(['Bank Contoh', 'Dompet Baru'], false)).toEqual({ title: 'Past transfer', value: 'Balances unchanged' });
   });
 
   it('never says you', () => {
-    for (const text of [beforeStartLine(['A']), beforeStartLine(['A', 'B']), pastMoveRow(['A'], true).title, pastMoveRow(['A'], false).value]) expect(text).not.toMatch(/\byou(r)?\b/i);
+    for (const text of [pastMoveRow(['A'], true).title, pastMoveRow(['A'], false).value]) expect(text).not.toMatch(/\byou(r)?\b/i);
   });
 });
 
