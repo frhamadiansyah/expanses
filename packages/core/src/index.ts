@@ -40,6 +40,7 @@ export {
 } from './money/money';
 export { type AmountOptions, evaluateAmount, evaluateExact } from './money/keypad';
 export { groupedMajorString, parseGroupedMajor } from './money/grouped';
+export { partFigures, proportionalMinor } from './money/proportion';
 export {
   lineFigures,
   type LineFigure,

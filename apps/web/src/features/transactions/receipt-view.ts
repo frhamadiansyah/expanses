@@ -1,4 +1,4 @@
-import { formatMinor, isCardCashbackKey, monthName } from '@expanses/core';
+import { formatMinor, isCardCashbackKey, monthName, partFigures } from '@expanses/core';
 import type { AccountRow, CardRow, PersonDebtRow, PurchasePayer, SplitBook, TransactionView, WithdrawalsUsed } from '@expanses/db';
 import { fromWithdrawalsText, receiptWithdrawalLine, transferRateParts } from '../../lib/withdrawal-rate';
 import { classify } from './classify';
@@ -204,6 +204,11 @@ export interface SplitPart {
   currency: string;
   /** Left out of its workspace's reports (0090): the chart and budgets there, not the card. */
   excluded: boolean;
+  /**
+   * Bought in another currency: the part's share of the purchase's foreign figure, read back from the whole's pair
+   * (`partFigures`, the last part taking what rounding leaves). Absent otherwise.
+   */
+  original?: { minor: number; currency: string };
 }
 
 /**
@@ -218,7 +223,18 @@ export function splitParts(tx: TransactionView, accounts: readonly AccountRow[],
   const categoryLine = (entry: TransactionView['entries'][number]) => entry.accountKind === 'expense' || entry.accountKind === 'income';
   // A split in one workspace shows its lines when one of them is left out on its own (0096): which one is the news.
   const someLeftOut = tx.entries.filter(categoryLine).length > 1 && tx.entries.some((entry) => categoryLine(entry) && entry.excluded === true);
-  if (!tx.splitBooks && notCounted.length === 0 && !someLeftOut) return [];
+  // A split bought in another currency shows its parts too: each one's share of the foreign figure is the news.
+  const lines = [...tx.entries.filter(categoryLine), ...notCounted];
+  const paidIn = paidEntry(tx).paid?.currency;
+  const foreign =
+    lines.length > 1 && tx.originalCurrency && tx.originalAmountMinor !== null && tx.originalAmountMinor !== undefined && tx.originalCurrency !== paidIn
+      ? { currency: tx.originalCurrency, shares: partFigures(lines.map((entry) => Math.abs(entry.amountMinor)), lines.reduce((sum, entry) => sum + Math.abs(entry.amountMinor), 0), Math.abs(tx.originalAmountMinor)) }
+      : null;
+  const originalOf = (entry: TransactionView['entries'][number]) => {
+    const at = lines.indexOf(entry);
+    return foreign && at >= 0 ? { original: { minor: foreign.shares[at]!, currency: foreign.currency } } : {};
+  };
+  if (!tx.splitBooks && notCounted.length === 0 && !someLeftOut && !foreign) return [];
   const books: SplitBook[] = tx.splitBooks ?? (book ? [{ ...book, excluded: tx.excluded ?? false }] : []);
   const part = (entry: TransactionView['entries'][number], of: SplitBook | null): SplitPart => ({
     categoryId: entry.accountId,
@@ -228,6 +244,7 @@ export function splitParts(tx: TransactionView, accounts: readonly AccountRow[],
     currency: entry.currency,
     // Each line says it itself (0096); a part left out whole is every line of it left out.
     excluded: (tx.excluded ?? false) || entry.excluded === true || (of?.excluded ?? false),
+    ...originalOf(entry),
   });
   const largestFirst = (a: { amountMinor: number }, b: { amountMinor: number }) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor);
   const filed = tx.splitBooks

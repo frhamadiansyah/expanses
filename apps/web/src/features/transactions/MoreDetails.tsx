@@ -93,7 +93,7 @@ export function MoreDetails({
   const navigate = useNavigate();
   // A captured draft (which opens no shared card) moves on Record too, so it says so the same way.
   const moving = (draft.editing || !opensSharedEvent) && draft.eventId ? summaries[draft.eventId] : undefined;
-  // A split is typed, read and posted in the paying account's own currency — `formToPost` refuses any other — so
+  // A split posts in the paying account's own currency (a foreign figure on a part is only shown beside it) — so
   // the row's total is read in that one, never in the currency the amount row happens to be showing. Asked of
   // `postingCurrency`, which is `amountFields`' own answer: which currency a figure is read in is decided once,
   // in the kit, and this screen re-deriving it was a second place deciding a money field's scale.
