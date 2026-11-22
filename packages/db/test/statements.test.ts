@@ -6,6 +6,7 @@ import {
   cardStatement,
   cardStatements,
   cardStatementLines,
+  cardPaymentSource,
   createAccount,
   createCardAccount,
   listAccounts,
@@ -161,6 +162,19 @@ describe('paying purchases before the statement', () => {
     expect(statement).toMatchObject({ chargesMinor: 2_530_000, creditsMinor: 530_000, closingMinor: 2_000_000 });
     const paymentLine = statement.lines.find((line) => line.transactionId === payment)!;
     expect(paymentLine).toMatchObject({ owedMinor: -530_000, spending: false });
+  });
+
+  it('names how much a payment put on the card and the account it came from, for the paid ✓’s bubble', async () => {
+    const h = await household();
+    const superindo = await h.buy('2026-08-22', 'Superindo', 450_000);
+    const batch = await payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: h.bank.id, occurredOn: '2026-08-25', purchaseTransactionIds: [superindo] });
+    const lump = await h.pay('2026-08-28', 1_230_000);
+    expect(await cardPaymentSource(h.database, h.ws, h.card.id, batch)).toEqual({ amountMinor: 450_000, fromName: 'BCA Tahapan' });
+    expect(await cardPaymentSource(h.database, h.ws, h.card.id, lump)).toEqual({ amountMinor: 1_230_000, fromName: 'BCA Tahapan' });
+    // A purchase put nothing onto the card's side of what is owed: no payment to name.
+    expect(await cardPaymentSource(h.database, h.ws, h.card.id, superindo)).toBeNull();
+    await voidTransaction(h.database, h.ws, lump);
+    expect(await cardPaymentSource(h.database, h.ws, h.card.id, lump)).toBeNull();
   });
 
   it('will not pay a purchase twice, and frees it again when the payment is deleted', async () => {

@@ -30,4 +30,12 @@ describe('groupStatementLines', () => {
       ['Payment', null, ['payment'], -2_088_000],
     ]);
   });
+
+  it('names the account’s own section Account once it holds a charge, as when the statement keeps payments off it', () => {
+    const groups = groupStatementLines([line('fuel', 'primary', 390_000), line('cash', null, 500_000, false)], cards);
+    expect(groups.map((group) => [group.title, group.lines.map((l) => l.key)])).toEqual([
+      ['Primary', ['fuel']],
+      ['Account', ['cash']],
+    ]);
+  });
 });

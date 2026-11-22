@@ -9,6 +9,8 @@ export interface LineCover {
   whole: boolean;
   /** The payment (or money back) that completed its cover; null when the cover came from credit left from before. */
   by: StatementLine | null;
+  /** How many payments (or money back) went into its cover; credit carried from before counts none. */
+  creditCount: number;
 }
 
 /** A charge the statement bills, as opposed to a payment, money back, or a purchase converted to a plan (counts nothing). */
@@ -26,7 +28,7 @@ export function statementCover(s: CardStatement): Map<string, LineCover> {
   const credits = new Map([...s.lines, ...s.laterCredits].map((line) => [line.key, line]));
   const out = new Map<string, LineCover>();
   for (const [key, c] of Object.entries(s.cover)) {
-    out.set(key, { coveredMinor: c.coveredMinor, leftMinor: c.leftMinor, whole: c.whole, by: c.creditKey ? (credits.get(c.creditKey) ?? null) : null });
+    out.set(key, { coveredMinor: c.coveredMinor, leftMinor: c.leftMinor, whole: c.whole, by: c.creditKey ? (credits.get(c.creditKey) ?? null) : null, creditCount: c.credits });
   }
   return out;
 }
@@ -46,3 +48,23 @@ export function paidCountText(paid: number, of: number): string | null {
  */
 export const payableLine = (line: StatementLine, cover: ReadonlyMap<string, LineCover>) =>
   line.owedMinor > 0 && line.spending && !line.paidBy && !line.paidOff && !line.instalment && !line.convertedTo && cover.get(line.key)?.whole !== true;
+
+const shortDay = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+/**
+ * How a line shown paid was paid, in the few words its ✓'s bubble says and its ✓'s name carries: "Paid 3 Nov"
+ * one by one, "Paid with the 15 Nov payment" (or "with 2 payments") covered, "Paid before cicis" marked paid off,
+ * "Settled" for money back so marked, and "Paid" for a plan's instalment ticked paid. Null for a line not shown paid.
+ * The order is the ✓'s: a cover first, then the mark, then paid one by one.
+ */
+export function paidHowText(line: StatementLine, cover: ReadonlyMap<string, LineCover>): string | null {
+  const covered = cover.get(line.key);
+  if (covered?.whole) {
+    if (covered.creditCount > 1) return `Paid with ${covered.creditCount} payments`;
+    if (covered.by) return `Paid with the ${shortDay(covered.by.occurredOn)} ${covered.by.spending ? 'refund' : 'payment'}`;
+    return 'Paid with earlier credit';
+  }
+  if (line.paidOff) return line.instalment ? 'Paid' : line.owedMinor < 0 ? 'Settled' : 'Paid before cicis';
+  if (line.paidBy) return `Paid ${shortDay(line.paidBy.paidOn)}`;
+  return null;
+}

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Statement without payment rows</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --line:#e5e5ea; --bg:#f2f2f7; --up:#248a3d; --blue:#0a84ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e9e9ee; font:14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; color:var(--ink); padding:26px 30px 40px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .intro { color:#55555a; margin:0 0 20px; max-width:1200px; }
+  .row { display:flex; gap:28px; align-items:flex-start; }
+  .col { width:390px; }
+  .col h2 { font-size:15px; margin:0 0 3px; }
+  .col p.how { color:#55555a; font-size:12.5px; margin:0 0 10px; min-height:36px; }
+  .phone { width:390px; background:var(--bg); border-radius:38px; padding:18px 14px 22px; border:1px solid #d1d1d6; position:relative; }
+  .title { text-align:center; font-weight:700; font-size:22px; margin:4px 0 12px; }
+  .box { background:#fff; border-radius:14px; overflow:hidden; }
+  .sum div { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; border-top:1px solid var(--line); font-size:15px; }
+  .sum div:first-child { border-top:0; }
+  .sum .b { font-weight:700; }
+  .sum .tap { color:var(--ink); }
+  .sum .tap span:last-child { display:flex; align-items:center; gap:6px; }
+  .chev { color:var(--ink3); font-size:17px; }
+  .cap { display:flex; justify-content:space-between; font-size:12px; letter-spacing:.06em; color:var(--ink3); font-weight:600; margin:16px 6px 6px; }
+  .line { display:flex; align-items:center; gap:10px; padding:10px 12px 10px 10px; border-top:1px solid var(--line); }
+  .line:first-child { border-top:0; }
+  .mk { width:22px; display:flex; justify-content:center; flex-shrink:0; }
+  .tx { flex:1; min-width:0; }
+  .tx .n { font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tx .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tx .s b { color:var(--ink2); font-weight:600; }
+  .am { font-size:16px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .am.done { color:var(--ink3); }
+  .dots { color:var(--ink2); font-weight:700; letter-spacing:1px; margin-left:4px; }
+  .c { width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .c svg { width:11px; height:11px; }
+  .c.empty { border:1.5px solid var(--ink3); }
+  .c.one { background:var(--up); color:#fff; }
+  .pay { background:#fff7e0; }
+  .flag { position:absolute; right:-8px; width:22px; height:22px; border-radius:50%; background:#ff9f0a; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .pi { width:30px; height:30px; border-radius:50%; background:#e3f0ff; color:var(--blue); display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; }
+  .sheet { background:#fff; border-radius:22px 22px 0 0; padding:10px 0 18px; margin:0 -14px -22px; box-shadow:0 -6px 24px rgba(0,0,0,.12); }
+  .grab { width:38px; height:5px; border-radius:3px; background:#d1d1d6; margin:0 auto 10px; }
+  .sh { display:flex; justify-content:space-between; align-items:center; padding:0 18px 10px; font-weight:700; font-size:17px; }
+  .sh span:last-child { color:var(--blue); font-weight:600; font-size:15px; }
+  .dim { position:absolute; inset:0; background:rgba(0,0,0,.25); border-radius:38px; }
+  .foot { color:var(--ink3); font-size:12px; padding:8px 18px 0; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><symbol id="ck" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></symbol></svg>
+<h1>Card statement · payment rows out of the purchase list</h1>
+<p class="intro">Today a card payment sits among the purchases with no circle (marked ① below). After: the list holds only purchases and refunds; the “Paid” line in the box above opens the statement’s payments. Invented figures.</p>
+
+<div class="row">
+  <div class="col">
+    <h2>Today</h2>
+    <p class="how">The payment row has no circle, so it looks out of place in a list of things to pay.</p>
+    <div class="phone">
+      <div class="title">Statement</div>
+      <div class="box sum"><div><span>Paid</span><span>Rp 1.150.000</span></div><div><span>Still to pay</span><span>Rp 760.000</span></div><div class="b"><span>Total bill</span><span>Rp 1.910.000</span></div></div>
+      <div class="cap"><span>PURCHASES</span><span>3 OF 5 PAID</span></div>
+      <div class="box">
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Restoran Contoh</div><div class="s">18 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 520.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">SPBU Contoh</div><div class="s">20 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 340.000</div><span class="dots">···</span></div>
+        <div class="line pay" style="position:relative"><div class="mk"></div><div class="tx"><div class="n">Payment</div><div class="s">21 Nov · from BCA Tahapan</div></div><div class="am" style="color:var(--up)">−Rp 860.000</div><span class="dots">···</span><span class="flag" style="left:6px">1</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Toko Sepatu Contoh</div><div class="s">22 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 410.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Toko Buku Contoh</div><div class="s">23 Oct · ···· <b>4417</b></div></div><div class="am">Rp 310.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Apotek Contoh</div><div class="s">24 Oct · ···· <b>4417</b></div></div><div class="am">Rp 450.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Refund Toko Contoh</div><div class="s">27 Oct · ···· <b>4417</b></div></div><div class="am done" style="color:var(--up)">−Rp 120.000</div><span class="dots">···</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h2>After</h2>
+    <p class="how">Every row has a circle. “Paid” in the box gets a › and opens the payments.</p>
+    <div class="phone">
+      <div class="title">Statement</div>
+      <div class="box sum"><div class="tap"><span>Paid</span><span>Rp 1.150.000 <span class="chev">›</span></span></div><div><span>Still to pay</span><span>Rp 760.000</span></div><div class="b"><span>Total bill</span><span>Rp 1.910.000</span></div></div>
+      <div class="cap"><span>PURCHASES</span><span>3 OF 5 PAID</span></div>
+      <div class="box">
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Restoran Contoh</div><div class="s">18 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 520.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">SPBU Contoh</div><div class="s">20 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 340.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Toko Sepatu Contoh</div><div class="s">22 Oct · ···· <b>4417</b></div></div><div class="am done">Rp 410.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Toko Buku Contoh</div><div class="s">23 Oct · ···· <b>4417</b></div></div><div class="am">Rp 310.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c empty"></span></div><div class="tx"><div class="n">Apotek Contoh</div><div class="s">24 Oct · ···· <b>4417</b></div></div><div class="am">Rp 450.000</div><span class="dots">···</span></div>
+        <div class="line"><div class="mk"><span class="c one"><svg><use href="#ck"/></svg></span></div><div class="tx"><div class="n">Refund Toko Contoh</div><div class="s">27 Oct · ···· <b>4417</b></div></div><div class="am done" style="color:var(--up)">−Rp 120.000</div><span class="dots">···</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h2>After · “Paid” tapped</h2>
+    <p class="how">A sheet lists this statement’s payments. A tap opens one to edit or delete, as from Cashflow.</p>
+    <div class="phone" style="overflow:hidden">
+      <div class="title">Statement</div>
+      <div class="box sum"><div class="tap"><span>Paid</span><span>Rp 1.150.000 <span class="chev">›</span></span></div><div><span>Still to pay</span><span>Rp 760.000</span></div><div class="b"><span>Total bill</span><span>Rp 1.910.000</span></div></div>
+      <div class="cap"><span>PURCHASES</span><span>3 OF 5 PAID</span></div>
+      <div class="box" style="height:160px"></div>
+      <div class="dim"></div>
+      <div style="position:relative;margin-top:24px">
+        <div class="sheet">
+          <div class="grab"></div>
+          <div class="sh"><span>Paid · Rp 1.150.000</span><span>Done</span></div>
+          <div class="box" style="margin:0 14px;border:1px solid var(--line)">
+            <div class="line"><span class="pi">↓</span><div class="tx"><div class="n">Payment</div><div class="s">21 Nov · from BCA Tahapan</div></div><div class="am">Rp 860.000</div><span class="chev">›</span></div>
+            <div class="line"><span class="pi">↓</span><div class="tx"><div class="n">Paid for 1 purchase</div><div class="s">3 Nov · from Jenius Maxi Saver</div></div><div class="am">Rp 410.000</div><span class="chev">›</span></div>
+            <div class="line"><span class="pi" style="background:#e5f7ea;color:var(--up)">↺</span><div class="tx"><div class="n">Refund Toko Contoh</div><div class="s">27 Oct · counts as paid</div></div><div class="am">−Rp 120.000</div><span class="chev">›</span></div>
+          </div>
+          <div class="foot">Payments stay in Cashflow and on BCA Tahapan as transfers.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

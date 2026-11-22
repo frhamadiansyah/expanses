@@ -189,8 +189,8 @@ test('the statement’s Pay for ticked purchases opens “Pay credit card” wit
   // Back on the statement: the ticks cleared into "paid", the bar gone, Hotel stay from last month untouched.
   await expect(page).toHaveURL(/\/cards\/[^/]+\/statement$/);
   await expect(page.getByTestId('statement-select-bar')).toHaveCount(0);
-  await expect(page.getByLabel(/^Pasar Satu, paid on/)).toBeChecked();
-  await expect(page.getByLabel(/^Toko Dua, paid on/)).toBeChecked();
+  await expect(page.getByRole('button', { name: /^Pasar Satu, Paid \d+ \w+$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Toko Dua, Paid \d+ \w+$/ })).toBeVisible();
   await page.goto('/wallet');
   await expectWalletFigure(page, 'BCA Tahapan', '19.470.000');
 });
