@@ -16,6 +16,7 @@ class AppViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(FormAccessoryBarPlugin())
         #if targetEnvironment(macCatalyst)
         markMacApp()
+        bridge?.registerPluginInstance(FileExportPlugin())
         #else
         // No Mac reads an NFC card: the plugin is not in the Mac build at all (an iOS-only file in the project).
         bridge?.registerPluginInstance(EmoneyReaderPlugin())
@@ -35,3 +36,51 @@ class AppViewController: CAPBridgeViewController {
     }
     #endif
 }
+
+#if targetEnvironment(macCatalyst)
+/**
+ * `FileExport` — the Mac's own Save window for a file the app made (a backup): the share menu Mac Catalyst offers has no
+ * plain "Save", so a backup handed to it could only be sent somewhere or cancelled ("Share canceled", owner 22 Nov
+ * 2026). `exportFile({ path })` takes a file URL the app already wrote and shows the system Save panel for a copy of it;
+ * it resolves once saved and rejects with "Save canceled" when the panel is closed without saving.
+ */
+@objc(FileExportPlugin)
+public class FileExportPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelegate {
+    public let identifier = "FileExportPlugin"
+    public let jsName = "FileExport"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "exportFile", returnType: CAPPluginReturnPromise),
+    ]
+
+    /** The call waiting on the panel; one at a time. */
+    private var pending: CAPPluginCall?
+
+    @objc func exportFile(_ call: CAPPluginCall) {
+        guard let path = call.getString("path"), let url = URL(string: path), url.isFileURL else {
+            call.reject("No file to save")
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let presenter = self.bridge?.viewController else {
+                call.reject("No window to save from")
+                return
+            }
+            self.pending?.reject("Save canceled")
+            self.pending = call
+            let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+            picker.delegate = self
+            presenter.present(picker, animated: true)
+        }
+    }
+
+    public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        pending?.resolve(["saved": true])
+        pending = nil
+    }
+
+    public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        pending?.reject("Save canceled")
+        pending = nil
+    }
+}
+#endif
