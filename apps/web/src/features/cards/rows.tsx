@@ -15,9 +15,10 @@ import { GROUP_GAP, GROUP_RADIUS, type GroupChild, InsetGroup, InsetRow, type In
  * tap target: `RowWithActions` puts a real `InsetRow` and real glyph buttons side by side.
  */
 
+// Drawn over the row (z-10): a row with a swipe action paints its own face, which would otherwise hide the line above it.
 function Separator({ show }: { show: boolean | undefined }) {
   if (!show) return null;
-  return <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />;
+  return <span aria-hidden className="pointer-events-none absolute top-0 z-10 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />;
 }
 
 const ROW_BOX = (subtitle: boolean): CSSProperties => ({ minHeight: rowHeight(subtitle), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` });
