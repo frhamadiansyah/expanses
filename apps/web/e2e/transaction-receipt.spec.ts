@@ -109,7 +109,8 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   // Read only, the same receipt: its lines, why it is not changed here, and Open holding instead of the buttons.
   const trade = await openReceipt(page, 'Bought 2 Antam gold bars', 'BCA Tahapan');
   await expect(page).toHaveURL(/\/transactions\?account=/);
-  await expect(peekLine(trade, 'Payment method')).toContainText('BCA Tahapan');
+  // A trade is a transfer between the bank and the holding: its source reads From (main, 22 Nov 2026).
+  await expect(peekLine(trade, 'From')).toContainText('BCA Tahapan');
   await expect(peekLine(trade, 'Total')).toContainText('3.980.000');
   await expect(trade.getByTestId('peek-notice')).toHaveText('A trade is changed on its holding’s page.');
   await expect(trade.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();

@@ -48,7 +48,8 @@ test('two bills ticked are paid together, and the month’s box, the groups and 
 
   const sheet = await paySeveral(page, ['Phone', 'Internet']);
   await expect(page.getByTestId('select-total')).toHaveText(/^Rp\s545\.000$/);
-  await expect(sheet.getByRole('checkbox')).toHaveCount(2);
+  // The bills' ticks: One payment's switch is a checkbox too.
+  await expect(sheet.getByRole('checkbox', { name: /^Pay / })).toHaveCount(2);
   await sheet.getByRole('button', { name: 'Record 2 bills' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(toast(page)).toContainText('Paid 2 bills');

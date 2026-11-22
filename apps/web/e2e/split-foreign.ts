@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addForm, choosePayment, fillFigure, saveButton } from './add-transaction';
+import { peekLine, receiptPeek } from './receipt-peek';
 import { addPart, donePart, openPart, openSplit, pickPartCategory, splitSheet } from './split-row';
 
 /**
@@ -67,8 +68,13 @@ export async function splitForeignJourney(page: Page) {
   const link = page.getByRole('link', { name: 'Receipt for Hotel Contoh' });
   if ((await link.count()) > 0) await link.first().click();
   else await row.click();
-  await expect(page.getByTestId('hero-amount')).toContainText('1.944.000');
-  const receiptParts = page.getByTestId('split-part');
+  // A wide screen (Mac) opens the receipt as its side peek, with the same split parts (`SplitPartLine`); a phone its page.
+  const peek = receiptPeek(page);
+  await expect(page.getByTestId('hero-amount').or(peek.getByTestId('peek-title'))).toBeVisible();
+  const wide = (await peek.count()) > 0;
+  if (wide) await expect(peekLine(peek, 'Total')).toContainText('1.944.000');
+  else await expect(page.getByTestId('hero-amount')).toContainText('1.944.000');
+  const receiptParts = (wide ? peek : page).getByTestId('split-part');
   await expect(receiptParts).toHaveCount(2);
   await expect(receiptParts.nth(0)).toContainText('Groceries');
   await expect(receiptParts.nth(0)).toContainText('1.296.000');
@@ -76,5 +82,6 @@ export async function splitForeignJourney(page: Page) {
   await expect(receiptParts.nth(1)).toContainText('Restaurants');
   await expect(receiptParts.nth(1)).toContainText('648.000');
   await expect(receiptParts.nth(1).getByTestId('split-part-original')).toContainText('40,00');
-  await expect(page.locator('div', { hasText: /^Original amount/ }).last()).toContainText('120,00');
+  if (wide) await expect(peekLine(peek, 'Original amount')).toContainText('120,00');
+  else await expect(page.locator('div', { hasText: /^Original amount/ }).last()).toContainText('120,00');
 }

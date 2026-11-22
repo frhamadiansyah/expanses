@@ -37,5 +37,6 @@ export async function showMonthly(page: Page) {
     return;
   }
   await page.getByRole('group', { name: 'Page' }).getByRole('button', { name: 'Monthly' }).click();
-  await expect(page.getByTestId('bills-summary').or(page.getByText('No monthly bills yet'))).toBeVisible();
+  // The Monthly box keeps its shape with no bills too (owner, 22 Nov 2026): "No monthly bills yet" is inside it.
+  await expect(page.getByTestId('bills-summary')).toBeVisible();
 }
