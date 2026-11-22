@@ -69,6 +69,16 @@ describe('a partner’s transfer named by its accounts', () => {
     ]);
   });
 
+  it('a shared loan called like the bank does not hide which item the bank is', async () => {
+    const { home, rina, andi, bookId } = await household();
+    const loan = await createAccount(rina.database, rina.ws, { name: 'Rina Bank', kind: 'liability', subtype: 'loan', currency: 'IDR' });
+    await confirmReview(rina.database, rina.ws, { [rina.bank]: 'total', [rina.cash]: 'total', [rina.usd]: 'hidden', [loan.id]: 'total' });
+    await settle(home);
+    await move(rina, bookId, rina.bank, rina.cash, 'ATM');
+    await settle(home);
+    expect((await listSharedTransfers(andi.database, bookId))[0]?.name).toBe('Cash withdrawal');
+  });
+
   it('a joint account is found by its item, whatever it is called', async () => {
     const { home, rina, andi, bookId } = await household();
     await setJointAccount(rina.database, rina.bank, true);

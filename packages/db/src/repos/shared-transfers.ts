@@ -193,8 +193,9 @@ export async function partnerTransferNameTx(
   for (const [itemId, json] of rows) {
     try {
       const summary = JSON.parse(json) as { kind?: unknown; subtype?: unknown; currency?: unknown; name?: unknown } | null;
-      // A card is a liability: a payment into it reads Credit card payment here too.
-      if ((summary?.kind !== 'asset' && summary?.kind !== 'liability') || typeof summary.subtype !== 'string' || typeof summary.currency !== 'string' || typeof summary.name !== 'string') continue;
+      // A card is a liability: a payment into it reads Credit card payment here too. No other liability (a loan called
+      // like a bank would make the bank's name match two items).
+      if (!(summary?.kind === 'asset' || (summary?.kind === 'liability' && summary.subtype === 'credit_card')) || typeof summary.subtype !== 'string' || typeof summary.currency !== 'string' || typeof summary.name !== 'string') continue;
       items.push({ itemId, name: bareName(summary.name), side: { subtype: summary.subtype, currency: summary.currency } });
     } catch {
       // A summary that does not parse names nothing.
