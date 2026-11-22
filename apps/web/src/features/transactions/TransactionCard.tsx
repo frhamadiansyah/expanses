@@ -79,6 +79,7 @@ import { TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from '
 import { NoteSuggestions } from './NoteSuggestions';
 import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { WithdrawalLine } from './WithdrawalLine';
+import { PastBadge } from './PastBadge';
 import { PaymentSheet, chosenPayment, removedCardPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
@@ -1248,13 +1249,10 @@ function CardBody({
                       <Check size={9} strokeWidth={3.5} />
                     </span>
                   )}
+                  {/* A card purchase paid off: only the statement's ✓ on the card's icon, no words (owner, 22 Nov 2026). */}
                   {paidOff && (
-                    <span
-                      aria-hidden
-                      data-testid="paid-off-tick"
-                      className="absolute -right-1 -bottom-1 flex h-[14px] w-[14px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)] ring-2 ring-[var(--ph-surface)]"
-                    >
-                      <Check size={9} strokeWidth={3.5} />
+                    <span data-testid="paid-off-tick" className="contents">
+                      <PastBadge label="Paid off" />
                     </span>
                   )}
                 </span>
@@ -1281,7 +1279,7 @@ function CardBody({
                 type="button"
                 aria-label="Already paid off"
                 aria-pressed={paidOff}
-                title={paidOff ? 'Already paid off: the card owes the same' : 'Still owed on the card'}
+                title={paidOff ? 'Paid off' : 'Not paid off'}
                 onClick={() => set({ alreadyPaid: !paidOff })}
                 className="ph-focus absolute top-0 bottom-0 left-[10px] w-[34px] rounded-full"
               />

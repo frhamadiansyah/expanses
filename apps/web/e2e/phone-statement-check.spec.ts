@@ -16,8 +16,8 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
 
   // Two purchases recorded by hand: one as the statement prints it, one Rp 500 short of it.
   await page.goto('/transactions');
-  await addTransaction(page, { description: 'Kopi Senja', paidWith: 'BCA Visa', category: 'Cafe & dessert', amount: '85000', date: '2026-08-15' });
-  await addTransaction(page, { description: 'Toko Buku', paidWith: 'BCA Visa', category: 'Books', amount: '126000', date: '2026-08-18' });
+  await addTransaction(page, { description: 'Kopi Senja', paidWith: 'BCA Visa', category: 'Cafe & dessert', amount: '85000', date: '2026-08-15', paidOff: false });
+  await addTransaction(page, { description: 'Toko Buku', paidWith: 'BCA Visa', category: 'Books', amount: '126000', date: '2026-08-18', paidOff: false });
 
   await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();

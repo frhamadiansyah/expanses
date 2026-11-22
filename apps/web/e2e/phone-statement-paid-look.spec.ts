@@ -51,7 +51,7 @@ test('every paid purchase wears one green ✓, and a tap on it says how it was p
   // Oldest first, a payment covers the oldest purchase not settled on its own: the petrol.
   await page.goto('/transactions');
   const buy = (description: string, amount: string, day: number) =>
-    addTransaction(page, { description, paidWith: 'Kartu Contoh', category: 'Groceries', amount, date: lastMonth(day) });
+    addTransaction(page, { description, paidWith: 'Kartu Contoh', category: 'Groceries', amount, date: lastMonth(day), paidOff: false });
   await buy('Restoran Contoh', '520000', 3);
   await buy('SPBU Contoh', '340000', 5);
   await buy('Toko Sepatu Contoh', '410000', 8);

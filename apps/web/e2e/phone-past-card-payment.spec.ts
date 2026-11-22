@@ -25,7 +25,7 @@ async function setUp(page: Page) {
   await page.getByLabel('Due date').fill('5');
   await saveCardTerms(page);
   await page.goto('/transactions');
-  await addTransaction(page, { description: 'Toko Contoh', paidWith: 'Kartu Contoh', category: 'Groceries', amount: '2970000', date: '2026-10-15' });
+  await addTransaction(page, { description: 'Toko Contoh', paidWith: 'Kartu Contoh', category: 'Groceries', amount: '2970000', date: '2026-10-15', paidOff: false });
 }
 
 async function openCardPage(page: Page) {

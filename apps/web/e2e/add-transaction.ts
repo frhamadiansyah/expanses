@@ -151,6 +151,11 @@ export async function addTransaction(
     date?: string;
     /** Type the desktop's amount a key at a time, as a person does, instead of filling it in one go. */
     keyByKey?: boolean;
+    /**
+     * A card purchase's Already paid off, set after the date: an old purchase starts out paid off by itself (owner, 22 Nov
+     * 2026), so a spec that means one still owed on a card added today says so. Left out, the form's own default stands.
+     */
+    paidOff?: boolean;
   },
 ) {
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -164,8 +169,17 @@ export async function addTransaction(
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: tx.category, exact: true }).click();
   await form.getByLabel('Note').fill(tx.description);
   if (tx.date) await form.getByLabel('Date').fill(tx.date);
+  if (tx.paidOff !== undefined) await setPaidOff(form, tx.paidOff);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
+}
+
+/** Sets a card purchase's Already paid off (the card icon on Payment method) to `on`, whatever the date made it. */
+export async function setPaidOff(form: Locator, on: boolean) {
+  const button = form.getByRole('button', { name: 'Already paid off' });
+  await expect(button).toBeVisible();
+  if ((await button.getAttribute('aria-pressed')) !== String(on)) await button.click();
+  await expect(button).toHaveAttribute('aria-pressed', String(on));
 }
 
 /**

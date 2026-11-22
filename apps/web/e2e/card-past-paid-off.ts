@@ -64,12 +64,18 @@ async function fillOnCard(page: Page, date: string) {
   return form;
 }
 
-/** The Add form ticks the card's icon by itself for an old date, and a tap takes it off for that purchase. */
+/**
+ * The Add form marks an old card purchase with the statement's small ✓ on the card's icon and nothing written (owner,
+ * 22 Nov 2026); the icon is still the switch it always was, so a tap takes it off for that purchase.
+ */
 export async function addFormHintAndToggle(page: Page, info: TestInfo) {
   const form = await fillOnCard(page, '2026-09-12');
   const paidOff = form.getByRole('button', { name: 'Already paid off' });
   await expect(paidOff).toHaveAttribute('aria-pressed', 'true');
   await expect(form.getByTestId('paid-off-tick')).toBeVisible();
+  await expect(form.getByRole('img', { name: 'Paid off' })).toBeVisible();
+  // No sentence about the rule anywhere on the form.
+  await expect(form).not.toContainText(/before the app|was added/i);
   await page.screenshot({ path: info.outputPath('add-form-card-paid-off.png') });
   // The card's own day is an ordinary, owed purchase; back to the old date, ticked again until a tap says otherwise.
   await form.getByLabel('Date').fill('2026-09-20');

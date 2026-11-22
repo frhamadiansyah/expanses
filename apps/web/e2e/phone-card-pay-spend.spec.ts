@@ -26,7 +26,7 @@ async function setUp(page: Page) {
   await page.getByLabel('Due date').fill('15');
   await saveCardTerms(page);
   await page.goto('/transactions');
-  await addTransaction(page, { description: 'Hotel stay', paidWith: 'BCA Visa', category: 'Groceries', amount: '3000000', date: LAST_MONTH });
+  await addTransaction(page, { description: 'Hotel stay', paidWith: 'BCA Visa', category: 'Groceries', amount: '3000000', date: LAST_MONTH, paidOff: false });
 }
 
 async function openCardPage(page: Page) {
