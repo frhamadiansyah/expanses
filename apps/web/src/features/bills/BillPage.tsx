@@ -1,5 +1,6 @@
 import { type BillWindow, dayMonth, formatMinor, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
-import { RecurringError, resumeBill, skipBill, undoBillPayments, unlinkPurchaseFromBill, unskipBill } from '@expanses/db';
+import { paymentBills, RecurringError, resumeBill, skipBill, undoBillPayments, unlinkPurchaseFromBill, unskipBill } from '@expanses/db';
+import { undoPaymentQuestion } from './undo-payment';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Check, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -378,11 +379,15 @@ export function BillPage({ billId }: { billId: string }) {
               title="Undo payment"
               onClick={() => {
                 const payments = paidOpen.payments.filter((p) => !p.linked);
-                // A payment is deleted, not hidden: ask once.
-                if (!window.confirm(`Undo ${paidOpen.title}? The payment is deleted.`)) return;
-                setPaidOpen(null);
-                if (justPaid && payments.some((p) => justPaid.ids.includes(p.id))) setJustPaid(null);
-                void act(() => undoBillPayments(database, ws, payments.map((p) => p.id)));
+                const title = paidOpen.title;
+                void (async () => {
+                  // A payment is deleted, not hidden: ask once — naming every bill it pays, when it pays several.
+                  const several = payments.length === 1 ? await paymentBills(database, ws, payments[0]!.id).catch(() => null) : null;
+                  if (!window.confirm(undoPaymentQuestion(title, several))) return;
+                  setPaidOpen(null);
+                  if (justPaid && payments.some((p) => justPaid.ids.includes(p.id))) setJustPaid(null);
+                  await act(() => undoBillPayments(database, ws, payments.map((p) => p.id)));
+                })();
               }}
             />
             )}

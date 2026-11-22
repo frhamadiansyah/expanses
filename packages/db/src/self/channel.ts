@@ -3,6 +3,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { LATEST_VERSION } from '../migrations';
 import { voidTransactionTx } from '../repos/ledger';
+import { settleTwicePaidBillsTx } from '../repos/bill-settle';
 import { AuthorityError } from '../sync/authority';
 import { BookReadOnlyError, SyncNotReadyError, capturePostedTx, captureCardChangingTx, captureVoidingTx, LastOwnerError, MemberNameError, seatIsElsewhere, withCapture, withCapturePaused } from '../sync/capture';
 import { OP_ID_SEPARATOR, SHARED_ENTITIES, type RowEntity } from '../sync/shared-entities';
@@ -307,11 +308,14 @@ async function applyOnce(database: Database, changeSet: SelfChangeSet, share: bo
         (await tx.values(sql`SELECT 1 FROM shared_books WHERE state IN ('active', 'unshared') LIMIT 1`)).length > 0;
       const run: Run = { tx, hlc: changeSet.hlc, notes: [], made: [], share: shares };
       const apply = async () => {
-        for (const op of changeSet.ops) for (const one of await opsUnderKeyHere(tx, op)) await applyOp(run, one);
+        for (const op of changeSet.ops) for (const one of await opsUnderKeyHere(tx, op, changeSet.hlc)) await applyOp(run, one);
       };
       if (shares) await apply();
       else await withCapturePaused(tx, apply);
       await settleTwiceEdited(run);
+      // A bill month paid on two devices before they met keeps one payment, the same on both (bill-settle.ts).
+      const paying = changeSet.ops.filter((op) => op.t === 'bill_payments' || op.t === 'transactions').map((op) => String(op.k[0]));
+      if (paying.length > 0) await withCapturePaused(tx, () => settleTwicePaidBillsTx(tx, paying));
       for (const note of run.notes) {
         await tx.run(sql`INSERT INTO self_notes (at, kind, tbl, pk, other_pk) VALUES (${new Date().toISOString()}, ${note.kind}, ${note.table}, ${note.pk}, ${note.other ?? null})`);
       }
@@ -336,11 +340,15 @@ async function noteNotSharedTx(database: Database, changeSet: SelfChangeSet, why
  * the transaction's other rows here (each by rule 2's clock test, so a link made here later stays) and, for a row
  * made, that row under its full key. Any other op is applied as it came.
  */
-async function opsUnderKeyHere(db: Db, op: SelfOp): Promise<SelfOp[]> {
+async function opsUnderKeyHere(db: Db, op: SelfOp, hlc: string): Promise<SelfOp[]> {
   if (op.t !== 'bill_payments' || op.k.length !== 1) return [op];
   const meta = await tableMeta(db, op.t);
   if (!meta || meta.keys.length === 1) return [op];
   const transactionId = op.k[0] as string;
+  // Rule 2 under the old key too: a link removed here before 0127 (its tombstone keeps the one-part key) comes back
+  // only by a fresh insert made after that removal.
+  const tomb = await tombstoneOf(db, op.t, pkText(op.k));
+  if (!op.d && tomb && !(op.i && later(hlc, tomb))) return [];
   const here = await db.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}`);
   const templateId = op.c?.template_id;
   const billMonth = op.c?.bill_month;

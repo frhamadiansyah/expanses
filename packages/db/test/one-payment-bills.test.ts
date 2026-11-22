@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   billChoicesForPurchase,
   billOfPurchase,
+  categoryIdsByKey,
   categoryTotalsBetween,
+  createBook,
+  inBook,
+  personalBook,
   createAccount,
   createCardAccount,
   createDatabase,
@@ -214,6 +218,32 @@ describe('one payment of several bills', () => {
     const deleted = (await activityOf(database, ws)).find((line) => line.kind === 'delete')!;
     await undoActivity(database, ws, deleted.id);
     expect((await stateOf(database, ws, all)).map((s) => s.state)).toEqual(['paid', 'paid', 'paid']);
+  });
+});
+
+describe('Undo of an edit that added a bill', () => {
+  it('lets that bill go: an edit, and a move to another workspace', async () => {
+    current = await setupDb();
+    const { database, ws } = current;
+    const b = await bills(database, ws);
+    const lines = (categoryId: string) => expenseLines({ categoryAccountId: categoryId, paymentAccountId: b.card, amountMinor: 150_000, currency: 'IDR' });
+    const bought = await postTransaction(database, ws, { occurredOn: TODAY, description: 'Pulsa', lines: lines(b.phoneCategory) });
+    await replaceTransaction(database, ws, bought, { occurredOn: TODAY, description: 'Pulsa', lines: lines(b.phoneCategory), billLinks: [{ templateId: b.phone, billMonth: '2026-11' }] });
+    expect((await stateOf(database, ws, [b.phone]))[0]!.state).toBe('paid');
+    await undoActivity(database, ws, (await activityOf(database, ws)).find((line) => line.kind === 'edit')!.id);
+    expect((await stateOf(database, ws, [b.phone]))[0]!.state).not.toBe('paid');
+
+    // Moved to another workspace with the bill added; the move undone.
+    const personal = (await personalBook(database, ws)).id;
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal });
+    const theirs = (await categoryIdsByKey(database, inBook(ws, business)))['utilities.mobile_phone']!;
+    const mine = (await categoryIdsByKey(database, inBook(ws, personal)))['utilities.mobile_phone']!;
+    const at = inBook(ws, personal);
+    const other = await postTransaction(database, at, { occurredOn: TODAY, description: 'Pulsa kantor', lines: lines(mine) });
+    await replaceTransaction(database, at, other, { occurredOn: TODAY, description: 'Pulsa kantor', lines: lines(theirs), moveToBook: true, billLinks: [{ templateId: b.phone, billMonth: '2026-11' }] });
+    expect((await stateOf(database, ws, [b.phone]))[0]!.state).toBe('paid');
+    await undoActivity(database, ws, (await activityOf(database, ws, { kind: 'move' }))[0]!.id);
+    expect((await stateOf(database, ws, [b.phone]))[0]!.state).not.toBe('paid');
   });
 });
 

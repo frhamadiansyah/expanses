@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
-import { createCardAccount, listAccounts, monthlyBills, recordBillsAsOnePayment, saveExpenseTemplate, voidTransaction } from '../../src/index';
+import { createCardAccount, listAccounts, monthlyBills, recordBillPayments, recordBillsAsOnePayment, saveExpenseTemplate, voidTransaction } from '../../src/index';
 import { applySelfChangeSet, collectSelfChanges } from '../../src/self/channel';
 import { encodeHlc } from '../../src/sync/hlc';
 import { exchange, linkedPair, sameRows, type Device } from './devices';
@@ -94,5 +94,37 @@ describe('linked devices', () => {
     // Its removal under the old key takes that one.
     await applySelfChangeSet(mac.database, { v: 1, hlc: encodeHlc(Date.now() + 120_000, 0, 'c3'.repeat(16)), schema: 126, ops: [{ t: 'bill_payments', k: [payment], d: true }] }, mac.deviceId);
     expect(await mac.database.db.values(sql`SELECT template_id FROM bill_payments WHERE transaction_id = ${payment}`)).toEqual([]);
+  });
+
+  it('a bill month paid on both devices before they meet keeps one payment, the same on both; both payments stay', async () => {
+    const { phone, mac, card, b } = await pair();
+    const [mine] = await recordBillsAsOnePayment(phone.database, phone.ws, { paidOn: TODAY, moneyAccountId: card, payments: payments(b).slice(0, 2) });
+    await new Promise((r) => setTimeout(r, 5));
+    const [theirs] = await recordBillPayments(mac.database, mac.ws, { paidOn: TODAY, payments: [{ templateId: b.phone, billMonth: '2026-11', amountMinor: 150_000, moneyAccountId: card }] });
+    await exchange(phone, mac);
+    const holders = async (d: Device, templateId: string) =>
+      (await d.database.db.values<[string]>(sql`SELECT p.transaction_id FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id WHERE p.template_id = ${templateId} AND t.status = 'posted'`)).map(([id]) => id);
+    // The earlier payment, the one payment, keeps Mobile phone's November.
+    expect(await holders(phone, b.phone)).toEqual([mine]);
+    expect(await holders(mac, b.phone)).toEqual([mine]);
+    expect(await holders(mac, b.internet)).toEqual([mine]);
+    for (const d of [phone, mac]) {
+      expect(await d.database.db.values(sql`SELECT status FROM transactions WHERE id IN (${mine}, ${theirs}) ORDER BY id`)).toEqual([['posted'], ['posted']]);
+    }
+  });
+
+  it('an older device’s link for a transaction whose one-part key was removed here stays removed', async () => {
+    const { mac, card, b } = await pair();
+    const [payment] = await recordBillsAsOnePayment(mac.database, mac.ws, { paidOn: TODAY, moneyAccountId: card, payments: payments(b).slice(0, 2) });
+    await collectSelfChanges(mac.database, mac.deviceId);
+    const at = Date.now() + 60_000;
+    await mac.database.db.run(sql`INSERT INTO self_tombstones (tbl, pk, hlc) VALUES ('bill_payments', ${JSON.stringify([payment])}, ${encodeHlc(at, 0, 'c3'.repeat(16))})`);
+    // Not a fresh insert after the removal: an edit of the old row, dated before it.
+    await applySelfChangeSet(
+      mac.database,
+      { v: 1, hlc: encodeHlc(at - 30_000, 0, 'c3'.repeat(16)), schema: 126, ops: [{ t: 'bill_payments', k: [payment], c: { template_id: b.phone2, bill_month: '2026-11' } }] },
+      mac.deviceId,
+    );
+    expect(await mac.database.db.values(sql`SELECT count(*) FROM bill_payments WHERE transaction_id = ${payment}`)).toEqual([[2]]);
   });
 });

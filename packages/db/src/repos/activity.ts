@@ -1,4 +1,4 @@
-import { formatMinor, type PostingLine, uuidv7 } from '@expanses/core';
+import { formatMinor, monthName, type PostingLine, uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -224,7 +224,7 @@ interface AuditEvent {
   id: string;
   at: string;
   /** Where it came from: a person's doing on this phone, a member's change that arrived by sync, an account, a workspace. */
-  src: 'mark' | 'sync' | 'account' | 'book' | 'linked';
+  src: 'mark' | 'sync' | 'account' | 'book' | 'linked' | 'bill';
   op: string;
   entityId: string;
   payload: Record<string, unknown>;
@@ -249,12 +249,13 @@ async function eventsOf(db: Db, ws: WorkspaceContext): Promise<AuditEvent[]> {
       OR (entity = 'transaction' AND action IN ('post', 'void') AND payload_json LIKE '%"syncAuthor"%')
       OR (entity = 'account' AND action = 'rename')
       OR (entity = 'book' AND action = 'delete')
-      OR (entity = 'linked' AND action IN ('maybe_duplicate', 'not_shared')))
+      OR (entity = 'linked' AND action IN ('maybe_duplicate', 'not_shared'))
+      OR (entity = 'bill_link' AND action = 'paid_twice'))
     ORDER BY created_at DESC, rowid DESC LIMIT ${SCAN}`);
   return rows.map(([id, action, entity, entityId, payloadJson, createdAt]) => ({
     id,
     at: createdAt,
-    src: entity === 'activity' ? 'mark' : entity === 'transaction' ? 'sync' : entity === 'account' ? 'account' : entity === 'linked' ? 'linked' : 'book',
+    src: entity === 'activity' ? 'mark' : entity === 'transaction' ? 'sync' : entity === 'account' ? 'account' : entity === 'linked' ? 'linked' : entity === 'bill_link' ? 'bill' : 'book',
     op: action,
     entityId,
     payload: parse(payloadJson),
@@ -320,6 +321,24 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
 
   if (event.src === 'account') {
     return { ...base, kind: 'rename', group: 'accounts', title: 'Account renamed', subtitle: typeof event.payload.name === 'string' ? `Now ${event.payload.name}` : '', who: null, state: 'cannot' };
+  }
+  if (event.src === 'bill') {
+    // A bill month paid on two phones before they met (bill-settle.ts): the earlier payment keeps it, on both.
+    const templateId = String(event.payload.templateId ?? '');
+    const month = String(event.payload.billMonth ?? '');
+    const [bill] = await db.values<[string]>(sql`SELECT name FROM expense_templates WHERE id = ${templateId}`);
+    const v = await versionOf(db, ws, event.entityId);
+    const when = /^\d{4}-\d{2}$/.test(month) ? `${monthName(month, 'long')} ${month.slice(0, 4)}` : 'that month';
+    return {
+      ...base,
+      kind: 'other',
+      group: 'transactions',
+      title: `${bill?.[0] ?? 'A bill'} was paid twice for ${when}`,
+      subtitle: `The earlier payment keeps it${v ? `; ${v.description || 'the other'} no longer pays it` : ''}`,
+      who: null,
+      state: 'cannot',
+      transactionId: v ? event.entityId : null,
+    };
   }
   if (event.src === 'linked' && event.op === 'not_shared') {
     // Link my devices, Drop 6: a change made on another of the owner's devices that the household would not take.
@@ -586,8 +605,8 @@ export async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promi
     eventIdCarried: true,
     templateId: v.templateId,
     billMonth: (bills.find((link) => link.own) ?? bills[0])?.billMonth ?? null,
-    // Put back as they were: the other bills a payment of several settled, and a purchase's links made afterwards.
-    ...(bills.length > 0 ? { billLinks: bills.map(({ templateId, billMonth }) => ({ templateId, billMonth })) } : {}),
+    // Put back exactly as they were — none when it had none: an Undo of an edit that added a bill lets that bill go.
+    billLinks: bills.map(({ templateId, billMonth }) => ({ templateId, billMonth })),
     channel: extras?.channel ?? null,
     excludedFromReport: extras?.excluded ?? false,
     excludedParts: [...excluded],

@@ -129,3 +129,33 @@ test('a Split part’s Bill row links that bill to the purchase', async ({ page 
   await expect(unpaid(page, 'Internet')).toHaveCount(1);
   await expect(unpaid(page, 'Mobile phone 2')).toHaveCount(1);
 });
+
+test('Undo payment on one bill’s page asks to undo the whole payment, naming all three, and un-pays them', async ({ page }) => {
+  await threeBills(page);
+  await page.goto('/bills');
+  await page.getByRole('button', { name: 'Select bills to pay' }).click();
+  for (const name of ['Internet', 'Mobile phone', 'Mobile phone 2']) await page.getByRole('checkbox', { name: `Select ${name}`, exact: true }).click();
+  await page.getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name: /^Pay 3 selected/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  await sheet.getByTestId('several-with').getByRole('button').click();
+  await page.getByRole('dialog', { name: 'Payment method' }).getByRole('button', { name: /Kartu Contoh/ }).click();
+  await sheet.getByRole('checkbox', { name: 'One payment' }).click();
+  await sheet.getByRole('button', { name: /^Record 3 bills · / }).click();
+  await expect(sheet).toHaveCount(0);
+
+  page.removeAllListeners('dialog');
+  const asked: string[] = [];
+  page.on('dialog', (dialog) => {
+    asked.push(dialog.message());
+    void dialog.accept();
+  });
+  await paidGroup(page).getByTestId('bill-row').filter({ hasText: 'Mobile phone 2' }).click();
+  await page.getByTestId('bill-history').getByRole('button', { name: /bill/ }).click();
+  await page.getByRole('dialog', { name: /^Mobile phone 2 · .* bill$/ }).getByRole('button', { name: 'Undo payment' }).click();
+  await expect.poll(() => asked.length).toBe(1);
+  expect(asked[0]).toMatch(/^Undo the whole payment\?\s+Deletes the Rp\s?635\.000 payment\. Internet, Mobile phone and Mobile phone 2 become unpaid for \w+\.$/);
+  await expect(page.getByTestId('bill-history')).toHaveCount(0);
+  await page.goto('/bills');
+  for (const name of ['Internet', 'Mobile phone', 'Mobile phone 2']) await expect(unpaid(page, name)).toHaveCount(1);
+});

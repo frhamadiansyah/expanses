@@ -6,7 +6,10 @@ import {
   listAccounts,
   monthlyBills,
   postTransaction,
+  recordBillPayments,
   recordBillsAsOnePayment,
+  activityOf,
+  replaceTransaction,
   runSharedBookRepairs,
   saveExpenseTemplate,
   voidTransaction,
@@ -111,6 +114,28 @@ describe('household sharing', () => {
     expect(his[2]!.state).not.toBe('paid');
   });
 
+  it('back to one bill while another phone is held back: the other bills still go on a phone that had them', async () => {
+    const { home, wife, husband, card, b } = await household(BUILD);
+    const [payment] = await recordBillsAsOnePayment(wife.database, wife.ws, { paidOn: TODAY, moneyAccountId: card, payments: payments(b) });
+    await home.settle();
+    const ids = [b.internet, b.phone, b.phone2];
+    expect(await paidOf(husband, ids)).toEqual(PAID);
+
+    // His phone now says an older build: lists are held from here.
+    husband.engine = new SyncEngine(husband.database, husband.transport, husband.keys, undefined, { appVersion: OLDER, shareRecords: husband.records });
+    await home.settle();
+    const all = await listAccounts(wife.database, wife.ws);
+    await replaceTransaction(wife.database, wife.ws, payment!, {
+      occurredOn: TODAY,
+      description: 'Internet',
+      lines: splitExpenseLines({ paymentAccountId: card, currency: 'IDR', splits: [{ categoryAccountId: all.find((a) => a.systemKey === 'utilities.internet_provider')!.id, amountMinor: 385_000 }] }),
+      billLinks: [{ templateId: b.internet, billMonth: '2026-11' }],
+    });
+    await home.settle();
+    expect((await paidOf(husband, ids)).map((x) => x!.state === 'paid')).toEqual([true, false, false]);
+    expect(await skipsOf(husband.database)).toEqual([]);
+  });
+
   it('while the other phone is on an older build the list is held — it reads the first bill paid — and goes once it updates', async () => {
     const { home, wife, husband, card, b } = await household(OLDER);
     await recordBillsAsOnePayment(wife.database, wife.ws, { paidOn: TODAY, moneyAccountId: card, payments: payments(b) });
@@ -131,4 +156,49 @@ describe('household sharing', () => {
     expect((await runSharedBookRepairs(wife.database, home.bookId, { today: TODAY })).severalBills).toBeNull();
     expect(await skipsOf(husband.database)).toEqual([]);
   });
+});
+
+describe('a bill month paid on both phones before they meet', () => {
+  /** Who pays a bill's November here: the purchases' lineages, posted ones only. */
+  const holders = async (d: Device, templateId: string) =>
+    (
+      await d.database.db.values<[string]>(sql`
+        SELECT COALESCE(l.lineage_id, t.id) FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
+        LEFT JOIN sync_lineage l ON l.head_transaction_id = t.id
+        WHERE p.template_id = ${templateId} AND p.bill_month = '2026-11' AND t.status = 'posted'`)
+    ).map(([id]) => id);
+  const posted = async (d: Device) => Number((await d.database.db.values<[number]>(sql`SELECT count(*) FROM transactions WHERE status = 'posted' AND description IN ('Bayar sekaligus', 'Mobile phone')`))[0]![0]);
+
+  for (const first of ['her one payment', 'his payment'] as const) {
+    it(`ends with each month paid once, by the same payment on both phones (${first} first)`, async () => {
+      const { home, wife, husband, card, b } = await household(BUILD);
+      const hers = () => recordBillsAsOnePayment(wife.database, wife.ws, { paidOn: TODAY, moneyAccountId: card, description: 'Bayar sekaligus', payments: payments(b).slice(0, 2) });
+      const his = () => recordBillPayments(husband.database, husband.ws, { paidOn: TODAY, payments: [{ templateId: b.phone, billMonth: '2026-11', amountMinor: 150_000, moneyAccountId: husband.bank }] });
+      if (first === 'her one payment') {
+        await hers();
+        await new Promise((r) => setTimeout(r, 5));
+        await his();
+      } else {
+        await his();
+        await new Promise((r) => setTimeout(r, 5));
+        await hers();
+      }
+      await home.settle();
+      await home.settle();
+      for (const bill of [b.internet, b.phone]) {
+        const mine = await holders(wife, bill);
+        expect(mine).toHaveLength(1);
+        expect(await holders(husband, bill)).toEqual(mine);
+      }
+      // Both payments stay: only a link was let go.
+      expect(await posted(wife)).toBe(2);
+      expect(await posted(husband)).toBe(2);
+      expect(await skipsOf(wife.database)).toEqual([]);
+      expect(await skipsOf(husband.database)).toEqual([]);
+      // The phone that let a link go says so.
+      const said = [...(await activityOf(wife.database, wife.ws)), ...(await activityOf(husband.database, husband.ws))].filter((line) => /was paid twice/.test(line.title));
+      expect(said.length).toBeGreaterThan(0);
+      expect(said[0]!.title).toBe('Mobile phone was paid twice for November 2026');
+    });
+  }
 });

@@ -682,8 +682,12 @@ export async function planSpreadWaitsTx(tx: Db, bookId: string, selfDeviceId: st
 /** Where repair R10 keeps the devices it has sent the book's several-bill lists to; cleared whenever one is held. */
 export const severalBillsCrossedKey = (bookId: string) => `repair.several-bills-crossed.v1.${bookId}`;
 
-/** A purchase op that says several bills (0127): what a build before `SEVERAL_BILLS_MIN_APP_VERSION` drops. */
-export const isSeveralBillsOp = (op: Op): boolean => op.entity === 'purchase' && op.op === 'upsert' && 'severalBills' in op.fields;
+/**
+ * A purchase op that names several bills (0127): what a build before `SEVERAL_BILLS_MIN_APP_VERSION` drops. Only a list
+ * is held: a null (the purchase back to one bill or none) always goes, so a phone that took the list before the hold
+ * lets the other bills go too — R10 resends lists alone, and an older build loses nothing by a null (it reads one bill).
+ */
+export const isSeveralBillsOp = (op: Op): boolean => op.entity === 'purchase' && op.op === 'upsert' && Array.isArray(op.fields.severalBills);
 
 /** A purchase op with its several bills taken out while they are held: the rest goes as ever, an op of nothing else not at all. */
 function withoutSeveralBills(op: Op): Op[] {

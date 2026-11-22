@@ -1255,6 +1255,32 @@ async function linkMonthsOf(database: Database, ws: WorkspaceContext, templates:
   );
 }
 
+/**
+ * What a payment's Undo deletes (one payment, several bills; 0127): the bills it pays, its own bill's first, and what
+ * it came to — its category lines, in the money they were charged in. Null when it pays no bill.
+ */
+export async function paymentBills(
+  database: Database,
+  ws: WorkspaceContext,
+  transactionId: string,
+): Promise<{ totalMinor: number; currency: string; bills: { templateId: string; name: string; billMonth: string }[] } | null> {
+  if (!(await billTablesExist(database.db))) return null;
+  const rows = await database.db.values<[string, string, string, number]>(sql`
+    SELECT p.template_id, et.name, p.bill_month, CASE WHEN p.template_id = t.template_id THEN 1 ELSE 0 END
+    FROM bill_payments p JOIN expense_templates et ON et.id = p.template_id JOIN transactions t ON t.id = p.transaction_id
+    WHERE p.transaction_id = ${transactionId} AND p.workspace_id = ${ws.workspaceId}
+    ORDER BY 4 DESC, p.bill_month, et.name`);
+  if (rows.length === 0) return null;
+  const [money] = await database.db.values<[number, string]>(sql`
+    SELECT sum(e.amount_minor), max(e.currency) FROM entries e JOIN accounts a ON a.id = e.account_id
+    WHERE e.transaction_id = ${transactionId} AND a.kind = 'expense'`);
+  return {
+    totalMinor: Number(money?.[0] ?? 0),
+    currency: money?.[1] ?? ws.baseCurrency,
+    bills: rows.map(([templateId, name, billMonth]) => ({ templateId, name, billMonth })),
+  };
+}
+
 /** A bill a split's part may pay (the Split sheet's Bill row): its month for the purchase, and what it is matched by. */
 export interface BillChoice {
   templateId: string;

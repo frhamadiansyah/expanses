@@ -1,3 +1,4 @@
+import { settleTwicePaidBillsTx } from '../repos/bill-settle';
 import { currencyInfo, type PostingLine, uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -1005,8 +1006,9 @@ async function applyBillLinkTx(tx: Db, ctx: BookContext, transactionId: string, 
 /**
  * The several bills a purchase settles as they arrived (one payment, several bills; 0127), written beside the row: a
  * list makes its `bill_payments` rows exactly those — Pay's own bill's row (the `bill` field's) always stays. A bill
- * this phone does not hold links nothing, and a month another posted payment here already settles is left to that one:
- * never paid twice. Null (back to one bill or none) keeps only the first, as `bill` or `billLink` names it.
+ * this phone does not hold links nothing. A month another posted payment here settles too is settled by the caller
+ * (`settleTwicePaidBillsTx`), the same way on every phone. Null (back to one bill or none) keeps only the first, as
+ * `bill` or `billLink` names it.
  */
 async function applySeveralBillsTx(tx: Db, ctx: BookContext, transactionId: string, value: unknown): Promise<void> {
   if (!(await billPaymentsExist(tx))) return;
@@ -1029,10 +1031,6 @@ async function applySeveralBillsTx(tx: Db, ctx: BookContext, transactionId: stri
     const billMonth = typeof given?.billMonth === 'string' && /^\d{4}-\d{2}$/.test(given.billMonth) ? given.billMonth : null;
     if (!templateId || !billMonth) continue;
     if ((await tx.values(sql`SELECT 1 FROM expense_templates WHERE id = ${templateId} AND workspace_id = ${ctx.ws.workspaceId}`)).length === 0) continue;
-    const other = await tx.values(sql`
-      SELECT 1 FROM bill_payments p JOIN transactions t ON t.id = p.transaction_id
-      WHERE p.template_id = ${templateId} AND p.bill_month = ${billMonth} AND p.transaction_id <> ${transactionId} AND t.status = 'posted' LIMIT 1`);
-    if (other.length > 0) continue;
     wanted.push({ templateId, billMonth });
   }
   const here = await tx.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId}`);
@@ -1158,6 +1156,8 @@ async function applyPurchase(
     if ('billLink' in winners) await applyBillLinkTx(tx, ctx, lineage.head!, winners.billLink);
     if ('severalBills' in winners) await applySeveralBillsTx(tx, ctx, lineage.head!, winners.severalBills);
     if ('spread' in winners) await applySpreadTx(tx, ctx, lineage.head!, winners.spread);
+    // A bill month paid here and there before they met: both phones keep it with the same payment (bill-settle.ts).
+    if ('billLink' in winners || 'severalBills' in winners) await settleTwicePaidBillsTx(tx, [lineage.head!]);
     await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }
@@ -1208,6 +1208,8 @@ async function applyPurchase(
       sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label, paid_from_owner, paid_from_item)
           VALUES (${op.id}, ${ctx.bookId}, ${id}, ${state.money.paidBy}, ${state.money.paidLabel}, ${from?.owner ?? null}, ${from?.itemId ?? null})`,
     );
+    // Ranked once its lineage is known here, as on the phone it came from.
+    await settleTwicePaidBillsTx(tx, [id]);
   } else {
     const was = lineage.head!;
     const id = await replaceTransactionTx(tx, ctx.ws, was, input);
@@ -1220,6 +1222,7 @@ async function applyPurchase(
       sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel},
           paid_from_owner = ${from?.owner ?? null}, paid_from_item = ${from?.itemId ?? null} WHERE lineage_id = ${op.id}`,
     );
+    await settleTwicePaidBillsTx(tx, [id]);
   }
   await recordPurchaseClocks(tx, ctx, op.id, won);
   return true;
