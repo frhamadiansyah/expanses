@@ -1250,7 +1250,56 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
     else await voidTransactionTx(tx, ws, settlement);
   } else if (settlement) await voidTransactionTx(tx, ws, settlement);
   else if (settle === true) await settleBeforeAppTx(tx, ws, replacement, input);
+  // A fee reversal before the app keeps the fee row beside it at its amount. Not on applying another device's edit:
+  // that device's own change to the fee row comes with it.
+  if (input.syncAuthor === undefined) await followFeePairsTx(tx, ws, id, replacement);
   return replacement;
+}
+
+/**
+ * The fee row the app added beside a fee reversal before the app follows the reversal's amount (owner, 22 Nov 2026), so
+ * the two still read as the whole fee given back: the row and its settlement are posted again at the new amount, on the
+ * same day, so what the card owes never moves. Named by the row it replaces and the amount, so linked devices that
+ * both do it make the same rows. A row edited by hand into several lines, or a reversal no longer on its card, is left.
+ */
+async function followFeePairsTx(tx: Db, ws: WorkspaceContext, replacedId: string, replacementId: string): Promise<void> {
+  const [any] = await tx.values(sql`SELECT 1 FROM transactions WHERE workspace_id = ${ws.workspaceId} AND status = 'posted' AND external_ref LIKE ${FEE_BEFORE_APP_REF + '%'} LIMIT 1`);
+  if (!any) return;
+  const pairs = await tx.values<[string, string, string, string]>(sql`
+    WITH RECURSIVE up(id) AS (
+      SELECT ${replacedId}
+      UNION SELECT t.replaces_transaction_id FROM transactions t JOIN up ON t.id = up.id WHERE t.replaces_transaction_id IS NOT NULL
+    )
+    SELECT p.id, p.occurred_on, p.description, p.external_ref FROM transactions p
+    WHERE p.workspace_id = ${ws.workspaceId} AND p.status = 'posted'
+      AND p.external_ref IN (SELECT ${FEE_BEFORE_APP_REF} || up.id FROM up)`);
+  for (const [pairId, occurredOn, description, ref] of pairs) {
+    const lines = await tx.values<[string, number, string, number, string, string | null]>(sql`
+      SELECT e.account_id, e.amount_minor, e.currency, e.fx_rate_to_base, a.kind, a.subtype FROM entries e JOIN accounts a ON a.id = e.account_id
+      WHERE e.transaction_id = ${pairId}`);
+    if (lines.length !== 2) continue;
+    const card = lines.find(([, , , , kind, subtype]) => kind === 'liability' && subtype === 'credit_card');
+    const category = lines.find(([, , , , kind]) => kind === 'expense');
+    if (!card || !category) continue;
+    const [back] = await tx.values<[number | null]>(sql`SELECT SUM(amount_minor) FROM entries WHERE transaction_id = ${replacementId} AND account_id = ${card[0]}`);
+    const amount = Number(back?.[0] ?? 0);
+    if (!(amount > 0) || amount === -Number(card[1])) continue;
+    await voidTransactionTx(tx, ws, pairId);
+    await postTransactionTx(tx, ws, {
+      id: await stableId(pairId, `amount:${amount}`),
+      stableLines: true,
+      occurredOn,
+      description,
+      lines: [
+        { accountId: category[0], amountMinor: amount, currency: category[2] },
+        { accountId: card[0], amountMinor: -amount, currency: card[2] },
+      ],
+      ratesToBase: { [card[2]]: Number(card[3]) },
+      externalRef: ref,
+      excludedFromReport: true,
+      settledBeforeApp: true,
+    });
+  }
 }
 
 /** The categories among these lines that the original had left out (0090, 0096): how a carried exclusion is named again. */

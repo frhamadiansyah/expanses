@@ -10,6 +10,7 @@ import {
   categoryIdsByKey,
   createAccount,
   createDatabase,
+  feeLeftOutIds,
   FEE_CHARGE_DESCRIPTION,
   FEE_REVERSAL_DESCRIPTION,
   nativeBalances,
@@ -139,6 +140,57 @@ describe('the fee row beside a fee reversed before the app', () => {
     expect((await t.pairs()).filter((row) => row[3] === 'posted')).toHaveLength(0);
     // The reversal reads as before the app again, and stays out of reports.
     expect((await t.years())?.current).toMatchObject({ lines: ['charged-before-app', 'reversal'], beforeApp: true });
+  });
+});
+
+describe('the fee row follows its reversal', () => {
+  const edit = (t: Awaited<ReturnType<typeof card>>, id: string, amountMinor: number) =>
+    replaceTransaction(t.database, t.ws, id, {
+      occurredOn: '2026-11-13',
+      description: FEE_REVERSAL_DESCRIPTION,
+      lines: refundLines({ categoryAccountId: t.keys['miscellaneous.membership_fee']!, paymentAccountId: t.id, amountMinor, currency: 'IDR' }),
+    });
+  const posted = async (t: Awaited<ReturnType<typeof card>>) =>
+    t.database.db.values<[string, number]>(sql`
+      SELECT t.id, -e.amount_minor FROM transactions t JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${t.id}
+      WHERE t.status = 'posted' AND t.external_ref LIKE 'fee-before-app:%'`);
+
+  it('takes the reversal’s new amount when it is edited, there and back, and the card owes what a lone reversal leaves', async () => {
+    const t = await card();
+    const lone = await card();
+    const back = await addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-11-13' });
+    const loneBack = await lone.olderReversal('2026-11-13', false);
+    const smaller = await edit(t, back, FEE - 50_000);
+    await edit(lone, loneBack, FEE - 50_000);
+    const [pair] = await posted(t);
+    expect(await posted(t)).toHaveLength(1);
+    expect(pair![1]).toBe(FEE - 50_000);
+    expect(await t.everyDay()).toEqual(await lone.everyDay());
+    expect([...(await feeLeftOutIds(t.database, t.ws))].sort()).toEqual([pair![0], smaller].sort());
+    // …and back again: a new row each time, never a clash with the one it replaced.
+    const again = await edit(t, smaller, FEE);
+    expect((await posted(t)).map((row) => row[1])).toEqual([FEE]);
+    expect([...(await feeLeftOutIds(t.database, t.ws))]).toContain(again);
+    expect(await pairBeforeAppFees(t.database, t.ws, TODAY)).toBe(0);
+  });
+
+  it('pairs an edited reversal whose year still keeps the id it had before the edit (an older app’s edit)', async () => {
+    const t = await card();
+    const first = await t.olderReversal();
+    const edited = await edit(t, first, FEE);
+    // An older app did not move the year's link to the edit.
+    await t.database.db.run(sql`UPDATE card_fee_refunds SET transaction_id = ${first} WHERE transaction_id = ${edited}`);
+    expect(await pairBeforeAppFees(t.database, t.ws, TODAY)).toBe(1);
+    expect(await pairBeforeAppFees(t.database, t.ws, TODAY)).toBe(0);
+    expect(await posted(t)).toHaveLength(1);
+  });
+
+  it('pairs an edited reversal whose link moved with the edit', async () => {
+    const t = await card();
+    const first = await t.olderReversal();
+    await edit(t, first, FEE);
+    expect(await pairBeforeAppFees(t.database, t.ws, TODAY)).toBe(1);
+    expect(await pairBeforeAppFees(t.database, t.ws, TODAY)).toBe(0);
   });
 });
 

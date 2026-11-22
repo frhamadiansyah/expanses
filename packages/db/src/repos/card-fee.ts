@@ -660,8 +660,15 @@ export async function pairBeforeAppFees(database: Database, ws: WorkspaceContext
       if (!record.beforeApp || !record.reversal) continue;
       const reversalId = record.reversal.transactionId;
       const done = await database.transaction(async (tx) => {
-        // Read again inside the write: the reversal is still kept against this card, and still has no fee beside it.
-        const [kept] = await tx.values(sql`SELECT 1 FROM card_fee_refunds WHERE transaction_id = ${reversalId} AND account_id = ${cardId} AND workspace_id = ${ws.workspaceId}`);
+        // Read again inside the write: the reversal is still kept against this card, and still has no fee beside it. The
+        // year keeps it by the id it had then (an edit made before edits carried the link keeps the first), so any id of
+        // its edits counts.
+        const [kept] = await tx.values(sql`
+          WITH RECURSIVE up(id) AS (
+            SELECT ${reversalId}
+            UNION SELECT t.replaces_transaction_id FROM transactions t JOIN up ON t.id = up.id WHERE t.replaces_transaction_id IS NOT NULL
+          )
+          SELECT 1 FROM card_fee_refunds WHERE transaction_id IN (SELECT id FROM up) AND account_id = ${cardId} AND workspace_id = ${ws.workspaceId} LIMIT 1`);
         if (!kept) return false;
         const { currency } = await feeCardTx(tx, ws, cardId);
         const again = await feeYearTx(tx, ws, cardId, await feeTerms(tx, ws, cardId), await cardStartsOn(tx, ws, cardId), record.covered, record === years.current);
