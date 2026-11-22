@@ -83,6 +83,8 @@ test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) =
   await page.clock.setSystemTime(new Date('2026-09-20T12:00:00'));
   await setUp(page);
   const sheet = ['1/9\tGrab to office\t32.000\tBCA Tahapan\t', '2/9\tStarbucks\t58.000\tBCA\t'].join('\n');
+  // The cells read a paste once the accounts are loaded; until then the payment cell is disabled.
+  await expect(page.getByTestId('typing-row').getByLabel('Row payment method')).toBeEnabled();
   await page.getByTestId('typing-row').getByLabel('Row description').evaluate((input, text) => {
     const data = new DataTransfer();
     data.setData('text/plain', text);
@@ -105,6 +107,7 @@ test('a pasted row names a card switched off For spending, though picking by han
 
   // By hand, the card is not offered: its name picks nothing.
   const typing = page.getByTestId('typing-row');
+  await expect(typing.getByLabel('Row payment method')).toBeEnabled();
   await pick(typing, 'Row payment method', 'Kartu Contoh');
   await expect(typing.getByLabel('Row payment method')).toHaveValue('');
 
@@ -124,7 +127,8 @@ test('a pasted row names a card switched off For spending, though picking by han
   // And the row records on it.
   await toko.getByRole('button', { name: 'Record Toko Contoh' }).click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
-  await expect(page.getByTestId('table-row').filter({ has: page.locator('input[value="Toko Contoh"]') })).toHaveCount(1);
+  // The recorded row names the card's only plastic, and its cell shows the card.
+  await expect(page.getByTestId('table-row').filter({ has: page.locator('input[value="Toko Contoh"]') }).getByLabel('Row payment method')).toHaveValue('Kartu Contoh');
   await page.goto('/spending');
   await expect(page.getByTestId('period-total')).toContainText('45.000');
 });

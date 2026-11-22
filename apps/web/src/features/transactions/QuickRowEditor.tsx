@@ -6,7 +6,7 @@ import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CellCombo, type ComboOption } from './CellCombo';
-import { matchPasted, pastedPayerOptions, payerOptions, paymentKey, type QuickValues } from './quick-row';
+import { matchPasted, pastedPayerOptions, payerOptions, paymentKey, type QuickValues, shownPaymentKey } from './quick-row';
 
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
@@ -62,6 +62,8 @@ export function buildRowOptions(
      * recorded against a card account with no card named still has to show that account. `key` is a `paymentKey`.
      */
     paidFor: (key: string): ComboOption[] => (key && !paid.some((option) => option.value === key) ? payerOptions(money, cards, key).map(toCombo) : paid),
+    /** The key a row's Paid with cell shows its account and card by (`shownPaymentKey`): the one its choice has. */
+    shownKey: (accountId: string, cardId: string | null | undefined) => shownPaymentKey(accountId, cardId, cards),
     categories,
     resolvePaid: (text: string) => {
       const hit = matchPayment(text, payments);
@@ -157,8 +159,8 @@ export function QuickRowEditor({
       <CellCombo
         label="Row payment method"
         placeholder="Name or last digits"
-        value={paymentKey(values.accountId, values.cardId)}
-        options={options.paidFor(paymentKey(values.accountId, values.cardId))}
+        value={options.shownKey(values.accountId, values.cardId)}
+        options={options.paidFor(options.shownKey(values.accountId, values.cardId))}
         resolve={options.resolvePaid}
         disabled={!options.ready}
         invalid={missing('paid with')}
