@@ -9,6 +9,7 @@ import {
   choicesAfterTyping,
   foreignCharge,
   lineDraft,
+  lineMark,
   missingRateMessage,
   previewDay,
   previewOf,
@@ -288,5 +289,19 @@ describe('previewRow', () => {
     });
     const named = previewRow(previewOf(read('kopi 38rb'), context({ category: { id: 'cat-a', from: 'history' } }), {}), 'x', 'Coffee');
     expect(named).toMatchObject({ categoryId: 'cat-a', categoryName: 'Coffee', needsCategory: false, accountLabel: '', last4: null });
+  });
+});
+
+describe('lineMark', () => {
+  const card = { kind: 'liability', subtype: 'credit_card' };
+  const wallet = { kind: 'asset', subtype: 'ewallet' };
+  it('posts a line dated before its payer was added paid off on a card and as a past purchase on a wallet', () => {
+    expect(lineMark(card, '2026-11-05', '2026-11-04')).toEqual({ settledBeforeApp: true });
+    expect(lineMark(wallet, '2026-11-05', '2026-11-04')).toEqual({ pastPurchase: true });
+  });
+  it('leaves a line on or after the day, a payer with no day, and no payer, as they are', () => {
+    expect(lineMark(card, '2026-11-05', '2026-11-05')).toEqual({});
+    expect(lineMark(card, null, '2026-11-04')).toEqual({});
+    expect(lineMark(undefined, '2026-11-05', '2026-11-04')).toEqual({});
   });
 });

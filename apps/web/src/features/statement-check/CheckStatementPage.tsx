@@ -30,7 +30,7 @@ import { useAccountNumberLast4, useCards, useWalletLast4 } from '../cards/card-q
 import { cycleBack } from '../cards/statement-dates';
 import { dropStatementBatch, setCheckedNote, statementBatch } from './batch';
 import { AskList, type CandidateInfo, type CheckList, CheckResult, DiffersList, FlaggedList, MatchedList, PaymentsList } from './CheckResult';
-import { canRecordAll, corrected, needsCategory, needsWallet, plasticChoice, recordLabel, statementMonth, withOwnCategory, withTopUp } from './check-model';
+import { canRecordAll, corrected, firstDecisions, NO_DECISIONS, needsCategory, needsWallet, plasticChoice, recordLabel, statementMonth, withOwnCategory, withTopUp } from './check-model';
 import { MissingRows } from './MissingRows';
 
 /** `/cards/$cardId/check?start&end&batch`: the period when the card page knows it, and lines already read (S2). */
@@ -90,7 +90,6 @@ function base64Of(file: File): Promise<string> {
   });
 }
 
-const NO_DECISIONS: CheckDecisions = { differs: {}, flagged: {}, ask: {}, moveStart: false };
 
 function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accounts: AccountRow[]; initial: { start: string; end: string }; batch?: string }) {
   const { database, ws } = useApp();
@@ -182,7 +181,7 @@ function CheckBody({ card, accounts, initial, batch }: { card: AccountRow; accou
       dropStatementBatch(batch);
       setPrepared(result);
       setRows(result.rows);
-      setDecisions({ ...NO_DECISIONS, cardId: plastic.choosable ? plastic.chosen : null });
+      setDecisions(firstDecisions(result, plastic.choosable ? plastic.chosen : null));
       setView('result');
       // S10: older than the card's start in cicis, and the summary says what was owed before it. Without it, recording
       // waits for that screenshot. Either way today's balance stays as it is.

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { doorOfForm } from '../goals/set-aside-question';
 import {
   beforeStartLine,
+  pastMarkOn,
   pastMoveRow,
   amountAfterDone,
   amountAfterEnter,
@@ -2145,5 +2146,31 @@ describe('the start day line and receipt row (owner, 22 Nov 2026)', () => {
 
   it('never says you', () => {
     for (const text of [beforeStartLine(['A']), beforeStartLine(['A', 'B']), pastMoveRow(['A'], true).title, pastMoveRow(['A'], false).value]) expect(text).not.toMatch(/\byou(r)?\b/i);
+  });
+});
+
+describe('pastMarkOn: the Paid with icon’s mark, a card’s Already paid off or a money account’s Past purchase', () => {
+  const base = { offered: true, touched: undefined, sameAsSaved: false, saved: undefined, openedOn: '2026-11-01', occurredOn: '2026-10-31' };
+  it('is on by itself for a new purchase dated before the day the account is counted from, off on or after it', () => {
+    expect(pastMarkOn(base)).toBe(true);
+    expect(pastMarkOn({ ...base, occurredOn: '2026-11-01' })).toBe(false);
+    expect(pastMarkOn({ ...base, occurredOn: '2026-11-20' })).toBe(false);
+  });
+  it('is off for an account with no opening day, and wherever the form does not offer it', () => {
+    expect(pastMarkOn({ ...base, openedOn: null })).toBe(false);
+    expect(pastMarkOn({ ...base, offered: false })).toBe(false);
+    expect(pastMarkOn({ ...base, offered: false, touched: true })).toBe(false);
+  });
+  it('follows a tap either way, whatever the date', () => {
+    expect(pastMarkOn({ ...base, touched: false })).toBe(false);
+    expect(pastMarkOn({ ...base, occurredOn: '2026-11-20', touched: true })).toBe(true);
+  });
+  it('reads back a saved purchase’s own mark while its day and account stay, never the date’s', () => {
+    expect(pastMarkOn({ ...base, sameAsSaved: true, saved: false })).toBe(false);
+    expect(pastMarkOn({ ...base, sameAsSaved: true, saved: true, occurredOn: '2026-11-20' })).toBe(true);
+    // Not read yet: off until it is.
+    expect(pastMarkOn({ ...base, sameAsSaved: true, saved: undefined })).toBe(false);
+    // Its day moved: the date decides again.
+    expect(pastMarkOn({ ...base, sameAsSaved: false, saved: false })).toBe(true);
   });
 });

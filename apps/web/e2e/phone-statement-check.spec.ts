@@ -159,9 +159,14 @@ test('a statement older than the card’s start records as already paid off, wit
   await page.getByTestId('statement-files').setInputFiles(screenshotFiles(1));
   await page.getByRole('button', { name: 'Check 1 screenshot' }).click();
 
-  // Without the summary it cannot move the card's start; paid off, it needs nothing more.
+  // Wholly before the card's start, it starts out paid off and needs nothing more (owner, 22 Nov 2026). Switched off,
+  // it cannot move the card's start without the summary.
+  const paidOff = page.getByRole('checkbox', { name: 'Already paid off' });
+  await expect(paidOff).toBeChecked();
+  await expect(page.getByTestId('needs-previous')).toHaveCount(0);
+  await paidOff.click();
   await expect(page.getByTestId('needs-previous')).toBeVisible();
-  await page.getByRole('checkbox', { name: 'Already paid off' }).click();
+  await paidOff.click();
   await expect(page.getByTestId('needs-previous')).toHaveCount(0);
   await page.getByTestId('count-missing').click();
   await page.getByTestId('missing-row').getByRole('button', { name: /Choose category/ }).click();

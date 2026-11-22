@@ -869,6 +869,37 @@ export function isPastDefault(accountOpenedOn: string | null | undefined, occurr
   return !!accountOpenedOn && occurredOn < accountOpenedOn;
 }
 
+/** The mark a new expense, income or money back starts out with from its date (`pastMarkDefault`). */
+export type PastMark = { pastPurchase?: true; settledBeforeApp?: true };
+
+/**
+ * The one date rule every way in starts a new purchase with (owner, 22 Nov 2026): dated strictly before the day the
+ * account it is paid with (or received into) is counted from (`isPastDefault`), a money account's is a past purchase —
+ * its balance stays — and a credit card's is paid off before the app — what the card owed when it was added already
+ * holds it. Nothing for any other account, an account with no opening day, or on or after that day. Only a default:
+ * the Add form can switch it off for that purchase, and nothing already saved is rewritten.
+ */
+export function pastMarkDefault(
+  account: { kind: string; subtype: string } | null | undefined,
+  openedOn: string | null | undefined,
+  occurredOn: string,
+): PastMark {
+  if (!account || !isPastDefault(openedOn, occurredOn)) return {};
+  if (account.kind === 'asset' && SPENDABLE_SUBTYPES.includes(account.subtype as AccountSubtype)) return { pastPurchase: true };
+  if (account.kind === 'liability' && account.subtype === 'credit_card') return { settledBeforeApp: true };
+  return {};
+}
+
+/**
+ * `pastMarkDefault` for a door that has no opening day at hand (the desk's quick row): the account's start day read as
+ * the Add form reads it (`startDayOfTx`).
+ */
+export async function pastMarkFor(database: Database, ws: WorkspaceContext, accountId: string, occurredOn: string): Promise<PastMark> {
+  const [account] = await database.db.select({ kind: accounts.kind, subtype: accounts.subtype }).from(accounts).where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!account) return {};
+  return pastMarkDefault(account, await startDayOfTx(database.db, ws, accountId), occurredOn);
+}
+
 /** Whether a purchase on a money account carries the past mark: the same balancing row `settledBeforeAppOf` finds. */
 export const pastPurchaseOf = settledBeforeAppOf;
 

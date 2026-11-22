@@ -13,6 +13,7 @@ import {
   moveIntoSharedEvent,
   moveTransactionInDay,
   ownerScope,
+  pastMarkFor,
   postTransaction,
   replaceTransaction,
   type AccountRow,
@@ -930,7 +931,10 @@ export function TransactionsPage() {
     if (!read) return false;
     const input = quickToInput(read, accounts);
     return guarded('typing', spendingDoor(read.accountId, outflowFrom(input.lines, read.accountId)), null, async (choice) => {
-      await postTransaction(database, ws, { ...input, ratesToBase: await ratesFor(read), setAside: choice });
+      // A row dated before its account was added starts out as the Add form's would: a past purchase on money, paid off
+      // on a card (`pastMarkFor`). The row has no switch for it; the receipt or the card's statement changes it after.
+      const mark = await pastMarkFor(database, ws, read.accountId, read.occurredOn);
+      await postTransaction(database, ws, { ...input, ratesToBase: await ratesFor(read), setAside: choice, ...mark });
     });
   }
 

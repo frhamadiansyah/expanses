@@ -116,6 +116,12 @@ export interface PreparedCheck {
   /** The card's opening is later than the period's start (S10). */
   startsAfterPeriod: boolean;
   /**
+   * The whole period is before the card's start: every row is older than the card, so the check starts out recorded
+   * as already paid off (`paidOff`), by the date rule a purchase typed in follows (owner, 22 Nov 2026). Left out by an
+   * older reading, false.
+   */
+  endsBeforeStart?: boolean;
+  /**
    * Older than the card's start with no previous balance read, now or by an earlier check of the period: recording
    * waits for the summary screenshot that shows it.
    */
@@ -522,6 +528,7 @@ export async function prepareStatementCheck(
     emptyImages: reading.emptyImages,
     cardBalanceAtEndMinor: (await cardStatement(database, ws, cardAccountId, period, input.today)).closingMinor,
     startsAfterPeriod,
+    endsBeforeStart: opening !== null && opening.occurredOn > period.end,
     needsPreviousBalance: startsAfterPeriod && reading.previousMinor === null && (existing?.previousMinor ?? null) === null,
     alreadyChecked: existing !== undefined,
     trackPayments,
