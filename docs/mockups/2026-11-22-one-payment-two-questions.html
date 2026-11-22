@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>One payment: two choices</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; --tint:#007aff; --green:#248a3d; --red:#c0392b; --alarm:#ff3b30; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:17px; margin:28px 0 4px; } .sub { color:#555; margin:0 0 14px; max-width:1150px; line-height:1.4; }
+  .wrap { display:flex; gap:22px; align-items:flex-start; }
+  .col { width:350px; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .cap b { display:inline-block; min-width:20px; height:20px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:20px; font-size:12px; margin-right:6px; padding:0 4px; }
+  .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:52px; line-height:1.4; }
+  .phone { background:var(--ground); border-radius:26px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); position:relative; overflow:hidden; }
+  .card { background:#fff; border-radius:16px; overflow:hidden; }
+  .day { display:flex; align-items:center; gap:14px; padding:12px 14px; border-bottom:1px solid var(--hair); }
+  .day .d { font-size:30px; font-weight:600; width:38px; } .day .w { flex:1; } .day .w div:first-child { font-weight:600; font-size:15px; } .day .w div:last-child { color:var(--ink3); font-size:14px; } .day .t { font-weight:600; font-size:16px; }
+  .tx { display:flex; align-items:center; gap:12px; padding:12px 14px; }
+  .ic { width:44px; height:44px; border-radius:50%; background:#dff1f6; color:#1591b0; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; }
+  .grow { flex:1; min-width:0; } .grow .n { font-size:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .grow .s { font-size:14px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .amt { color:var(--red); font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#2e8b3e; border-radius:9px; padding:1px 7px; margin-left:6px; vertical-align:2px; } .grey { background:#8e8e93; }
+  .title { font-size:26px; font-weight:700; margin:6px 4px 12px; }
+  .grp { background:#fff; border-radius:12px; overflow:hidden; margin-bottom:12px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; gap:8px; } .r + .r { border-top:.5px solid var(--hair); }
+  .v { color:var(--ink3); } .link { color:var(--tint); } .del { color:var(--alarm); }
+  .dim { position:absolute; inset:0; background:rgba(0,0,0,.28); }
+  .alert { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:270px; background:rgba(248,248,250,.98); border-radius:14px; text-align:center; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  .alert .h { font-weight:600; font-size:16px; padding:16px 16px 4px; } .alert .b { font-size:13px; color:var(--ink2); padding:0 16px 14px; line-height:1.35; }
+  .alert .btn { border-top:.5px solid #c6c6c8; padding:11px; font-size:16px; color:var(--tint); } .alert .btn.d { color:var(--alarm); font-weight:600; }
+  .foot { font-size:12.5px; color:#555; margin:8px 2px 0; line-height:1.4; } .foot b { color:var(--ink); }
+  .pill { font-size:13px; color:var(--green); }
+</style></head>
+<body>
+<h1>One payment, several bills · two choices</h1>
+<p class="sub">Three bills (Internet Rp385.000, Mobile phone Rp150.000, Mobile phone 2 Rp100.000) paid in one card payment of Rp635.000. Invented bills and card.</p>
+
+<h2>Question 1 · How the payment reads in Cashflow</h2>
+<div class="wrap">
+  <div class="col">
+    <p class="cap"><b>A</b>Like every split row today <span class="tag grey">AS BUILT</span></p>
+    <p class="note">The categories on top, the Note and card digits underneath.</p>
+    <div class="phone"><div class="card">
+      <div class="day"><span class="d">22</span><div class="w"><div>Sunday</div><div>November 2026</div></div><span class="t">Rp 635.000</span></div>
+      <div class="tx"><span class="ic">◠</span><div class="grow"><div class="n">Internet provider, Mobile …</div><div class="s">Bayar sekaligus · 4417</div></div><span class="amt">Rp 635.000</span></div>
+    </div></div>
+  </div>
+  <div class="col">
+    <p class="cap"><b>B</b>The Note on top <span class="tag">SUGGESTED</span></p>
+    <p class="note">What the card statement says on top, “3 bills” and the digits underneath. Only for a payment that pays several bills; other split rows stay as today.</p>
+    <div class="phone"><div class="card">
+      <div class="day"><span class="d">22</span><div class="w"><div>Sunday</div><div>November 2026</div></div><span class="t">Rp 635.000</span></div>
+      <div class="tx"><span class="ic">◠</span><div class="grow"><div class="n">Bayar sekaligus</div><div class="s">3 bills · 4417</div></div><span class="amt">Rp 635.000</span></div>
+    </div></div>
+  </div>
+</div>
+
+<h2>Question 2 · “Undo payment” on one bill's page (here: Mobile phone)</h2>
+<div class="wrap">
+  <div class="col">
+    <p class="cap"><b>A</b>Undo removes the whole payment <span class="tag grey">AS BUILT</span></p>
+    <p class="note">The one payment is deleted, so all three bills are unpaid again. The question names all three.</p>
+    <div class="phone" style="height:470px">
+      <div class="title">Mobile phone</div>
+      <div class="grp"><div class="r"><span>November</span><span class="pill">Paid 22 Nov</span></div><div class="r"><span>Payment</span><span class="v">Bayar sekaligus · 3 bills</span></div></div>
+      <div class="grp"><div class="r"><span class="link">Open payment</span></div><div class="r"><span class="del">Undo payment</span></div></div>
+      <div class="dim"></div>
+      <div class="alert"><div class="h">Undo the whole payment?</div><div class="b">Deletes the Rp635.000 payment. Internet, Mobile phone and Mobile phone 2 become unpaid for November.</div><div class="btn d">Undo payment</div><div class="btn">Cancel</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap"><b>B</b>Only this bill becomes unpaid <span class="tag">SUGGESTED</span></p>
+    <p class="note">For a payment of several bills, the button reads “Unpay this bill”: only Mobile phone is unpaid; the payment and the other two bills stay. Deleting the payment itself is done from the payment.</p>
+    <div class="phone" style="height:470px">
+      <div class="title">Mobile phone</div>
+      <div class="grp"><div class="r"><span>November</span><span class="pill">Paid 22 Nov</span></div><div class="r"><span>Payment</span><span class="v">Bayar sekaligus · 3 bills</span></div></div>
+      <div class="grp"><div class="r"><span class="link">Open payment</span></div><div class="r"><span class="del">Unpay this bill</span></div></div>
+      <div class="dim"></div>
+      <div class="alert"><div class="h">Unpay Mobile phone?</div><div class="b">Mobile phone becomes unpaid for November. The Rp635.000 payment stays, and Internet and Mobile phone 2 stay paid.</div><div class="btn d">Unpay this bill</div><div class="btn">Cancel</div></div>
+    </div>
+  </div>
+</div>
+</body></html>
