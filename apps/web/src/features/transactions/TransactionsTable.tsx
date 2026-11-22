@@ -114,7 +114,7 @@ function TypingRow({ options, accounts, today, baseCurrency, handlers }: { optio
         onPaste={(text) => {
           const rows = parsePastedRows(text);
           if (rows.length === 0) return false;
-          void handlers.keepPasted(rows.map((cells) => valuesFromCells(cells, { paid: options.resolvePaid, category: options.resolveCategory }, today)));
+          void handlers.keepPasted(rows.map((cells) => valuesFromCells(cells, { paid: options.resolvePastedPaid, category: options.resolveCategory }, today)));
           return true;
         }}
         actions={

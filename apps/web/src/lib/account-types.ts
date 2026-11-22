@@ -181,6 +181,16 @@ export function canPayWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'> 
 }
 
 /**
+ * May a **paste** name this account as what paid? What `canPayWith` offers, and also an account or card switched off
+ * "For spending" (owner, 2026-11-22): an old list pasted in (from Notion, a spreadsheet) names cards since put aside,
+ * and the paste has to be able to say so. Picking by hand still offers only what is for spending (`canPayWith`), and
+ * an archived account is never in the lists this is asked of (`moneyHolders`).
+ */
+export function canPasteAsPaidWith(account: Pick<AccountRow, 'kind' | 'subtype'>): boolean {
+  return account.kind === 'asset' ? SPENDABLE_SUBTYPES.includes(account.subtype) : account.subtype === 'credit_card';
+}
+
+/**
  * May this account be the money side of a trade on an asset page? The list those sheets always had — money the ledger
  * moves, a broker's cash included — and, on a **buy** only, a credit card, by the full Buy form's own rule
  * (`canPayWith`: its "For spending" switch on, or already the one the trade names). A sale, a coupon or a payout never

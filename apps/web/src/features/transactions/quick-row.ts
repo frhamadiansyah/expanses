@@ -1,6 +1,6 @@
 import { expenseLines, minorToMajorString, parseLooseAmount, parseLooseDate, type PaymentOption, type PostingLine } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
-import { canPayWith } from '../../lib/account-types';
+import { canPasteAsPaidWith, canPayWith } from '../../lib/account-types';
 import { classify } from './classify';
 
 /**
@@ -186,6 +186,27 @@ export function payerOptions(accounts: readonly AccountRow[], cards: readonly Ca
     cards,
     current,
   );
+}
+
+/**
+ * Every way to pay a pasted Paid with cell may name (`canPasteAsPaidWith`): `payerOptions`'s, and the cards and accounts
+ * switched off "For spending" too. A paste reads what is for spending first and turns to these only when nothing there
+ * matches (`matchPasted`), so a name or digits that matched before still match the same way.
+ */
+export function pastedPayerOptions(accounts: readonly AccountRow[], cards: readonly CardRow[]): PaymentOption[] {
+  return paymentOptions(
+    accounts.filter((account) => canPasteAsPaidWith(account)),
+    cards,
+  );
+}
+
+/**
+ * A pasted cell read by `read` against `offered` (what picking by hand offers), else against `pasteable` (what a paste
+ * may name, `pastedPayerOptions`). Several matches stay no answer: `pasteable` holds every one of `offered`, so text
+ * that names two of those names two of these too.
+ */
+export function matchPasted<T>(read: (options: readonly PaymentOption[]) => T | null, offered: readonly PaymentOption[], pasteable: readonly PaymentOption[]): T | null {
+  return read(offered) ?? read(pasteable);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { openAccount, openAccountHistory } from './accounts';
+import { openAccount, openAccountHistory, openCard } from './accounts';
 
 async function setUp(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
@@ -93,6 +93,40 @@ test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) =
   const grab = page.getByTestId('not-recorded-row').filter({ has: page.locator('input[value="Grab to office"]') });
   await expect(grab.getByLabel('Row payment method')).toHaveValue('BCA Tahapan');
   await expect(page.getByTestId('typing-row').getByLabel('Row description')).toHaveValue('');
+});
+
+test('a pasted row names a card switched off For spending, though picking by hand does not offer it', async ({ page }) => {
+  await page.clock.setSystemTime(new Date('2026-09-20T12:00:00'));
+  await openCard(page, { name: 'Kartu Contoh', last4: '4417' });
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).first().click();
+  await page.getByRole('checkbox', { name: 'For spending' }).click();
+  await expect(page.getByRole('checkbox', { name: 'For spending' })).not.toBeChecked();
+  await setUp(page);
+
+  // By hand, the card is not offered: its name picks nothing.
+  const typing = page.getByTestId('typing-row');
+  await pick(typing, 'Row payment method', 'Kartu Contoh');
+  await expect(typing.getByLabel('Row payment method')).toHaveValue('');
+
+  // An old list pasted in names it, by name and by its last four digits.
+  const sheet = ['3/9\tToko Contoh\t45.000\tKartu Contoh\tGroceries', '4/9\tWarung Contoh\t12.000\t4417\t'].join('\n');
+  await typing.getByLabel('Row description').evaluate((input, text) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', text);
+    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, sheet);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+  const toko = page.getByTestId('not-recorded-row').filter({ has: page.locator('input[value="Toko Contoh"]') });
+  const warung = page.getByTestId('not-recorded-row').filter({ has: page.locator('input[value="Warung Contoh"]') });
+  await expect(toko.getByLabel('Row payment method')).toHaveValue('Kartu Contoh');
+  await expect(warung.getByLabel('Row payment method')).toHaveValue('Kartu Contoh');
+
+  // And the row records on it.
+  await toko.getByRole('button', { name: 'Record Toko Contoh' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(page.getByTestId('table-row').filter({ has: page.locator('input[value="Toko Contoh"]') })).toHaveCount(1);
+  await page.goto('/spending');
+  await expect(page.getByTestId('period-total')).toContainText('45.000');
 });
 
 /**

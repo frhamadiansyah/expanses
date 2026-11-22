@@ -6,7 +6,7 @@ import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CellCombo, type ComboOption } from './CellCombo';
-import { payerOptions, paymentKey, type QuickValues } from './quick-row';
+import { matchPasted, pastedPayerOptions, payerOptions, paymentKey, type QuickValues } from './quick-row';
 
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
@@ -39,6 +39,8 @@ export function buildRowOptions(
   });
   // The cell says what paid, so it offers only what can: never a locked deposit, never a house.
   const payments = payerOptions(money, cards, '');
+  // A paste may also name a card or account switched off "For spending" (owner, 2026-11-22); picking by hand may not.
+  const pasteable = pastedPayerOptions(money, cards);
   const paid: ComboOption[] = payments.map(toCombo);
   const categoryRows = offeredCategories(accounts, 'expense', membership, inOpenBook);
   const byId = new Map(accounts.map((a) => [a.id, a]));
@@ -66,6 +68,14 @@ export function buildRowOptions(
       return hit ? paymentKey(hit.accountId, hit.cardId) : null;
     },
     resolveCategory: (text: string) => matchCategory(text, categoryMatch),
+    /**
+     * A pasted Paid with cell (the wide table's paste): matched as typed text is, and — only when nothing for spending
+     * matches — against the cards and accounts switched off "For spending" too (`matchPasted`).
+     */
+    resolvePastedPaid: (text: string) => {
+      const hit = matchPasted((options) => matchPayment(text, options), payments, pasteable);
+      return hit ? paymentKey(hit.accountId, hit.cardId) : null;
+    },
   };
 }
 
