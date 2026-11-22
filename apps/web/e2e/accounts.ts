@@ -117,6 +117,8 @@ export async function openAccountHistory(page: Page, name: string) {
  * to the balance when it is not there already, so a journey that reads the balance can call this wherever it is.
  */
 export async function showBalance(page: Page) {
+  // The raised card is drawn once Wallet's cards are read (set-asides too): wait for it before asking which side is up.
+  await page.getByTestId('balance-card').waitFor({ state: 'attached' });
   const turn = page.getByRole('button', { name: /, show balance$/ });
   if ((await turn.count()) > 0) await turn.click();
   await expect(page.getByTestId('balance-card')).toBeVisible();
