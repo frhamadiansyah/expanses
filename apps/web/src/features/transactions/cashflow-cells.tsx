@@ -125,7 +125,7 @@ export function useCashflowCells({
         if (!typed) return { ...values, accountId: '', cardId: '' };
         const link = notionKey(typed);
         const remembered = rememberedPaid(link ?? typed);
-        const known = remembered && rowOptions.paidFor('').some((option) => option.value === remembered) ? remembered : null;
+        const known = remembered && rowOptions.pasteMayName(remembered) ? remembered : null;
         const key = (link ? null : rowOptions.resolvePastedPaid(typed)) ?? known;
         if (!key) return null;
         const [accountId = '', cardId = ''] = key.split(':');

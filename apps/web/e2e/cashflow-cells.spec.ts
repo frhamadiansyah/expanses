@@ -238,6 +238,32 @@ test('a Notion copy reads right: its header names, YYYY/MM/DD dates, a card by i
   await expect(tickOf(page, 'Parkir Mal')).toHaveAttribute('data-tick', 'missing');
 });
 
+test('a paste names a card switched off For spending, by name or last four digits, and records on it; picking by hand does not offer it', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await openCard(page, { name: 'Kartu Simpan', owed: '0', last4: '4417' });
+  await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).first().click();
+  await page.getByRole('checkbox', { name: 'For spending' }).click();
+  await expect(page.getByRole('checkbox', { name: 'For spending' })).not.toBeChecked();
+  await page.goto('/transactions');
+
+  // By hand, the card is not among the choices.
+  const typed = page.getByTestId('typing-row').getByLabel('Row payment method');
+  await typed.fill('Kartu Simpan');
+  await expect(page.getByRole('option', { name: /Kartu Simpan/ })).toHaveCount(0);
+  await typed.press('Escape');
+
+  await pasteInto(page, ['2026/10/03\tToko Lama\tGroceries\tKartu Simpan\t45,000', '2026/10/04\tKedai Lama\tCafe\t····4417\t12,000'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+  await expect(draftRow(page, 'Toko Lama').getByLabel('Row payment method')).toHaveValue('Kartu Simpan');
+  await expect(draftRow(page, 'Kedai Lama').getByLabel('Row payment method')).toHaveValue('Kartu Simpan');
+  await expect(tickOf(page, 'Toko Lama')).toHaveAttribute('data-tick', 'on');
+
+  await recordRow(page, 'Toko Lama');
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Toko Lama' })).toHaveCount(1);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Toko Lama' })).toContainText('Kartu Simpan');
+});
+
 test('Notion’s whole rows (page links, no cells) are not pasted as notes: a line says how to copy cells', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');

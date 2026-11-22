@@ -7,7 +7,7 @@ import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import type { CellColumn } from './cell-range';
 import { CellCombo, type ComboAdd, type ComboOption } from './CellCombo';
-import { foldName, lastFourOf, matchLastFour, payerOptions, paymentKey, type QuickValues } from './quick-row';
+import { foldName, lastFourOf, matchLastFour, matchPasted, pastedPayerOptions, payerOptions, paymentKey, type QuickValues } from './quick-row';
 
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
@@ -72,6 +72,8 @@ export function buildRowOptions(
   });
   // The cell says what paid, so it offers only what can: never a locked deposit, never a house.
   const payments = payerOptions(money, cards, '');
+  // A paste may also name a card or account switched off "For spending" (owner, 2026-11-22); picking by hand may not.
+  const pasteable = pastedPayerOptions(money, cards);
   const paid: ComboOption[] = payments.map(toCombo);
   const categoryRows = offeredCategories(accounts, 'expense', membership, inOpenBook);
   const byId = new Map(accounts.map((a) => [a.id, a]));
@@ -108,13 +110,20 @@ export function buildRowOptions(
     /**
      * A pasted Paid with cell (the wide table's paste, and a range of its cells): four digits — bare or after a mask —
      * name the one card or account showing them (`matchLastFour`), else nothing; any other text reads as a typed one.
+     * Either way, only when nothing for spending matches, the cards and accounts switched off "For spending" are
+     * matched too (`matchPasted`, owner 2026-11-22): an old list names cards since put aside.
      */
     resolvePastedPaid: (text: string) => {
       const four = lastFourOf(text);
-      if (four) return matchLastFour(four, payments, numbers);
-      const hit = matchPayment(text, payments);
+      if (four) return matchPasted((options) => matchLastFour(four, options, numbers), payments, pasteable);
+      const hit = matchPasted((options) => matchPayment(text, options), payments, pasteable);
       return hit ? paymentKey(hit.accountId, hit.cardId) : null;
     },
+    /**
+     * Whether a paste may fill a Paid with cell with this way to pay (`paymentKey`), as one remembered from an earlier
+     * paste: one offered by hand, or one switched off "For spending" (`pastedPayerOptions`).
+     */
+    pasteMayName: (key: string) => pasteable.some((option) => paymentKey(option.accountId, option.cardId) === key),
   };
 }
 

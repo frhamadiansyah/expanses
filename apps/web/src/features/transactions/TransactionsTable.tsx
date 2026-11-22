@@ -237,9 +237,10 @@ export function TypingRow({
           setNotice(null);
           // Read in the columns this table shows; a header row (taken, never kept) may name them in any order.
           const cells = pastedCells(rows, desk ? 'desk' : 'row');
-          // The desk reads a Paid with cell of four digits as the card or account showing them.
-          // and a Category cell with accents left out and "&" as "and" (`resolvePastedCategory`).
-          const paid = desk ? options.resolvePastedPaid : options.resolvePaid;
+          // A Paid with cell reads four digits as the card or account showing them, and may name one switched off
+          // "For spending" (`resolvePastedPaid`); the desk reads a Category cell with accents left out and "&" as "and"
+          // (`resolvePastedCategory`).
+          const paid = options.resolvePastedPaid;
           const category = desk ? options.resolvePastedCategory : options.resolveCategory;
           const read = cells.map((each) => ({ cells: each, values: valuesFromCells(each, { paid, category }, today) }));
           if (read.length === 0) return true;
@@ -250,7 +251,8 @@ export function TypingRow({
           // The desk fills a category the paste left empty, or named in words no category has, and a Paid with it remembers
           // (a name or a Notion link), as `pastedCategories` says.
           const offered = (categoryId: string) => options.categories.some((option) => option.value === categoryId);
-          const offeredPaid = (key: string) => options.paidFor('').some((option) => option.value === key);
+          // A remembered way to pay came from a paste, so it may be one switched off "For spending" (`pasteMayName`).
+          const offeredPaid = options.pasteMayName;
           const ctx = { remembered: (name: string) => rememberedCategory(name), history: handlers.guessCategory, offered, rememberedPaid: (name: string) => rememberedPaid(name), offeredPaid };
           void pastedCategories(read, ctx).then((rows) =>
             handlers.keepPasted(
