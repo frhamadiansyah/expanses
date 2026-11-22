@@ -9,7 +9,8 @@ import { cardPostings, cardSettlements } from '../schema-cards';
 import { cardTerms } from '../schema-points';
 import { splitBooksOfMany } from './book-splits';
 import { listInstallmentsTx } from './installments';
-import { postTransactionTx } from './ledger';
+import { FEE_BEFORE_APP_REF, postTransactionTx } from './ledger';
+import { feeReversalIds } from './fee-left-out';
 import type { SetAsideChoice } from './set-aside-tx';
 
 export class StatementError extends Error {
@@ -91,6 +92,13 @@ export interface StatementLine {
    * categories, largest first, for the line to name ("Groceries · Office supplies"). Absent on any other line.
    */
   splitCategories?: string[];
+  /**
+   * An annual fee's money back, or the fee row the app added beside a fee reversed before the app (owner, 22 Nov 2026):
+   * shown settled (the paid ✓, "Settled") on its own, with no mark to give or take back. The money back still counts
+   * and is used as credit like any refund; the added fee row and its settlement count nothing (they net to nothing),
+   * so no total, cover or "N of M paid" changes for them.
+   */
+  feeSettled?: true;
 }
 
 export interface CardStatement {
@@ -173,6 +181,9 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
     for (const [transactionId, name] of parts) partNames.set(transactionId, [...(partNames.get(transactionId) ?? []), name]);
   }
   const settled = new Set(rows.flatMap((row) => (row[12]?.startsWith(BEFORE_APP) ? [row[12].slice(BEFORE_APP.length)] : [])));
+  // The fee rows the app added for fees reversed before the app, and their settlements: they net to nothing on the card.
+  const feePairs = new Set(rows.flatMap((row) => (row[12]?.startsWith(FEE_BEFORE_APP_REF) ? [row[0]] : [])));
+  const netsNothing = (id: string, ref: string | null) => feePairs.has(id) || (ref?.startsWith(BEFORE_APP) === true && feePairs.has(ref.slice(BEFORE_APP.length)));
   return rows
     .map(([transactionId, occurredOn, postedOn, description, cardId, owed, spending, paymentId, paidOn, originalCurrency, originalAmount, settles, ref, trade]) => ({
       transactionId,
@@ -183,7 +194,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       cardId,
       key: transactionId,
       owedMinor: Number(owed),
-      countedMinor: Number(owed),
+      countedMinor: netsNothing(transactionId, ref) ? 0 : Number(owed),
       instalment: null,
       convertedTo: null,
       spending: Boolean(spending),
@@ -196,6 +207,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       ...(ref?.startsWith(PLAN_OWED_REF) ? { owedOf: ref.slice(PLAN_OWED_REF.length) } : {}),
       ...(partNames.has(transactionId) ? { splitCategories: partNames.get(transactionId)! } : {}),
       ...(Number(trade) === 1 ? { trade: true as const } : {}),
+      ...(feePairs.has(transactionId) ? { feeSettled: true as const } : {}),
     }))
     .sort((a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId));
 }
@@ -321,7 +333,14 @@ async function largestCategoryOf(db: Db, transactionIds: readonly string[]): Pro
 
 /** Every line the card has ever had, as statements bill them, for searching across statements. */
 export async function cardStatementLines(database: Database, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
-  return (await billedLines(database.db, ws, cardAccountId)).filter((line) => !line.balancing);
+  return withFeeReversals(database, ws, (await billedLines(database.db, ws, cardAccountId)).filter((line) => !line.balancing));
+}
+
+/** Marks each annual fee reversal settled on its own (`feeSettled`), as the Fee waiver page reads them. Only how it shows. */
+async function withFeeReversals(database: Database, ws: WorkspaceContext, lines: StatementLine[]): Promise<StatementLine[]> {
+  const reversals = await feeReversalIds(database, ws);
+  if (reversals.size === 0) return lines;
+  return lines.map((line) => (reversals.has(line.transactionId) && !line.instalment && line.owedMinor < 0 ? { ...line, feeSettled: true as const } : line));
 }
 
 /** A payment onto a card, as the statement's paid ✓ names it: how much went onto the card, and where it came from. */
@@ -355,7 +374,9 @@ export async function cardPaymentSource(database: Database, ws: WorkspaceContext
  * to a plan. One answer for the statement's swipe, its ⋯ and the receipt's switch.
  */
 export function carriesPaidOffMark(line: StatementLine): boolean {
-  return line.spending && line.owedMinor !== 0 && !line.paidBy && !line.instalment && !line.convertedTo;
+  // An annual fee's money back, and the fee row added beside one before the app, are settled on their own: a mark there
+  // would post a settlement and change what the card owes.
+  return line.spending && line.owedMinor !== 0 && !line.paidBy && !line.instalment && !line.convertedTo && !line.feeSettled;
 }
 
 /** The receipt's question about one transaction: a refund rather than a purchase, and whether the mark stands. */
@@ -401,7 +422,7 @@ export async function cardStatements(database: Database, ws: WorkspaceContext, c
     .where(and(eq(accounts.id, cardAccountId), eq(accounts.workspaceId, ws.workspaceId)));
   if (!card) throw new StatementError('NOT_FOUND', 'That card is not in this workspace');
   if (cycles.length === 0) return [];
-  const all = await billedLines(database.db, ws, cardAccountId);
+  const all = await withFeeReversals(database, ws, await billedLines(database.db, ws, cardAccountId));
   const pool = poolLinesOf(all);
   return cycles.map((cycle) => statementOf(all, pool, cycle, today, card.currency ?? ws.baseCurrency));
 }

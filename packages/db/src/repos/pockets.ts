@@ -199,7 +199,7 @@ export interface Opening {
   fxRateToBase: number;
 }
 
-/** Each account's opening balance — the earliest posted entry that met the Opening balance equity account, a card plan's owed line aside. */
+/** Each account's opening balance — the earliest posted entry that met the Opening balance equity account, a card plan's owed line and a paid-off purchase's settlement aside. */
 export async function openingsOf(database: Database, ws: WorkspaceContext, accountIds: readonly string[]): Promise<Record<string, Opening>> {
   if (accountIds.length === 0) return {};
   const equityId = await systemAccountId(database.db, ws, 'opening_balance');
@@ -223,8 +223,9 @@ export async function openingsOf(database: Database, ws: WorkspaceContext, accou
         eq(transactions.status, 'posted'),
         inArray(entries.accountId, [...accountIds]),
         inArray(entries.transactionId, openingTxs),
-        // A card instalment plan's owed line (plan-owed.ts, 0124) is no opening of the card's own.
-        sql`(${transactions.externalRef} IS NULL OR ${transactions.externalRef} NOT LIKE 'plan-owed:%')`,
+        // A card instalment plan's owed line (plan-owed.ts, 0124) is no opening of the card's own, nor is the settlement
+        // beside a purchase paid off before the app (ledger's `before-app:`), dated the purchase's own, older day.
+        sql`(${transactions.externalRef} IS NULL OR (${transactions.externalRef} NOT LIKE 'plan-owed:%' AND ${transactions.externalRef} NOT LIKE 'before-app:%'))`,
       ),
     )
     .orderBy(asc(transactions.occurredOn), asc(transactions.createdAt));

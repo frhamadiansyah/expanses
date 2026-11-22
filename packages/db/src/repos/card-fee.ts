@@ -23,7 +23,9 @@ import { cardTerms } from '../schema-points';
 import { categoryIdsByKeyTx } from './categories';
 import { challengeFeeYear, listFeeWaivers, restoreWaiver } from './card-fee-waiver';
 import { feeFieldsByCard, writeFeeFields } from './fee-columns';
-import { postTransactionTx, voidTransactionTx } from './ledger';
+import { FEE_BEFORE_APP_REF, postTransactionTx, voidTransactionTx } from './ledger';
+import { balanceLineRef } from './plan-owed';
+import { stableId } from '../self/stable-id';
 import { PointsError } from './points';
 
 /** What a charge for the annual fee is called on a statement, in English and in Indonesian. */
@@ -68,6 +70,15 @@ const isWorded = (description: string) => FEE_WORDS.some((word) => containsKeywo
 const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(1, Math.round(b / 100));
 
 type Row = { choice: FeeChargeChoice; categoryId: string; key: string | null; worded: boolean };
+
+/**
+ * Whether a credit on a card could be money back for its annual fee, as `chargesNear` reads credits (named like the fee,
+ * or in a fee category on an expense line), or one of the app's own refunds ("Annual fee waived"): what tells
+ * `feeLeftOutIds` which cards to read.
+ */
+export function mayBeFeeMoneyBack(description: string, key: string | null, kind: string): boolean {
+  return description === WAIVED_DESCRIPTION || isWorded(description) || (kind === 'expense' && isFeeKey(key));
+}
 
 /**
  * The card's posted expense charges near `covered`, nearest first, one per transaction: a split charge is read by its
@@ -427,13 +438,16 @@ function feeDateIn(chargedOn: string, year: number): string {
   return `${String(year).padStart(4, '0')}-${day}`;
 }
 
-/** The day the card is counted from: its opening entry's (a plan's owed line aside, 0124), else its As of day (0107); null with neither. */
+/**
+ * The day the card is counted from: its opening entry's (a plan's owed line and a paid-off purchase's settlement aside —
+ * neither is an opening of the card's own), else its As of day (0107); null with neither.
+ */
 async function cardStartsOn(tx: Db, ws: WorkspaceContext, cardId: string): Promise<string | null> {
   const [opening] = await tx.values<[string | null]>(sql`
     SELECT MIN(t.occurred_on) FROM transactions t
     JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardId}
     WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted'
-      AND (t.external_ref IS NULL OR t.external_ref NOT LIKE 'plan-owed:%')
+      AND (t.external_ref IS NULL OR NOT ${balanceLineRef})
       AND EXISTS (SELECT 1 FROM entries o JOIN accounts oa ON oa.id = o.account_id
                   WHERE o.transaction_id = t.id AND oa.kind = 'equity' AND oa.system_key = 'opening_balance')`);
   if (opening?.[0]) return opening[0];
@@ -577,6 +591,92 @@ export async function addFeeReversal(database: Database, ws: WorkspaceContext, i
       sql`INSERT INTO card_fee_refunds (transaction_id, workspace_id, account_id, fee_year, challenge_json, created_at)
           VALUES (${id}, ${ws.workspaceId}, ${input.cardId}, ${record.year}, 'null', ${new Date().toISOString()})`,
     );
+    // Charged before the app: the fee gets its row beside the reversal, so both cards read the same (owner, 22 Nov 2026).
+    if (!record.charge) await pairBeforeAppFeeTx(tx, ws, { cardId: input.cardId, currency, reversalId: id, on: record.covered, amountMinor: input.amountMinor });
     return id;
   });
+}
+
+/*
+ * The fee charged before the app, as a row of its own (owner, 22 Nov 2026): a card added after its annual fee came has
+ * that fee inside its starting balance and no row for it, so once the fee is reversed only the reversal showed. Beside
+ * that reversal the app adds the fee: on the card, on its charge date, for the reversal's amount, in Membership fee,
+ * named "Annual fee", left out of reports like its reversal — and paid off before the app (the ledger's
+ * `settledBeforeApp`): a settlement against Opening Balances on the same day takes it back off the card. So what the card
+ * owes, its balance on every day and net worth never change; the starting balance the owner typed is never edited.
+ *
+ * Made once per reversal, found by the reversal's id in its ref (`fee-before-app:<id>`), and never again once made —
+ * deleted by hand, it stays deleted (its settlement goes with it, so the card still owes the same). Named by the
+ * reversal (`stableId`), so the owner's linked devices that both make it hold one row. Only a reversal kept against its
+ * year on this device (card_fee_refunds, which household sharing never carries) is paired, so a partner's phone never
+ * makes one. The ledger voids it with its reversal (`voidFeePairsOfTx`): Reset, or the reversal deleted.
+ */
+
+/** Whether a fee row was ever made for this reversal, or any edit of it it replaced: posted, or deleted since. */
+async function feePairMadeTx(tx: Db, ws: WorkspaceContext, reversalId: string): Promise<boolean> {
+  const rows = await tx.values(sql`
+    WITH RECURSIVE up(id) AS (
+      SELECT ${reversalId}
+      UNION SELECT t.replaces_transaction_id FROM transactions t JOIN up ON t.id = up.id WHERE t.replaces_transaction_id IS NOT NULL
+    )
+    SELECT 1 FROM transactions p
+    WHERE p.workspace_id = ${ws.workspaceId} AND p.external_ref IN (SELECT ${FEE_BEFORE_APP_REF} || up.id FROM up)
+    LIMIT 1`);
+  if (rows.length > 0) return true;
+  const [made] = await tx.values(sql`SELECT 1 FROM transactions WHERE id = ${await stableId(reversalId, 'fee-before-app')}`);
+  return made !== undefined;
+}
+
+async function pairBeforeAppFeeTx(tx: Db, ws: WorkspaceContext, input: { cardId: string; currency: string; reversalId: string; on: string; amountMinor: number }): Promise<string | null> {
+  if (await feePairMadeTx(tx, ws, input.reversalId)) return null;
+  return postTransactionTx(tx, ws, {
+    id: await stableId(input.reversalId, 'fee-before-app'),
+    stableLines: true,
+    occurredOn: input.on,
+    description: FEE_CHARGE_DESCRIPTION,
+    lines: expenseLines({ categoryAccountId: await membershipFeeTx(tx, ws), paymentAccountId: input.cardId, amountMinor: input.amountMinor, currency: input.currency }),
+    externalRef: `${FEE_BEFORE_APP_REF}${input.reversalId}`,
+    excludedFromReport: true,
+    settledBeforeApp: true,
+  });
+}
+
+/**
+ * Once, for what was recorded before the fee row was made (the owner's card, 22 Nov 2026): each fee year charged before
+ * the app whose reversal is kept against it on this device gets its fee row. Asking again makes nothing. Returns how
+ * many rows were made.
+ */
+export async function pairBeforeAppFees(database: Database, ws: WorkspaceContext, today: string): Promise<number> {
+  if (!(await hasRefundTable(database.db))) return 0;
+  // Only a card with a reversal kept against its year here can need one: most have none, and this asks one question.
+  const kept = new Set((await database.db.values<[string]>(sql`SELECT DISTINCT account_id FROM card_fee_refunds WHERE workspace_id = ${ws.workspaceId}`)).map(([id]) => id));
+  if (kept.size === 0) return 0;
+  const cards = [...(await feeFieldsByCard(database.db, ws)).entries()].filter(([id, fields]) => fields.annualFeeOn !== null && kept.has(id)).map(([id]) => id);
+  let made = 0;
+  for (const cardId of cards) {
+    const years = await cardFeeYears(database.db, ws, { cardId, today });
+    if (!years) continue;
+    for (const record of [years.current, ...years.earlier]) {
+      if (!record.beforeApp || !record.reversal) continue;
+      const reversalId = record.reversal.transactionId;
+      const done = await database.transaction(async (tx) => {
+        // Read again inside the write: the reversal is still kept against this card, and still has no fee beside it. The
+        // year keeps it by the id it had then (an edit made before edits carried the link keeps the first), so any id of
+        // its edits counts.
+        const [kept] = await tx.values(sql`
+          WITH RECURSIVE up(id) AS (
+            SELECT ${reversalId}
+            UNION SELECT t.replaces_transaction_id FROM transactions t JOIN up ON t.id = up.id WHERE t.replaces_transaction_id IS NOT NULL
+          )
+          SELECT 1 FROM card_fee_refunds WHERE transaction_id IN (SELECT id FROM up) AND account_id = ${cardId} AND workspace_id = ${ws.workspaceId} LIMIT 1`);
+        if (!kept) return false;
+        const { currency } = await feeCardTx(tx, ws, cardId);
+        const again = await feeYearTx(tx, ws, cardId, await feeTerms(tx, ws, cardId), await cardStartsOn(tx, ws, cardId), record.covered, record === years.current);
+        if (!again.beforeApp || again.reversal?.transactionId !== reversalId) return false;
+        return (await pairBeforeAppFeeTx(tx, ws, { cardId, currency, reversalId, on: record.covered, amountMinor: again.reversal.amountMinor })) !== null;
+      });
+      if (done) made += 1;
+    }
+  }
+  return made;
 }

@@ -187,9 +187,10 @@ describe('Add reversal', () => {
   /*
    * The owner's case: the card is counted from 1 Nov, after the 15 Oct fee, so that charge is in the starting balance
    * and has no row. The reversal raises the card's balance but is left out of reports: October's charge was never
-   * counted, so November's spending must not drop.
+   * counted, so November's spending must not drop. Beside it the fee gets its row on its own day (owner, 22 Nov 2026),
+   * paid off before the app, so the card owes only what the reversal took off.
    */
-  it('records money back for a charge before the app, left out of reports, and the year reads charged before the app', async () => {
+  it('records money back for a charge before the app, left out of reports, with the fee as its own row paid off before the app', async () => {
     const t = await card({ minor: 4_000_000, on: '2026-11-01' });
     expect((await t.years())?.current).toMatchObject({ lines: ['pending'], beforeApp: true });
     const owed = await t.balance();
@@ -198,7 +199,12 @@ describe('Add reversal', () => {
     expect(await t.categoryOf(id)).toEqual([t.keys['miscellaneous.membership_fee']]);
     expect(await t.balance()).toBe(owed + FEE);
     expect((await extrasFor(t.database.db, t.ws, [id])).get(id)?.excluded).toBe(true);
-    expect((await t.years())?.current).toMatchObject({ lines: ['charged-before-app', 'reversal'], state: 'waived', beforeApp: true, charge: null, reversal: { transactionId: id, ours: true } });
+    const current = (await t.years())?.current;
+    expect(current).toMatchObject({ lines: ['charged', 'reversal'], state: 'waived', beforeApp: false, charge: { on: '2026-10-15', amountMinor: FEE }, reversal: { transactionId: id, ours: true } });
+    const fee = current!.charge!.transactionId;
+    expect(await t.row(fee)).toEqual(['2026-10-15', FEE_CHARGE_DESCRIPTION, 'posted']);
+    expect(await t.categoryOf(fee)).toEqual([t.keys['miscellaneous.membership_fee']]);
+    expect((await extrasFor(t.database.db, t.ws, [fee])).get(fee)?.excluded).toBe(true);
   });
 
   it('lets the reversal go again by deleting it: the line goes away', async () => {
@@ -341,8 +347,8 @@ describe('the reversal seen from the other phone', () => {
 
   it('reads it with no charge behind it (before the app) whatever its amount', async () => {
     const t = await card({ minor: 4_000_000, on: '2026-11-01' });
-    const id = await addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: 1_000_000, on: '2026-11-13' });
-    await t.database.db.run(sql`DELETE FROM card_fee_refunds`);
+    // As an older phone posted it: the reversal alone, with no fee row beside it and no link here.
+    const id = await t.refund(FEE_REVERSAL_DESCRIPTION, 'miscellaneous.membership_fee', 1_000_000, '2026-11-13');
     expect((await t.years())?.current).toMatchObject({ lines: ['charged-before-app', 'reversal'], reversal: { transactionId: id, ours: false } });
   });
 
