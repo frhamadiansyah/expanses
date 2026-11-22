@@ -1,0 +1,92 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Family: expense in another currency</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; --green:#248a3d; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1100px; line-height:1.4; }
+  .wrap { display:flex; gap:20px; align-items:flex-start; }
+  .col { width:330px; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .cap b { display:inline-block; width:20px; height:20px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:20px; font-size:12px; margin-right:6px; }
+  .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:52px; line-height:1.4; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#8e8e93; border-radius:9px; padding:1px 7px; margin-left:6px; vertical-align:2px; } .ok { background:#2e8b3e; }
+  .phone { background:var(--ground); border-radius:26px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); min-height:470px; }
+  .ws { text-align:center; font-size:12px; color:var(--ink3); margin:0 0 4px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin:2px 0 12px; }
+  .rb { width:40px; height:40px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .top b { font-size:17px; }
+  .form { background:#fff; border-radius:14px; overflow:hidden; }
+  .fr { display:flex; align-items:center; gap:10px; padding:0 12px; min-height:48px; }
+  .fr + .fr .tx { border-top:.5px solid var(--hair); }
+  .ic { width:30px; height:30px; border-radius:50%; background:#f0f0f3; display:flex; align-items:center; justify-content:center; font-size:14px; color:#555; flex-shrink:0; }
+  .ic.off { opacity:.45; }
+  .tx { flex:1; display:flex; justify-content:space-between; align-items:center; min-height:48px; font-size:16px; gap:8px; }
+  .ph { color:var(--ink3); } .side { color:var(--ink3); font-size:14px; }
+  .code { color:var(--ink3); font-size:13px; margin-right:4px; }
+  .split { display:flex; flex:1; align-items:center; } .split > span { flex:1; } .rule { width:1px; height:22px; background:var(--hair); margin:0 8px; flex:none !important; }
+  .new { box-shadow:inset 0 0 0 2px #ff9f0a; border-radius:10px; }
+  .why { font-size:12.5px; color:var(--ink3); margin:8px 6px 0; line-height:1.35; }
+  .hd { font-size:12px; letter-spacing:.05em; color:var(--ink3); margin:4px 8px 6px; font-weight:600; }
+  .grp { background:#fff; border-radius:12px; overflow:hidden; margin-bottom:10px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; gap:8px; font-size:15px; } .r + .r { border-top:.5px solid var(--hair); }
+  .v { color:var(--ink3); font-variant-numeric:tabular-nums; text-align:right; }
+  .big { text-align:center; padding:16px 0 12px; } .big .n { font-size:15px; color:var(--ink2); } .big .a { font-size:30px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:4px; } .big .s { font-size:13px; color:var(--ink3); margin-top:2px; }
+</style></head>
+<body>
+<h1>Family workspace · an expense in another currency</h1>
+<p class="sub">Today in a shared workspace the currency flag on Add is drawn but cannot be tapped, so a USD purchase on a card can only be typed in rupiah. After: the flag works as it does in a personal workspace, and the husband's phone shows the same two figures. New parts outlined in orange. Invented card and figures.</p>
+
+<div class="wrap">
+  <div class="col">
+    <p class="cap"><b>1</b>Today <span class="tag">LOCKED</span></p>
+    <p class="note">Family workspace, paid by credit card. The flag shows IDR and does nothing when tapped.</p>
+    <div class="phone">
+      <p class="ws">Family</p>
+      <div class="top"><span class="rb">‹</span><b>New expense</b><span class="rb">✓</span></div>
+      <div class="form">
+        <div class="fr"><span class="ic off">🇮🇩</span><div class="tx"><span><span class="code">IDR</span><span class="ph">Amount</span></span></div></div>
+        <div class="fr"><span class="ic">▭</span><div class="tx"><span>Kartu Contoh</span><span class="side">Payment method</span></div></div>
+        <div class="fr"><span class="ic">🛏</span><div class="tx"><span>Travel › Hotel</span><span class="side">›</span></div></div>
+        <div class="fr"><span class="ic">≡</span><div class="tx"><span>Hotel booking</span></div></div>
+        <div class="fr"><span class="ic">▦</span><div class="tx"><span>Sun, 22 Nov 2026</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><b>2</b>After <span class="tag ok">CHOOSABLE</span></p>
+    <p class="note">Same screen. Tap the flag, pick USD from the currency sheet, and type 120. The rupiah figure beside it starts as ≈ the day's rate and can be typed over with the bank's own figure.</p>
+    <div class="phone">
+      <p class="ws">Family</p>
+      <div class="top"><span class="rb">‹</span><b>New expense</b><span class="rb">✓</span></div>
+      <div class="form">
+        <div class="fr new"><span class="ic">🇺🇸</span><div class="tx"><span class="split"><span><span class="code">USD</span>120,00</span><span class="rule"></span><span><span class="code">≈ IDR</span>1.944.000</span></span></div></div>
+        <div class="fr"><span class="ic">▭</span><div class="tx"><span>Kartu Contoh</span><span class="side">Payment method</span></div></div>
+        <div class="fr"><span class="ic">🛏</span><div class="tx"><span>Travel › Hotel</span><span class="side">›</span></div></div>
+        <div class="fr"><span class="ic">≡</span><div class="tx"><span>Hotel booking</span></div></div>
+        <div class="fr"><span class="ic">▦</span><div class="tx"><span>Sun, 22 Nov 2026</span></div></div>
+      </div>
+      <p class="why">Exactly as in a personal workspace today. The card's statement and Cashflow count the rupiah figure.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="cap"><b>3</b>Husband's phone</p>
+    <p class="note">The purchase arrives with both figures, the same as typed. Nothing to type on his side. Both phones need the new build.</p>
+    <div class="phone">
+      <p class="ws">Family</p>
+      <div class="top"><span class="rb">‹</span><b>Receipt</b><span class="rb">⋯</span></div>
+      <div class="grp big"><div class="n">Hotel booking</div><div class="a">Rp 1.944.000</div><div class="s new" style="display:inline-block;padding:2px 8px">USD 120,00</div></div>
+      <div class="grp">
+        <div class="r"><span>Category</span><span class="v">Travel › Hotel</span></div>
+        <div class="r"><span>Paid by</span><span class="v">Wife</span></div>
+        <div class="r"><span>Date</span><span class="v">22 Nov 2026</span></div>
+      </div>
+      <p class="hd">CASHFLOW · NOVEMBER</p>
+      <div class="grp">
+        <div class="r"><span>Hotel booking<br><span style="font-size:12.5px;color:var(--ink3)">22 Nov · USD 120,00</span></span><span class="v" style="color:var(--ink)">Rp1.944.000</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

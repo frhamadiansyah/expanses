@@ -273,7 +273,7 @@ export function SharedExpenseCard({
               />
             )}
 
-            <AmountRow draft={amountForm} accounts={accounts} set={setAmount} noRefund anyCurrency locked={!!locked} />
+            <AmountRow draft={amountForm} accounts={accounts} set={setAmount} noRefund locked={!!locked} />
 
             {draft.currency !== view.currency && (
               <FieldRow

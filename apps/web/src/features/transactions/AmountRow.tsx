@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { AccountRow } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
-import { useIsBookShared, useStoredRates } from '../../lib/queries';
+import { useStoredRates } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CurrencySheet } from './CurrencySheet';
 import { Chevron, ROW_BODY_FLUSH, RowGlyph, RowLead } from './FormRow';
@@ -181,7 +181,6 @@ export function AmountRow({
   set,
   selectOnOpen = false,
   noRefund = false,
-  anyCurrency = false,
   locked = false,
   fixed = false,
   photos,
@@ -194,11 +193,6 @@ export function AmountRow({
   noRefund?: boolean;
   /** Opened on a copied figure: a desktop field is selected, a phone's keypad opens and its first digit replaces it. */
   selectOnOpen?: boolean;
-  /**
-   * The flag is a control whatever the open book is. A shared event's card (shared events §6) records "any currency,
-   * with the rate to the event currency": the household rule that fixes a shared book's currency is not its rule.
-   */
-  anyCurrency?: boolean;
   /** Every figure and the flag drawn, none of them a control: a shared expense another member paid (D8). */
   locked?: boolean;
   /**
@@ -231,10 +225,10 @@ export function AmountRow({
   const currency = typedCurrency(draft, accounts);
   const settled = account?.currency ?? '';
   const needsCharged = chargedInNeeded(draft, accounts);
-  // Household sharing spec §4.4 last line: a shared book's currency is the book's own, fixed for every member, so
-  // the flag is drawn but never a control — the same "drawn, not a control" shape a transfer's flag already has.
-  const sharedBook = useIsBookShared();
-  const choosable = currencyChoosable(draft) && (anyCurrency || !sharedBook) && !locked && !fixed;
+  // A shared book's flag is a control too (owner, 22 Nov 2026: a USD purchase on a card in Family). The household
+  // spec first drew it disabled there, but a purchase's foreign figure has travelled to the partner with its charged
+  // one since sharing's first build (`originalCurrency` in the money atom), so nothing on the other phone is missing.
+  const choosable = currencyChoosable(draft) && !locked && !fixed;
   const named = currencyShown(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);

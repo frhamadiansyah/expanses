@@ -39,6 +39,24 @@ describe('refunds in a shared workspace', () => {
     expect(await view(b, bookId)).toEqual(await view(a, bookId));
   });
 
+  it('a purchase typed in another currency reaches the partner with both figures, and an edit of the foreign figure follows (owner, 22 Nov 2026)', async () => {
+    const { home, a, b, bookId, card, cat } = await setup();
+    const id = await postTransaction(a.database, a.ws, { occurredOn: '2026-09-14', description: 'Hotel', originalCurrency: 'USD', originalAmountMinor: 12_000, lines: expenseLines({ categoryAccountId: cat, paymentAccountId: card.id, amountMinor: 1_944_000, currency: 'IDR' }) });
+    await home.settle();
+    expect(await skipsOf(b.database)).toEqual([]);
+    const figures = async (d: Device) =>
+      (await listTransactions(d.database, inBook(d.ws, bookId), { from: '2026-09-01', to: '2026-09-30' }))
+        .filter((r) => r.description === 'Hotel')
+        .map((r) => [r.originalCurrency, r.originalAmountMinor, r.entries.filter((e) => e.accountKind === 'expense').map((e) => e.amountMinor).join('/')]);
+    expect(await figures(b)).toEqual([['USD', 12_000, '1944000']]);
+    // The bank's own figure typed over the day's estimate, and the dollar amount corrected.
+    await replaceTransaction(a.database, a.ws, id, { occurredOn: '2026-09-14', description: 'Hotel', originalCurrency: 'USD', originalAmountMinor: 12_500, lines: expenseLines({ categoryAccountId: cat, paymentAccountId: card.id, amountMinor: 2_010_000, currency: 'IDR' }) });
+    await home.settle();
+    expect(await skipsOf(b.database)).toEqual([]);
+    expect(await figures(b)).toEqual([['USD', 12_500, '2010000']]);
+    expect(await figures(a)).toEqual(await figures(b));
+  });
+
   it('a refund in a shared workspace is never tagged to an event (sync gaps D1), and reaches the partner as it is', async () => {
     const { home, a, b, bookId, card, cat } = await setup();
     const eventId = await saveEvent(a.database, a.ws, { name: 'Holiday', startsOn: '2026-09-01', endsOn: '2026-09-30' } as never);

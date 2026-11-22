@@ -351,7 +351,7 @@ person — which is why a placeholder can belong to this device's own member. Th
 member only: the label is the paying device's account name and is kept nowhere on the others. A member who pays a bill someone else set up picks their own account in the form, which
 changes `payer`.
 
-In a shared book the add form draws the currency flag **disabled** and offers no **With** row.
+In a shared book the add form offers no **With** row. (It first drew the currency flag disabled too; since 22 Nov 2026 the flag is a control there as in any workspace, the purchase's foreign figure travelling in the money atom as `originalCurrency`.)
 
 ## 5. Keys
 

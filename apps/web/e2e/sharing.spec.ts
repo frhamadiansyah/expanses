@@ -6,7 +6,7 @@ import { currencyRow, setCurrency } from './currency-field';
 import BetterSqlite3 from 'better-sqlite3';
 import { openAccount, openAccountHistory, openCard, walletCard, openFace, wideScreen } from './accounts';
 import { fillDay, openNewAsset, pastPurchase } from './add-asset';
-import { addForm, addTransaction, addTransfer, fillAmount, openAmount, saveButton } from './add-transaction';
+import { addForm, addTransaction, addTransfer, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, chooseCatalogueCard, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
 import { openWithPockets } from './pockets';
@@ -455,6 +455,41 @@ test('an owner stops sharing: the other side says who stopped it, and can add no
   await expectReadOnly(dewi, phone, 'No longer shared by Fandri');
   await openSwitcher(dewi, phone);
   if (!phone) await expect(dewi.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Home' })).toContainText('No longer shared by Fandri');
+});
+
+test('a purchase in a shared workspace can be typed in another currency, and reaches the other phone with it (owner, 22 Nov 2026)', async ({ page, browser }, info) => {
+  page.on('dialog', (dialog) => void dialog.accept());
+  const dewi = await secondDevice(browser, info);
+  await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
+  await page.goto('/transactions');
+  await shareAndJoin(page, dewi);
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: /^Payment method/ }).click();
+  await choosePayment(page, 'Fandri Bank');
+  // The flag is a control here too, as in a workspace of one's own.
+  await form.getByRole('button', { name: 'Currency' }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
+  await openAmount(form);
+  await fillAmount(page, form, '100');
+  // No rate reaches this run, so the bank's figure is typed, as it is once the statement shows it.
+  if (phoneProject(info)) {
+    await page.getByRole('button', { name: 'Charged in IDR' }).click();
+    const keypad = page.getByTestId('keypad');
+    for (const key of '1600000') await keypad.getByRole('button', { name: key, exact: true }).click();
+    await keypad.getByRole('button', { name: 'DONE' }).click();
+  } else await form.getByLabel('Charged in IDR').fill('1600000');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Hotel abroad');
+  await saveButton(form).click();
+  await expect(form).toHaveCount(0);
+  await expect(rowOf(page, 'Hotel abroad')).toContainText('US$100,00');
+
+  await dewi.goto('/transactions');
+  await eventually(dewi, () => expect(rowOf(dewi, 'Hotel abroad')).toContainText('US$100,00', { timeout: 1_000 }));
 });
 
 /** C1 (final review): a share the owner ended and made again is rejoined by the member's read-only copy, and both converge. */
