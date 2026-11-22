@@ -73,7 +73,7 @@ import { DateRow, NoteRow } from './CardRows';
 import { CardCashbackMark, CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { useOpenings, useOpeningDay } from '../accounts/queries';
-import { Chevron, FieldRow, FixedRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowHintLine, RowLead, SelectFormRow } from './FormRow';
+import { Chevron, FieldRow, FixedRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { CARD_PAY_OMITS, cardPayFrom, offersTransferGoal } from '../cards/card-pay';
 import { MoreDetails } from './MoreDetails';
 import { TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from './TradeRows';
@@ -83,7 +83,8 @@ import { WithdrawalLine } from './WithdrawalLine';
 import { PaymentSheet, chosenPayment, removedCardPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { beforeStartLine, extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
+import { PastBadgeOverRow } from './PastBadge';
+import { extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { offerStatement } from '../../capture/statements';
 import { PhotosSheet, usePhotoAttach } from './PhotosSheet';
@@ -498,9 +499,9 @@ function CardBody({
   const door = post ? doorOfForm(draft, post, accounts, canHold) : null;
   /*
    * A transfer or a card's payment dated before an account was added (owner, 22 Nov 2026): that account's balance stays,
-   * by the rule the ledger posts by (`pastSidesOf`) — a money account only, so a card being paid always owes less. One
-   * plain line, no choice. A partner's transfer and a card's top-up of a wallet are not this. A saved move with no pair
-   * (recorded before the rule) keeps none until its day, accounts or amounts change, as the ledger keeps it (review fix).
+   * by the rule the ledger posts by (`pastSidesOf`) — a money account only, so a card being paid always owes less. No
+   * words and no choice: that row's icon carries a small ✓ (`PastBadge`). A partner's transfer and a card's top-up of a
+   * wallet are not this. A saved move with no pair (recorded before the rule) keeps none until its day, accounts or amounts change, as the ledger keeps it (review fix).
    */
   const startSides = useQuery({
     queryKey: ['past-sides', ws.workspaceId, draft.moneyId, draft.toId, draft.occurredOn],
@@ -514,7 +515,7 @@ function CardBody({
     !savedMove ||
     (['occurredOn', 'moneyId', 'toId', 'amount', 'toAmount', 'fee'] as const).some((field) => savedMove[field] !== draft[field]);
   const keptSides = draft.mode === 'transfer' && !draft.partner && startSides.isSuccess && moveDecided ? startSides.data : [];
-  const startDayLine = beforeStartLine(keptSides.map((id) => byId.get(id)?.name ?? '').filter(Boolean));
+  const toKept = !!draft.toId && keptSides.includes(draft.toId);
   // Money that left before its account was added draws on no goal: the question is not asked (the ledger agrees).
   const fromKept = keptSides.includes(draft.moneyId);
   const saved = useSetAsideChoiceOf(initial?.id ?? null);
@@ -1271,6 +1272,8 @@ function CardBody({
               disabled={accountsLocked}
               chevron={!accountsLocked}
             />
+            {/* Dated before this account was added: its balance stays, said by a ✓ on its icon (owner, 22 Nov 2026). */}
+            {fromKept && <PastBadgeOverRow label="Balance stays" testId="past-side-badge" />}
             {/* The card's icon is its own button, laid over the row's lead: a tap ticks or unticks Already paid off. */}
             {offersAlreadyPaid && (
               <button
@@ -1316,8 +1319,11 @@ function CardBody({
                   caption="To"
                 />
               ) : (
+              // Wrapped, for the ✓ laid over its icon, so it draws its own hairline under From.
+              <div className="relative">
               <FormRow
                 lead="value"
+                divided
                 icon={
                   <RowGlyph>
                     <ArrowDownLeft size={15} />
@@ -1330,6 +1336,8 @@ function CardBody({
                 chevron={!accountsLocked}
                 onClick={() => setSheet('to')}
               />
+              {toKept && <PastBadgeOverRow label="Balance stays" testId="past-side-badge" />}
+              </div>
               )
             )}
             <AmountRow
@@ -1427,8 +1435,6 @@ function CardBody({
                 : {})}
             />
             <DateRow on={draft.occurredOn} onChange={(occurredOn) => set({ occurredOn })} />
-            {/* A transfer or a card's payment dated before an account was added: that account's balance stays (owner, 22 Nov 2026). */}
-            {startDayLine && <RowHintLine><span data-testid="before-start-line">{startDayLine}</span></RowHintLine>}
             <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
           </FormRows>
         )}

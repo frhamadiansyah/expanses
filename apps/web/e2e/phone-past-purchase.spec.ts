@@ -45,7 +45,7 @@ test('an expense dated before the account opened is ticked past by itself, and t
   await page.goto('/transactions?month=2026-09');
   const row = page.getByTestId('transaction-row').filter({ hasText: 'Noodle Stall' });
   await expect(row).toHaveCount(1);
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Settled before the app' })).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Paid off' })).toHaveCount(0);
   await row.click();
   await expect(page.getByTestId('receipt-past')).toContainText('Balance unchanged');
   await page.screenshot({ path: 'test-results/past-receipt.png' });
