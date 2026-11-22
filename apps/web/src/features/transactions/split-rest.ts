@@ -35,6 +35,26 @@ export function splitTotal(amount: string, currency: string): number | null {
 const minorOf = (row: SplitRow, currency: string): number => (row.amount.trim() ? (evaluateAmount(row.amount, currency) ?? 0) : 0);
 const originalOf = (row: SplitRow, currency: string): number => (row.original?.trim() ? (evaluateAmount(row.original, currency) ?? 0) : 0);
 
+/**
+ * The parts with every foreign figure dropped that is not in `foreign` — the flag's currency now, or null when the flag
+ * is the account's own. A part's `original` says which currency it was written in (`originalIn`): the flag changed from
+ * USD to EUR leaves "40" meaning forty dollars, never forty euros, so it goes, with its typed mark, and the part's figure
+ * that posts stays as it was. The same array when nothing is stale, so a sheet opening on it changes nothing.
+ */
+export function currentOriginals(splits: readonly SplitRow[], foreign: string | null): SplitRow[] {
+  if (!splits.some((row) => (row.original !== undefined || row.typedOriginal || row.originalIn !== undefined) && (foreign === null || row.originalIn !== foreign))) {
+    return splits as SplitRow[];
+  }
+  return splits.map((row) => {
+    if (foreign !== null && row.originalIn === foreign) return row;
+    const { original: _o, typedOriginal: _t, originalIn: _i, ...plain } = row;
+    void _o;
+    void _t;
+    void _i;
+    return plain;
+  });
+}
+
 /** `minor` as text in `currency`: the text already there when it says the same figure, so typing is never rewritten. */
 const put = (text: string | undefined, minor: number, currency: string): string =>
   text?.trim() && evaluateAmount(text, currency) === minor ? text : groupedMajorString(minor, currency);
@@ -49,9 +69,9 @@ function derive(row: SplitRow, total: number, currency: string, foreign: Foreign
     const typed = evaluateAmount(row.original, foreign.currency);
     return typed === null ? row : { ...row, amount: put(row.amount, proportionalMinor(typed, foreign.total, total), currency) };
   }
-  if (!row.amount.trim()) return { ...row, original: '' };
+  if (!row.amount.trim()) return { ...row, original: '', originalIn: foreign.currency };
   const typed = evaluateAmount(row.amount, currency);
-  return typed === null ? row : { ...row, original: put(row.original, proportionalMinor(typed, total, foreign.total), foreign.currency) };
+  return typed === null ? row : { ...row, original: put(row.original, proportionalMinor(typed, total, foreign.total), foreign.currency), originalIn: foreign.currency };
 }
 
 /** The index of the Rest part: the one marked, else the last; -1 with no parts. */
@@ -83,7 +103,8 @@ function sumExcept(splits: readonly SplitRow[], skip: number, currency: string):
  * others already reach past the total the Rest is left empty (`assignment` then says by how much). Without a total, or
  * with no parts, nothing changes. A figure already right is left as typed, so opening a sheet changes nothing.
  */
-export function settleRest(splits: readonly SplitRow[], total: number | null, currency: string, foreign: ForeignTotal | null = null): SplitRow[] {
+export function settleRest(given: readonly SplitRow[], total: number | null, currency: string, foreign: ForeignTotal | null = null): SplitRow[] {
+  const splits = currentOriginals(given, foreign?.currency ?? null);
   if (total === null || splits.length === 0) return splits.slice();
   if (foreign) return settleBoth(splits, total, currency, foreign);
   const at = restIndex(splits);
@@ -106,8 +127,23 @@ function settleBoth(splits: readonly SplitRow[], total: number, currency: string
     ...row,
     amount: rest < 0 ? '' : put(row.amount, rest, currency),
     original: restOriginal < 0 ? '' : put(row.original, restOriginal, foreign.currency),
+    originalIn: foreign.currency,
   };
   return rows;
+}
+
+/**
+ * Why parts already settled cannot be saved: the parts other than the Rest come to more than the whole, in either figure
+ * — "Over by Rp 1" when parts typed in USD round up past what was charged. Null when the Rest holds what is left.
+ */
+export function overTotal(splits: readonly SplitRow[], total: number | null, currency: string, foreign: ForeignTotal | null = null): string | null {
+  if (total === null || splits.length < 2) return null;
+  const at = restIndex(splits);
+  const left = total - sumExcept(splits, at, currency);
+  if (left < 0) return overBy(-left, currency);
+  if (!foreign) return null;
+  const leftOriginal = foreign.total - sumOriginalsExcept(currentOriginals(splits, foreign.currency), at, foreign.currency);
+  return leftOriginal < 0 ? overBy(-leftOriginal, foreign.currency) : null;
 }
 
 function sumOriginalsExcept(splits: readonly SplitRow[], skip: number, currency: string): number {
@@ -148,10 +184,11 @@ export function editAmount(splits: readonly SplitRow[], index: number, amount: s
  * the whole charge's rate, and the Rest follows in both — as `editAmount`, from the other side.
  */
 export function editOriginal(splits: readonly SplitRow[], index: number, original: string, total: number | null, currency: string, foreign: ForeignTotal): RestEdit {
-  return edit(splits, index, (row) => ({ ...row, original, typedOriginal: true }), total, currency, foreign);
+  return edit(splits, index, (row) => ({ ...row, original, typedOriginal: true, originalIn: foreign.currency }), total, currency, foreign);
 }
 
-function edit(splits: readonly SplitRow[], index: number, type: (row: SplitRow) => SplitRow, total: number | null, currency: string, foreign: ForeignTotal | null): RestEdit {
+function edit(given: readonly SplitRow[], index: number, type: (row: SplitRow) => SplitRow, total: number | null, currency: string, foreign: ForeignTotal | null): RestEdit {
+  const splits = currentOriginals(given, foreign?.currency ?? null);
   const typed = splits.map((row, i) => (i === index ? type(row) : row));
   if (total === null || splits.length < 2) return { splits: typed };
   const at = restIndex(splits);

@@ -1,6 +1,6 @@
 import { evaluateAmount } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { addPart, assignment, assignmentLine, barShares, editAmount, editOriginal, hasRest, removePart, restIndex, settleRest, splitTotal } from './split-rest';
+import { addPart, assignment, assignmentLine, barShares, currentOriginals, editAmount, editOriginal, hasRest, overTotal, removePart, restIndex, settleRest, splitTotal } from './split-rest';
 import type { SplitRow } from './tx-form';
 
 const row = (categoryId: string, amount: string, extra: Partial<SplitRow> = {}): SplitRow => ({ categoryId, amount, ...extra });
@@ -282,5 +282,40 @@ describe('a split bought in another currency: both figures on every part', () =>
       [1_296_000, 8_000],
       [648_000, 4_000],
     ]);
+  });
+});
+
+describe('a foreign figure written under another flag (review, 22 Nov 2026)', () => {
+  const usdRow = (amount: string, original: string, extra: Partial<SplitRow> = {}): SplitRow => ({ categoryId: 'a', amount, original, originalIn: 'USD', ...extra });
+
+  it('is dropped with its typed mark, the figure that posts kept', () => {
+    const rows = [usdRow('648.000', '40', { typedOriginal: true }), usdRow('1.296.000', '80,00', { rest: true })];
+    expect(currentOriginals(rows, 'EUR')).toEqual([
+      { categoryId: 'a', amount: '648.000' },
+      { categoryId: 'a', amount: '1.296.000', rest: true },
+    ]);
+    expect(currentOriginals(rows, null).every((row) => row.original === undefined && !row.typedOriginal)).toBe(true);
+    // Nothing stale: the very same array.
+    expect(currentOriginals(rows, 'USD')).toBe(rows);
+  });
+
+  it('is never read in the new currency when the parts are settled again', () => {
+    const rows = [usdRow('648.000', '40', { typedOriginal: true }), usdRow('1.296.000', '80,00', { rest: true })];
+    const eur = { currency: 'EUR', total: 11_000 };
+    const settled = settleRest(rows, 1_944_000, 'IDR', eur);
+    // Part one keeps Rp 648.000 and its euro figure is worked out from it: 648.000 / 1.944.000 of EUR 110 = EUR 36,67.
+    expect(settled.map((r) => [r.amount, r.original, r.originalIn, r.typedOriginal])).toEqual([
+      ['648.000', '36,67', 'EUR', undefined],
+      ['1.296.000', '73,33', 'EUR', undefined],
+    ]);
+    // Back on the account's own currency: no foreign figure survives a settle.
+    expect(settleRest(rows, 1_944_000, 'IDR').some((r) => r.original !== undefined || r.typedOriginal)).toBe(false);
+  });
+
+  it('says how far parts are over the whole in either figure', () => {
+    const usd = { currency: 'USD', total: 12_000 };
+    expect(overTotal([usdRow('1.296.000', '80'), usdRow('', '', { rest: true })], 1_944_000, 'IDR', usd)).toBeNull();
+    expect(plain(overTotal([usdRow('1.944.001', '80'), usdRow('', '', { rest: true })], 1_944_000, 'IDR', usd))).toBe('Over by Rp 1');
+    expect(plain(overTotal([usdRow('1.900.000', '121'), usdRow('', '', { rest: true })], 1_944_000, 'IDR', usd))).toMatch(/^Over by US\$\s?1,00$/);
   });
 });

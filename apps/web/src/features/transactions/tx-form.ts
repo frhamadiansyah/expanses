@@ -30,7 +30,7 @@ import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './
 import { classify } from './classify';
 import { isEditable } from './draft';
 import { postedAgainstPlaceholder } from '../sharing/sharing-copy';
-import { type ForeignTotal, needsSettling, settleRest, splitTotal } from './split-rest';
+import { currentOriginals, type ForeignTotal, needsSettling, overTotal, settleRest, splitTotal } from './split-rest';
 import { mirrorPref } from '../../lib/synced-prefs';
 
 export type FormMode = 'expense' | 'income' | 'transfer' | 'trade';
@@ -62,6 +62,8 @@ export interface SplitRow {
   original?: string;
   /** `original` is the figure typed and `amount` is worked out from it, at the whole charge's own rate (last typed wins). */
   typedOriginal?: boolean;
+  /** The currency `original` is written in: one written under another flag is stale and is dropped (`currentOriginals`). */
+  originalIn?: string;
 }
 
 /** A month of a recurring bill a split's part pays. */
@@ -876,8 +878,10 @@ export function splitTotalMinor(splits: readonly SplitRow[], currency: string): 
  * refuses it with — or null. On a phone the ✓ is greyed while the draft would be refused, so the reason has to be
  * on the sheet where the row is typed, not only behind a button that cannot be pressed.
  */
-export function splitCentsRefusal(splits: readonly SplitRow[], currency: string): string | null {
-  const cents = splits.some((row) => row.amount.trim() !== '' && evaluateAmount(row.amount, currency) === null && hasCents(row.amount, currency, false));
+export function splitCentsRefusal(splits: readonly SplitRow[], currency: string, foreign: string | null = null): string | null {
+  const off = (text: string | undefined, code: string) => !!text?.trim() && evaluateAmount(text, code) === null && hasCents(text, code, false);
+  // A part's foreign figure too, in its own currency: cents typed on a whole-unit flag (JPY) are refused the same way.
+  const cents = splits.some((row) => off(row.amount, currency) || (foreign !== null && row.originalIn === foreign && off(row.original, foreign)));
   return cents ? DECIMALS_REFUSAL : null;
 }
 
@@ -1252,7 +1256,23 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
   // and in another currency, so does every part typed in the foreign figure, at the rate the charged figure now gives.
   const basis = splitByCategory(draft) ? splitBasis(draft, account.currency, typed) : null;
   if (basis?.needs) throw new Error(basis.needs);
-  if (basis && basis.total !== null && needsSettling(draft.splits)) draft = { ...draft, splits: settleRest(draft.splits, basis.total, account.currency, basis.foreign) };
+  if (basis) {
+    // A part's foreign figure written under another flag (USD, now EUR or IDR) means nothing now: it goes, never re-read.
+    draft = { ...draft, splits: currentOriginals(draft.splits, basis.foreign?.currency ?? null) };
+    // A part typed in the foreign figure must read in it, as a part typed in rupiah must — or its rupiah would stay stale.
+    if (basis.foreign) {
+      const foreign = basis.foreign;
+      draft.splits.forEach((row, i) => {
+        if (row.typedOriginal) figureOf(row.original ?? '', foreign.currency, `Split ${i + 1} amount`, {});
+      });
+    }
+    if (basis.total !== null && needsSettling(draft.splits)) {
+      const settled = settleRest(draft.splits, basis.total, account.currency, basis.foreign);
+      const over = overTotal(settled, basis.total, account.currency, basis.foreign);
+      if (over) throw new Error(over);
+      draft = { ...draft, splits: settled };
+    }
+  }
   const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency) : null;
   const splitTotalMinor = splits ? splits.reduce((sum, row) => sum + row.amountMinor, 0) : null;
   const { amountMinor, exactHundredths, originalCurrency, originalAmountMinor } = amounts(draft, account, typed, splitTotalMinor);
@@ -1559,7 +1579,7 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
       const original = foreignWhole(tx, settledOf(payment));
       const charged = -payment.amountMinor;
       const shares = original ? partFigures([...category, ...notCounted].map((e) => e.amountMinor), charged, original.minor) : [];
-      const splits = original ? parted.map((row, i) => ({ ...row, original: minorToMajorString(shares[i]!, original.currency) })) : parted;
+      const splits = original ? parted.map((row, i) => ({ ...row, original: minorToMajorString(shares[i]!, original.currency), originalIn: original.currency })) : parted;
       const counted = splits.filter((row) => !isNotCountedRow(row));
       return withOpened({
         ...base,

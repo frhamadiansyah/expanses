@@ -435,7 +435,7 @@ describe('a bill spread over several categories', () => {
     });
 
     it('saves rupiah lines and keeps the whole foreign figure as the original pair, a part typed in USD', () => {
-      const post = formToPost(twoParts({ original: '80', typedOriginal: true }), withHotel);
+      const post = formToPost(twoParts({ original: '80', typedOriginal: true, originalIn: 'USD' }), withHotel);
       expect(post).toMatchObject({
         kind: 'post',
         input: {
@@ -458,7 +458,7 @@ describe('a bill spread over several categories', () => {
         ...hotel,
         splits: [
           { categoryId: 'cat-hotel', amount: '1000000' },
-          { categoryId: 'cat-groceries', amount: '', original: '30', typedOriginal: true },
+          { categoryId: 'cat-groceries', amount: '', original: '30', typedOriginal: true, originalIn: 'USD' },
           { categoryId: 'cat-restaurants', amount: '', rest: true },
         ],
       };
@@ -469,7 +469,7 @@ describe('a bill spread over several categories', () => {
     });
 
     it('follows a charged figure changed after the parts were typed: USD parts repriced, the Rest takes the rest', () => {
-      const post = formToPost({ ...twoParts({ original: '80', amount: '1296000', typedOriginal: true }, { amount: '648000', original: '40' }), chargedAmount: '1950000' }, withHotel);
+      const post = formToPost({ ...twoParts({ original: '80', amount: '1296000', typedOriginal: true, originalIn: 'USD' }, { amount: '648000', original: '40', originalIn: 'USD' }), chargedAmount: '1950000' }, withHotel);
       if (post.kind !== 'post') throw new Error('expected a post');
       expect(post.input.lines.filter((line) => line.amountMinor > 0).map((line) => line.amountMinor)).toEqual([1_300_000, 650_000]);
     });
@@ -525,7 +525,7 @@ describe('a bill spread over several categories', () => {
           amount: '123.45',
           chargedAmount: '2017523',
           splits: [
-            { categoryId: 'cat-hotel', amount: '', original: (cents / 100).toFixed(2), typedOriginal: true },
+            { categoryId: 'cat-hotel', amount: '', original: (cents / 100).toFixed(2), typedOriginal: true, originalIn: 'USD' },
             { categoryId: 'cat-restaurants', amount: '', rest: true },
           ],
         };
@@ -541,6 +541,55 @@ describe('a bill spread over several categories', () => {
         );
         expect(reopened.splits.map((row) => evaluateAmount(row.original!, 'USD'))).toEqual([cents, 12_345 - cents]);
       }
+    });
+
+    describe('the flag changed after the parts were typed (review, 22 Nov 2026)', () => {
+      // Part one typed as USD 40 (Rp 648.000 at 16.200), the Rest Rp 1.296.000 / USD 80.
+      const typed = twoParts({ amount: '648.000', original: '40', typedOriginal: true, originalIn: 'USD' }, { amount: '1.296.000', original: '80,00', originalIn: 'USD' });
+      const positives = (draft: FormDraft) => {
+        const post = formToPost(draft, withHotel);
+        if (post.kind !== 'post') throw new Error('expected a post');
+        return { lines: post.input.lines.filter((line) => line.amountMinor > 0).map((line) => line.amountMinor), original: [post.input.originalCurrency, post.input.originalAmountMinor] };
+      };
+
+      it('USD to EUR: the stale "40" is never read as forty euros; the part keeps its rupiah', () => {
+        expect(positives({ ...typed, currency: 'EUR', amount: '110' })).toEqual({ lines: [648_000, 1_296_000], original: ['EUR', 11_000] });
+      });
+
+      it('USD to JPY: a stale "40,50" that JPY cannot read is dropped, not saved over a stale rupiah', () => {
+        const cents = twoParts({ amount: '656.100', original: '40,50', typedOriginal: true, originalIn: 'USD' }, { amount: '1.287.900', original: '79,50', originalIn: 'USD' });
+        expect(positives({ ...cents, currency: 'JPY', amount: '18000' })).toEqual({ lines: [656_100, 1_287_900], original: ['JPY', 18_000] });
+      });
+
+      it('back to IDR: no foreign figure is left, and nothing is worked out again from one', () => {
+        expect(positives({ ...typed, currency: 'IDR', amount: '1944000', chargedAmount: '' })).toEqual({ lines: [648_000, 1_296_000], original: [null, null] });
+      });
+
+      it('a duplicated foreign split switched back to IDR keeps its parts as they read (no Rest marked from stale figures)', () => {
+        const saved = view({
+          originalCurrency: 'USD',
+          originalAmountMinor: 12_000,
+          entries: [paid(-1_944_000), spent('cat-hotel', 1_296_000), spent('cat-restaurants', 648_000)] as TransactionView['entries'],
+        });
+        const copy = duplicateDraft(saved, withHotel, 'ws-1');
+        // The flag back on IDR and a new amount typed: the parts post as they read, and the amount must agree with them.
+        expect(positives({ ...copy, currency: 'IDR', amount: '1944000' }).lines).toEqual([1_296_000, 648_000]);
+        expect(() => formToPost({ ...copy, currency: 'IDR', amount: '2000000' }, withHotel)).toThrow('The splits must add up to the amount');
+      });
+    });
+
+    it('refuses a part typed in a whole-unit flag with cents, in the words the amount row uses (review, 22 Nov 2026)', () => {
+      const yen: FormDraft = { ...hotel, currency: 'JPY', amount: '18000', splits: [{ categoryId: 'cat-hotel', amount: '', original: '100,5', typedOriginal: true, originalIn: 'JPY' }, { categoryId: 'cat-restaurants', amount: '', rest: true }] };
+      expect(splitCentsRefusal(yen.splits, 'IDR', 'JPY')).toBe(DECIMALS_REFUSAL);
+      expect(splitCentsRefusal(yen.splits, 'IDR')).toBeNull();
+      expect(() => formToPost(yen, withHotel)).toThrow(DECIMALS_REFUSAL);
+    });
+
+    it('says by how much parts typed in USD come to more than the whole, rather than an empty Rest', () => {
+      const typed = twoParts({ original: '80', typedOriginal: true, originalIn: 'USD' }, { original: '50', typedOriginal: true, originalIn: 'USD', rest: undefined });
+      const three: FormDraft = { ...typed, splits: [...typed.splits, { categoryId: 'cat-groceries', amount: '', rest: true }] };
+      // USD 80 + USD 50 of a USD 120 purchase: Rp 2.106.000 of Rp 1.944.000 charged.
+      expect(() => formToPost(three, withHotel)).toThrow(/^Over by Rp\s?162\.000$/);
     });
 
     it('starts a Duplicate from the foreign figures, so the new charge reprices the parts', () => {

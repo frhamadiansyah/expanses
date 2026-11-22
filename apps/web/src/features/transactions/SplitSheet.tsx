@@ -8,7 +8,7 @@ import { DestructiveRow, InsetGroup, InsetRow, PickerRow, ReadOnlyRow, SwitchRow
 import { categoryMark, useCategoryMarkColour } from '../categories/CategoryIcon';
 import { useCategoryColours } from '../../lib/queries';
 import { OTHER_COLOUR } from './category-colours';
-import { addPart, assignment, assignmentLine, barShares, editAmount, editOriginal, removePart, restIndex, settleRest } from './split-rest';
+import { addPart, assignment, assignmentLine, barShares, currentOriginals, editAmount, editOriginal, removePart, restIndex, settleRest } from './split-rest';
 import { CategoryPicker } from './CategoryPicker';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
@@ -195,11 +195,11 @@ export function SplitSheet({
 }) {
   const { ws } = useApp();
   const splits = draft.splits;
-  const refusal = splitCentsRefusal(splits, currency);
   const setSplits = (next: SplitRow[]) => onChange({ ...draft, splits: next });
   // What the Rest is worked out against: the amount, or in another currency what was charged with the foreign whole beside it.
   // `needs` names the figure still to type before a part can be worked out at the purchase's own rate.
   const { total, foreign, needs } = splitBasis(draft, currency, typedCurrency(draft, accounts));
+  const refusal = splitCentsRefusal(splits, currency, foreign?.currency ?? null);
   // Excluded whole (More details' switch): a part added now is excluded with the rest.
   const whole = excludedWhole(draft);
   /*
@@ -234,8 +234,9 @@ export function SplitSheet({
 
   // The Rest follows the amount: if it moved while this was shut, the parts are put right as the sheet opens.
   useEffect(() => {
-    if (total === null || splits.length === 0) return;
-    const next = settleRest(splits, total, currency, foreign);
+    if (splits.length === 0) return;
+    // A foreign figure written under another flag goes as the sheet opens, whether or not there is a total yet.
+    const next = total === null ? currentOriginals(splits, foreign?.currency ?? null) : settleRest(splits, total, currency, foreign);
     if (JSON.stringify(next) !== JSON.stringify(splits)) setSplits(next);
     // Once, as the sheet opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -246,9 +247,10 @@ export function SplitSheet({
   const shares = barShares(splits, total, currency);
   const shown = total ?? splitTotalMinor(splits, currency);
   const amountOf = (row: SplitRow) => (row.amount.trim() ? (evaluateAmount(row.amount, currency) ?? 0) : null);
-  const originalOf = (row: SplitRow) => (foreign && row.original?.trim() ? (evaluateAmount(row.original, foreign.currency) ?? 0) : null);
+  const originalOf = (row: SplitRow) => (foreign && row.originalIn === foreign.currency && row.original?.trim() ? (evaluateAmount(row.original, foreign.currency) ?? 0) : null);
   /** Which of a part's two figures was worked out rather than typed — none on the Rest, which is what is left of both. */
-  const workedOut = (row: SplitRow, i: number): 'amount' | 'original' | null => (!foreign || i === at ? null : row.typedOriginal ? 'amount' : 'original');
+  const workedOut = (row: SplitRow, i: number): 'amount' | 'original' | null =>
+    !foreign || i === at ? null : row.typedOriginal && row.originalIn === foreign.currency ? 'amount' : 'original';
 
   const chosenColours = useCategoryColours().data;
   const markOf = (row: SplitRow) => {
@@ -403,7 +405,7 @@ export function SplitSheet({
                   <TextRow
                     label={`In ${foreign.currency}`}
                     prefix={workedOut(current, part) === 'original' ? `≈ ${foreign.currency}` : foreign.currency}
-                    value={current.original ?? ''}
+                    value={current.originalIn === foreign.currency ? (current.original ?? '') : ''}
                     inputMode="decimal"
                     placeholder="Amount"
                     className={workedOut(current, part) === 'original' ? '!text-[var(--ph-ink-3)]' : undefined}
