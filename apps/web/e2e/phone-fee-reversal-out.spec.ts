@@ -98,7 +98,7 @@ test('phone: a reversed fee is left out on every card — the fee and both rever
   if (shots) await page.screenshot({ path: `${shots}/cashflow-fee.png` });
 
   // A receipt says why.
-  await fees.first().getByRole('button').first().click();
+  await fees.first().getByRole('button', { name: /^Membership fee/ }).click();
   await expect(page.getByTestId('excluded-note')).toContainText('Annual fee reversed');
   if (shots) await page.screenshot({ path: `${shots}/receipt-fee.png` });
 });
