@@ -76,7 +76,7 @@ export function BillPage({ billId }: { billId: string }) {
   // The skipped month whose sheet is open, with the title its row carries.
   const [unskipping, setUnskipping] = useState<{ month: string; title: string } | null>(null);
   // The paid month whose sheet is open: its payments, to open or to undo.
-  const [paidOpen, setPaidOpen] = useState<{ title: string; payments: { id: string; paidMinor: number | null; paidCurrency: string | null; linked: boolean }[] } | null>(null);
+  const [paidOpen, setPaidOpen] = useState<{ title: string; month: string; payments: { id: string; paidMinor: number | null; paidCurrency: string | null; linked: boolean }[] } | null>(null);
   const [justPaid, setJustPaid] = useState<JustPaid | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -248,7 +248,7 @@ export function BillPage({ billId }: { billId: string }) {
                   row.state === 'skipped'
                     ? () => setUnskipping({ month: row.month, title })
                     : row.state === 'paid' && row.payments.length > 0
-                      ? () => setPaidOpen({ title: `${bill.name} · ${title}`, payments: row.payments })
+                      ? () => setPaidOpen({ title: `${bill.name} · ${title}`, month: row.month, payments: row.payments })
                       : undefined
                 }
                 value={
@@ -363,9 +363,11 @@ export function BillPage({ billId }: { billId: string }) {
                 title="Unlink"
                 onClick={() => {
                   const linked = paidOpen.payments.filter((p) => p.linked);
+                  const month = paidOpen.month;
                   setPaidOpen(null);
+                  // This bill's month only: a purchase that settles other bills too keeps them.
                   void act(async () => {
-                    for (const p of linked) await unlinkPurchaseFromBill(database, ws, { transactionId: p.id });
+                    for (const p of linked) await unlinkPurchaseFromBill(database, ws, { transactionId: p.id, templateId: bill.id, billMonth: month });
                   });
                 }}
               />

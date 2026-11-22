@@ -1255,6 +1255,43 @@ async function linkMonthsOf(database: Database, ws: WorkspaceContext, templates:
   );
 }
 
+/** A bill a split's part may pay (the Split sheet's Bill row): its month for the purchase, and what it is matched by. */
+export interface BillChoice {
+  templateId: string;
+  name: string;
+  billMonth: string;
+  categoryAccountId: string;
+  amountMinor: number | null;
+}
+
+/**
+ * The bills a part of a purchase made on `purchasedOn` may pay (one payment, several bills; 0127): each live bill at
+ * the month a link would take (`linkChoice`), when that month is out and not paid, skipped or paused — and every month
+ * `transactionId` (the purchase being edited) already pays. By name.
+ */
+export async function billChoicesForPurchase(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { purchasedOn: string; transactionId?: string | null; today?: string },
+): Promise<BillChoice[]> {
+  const templates = (await listExpenseTemplates(database, ws)).filter((t) => t.active);
+  const facts = await billFacts(database, ws, templates);
+  const today = input.today ?? isoDate();
+  const out: BillChoice[] = [];
+  for (const template of templates) {
+    const base = { templateId: template.id, name: template.name, categoryAccountId: template.categoryAccountId, amountMinor: template.amountMinor };
+    const own = (facts.payments.get(template.id) ?? []).filter((p) => input.transactionId && p.transactionId === input.transactionId);
+    for (const payment of own) out.push({ ...base, billMonth: payment.billMonth });
+    const rules = linkInput(template, facts, today);
+    const { month } = linkChoice(input.purchasedOn, rules);
+    if (own.some((p) => p.billMonth === month)) continue;
+    if (rules.settled[month] !== undefined || month > latestLinkMonthOf(rules)) continue;
+    if (!isOwedMonth(month, template.repeatMonth, template.repeatEvery, template.startsMonth)) continue;
+    out.push({ ...base, billMonth: month });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name) || a.billMonth.localeCompare(b.billMonth));
+}
+
 /** Links a purchase already recorded to one month of a bill, so that month reads as paid with the purchase's own date and amount. */
 export async function linkPurchaseToBill(database: Database, ws: WorkspaceContext, input: LinkPurchaseInput): Promise<void> {
   const { templateId, billMonth, transactionId } = input;

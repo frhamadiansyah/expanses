@@ -194,7 +194,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   // None, or a link this purchase may move or let go: the bill list, its ✓ on the current one. Pay's own payment, or a
   // link it may not change, opens the bill itself.
   const openBill = () => {
-    if (!bill || (bill.linked && changeable)) {
+    // A purchase that settles several bills (0127) opens the first of them: its parts' bills are changed in its Split.
+    if (!bill || (bill.linked && changeable && bill.count < 2)) {
       // Linking from the list comes back to this very entry (`stepsBackToReceipt`), not a second receipt on top.
       markReceiptAt(transactionId, historyIndex(router.history));
       void navigate({ to: '/transactions/$transactionId/bill', params: { transactionId } });
@@ -407,7 +408,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         {(billRow || paidOffMark) && (
           <InsetGroup>
             {billRow && (
-              <InsetRow title="Bill" value={bill ? 'Linked' : 'None'} valueTone={bill ? 'ink-2' : 'ink-3'} chevron testId="receipt-bill" onClick={openBill} />
+              <InsetRow title="Bill" value={bill ? (bill.count > 1 ? `${bill.count} bills` : 'Linked') : 'None'} valueTone={bill ? 'ink-2' : 'ink-3'} chevron testId="receipt-bill" onClick={openBill} />
             )}
             {paidOffMark && (
               <SwitchRow label={paidOffMark.refund ? 'Settled' : 'Paid off'} checked={paidOffMark.settled} disabled={busy} onChange={(on) => void markPaidOff(on)} />

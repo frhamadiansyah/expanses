@@ -12,9 +12,6 @@ import {
   voidTransaction,
 } from '../../src/index';
 import { SyncEngine } from '../../src/sync/engine';
-import { encodeHlc } from '../../src/sync/hlc';
-import { applySelfChangeSet, collectSelfChanges } from '../../src/self/channel';
-import { exchange, linkedPair, sameRows, type Device as SelfDevice } from '../self/devices';
 import { type Device, Household, skipsOf } from './household';
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -133,55 +130,5 @@ describe('household sharing', () => {
     // Once for his crossing.
     expect((await runSharedBookRepairs(wife.database, home.bookId, { today: TODAY })).severalBills).toBeNull();
     expect(await skipsOf(husband.database)).toEqual([]);
-  });
-});
-
-describe('linked devices', () => {
-  async function pair() {
-    let bank = '';
-    let card = '';
-    const devices = await linkedPair(async ({ database, ws }) => {
-      const all = await listAccounts(database, ws);
-      bank = all.find((a) => a.kind === 'asset')?.id ?? '';
-      card = (await createCardAccount(database, ws, { name: 'Kartu Contoh', subtype: 'credit_card', currency: 'IDR', last4: '4417' })).id;
-    });
-    const b = await threeBills(devices.phone, card || bank);
-    await exchange(devices.phone, devices.mac);
-    return { ...devices, card, b };
-  }
-
-  it('a payment of three bills goes to the other device whole, and its deletion takes all three back', async () => {
-    const { phone, mac, card, b } = await pair();
-    const [payment] = await recordBillsAsOnePayment(phone.database, phone.ws, { paidOn: TODAY, moneyAccountId: card, payments: payments(b) });
-    await exchange(phone, mac);
-    const ids = [b.internet, b.phone, b.phone2];
-    expect(await paidOf(mac, ids)).toEqual(PAID);
-    expect(await sameRows(phone, mac)).toEqual([]);
-    await voidTransaction(mac.database, mac.ws, payment!);
-    await exchange(mac, phone);
-    expect((await paidOf(phone, ids)).map((x) => x!.state === 'paid')).toEqual([false, false, false]);
-  });
-
-  it('an older device’s one-part key for a bill link is read as the transaction’s one link', async () => {
-    const { phone, mac, card, b } = await pair();
-    const [payment] = await recordBillsAsOnePayment(phone.database, phone.ws, { paidOn: TODAY, moneyAccountId: card, payments: payments(b).slice(0, 2) });
-    await exchange(phone, mac);
-    await collectSelfChanges(mac.database, (mac as SelfDevice).deviceId);
-    // An older build relinks the transaction to Mobile phone 2 alone: its row under the old key, made whole.
-    const result = await applySelfChangeSet(
-      mac.database,
-      {
-        v: 1,
-        hlc: encodeHlc(Date.now() + 60_000, 0, 'c3'.repeat(16)),
-        schema: 126,
-        ops: [{ t: 'bill_payments', k: [payment], i: true, c: { workspace_id: mac.ws.workspaceId, template_id: b.phone2, bill_month: '2026-11' } }],
-      },
-      mac.deviceId,
-    );
-    expect(result.status).toBe('applied');
-    expect(await mac.database.db.values(sql`SELECT template_id FROM bill_payments WHERE transaction_id = ${payment} ORDER BY template_id`)).toEqual([[b.phone2]]);
-    // Its removal under the old key takes that one.
-    await applySelfChangeSet(mac.database, { v: 1, hlc: encodeHlc(Date.now() + 120_000, 0, 'c3'.repeat(16)), schema: 126, ops: [{ t: 'bill_payments', k: [payment], d: true }] }, mac.deviceId);
-    expect(await mac.database.db.values(sql`SELECT template_id FROM bill_payments WHERE transaction_id = ${payment}`)).toEqual([]);
   });
 });

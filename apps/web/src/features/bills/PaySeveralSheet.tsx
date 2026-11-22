@@ -1,5 +1,5 @@
-import { groupTypedAmount, parseGroupedMajor } from '@expanses/core';
-import { type MonthlyBill, recordBillPayments, type SetAsideChoice } from '@expanses/db';
+import { formatMinor, groupTypedAmount, parseGroupedMajor } from '@expanses/core';
+import { type MonthlyBill, recordBillPayments, recordBillsAsOnePayment, type SetAsideChoice } from '@expanses/db';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -45,9 +45,24 @@ function PayerQuestion({ accountId, total, ownGoalIds, onChange }: { accountId: 
 }
 
 /**
+ * Whether One payment can be switched on, and why not when it cannot (null: it can). It needs two ticked bills or more
+ * and one Payment method for all of them — the card or account the checkout went on — and every bill in that account's
+ * money: one transaction is split into parts of one currency, and a foreign bill's own figure has nowhere to live on one.
+ */
+export function onePaymentRefusal(input: { ticked: number; account: { name: string; currency: string | null } | null; foreignNames: readonly string[] }): string | null {
+  if (input.ticked < 2) return 'Tick two bills or more to pay them as one.';
+  if (!input.account) return 'Choose the one Payment method they were paid with.';
+  if (input.foreignNames.length > 0) return `${input.foreignNames.join(', ')} ${input.foreignNames.length === 1 ? 'is' : 'are'} in another currency: One payment pays bills in ${input.account.currency ?? 'one currency'} only.`;
+  return null;
+}
+
+/**
  * Paying several bills on one day: the ticked bills each become their own payment against their own
  * category, so a fixed one needs nothing typed and one that varies asks what it came to. Unticking a bill
- * here leaves it exactly as it was — a way to change your mind before anything is recorded.
+ * here leaves it exactly as it was — a way to change one's mind before anything is recorded.
+ *
+ * One payment (2026-11-22): paid together in one checkout, they become ONE transaction on the chosen account, split
+ * into a part per bill — one line on the card's statement, as the statement shows it.
  */
 export function PaySeveralSheet({
   bills,
@@ -94,6 +109,9 @@ export function PaySeveralSheet({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [answers, setAnswers] = useState<Record<string, PayerAnswer>>({});
+  // One payment: off until switched on; the Note is what the statement calls it, empty until typed.
+  const [onePayment, setOnePayment] = useState(false);
+  const [note, setNote] = useState('');
 
   const chosen = bills.filter((bill) => ticked.has(bill.id));
   /** The figure each bill posts: the fixed amount, or what was typed for one that varies (0 until it parses). */
@@ -144,6 +162,16 @@ export function PaySeveralSheet({
   const answered = payers.every((payer) => answers[payer]?.ready === true);
   const onAnswer = (accountId: string, answer: PayerAnswer) => setAnswers((current) => ({ ...current, [accountId]: answer }));
 
+  const oneRefusal = onePaymentRefusal({
+    ticked: chosen.length,
+    account: overrideAccount ? { name: overrideAccount.name, currency: overrideAccount.currency } : null,
+    foreignNames: foreignChosen.map((bill) => bill.name),
+  });
+  /** One payment as Record will make it: switched on, and nothing stands in its way. */
+  const asOne = onePayment && oneRefusal === null;
+  const oneTotal = chosen.reduce((sum, bill) => sum + amountOf(bill), 0);
+  const oneCurrency = overrideAccount?.currency ?? ws.baseCurrency;
+
   const toggle = (id: string) =>
     setTicked((current) => {
       const next = new Set(current);
@@ -190,6 +218,23 @@ export function PaySeveralSheet({
         setError(`Enter what the account was charged in ${payerCurrencyOf(unpriced)} for ${unpriced.name}`);
         return;
       }
+      if (asOne && overrideAccount) {
+        // One transaction takes one answer: the paying account's. A fund's account answering too has no part to go on.
+        if (payers.some((payer) => payer !== overrideAccount.id && answers[payer]?.choice)) {
+          setError('One payment takes money set aside from the Payment method only. Switch off One payment to pay these one by one.');
+          return;
+        }
+        const ids = await recordBillsAsOnePayment(database, ws, {
+          paidOn,
+          moneyAccountId: overrideAccount.id,
+          description: note,
+          payments: payments.map(({ templateId, billMonth, amountMinor, payCardFromFund }) => ({ templateId, billMonth, amountMinor, payCardFromFund })),
+          setAside: answers[overrideAccount.id]?.choice ?? null,
+        });
+        await invalidate();
+        onPaid(ids, chosen.map((bill) => bill.name));
+        return;
+      }
       const ids = await recordBillPayments(database, ws, { paidOn, payments });
       await invalidate();
       onPaid(ids, chosen.map((bill) => bill.name));
@@ -234,6 +279,22 @@ export function PaySeveralSheet({
         <TextRow label="Paid on" id="several-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
       </InsetGroup>
 
+      {/* One payment: offered once two bills are ticked; why it cannot be on says so under it. */}
+      {chosen.length >= 2 && (
+        <InsetGroup
+          footer={
+            asOne
+              ? 'One transaction on the card, split by bill, as the statement shows it.'
+              : onePayment && oneRefusal
+                ? oneRefusal
+                : undefined
+          }
+        >
+          <SwitchRow label="One payment" testId="several-one" checked={onePayment} onChange={setOnePayment} />
+          {onePayment && <TextRow label="Note" id="several-note" value={note} placeholder="Note" onChange={(e) => setNote(e.target.value)} />}
+        </InsetGroup>
+      )}
+
       {foreignChosen.length > 0 && (
         <InsetGroup header="Charged" info="What each account was charged, as its statement shows. It starts as an estimate at the latest rate known, and can be changed to the real figure.">
           {foreignChosen.map((bill) => (
@@ -264,8 +325,12 @@ export function PaySeveralSheet({
       <InsetGroup>
         <InsetRow
           action
-          title={ticked.size === 0 ? 'Record' : `Record ${ticked.size} ${ticked.size === 1 ? 'bill' : 'bills'}`}
-          disabled={ticked.size === 0 || busy || !answered || refusals.length > 0}
+          title={
+            ticked.size === 0
+              ? 'Record'
+              : `Record ${ticked.size} ${ticked.size === 1 ? 'bill' : 'bills'}${asOne && oneTotal > 0 ? ` · ${formatMinor(oneTotal, oneCurrency)}` : ''}`
+          }
+          disabled={ticked.size === 0 || busy || !answered || refusals.length > 0 || (onePayment && oneRefusal !== null)}
           onClick={() => void record()}
         />
       </InsetGroup>
