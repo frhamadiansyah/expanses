@@ -1,9 +1,10 @@
-import { FX_LOT_SUBTYPES, isExchangeResultKey, type PostingLine, transferName } from '@expanses/core';
+import { FX_LOT_SUBTYPES, isExchangeResultKey, type PostingLine, transferName, transferSideOf } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { captureRevaluingTx, localDeviceId, withCapture } from '../sync/capture';
 import { meetsVersion } from '../sync/events/version';
+import { sharingTablesExist } from '../sync/placeholder';
 import { namespaceOf, uuidv5 } from '../sync/uuidv5';
 import { markForeignDirtyTx } from './fx-pending';
 import { postTransactionTx, replaceTransactionTx } from './ledger';
@@ -442,12 +443,15 @@ export async function eventTransferOf(database: Database, transactionId: string)
 
 /** The account names of a transfer recorded here: the largest line out and the largest line in. */
 async function ownNamesTx(db: Db, transactionId: string): Promise<{ fromName: string | null; toName: string | null; name: string | null }> {
-  const lines = await db.values<[number, string, string, string]>(sql`
-    SELECT e.amount_minor, a.name, a.subtype, e.currency FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId} AND a.kind IN ('asset', 'liability')`);
+  const placeholder = (await sharingTablesExist(db)) ? sql`a.id IN (SELECT account_id FROM book_member_accounts)` : sql`0`;
+  const lines = await db.values<[number, string, string, string, number]>(sql`
+    SELECT e.amount_minor, a.name, a.subtype, e.currency, ${placeholder} FROM entries e JOIN accounts a ON a.id = e.account_id WHERE e.transaction_id = ${transactionId} AND a.kind IN ('asset', 'liability')`);
   const out = lines.filter(([amount]) => Number(amount) < 0).sort((a, b) => Number(a[0]) - Number(b[0]))[0];
   const into = lines.filter(([amount]) => Number(amount) > 0).sort((a, b) => Number(b[0]) - Number(a[0]))[0];
-  // Named only by a plain two-sided transfer; a fee line beside it is not a money account.
-  const name = lines.length === 2 && out && into ? transferName({ subtype: out[2], currency: out[3] }, { subtype: into[2], currency: into[3] }) : null;
+  // Named only by a plain two-sided transfer; a fee line beside it is not a money account. A household placeholder's
+  // 'cash' never names one (`transferSideOf`).
+  const sideOf = (line: [number, string, string, string, number]) => transferSideOf({ accountSubtype: line[2], currency: line[3], placeholder: Number(line[4]) === 1 });
+  const name = lines.length === 2 && out && into ? transferName(sideOf(out), sideOf(into)) : null;
   return { fromName: out?.[1] ?? null, toName: into?.[1] ?? null, name };
 }
 

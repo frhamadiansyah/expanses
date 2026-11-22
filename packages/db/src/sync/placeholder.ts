@@ -80,3 +80,62 @@ export async function memberPayerAccounts(database: Database, ws: WorkspaceConte
     LEFT JOIN book_members bm ON bm.book_id = m.book_id AND bm.member_id = m.member_id`);
   return new Map(rows.map(([accountId, member, placeholder, self]) => [accountId, { name: member || placeholder, self: Number(self) === 1 }]));
 }
+
+/**
+ * Which of `accountIds` are household placeholders (spec §4.4), and — for a transfer between partners (joint net worth
+ * §7.2) among `transactionIds` — the kind of the partner's shared item each placeholder line stands for: by its owner,
+ * the member the placeholder is for, from that item's summary in the group log. What a row is named by (`transferName`):
+ * the placeholder's own 'cash' says nothing. A side kept private, an item no longer shared, or a database from before
+ * the group log knows no kind. Empty on a database one version behind, where nothing is shared yet.
+ */
+export async function placeholderLinesOf(
+  db: Db,
+  transactionIds: readonly string[],
+  accountIds: readonly string[],
+): Promise<{ placeholders: Set<string>; partnerSubtype: (transactionId: string, accountId: string) => string | null }> {
+  const none = { placeholders: new Set<string>(), partnerSubtype: () => null };
+  if (accountIds.length === 0 || transactionIds.length === 0 || !(await sharingTablesExist(db))) return none;
+  const memberOf = new Map(await db.values<[string, string]>(sql`SELECT account_id, member_id FROM book_member_accounts WHERE account_id IN ${[...new Set(accountIds)]}`));
+  if (memberOf.size === 0) return none;
+  // transaction id → the member a side is owned by → that side's item kind
+  const kinds = new Map<string, Map<string, string>>();
+  try {
+    const transfers = await db.values<[string, string, string, string]>(sql`
+      SELECT p.transaction_id, t.book_id, t.from_json, t.to_json FROM member_transfer_postings p
+      JOIN member_transfers t ON t.book_id = p.book_id AND t.transfer_id = p.transfer_id
+      WHERE p.transaction_id IN ${[...new Set(transactionIds)]}`);
+    for (const [transactionId, groupBookId, ...sides] of transfers) {
+      for (const json of sides) {
+        let side: { owner?: unknown; itemId?: unknown } | null = null;
+        try {
+          side = JSON.parse(json) as { owner?: unknown; itemId?: unknown } | null;
+        } catch {
+          continue;
+        }
+        if (typeof side?.owner !== 'string' || typeof side.itemId !== 'string' || side.itemId === '') continue;
+        const [item] = await db.values<[string]>(
+          sql`SELECT summary_json FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${side.itemId} AND owner = ${side.owner} AND removed = 0`,
+        );
+        let subtype: unknown = null;
+        try {
+          subtype = item ? (JSON.parse(item[0]) as { subtype?: unknown } | null)?.subtype : null;
+        } catch {
+          // A summary that does not parse names nothing.
+        }
+        if (typeof subtype !== 'string') continue;
+        const byOwner = kinds.get(transactionId) ?? new Map<string, string>();
+        byOwner.set(side.owner, subtype);
+        kinds.set(transactionId, byOwner);
+      }
+    }
+  } catch {
+    // a database from before the group log: no transfer between partners here
+  }
+  return {
+    placeholders: new Set(memberOf.keys()),
+    partnerSubtype: (transactionId, accountId) => {
+      const member = memberOf.get(accountId);
+      return member === undefined ? null : (kinds.get(transactionId)?.get(member) ?? null);
+    },
+  };
+}

@@ -1,6 +1,18 @@
-import { transferLines } from '@expanses/core';
+import { transferLines, transferName, transferSideOf } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { confirmReview, inBook, listSharedTransfers, postTransaction, setJointAccount } from '../../src/index';
+import {
+  confirmReview,
+  createAccount,
+  createCardAccount,
+  inBook,
+  listSharedTransfers,
+  listTransactions,
+  postTransaction,
+  recordMemberTransfer,
+  saveCardTerms,
+  setJointAccount,
+} from '../../src/index';
+import { itemIdOf } from '../../src/sync/net-worth/summaries';
 import { Household, type Device } from './household';
 
 /*
@@ -80,5 +92,80 @@ describe('a partner’s transfer named by its accounts', () => {
     await move(bare.rina, bare.bookId, bare.rina.bank, bare.rina.cash, 'ATM');
     await settle(bare.home);
     expect((await listSharedTransfers(bare.andi.database, bare.bookId))[0]?.name).toBeNull();
+  });
+});
+
+/** What a phone's own list names the row by, worked out from its two money lines as the list does (`transferSideOf`). */
+async function ownName(d: Device, description: string) {
+  const tx = (await listTransactions(d.database, d.ws)).find((t) => t.description === description);
+  const money = (tx?.entries ?? []).filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability').sort((a, b) => a.amountMinor - b.amountMinor);
+  return money.length === 2 ? transferName(transferSideOf(money[0]!), transferSideOf(money[1]!)) : undefined;
+}
+
+describe('a card payment and a bank transfer, named alike on both phones', () => {
+  it('a bank into a shared card reads Credit card payment, a bank into a shared saving account Bank transfer', async () => {
+    const { home, rina, andi, bookId } = await household();
+    const card = await createCardAccount(rina.database, rina.ws, { name: 'Rina Kartu', subtype: 'credit_card', currency: 'IDR', last4: '7731' });
+    await saveCardTerms(rina.database, rina.ws, { accountId: card.id, statementDay: 20, dueDay: 5, creditLimitMinor: 30_000_000, annualFeeMinor: null });
+    const savings = await createAccount(rina.database, rina.ws, { name: 'Rina Tabungan', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    await confirmReview(rina.database, rina.ws, { [rina.bank]: 'total', [rina.cash]: 'total', [rina.usd]: 'hidden', [card.id]: 'total', [savings.id]: 'total' });
+    await settle(home);
+
+    await move(rina, bookId, rina.bank, card.id, 'Credit card payment');
+    await move(rina, bookId, rina.bank, savings.id, 'Put away');
+    await settle(home);
+    expect(await ownName(rina, 'Credit card payment')).toBe('Credit card payment');
+    expect(await ownName(rina, 'Put away')).toBe('Bank transfer');
+    expect((await listSharedTransfers(andi.database, bookId)).map((t) => [t.description, t.name]).sort()).toEqual([
+      ['Credit card payment', 'Credit card payment'],
+      ['Put away', 'Bank transfer'],
+    ]);
+  });
+});
+
+describe('a transfer between partners, named by the partner’s item', () => {
+  it('Rina’s bank to Andi’s bank reads Bank transfer on both phones, never Cash withdrawal from the placeholder', async () => {
+    const { home, rina, andi, bookId } = await household();
+    await confirmReview(andi.database, andi.ws, { [andi.bank]: 'total' });
+    await settle(home);
+    const groupBookId = (await rina.engine.netWorthGroup(bookId)).groupBookId!;
+    await recordMemberTransfer(rina.database, bookId, {
+      occurredOn: '2026-10-31',
+      amountMinor: 1_250_000_00,
+      currency: 'IDR',
+      from: { owner: rina.memberId, itemId: await itemIdOf(groupBookId, rina.bank) },
+      to: { owner: andi.memberId, itemId: await itemIdOf(groupBookId, andi.bank) },
+      description: 'Sekolah Contoh',
+    });
+    await settle(home);
+
+    for (const d of [rina, andi]) {
+      const tx = (await listTransactions(d.database, d.ws)).find((t) => t.description === 'Sekolah Contoh');
+      // The placeholder line says whose money it is and what that is, never by its own 'cash'.
+      expect(tx?.entries.find((e) => e.placeholder)).toMatchObject({ accountSubtype: 'cash', placeholder: true, partnerSubtype: 'bank' });
+      expect(await ownName(d, 'Sekolah Contoh')).toBe('Bank transfer');
+    }
+  });
+
+  it('a partner’s item unknown here reads plain Transfer', async () => {
+    const { home, rina, andi, bookId } = await household();
+    await confirmReview(andi.database, andi.ws, { [andi.bank]: 'total' });
+    await settle(home);
+    const groupBookId = (await rina.engine.netWorthGroup(bookId)).groupBookId!;
+    await recordMemberTransfer(rina.database, bookId, {
+      occurredOn: '2026-10-31',
+      amountMinor: 400_000_00,
+      currency: 'IDR',
+      from: { owner: rina.memberId, itemId: await itemIdOf(groupBookId, rina.cash) },
+      to: { owner: andi.memberId, itemId: await itemIdOf(groupBookId, andi.bank) },
+      description: 'Uang saku',
+    });
+    await settle(home);
+    // Andi stops sharing his bank: Rina's phone no longer knows what it is.
+    await confirmReview(andi.database, andi.ws, { [andi.bank]: 'hidden' });
+    await settle(home);
+    const tx = (await listTransactions(rina.database, rina.ws)).find((t) => t.description === 'Uang saku');
+    expect(tx?.entries.find((e) => e.placeholder)?.partnerSubtype).toBeUndefined();
+    expect(await ownName(rina, 'Uang saku')).toBeNull();
   });
 });
