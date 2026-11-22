@@ -162,7 +162,15 @@ export function listInputs(
     }
     const ratesToBase = ratesFor(row.occurredOn);
     const past = row.type !== 'transfer' && isPastDefault(openedOn, row.occurredOn);
-    return { occurredOn: row.occurredOn, description: row.note, lines, ...(ratesToBase ? { ratesToBase } : {}), ...(past ? { pastPurchase: true } : {}) };
+    // A transfer follows the start day rule instead: a side dated before its account was added stays (owner, 22 Nov 2026).
+    return {
+      occurredOn: row.occurredOn,
+      description: row.note,
+      lines,
+      ...(ratesToBase ? { ratesToBase } : {}),
+      ...(past ? { pastPurchase: true } : {}),
+      ...(row.type === 'transfer' ? { beforeStart: true } : {}),
+    };
   });
 }
 

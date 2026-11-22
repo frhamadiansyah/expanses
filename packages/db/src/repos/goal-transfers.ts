@@ -7,7 +7,7 @@ import { goals } from '../schema-goals';
 import { systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { GoalDbError } from './goals';
-import { postTransactionTx, voidTransactionTx } from './ledger';
+import { GOAL_BEFORE_START_TEXT, pastSidesTx, postTransactionTx, voidTransactionTx } from './ledger';
 import { parkForGoalTx, type SetAsideChoice } from './set-aside-tx';
 
 export interface TaggedTransferInput {
@@ -48,6 +48,8 @@ export interface TaggedTransferInput {
    * carries. Only a goal's due month (`transferGoalMonth`) passes it: what went past the source's free money.
    */
   promiseFollowsAtMost?: number;
+  /** The start day rule (`PostTransactionInput.beforeStart`): a side dated before its account's start day stays. */
+  beforeStart?: boolean;
 }
 
 export interface TaggedTransferResult {
@@ -134,6 +136,10 @@ export async function recordTaggedTransferTx(tx: Db, ws: WorkspaceContext, input
           fromIsCard: from?.subtype === 'credit_card',
         });
 
+    // Money moved before an account was added keeps that side's balance: none of it can be parked for a goal there.
+    if (input.goalId && input.beforeStart && (await pastSidesTx(tx, ws, [input.fromAccountId, input.toAccountId], input.occurredOn)).length > 0) {
+      throw new AssetError(GOAL_BEFORE_START_TEXT);
+    }
     const transactionId = await postTransactionTx(tx, ws, {
       occurredOn: input.occurredOn,
       description: input.description,
@@ -144,6 +150,7 @@ export async function recordTaggedTransferTx(tx: Db, ws: WorkspaceContext, input
       eventId: input.eventId,
       photoIds: input.photoIds,
       setAside: input.setAside,
+      ...(input.beforeStart ? { beforeStart: true } : {}),
     });
 
     if (!input.goalId) return { transactionId, setAsideMinor: 0 };

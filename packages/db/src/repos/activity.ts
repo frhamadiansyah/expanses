@@ -613,6 +613,8 @@ export async function inputOfTx(tx: Db, ws: WorkspaceContext, id: string): Promi
     dayOrder: placed?.[0] ?? null,
     exactHundredths: typed?.[0] ?? null,
     ...(card === undefined || past !== undefined ? { pastPurchase: past !== undefined } : {}),
+    // A transfer or a card's payment: its pair goes back by the start day rule, decided again (`beforeStart`).
+    beforeStart: past !== undefined,
   };
 }
 
