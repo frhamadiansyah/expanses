@@ -17,7 +17,8 @@ export function useMoneyOnHand() {
   const { ws } = useApp();
   const wallet = useWalletCards();
   const { accounts, balances, everything, all, book, credit, joint, rates, held, today, laterOnCards, plansRead } = wallet;
-  const setAsides = useSetAsideViews();
+  const setAsideViews = useSetAsideViews();
+  const setAsides = Object.values(setAsideViews.data ?? {});
   const month = periodMonthOf(today, useMonthStart());
   const monthBills = useBillsInMonth(month, { workspaceMonth: true });
   const billRows = (monthBills.data ?? []).map((row) => ({
@@ -38,13 +39,14 @@ export function useMoneyOnHand() {
     credit,
     baseCurrency: ws.baseCurrency,
     rates: { ...held, ...(billRates.data?.rates ?? {}) },
-    setAsides: Object.values(setAsides.data ?? {}),
+    setAsides,
     bills: billRows,
     month,
     joint,
     laterOnCards,
   });
-  const ready = accounts.isSuccess && balances.isSuccess && rates.isSuccess && plansRead && setAsides.isSuccess && !billRates.isPending && !monthBills.isPending;
-  // With the cards themselves, for Mac Wallet, which draws them under the same box (`DesktopWallet`).
-  return { box, ready, everything, all, book, held, today, currency: ws.baseCurrency, wallet, month };
+  const ready = accounts.isSuccess && balances.isSuccess && rates.isSuccess && plansRead && setAsideViews.isSuccess && !billRates.isPending && !monthBills.isPending;
+  // With the cards themselves, for Mac Wallet, which draws them under the same box (`DesktopWallet`), and what is set
+  // aside of each account, which its money faces are net of.
+  return { box, ready, everything, all, book, held, today, currency: ws.baseCurrency, wallet, month, setAsides };
 }

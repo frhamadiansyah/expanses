@@ -1,4 +1,4 @@
-import { showBalance } from './accounts';
+import { showBalance, walletCard } from './accounts';
 import { pickView } from './wallet';
 import { expect, test } from '@playwright/test';
 import { editGoal, expectArchiveNote } from './goals';
@@ -78,6 +78,9 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   // And the list now says so in the account's own terms: the tile is what is left to spend once the goals have had
   // their share, and the working under it names the goal money rather than dropping it silently.
   await page.goto('/wallet');
+  // The card's face is what is free on it, as Spending money counts it (owner, 22 Nov 2026): 35.700.000 less the
+  // 37.500.000 set aside, below nothing. The full balance and the split stay on its page.
+  await expect(walletCard(page, 'Jenius')).toHaveAccessibleName(/^Jenius, -Rp.1\.800\.000$/);
   await pickView(page, 'Grid');
   await expect(page.getByTestId('wallet-balance')).toContainText('Balance');
   // The tile's first line is what the rows below already show: money that can be moved, less what goals claimed it.

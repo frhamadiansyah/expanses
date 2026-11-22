@@ -157,6 +157,7 @@ test('a bill that is out is paid from its row, and the month is settled', async 
   await expect(page.getByTestId('bills-summary')).toContainText('left to pay');
   await expect(page.getByTestId('bills-total')).toContainText('150.000');
   await expect(page.getByTestId('bills-month-total')).toContainText(/of Rp\s150\.000 · 0 of 1/);
+  const before = await page.getByTestId('bills-summary').boundingBox();
 
   await rowAction(page, 'Phone', /^Pay/);
   const sheet = page.getByRole('dialog', { name: 'Pay Phone' });
@@ -169,7 +170,11 @@ test('a bill that is out is paid from its row, and the month is settled', async 
   await expect(row(page, 'Phone')).toHaveCount(0);
   await expect(paidGroup(page)).toContainText('Phone');
   await expect(paidGroup(page)).toContainText('150.000');
-  await expect(page.getByTestId('bills-summary')).toContainText('All paid for');
+  // All paid keeps the box's shape and size (owner, 22 Nov 2026): Rp 0 left to pay, a full green bar, the Paid line.
+  await expect(page.getByTestId('bills-total')).toHaveText(/Rp\s?0$/);
+  await expect(page.getByTestId('bills-month-total')).toContainText(/Paid Rp\s150\.000 of Rp\s150\.000 · 1 of 1/);
+  await expect(page.getByTestId('bills-summary')).not.toContainText('All paid');
+  expect((await page.getByTestId('bills-summary').boundingBox())?.height).toBe(before?.height);
   const sheet2 = paidGroup(page);
   await expect(sheet2.getByTestId('bill-row').filter({ hasText: 'Phone' })).toContainText(/Paid \d+ \w{3}/);
   // A double-click on a paid bill opens its page.

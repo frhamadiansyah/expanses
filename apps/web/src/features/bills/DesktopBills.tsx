@@ -642,44 +642,44 @@ function BarsBox({ bars, currency }: { bars: readonly MonthBar[]; currency: stri
   );
 }
 
-/** The month's box: what is left to pay, a bar of what is paid, and "Paid Rp x of Rp y · n of m". */
+/**
+ * The month's box: what is left to pay, a bar of what is paid, and "Paid Rp x of Rp y · n of m". One shape in every
+ * state (owner, 22 Nov 2026): all paid is Rp 0 left to pay over a full green bar, and with no bills or all of them
+ * paused the figure is Rp 0 over an empty track and the line under it says why, so the box never changes size or look.
+ */
 function MonthBoxView({ month, box, loaded, empty, monthStart, currency }: { month: string; box: MonthBox; loaded: boolean; empty: boolean; monthStart: number; currency: string }) {
   const name = monthName(month, 'long');
-  let body: ReactNode;
-  if (!loaded) body = null;
-  else if (empty) body = <p className="px-[14px] pb-[12px] text-[15px] font-semibold text-[var(--ph-ink-2)]">No monthly bills in {name}</p>;
-  else if (box.allPaused) body = <p className="px-[14px] pb-[12px] text-[15px] font-semibold text-[var(--ph-ink-2)]">Nothing to pay in {name}</p>;
-  else
-    body = (
-      <>
-        <div className="px-[14px]">
-          {box.allPaid ? (
-            <p data-testid="bills-total" className="text-[20px] leading-[30px] font-semibold text-[var(--ph-up)]">
-              All paid for {name} <span aria-hidden>✓</span>
-            </p>
-          ) : (
-            <p className="flex flex-wrap items-baseline gap-x-[6px]">
-              <span data-testid="bills-total" className="text-[24px] leading-[30px] font-semibold text-[var(--ph-ink)] tabular-nums">
-                {box.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
-                {formatMinor(box.leftMinor, currency)}
-              </span>
-              <span className="text-[12px] text-[var(--ph-ink-3)]">left to pay</span>
-            </p>
-          )}
-        </div>
-        <div aria-hidden className="mx-[14px] mt-[10px] mb-[8px] h-[6px] overflow-hidden rounded-full bg-[var(--ph-track)]">
-          <div
-            className="h-full rounded-full bg-[var(--ph-up)]"
-            style={{
-              width: `${box.totalMinor > 0 ? (box.paidMinor / box.totalMinor) * 100 : 0}%`,
-            }}
-          />
-        </div>
+  const note = empty ? `No monthly bills in ${name}` : box.allPaused ? `Nothing to pay in ${name}` : null;
+  const body: ReactNode = !loaded ? null : (
+    <>
+      <div className="px-[14px]">
+        <p className="flex flex-wrap items-baseline gap-x-[6px]">
+          <span data-testid="bills-total" className="text-[24px] leading-[30px] font-semibold text-[var(--ph-ink)] tabular-nums">
+            {!note && box.approximate && <span className="text-[var(--ph-ink-3)]">≈ </span>}
+            {formatMinor(note ? 0 : box.leftMinor, currency)}
+          </span>
+          <span className="text-[12px] text-[var(--ph-ink-3)]">left to pay</span>
+        </p>
+      </div>
+      <div aria-hidden className="mx-[14px] mt-[10px] mb-[8px] h-[6px] overflow-hidden rounded-full bg-[var(--ph-track)]">
+        <div
+          className="h-full rounded-full bg-[var(--ph-up)]"
+          style={{
+            width: `${!note && box.totalMinor > 0 ? (box.paidMinor / box.totalMinor) * 100 : 0}%`,
+          }}
+        />
+      </div>
+      {note ? (
+        <p data-testid="bills-empty-note" className="px-[14px] pb-[12px] text-[12.5px] text-[var(--ph-ink-3)]">
+          {note}
+        </p>
+      ) : (
         <p data-testid="bills-month-total" className="px-[14px] pb-[12px] text-[12.5px] text-[var(--ph-ink-3)] tabular-nums">
           Paid {formatMinor(box.paidMinor, currency)} of {formatMinor(box.totalMinor, currency)} · {box.paidCount} of {box.count}
         </p>
-      </>
-    );
+      )}
+    </>
+  );
   return (
     <section className={BOX} aria-label={`${name} bills`} data-testid="bills-summary">
       <h2 className={H2}>

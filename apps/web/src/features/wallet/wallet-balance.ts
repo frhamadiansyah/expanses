@@ -1,6 +1,6 @@
 import { type BillStateKind, sumToBase } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
-import { freeToSpend, moneySummary, pocketsOf, SPENDABLE_KINDS } from '../accounts/pockets';
+import { freeToSpend, moneySummary, parentTotal, pocketsOf, SPENDABLE_KINDS } from '../accounts/pockets';
 import { dueNowMinor } from '../cards/limit-usage';
 import { owedMinor } from '../networth/debt-rows';
 
@@ -126,13 +126,6 @@ export interface JointBoxInput {
 export interface WalletBox {
   /** Spending money: what is kept for spending, less what is set aside of it. Null when a rate is missing. */
   spendingMinor: number | null;
-  /**
-   * What Spending money is net of: everything set aside of the money it counts (goals, and a bill's sinking fund), in the
-   * base currency — the figure taken off, so the money's own total less this is Spending money. Null when a rate is missing.
-   */
-  setAsideMinor: number | null;
-  /** What that set-aside is for, in the box's words: goals, bills (sinking funds), or both. */
-  setAsideFor: 'goals' | 'bills' | 'goals and bills';
   /** Outstanding on cards: what every credit card owes less its instalments not billed yet. */
   cardsMinor: number | null;
   /** Bills still to pay this month, less what their funds already set aside. */
@@ -185,15 +178,10 @@ export function walletBox({ book, balances, credit, baseCurrency, rates, setAsid
     missing: [...asked.missing, ...billed.missing],
   };
   const free = freeToSpend(spendable, promised, due);
-  // The sinking funds' part of the set-aside; the rest is goals' (and a partner's joint money's, as its phone sent it).
-  const fundsMinor = sumToBase({ amounts: funds.map((fund) => ({ minor: fund.minor, currency: fund.currency })), baseCurrency, ratesToBase: rates }).totalMinor ?? 0;
-  const goalsMinor = (promised.totalMinor ?? 0) - fundsMinor;
   const missing = free.missing;
   const known = (minor: number | null) => (missing.length > 0 ? null : minor);
   return {
     spendingMinor: known(unclaimed.freeMinor),
-    setAsideMinor: known(promised.totalMinor),
-    setAsideFor: fundsMinor > 0 && goalsMinor > 0 ? 'goals and bills' : fundsMinor > 0 ? 'bills' : 'goals',
     cardsMinor: known(asked.totalMinor),
     billsMinor: known(billed.totalMinor),
     balanceMinor: free.freeMinor,
@@ -235,9 +223,65 @@ export function walletFilterSets(
   return [[...money, ...of('money')], [...credit, ...of('credit')]];
 }
 
-/** What a money card's figure is, in the base currency: its balance, or its pockets' for an account with pockets. */
-export function moneyCardMinor(account: AccountRow, book: readonly AccountRow[], balances: Readonly<Record<string, number>>, baseCurrency: string, rates: Rates): number | null {
+/**
+ * What a money card's face shows (owner, 22 Nov 2026): what is free to spend on it — its balance less what goals and
+ * sinking funds have set aside of it, exactly the per-account amount Spending money takes off, so the money faces add
+ * up to Spending money. A plain account is read in its own currency and needs no rate: its set-aside is in the same
+ * money. An account with pockets is its pockets kept for spending (`book`) in the base currency, less what is set aside
+ * on them; a rate missing gives no figure (`missing` names it), never a partial subtraction. Set aside beyond the
+ * balance reads below nothing, as Spending money counts it. The full balance and the split are on the account's page.
+ */
+export interface MoneyFace {
+  /** Free to spend, in `currency`; null when a rate is missing. */
+  minor: number | null;
+  currency: string;
+  /** Whether any of it came from another currency (an account with pockets in more than the base). */
+  converted: boolean;
+  missing: string[];
+  /** What was taken off, in `currency` (0 when nothing is set aside, or a rate is missing). */
+  setAsideMinor: number;
+}
+
+export function moneyFace(
+  account: AccountRow,
+  book: readonly AccountRow[],
+  balances: Readonly<Record<string, number>>,
+  baseCurrency: string,
+  rates: Rates,
+  setAsides: readonly Pick<AccountSetAsideInput, 'accountId' | 'setAsideMinor' | 'currency'>[] = [],
+): MoneyFace {
+  const promised = (ids: ReadonlySet<string>) => setAsides.filter((row) => ids.has(row.accountId)).map((row) => ({ minor: row.setAsideMinor, currency: row.currency }));
   const pockets = pocketsOf(account.id, book);
-  const held = pockets.length > 0 ? pockets : [account];
-  return sumToBase({ amounts: held.map((a) => ({ minor: balances[a.id] ?? 0, currency: a.currency! })), baseCurrency, ratesToBase: rates }).totalMinor;
+  if (pockets.length === 0) {
+    const currency = account.currency ?? baseCurrency;
+    const setAsideMinor = promised(new Set([account.id])).reduce((sum, row) => sum + row.minor, 0);
+    return { minor: (balances[account.id] ?? 0) - setAsideMinor, currency, converted: false, missing: [], setAsideMinor };
+  }
+  // Converted as Spending money converts them: the pockets' balances, and what is set aside on them (and on the parent).
+  const holds = parentTotal(pockets, balances, baseCurrency, rates);
+  const claimed = sumToBase({ amounts: promised(new Set([account.id, ...pockets.map((p) => p.id)])), baseCurrency, ratesToBase: rates });
+  const free = freeToSpend(holds, claimed, { totalMinor: 0, missing: [] });
+  return { minor: free.freeMinor, currency: baseCurrency, converted: pockets.some((p) => p.currency !== baseCurrency), missing: free.missing, setAsideMinor: free.freeMinor === null ? 0 : (claimed.totalMinor ?? 0) };
+}
+
+/** A money card's face figure in the base currency (`moneyFace`), as Spending money adds it up; null when a rate is missing. */
+export function moneyCardMinor(
+  account: AccountRow,
+  book: readonly AccountRow[],
+  balances: Readonly<Record<string, number>>,
+  baseCurrency: string,
+  rates: Rates,
+  setAsides: readonly Pick<AccountSetAsideInput, 'accountId' | 'setAsideMinor' | 'currency'>[] = [],
+): number | null {
+  const face = moneyFace(account, book, balances, baseCurrency, rates, setAsides);
+  if (face.currency === baseCurrency || face.minor === null) return face.minor;
+  // A plain account in another currency: its balance and its set-aside converted apart, as Spending money converts them.
+  const held = sumToBase({ amounts: [{ minor: balances[account.id] ?? 0, currency: face.currency }], baseCurrency, ratesToBase: rates });
+  const claimed = sumToBase({ amounts: [{ minor: face.setAsideMinor, currency: face.currency }], baseCurrency, ratesToBase: rates });
+  return freeToSpend(held, claimed, { totalMinor: 0, missing: [] }).freeMinor;
+}
+
+/** A partner's joint item's face: money less what its holder's phone set aside of it, as Spending money counts it; a card what it owes. */
+export function jointFaceMinor(item: Pick<JointBoxInput, 'side' | 'minor' | 'setAsideMinor'>): number {
+  return item.side === 'money' ? item.minor - (item.setAsideMinor ?? 0) : item.minor;
 }

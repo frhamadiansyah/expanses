@@ -41,26 +41,14 @@ const PAID_COLOUR = 'var(--ph-up)';
 
 /**
  * The month's figure, in the box it is made of: what is still to pay, a bar dividing it into late and soon,
- * and the key under the bar naming each part's money. Once everything is dealt with it says so, and nothing more.
+ * and the key under the bar naming each part's money. Every state keeps that shape, so the box never changes size.
  */
-function StillToPay({ summary, currency }: { summary: BillSummary; currency: string }) {
-  if (summary.allPaused) {
-    return (
-      <Panel>
-        <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-ink-2)]">Nothing to pay in {summary.monthLabel}</p>
-      </Panel>
-    );
-  }
-  if (summary.allSettled) {
-    return (
-      <Panel>
-        <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-up)]">
-          All paid for {summary.monthLabel} <span aria-hidden>✓</span>
-        </p>
-      </Panel>
-    );
-  }
+function StillToPay({ summary, currency, note }: { summary: BillSummary; currency: string; note?: string }) {
+  // One shape in every state (owner, 22 Nov 2026): all paid, all paused and no bills at all keep the label, the figure,
+  // the bar and the key, so the box never changes size or look. All paid is Rp 0 over a full green bar; with nothing
+  // to pay the bar is an empty track and the key says why in one line.
   const total = summary.parts.reduce((sum, part) => sum + part.minor, 0) + summary.paidMinor;
+  const empty = note ?? (summary.allPaused ? 'All bills paused' : summary.allSettled && total === 0 ? `Nothing to pay in ${summary.monthLabel}` : null);
   return (
     <Panel className="space-y-3">
       <div>
@@ -79,38 +67,39 @@ function StillToPay({ summary, currency }: { summary: BillSummary; currency: str
           <span aria-hidden className="block h-[17px]" />
         )}
       </div>
-      {total > 0 && (
-        <>
-          <span aria-hidden className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 8 }}>
-            {summary.paidMinor > 0 && <span className="block h-full" style={{ width: `${(summary.paidMinor / total) * 100}%`, background: PAID_COLOUR }} />}
-            {summary.parts.map((part) => (
-              <span key={part.key} className="block h-full" style={{ width: `${(part.minor / total) * 100}%`, background: PART_COLOUR[part.key] }} />
-            ))}
-          </span>
-          {/* Three lines are kept whatever is shown, the most this legend has: the Repeating hero keeps the same, so sliding between them never changes the card. */}
-          <ul className="flex min-h-[78px] flex-col text-[12.5px] leading-[26px] text-[var(--ph-ink-3)]" data-testid="bills-legend">
-            {summary.parts.map((part) => (
-              <li key={part.key} className="flex h-[26px] items-center gap-[6px]">
-                <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: PART_COLOUR[part.key] }} />
-                {part.label}{' '}
-                <span className="tabular text-[var(--ph-ink-2)]">
-                  {part.approximate && '~'}
-                  <Money minor={part.minor} currency={currency} />
-                </span>
-              </li>
-            ))}
-            {summary.paidMinor > 0 && (
-              <li className="flex h-[26px] items-center gap-[6px]">
-                <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: PAID_COLOUR }} />
-                Paid{' '}
-                <span className="tabular text-[var(--ph-ink-2)]">
-                  <Money minor={summary.paidMinor} currency={currency} />
-                </span>
-              </li>
-            )}
-          </ul>
-        </>
-      )}
+      <span aria-hidden className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--ph-track)]" style={{ height: 8 }}>
+        {summary.paidMinor > 0 && <span className="block h-full" style={{ width: `${(summary.paidMinor / total) * 100}%`, background: PAID_COLOUR }} />}
+        {summary.parts.map((part) => (
+          <span key={part.key} className="block h-full" style={{ width: `${(part.minor / total) * 100}%`, background: PART_COLOUR[part.key] }} />
+        ))}
+      </span>
+      {/* Three lines are kept whatever is shown, the most this legend has: the Repeating hero keeps the same, so sliding between them never changes the card. */}
+      <ul className="flex min-h-[78px] flex-col text-[12.5px] leading-[26px] text-[var(--ph-ink-3)]" data-testid="bills-legend">
+        {empty !== null && total === 0 && (
+          <li className="flex h-[26px] items-center" data-testid="bills-empty-note">
+            {empty}
+          </li>
+        )}
+        {summary.parts.map((part) => (
+          <li key={part.key} className="flex h-[26px] items-center gap-[6px]">
+            <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: PART_COLOUR[part.key] }} />
+            {part.label}{' '}
+            <span className="tabular text-[var(--ph-ink-2)]">
+              {part.approximate && '~'}
+              <Money minor={part.minor} currency={currency} />
+            </span>
+          </li>
+        ))}
+        {summary.paidMinor > 0 && (
+          <li className="flex h-[26px] items-center gap-[6px]">
+            <span aria-hidden className="block h-2 w-2 rounded-full" style={{ background: PAID_COLOUR }} />
+            Paid{' '}
+            <span className="tabular text-[var(--ph-ink-2)]">
+              <Money minor={summary.paidMinor} currency={currency} />
+            </span>
+          </li>
+        )}
+      </ul>
     </Panel>
   );
 }
@@ -289,16 +278,10 @@ function PhoneRecurringPage() {
         page={page}
         onPage={changePage}
         pages={[
-          rows.length > 0 ? (
-            <div data-testid="bills-summary">
-              <Unconverted missing={unconverted} currency={readCurrency} />
-              <StillToPay summary={summary} currency={readCurrency} />
-            </div>
-          ) : (
-            <Panel>
-              <p className="text-[17px] leading-[22px] font-semibold text-[var(--ph-ink-2)]">No monthly bills yet</p>
-            </Panel>
-          ),
+          <div key="monthly" data-testid="bills-summary">
+            {rows.length > 0 && <Unconverted missing={unconverted} currency={readCurrency} />}
+            <StillToPay summary={summary} currency={readCurrency} note={rows.length > 0 ? undefined : 'No monthly bills yet'} />
+          </div>,
           <RepeatingHero key="repeating" needs={needs} currency={readCurrency} />,
         ]}
       />

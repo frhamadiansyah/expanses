@@ -643,3 +643,20 @@ describe('a part of the split left out of reports (0090)', () => {
     expect((await nativeBalances(h.owner.database, h.owner.ws))[h.card] ?? 0).toBe(0);
   });
 });
+
+describe('a split across workspaces bought in another currency (option C, owner 22 Nov 2026)', () => {
+  it('sends the shared part without the foreign figure, which is the whole purchase’s and stays on the owner’s phone', async () => {
+    const h = await household();
+    // Invented: USD 77,00 for the whole charge; the foreign figure is the whole's, never the part's.
+    const id = await postTransaction(h.owner.database, inBook(h.owner.ws, h.family), { ...market(h), originalCurrency: 'USD', originalAmountMinor: 7_700, acrossBooks: true });
+    await h.home.settle();
+    expect(await partnerCopy(h, id)).toMatchObject({ categories: [['Groceries', FAMILY_PART]], money: [-FAMILY_PART] });
+    const head = (await headOf(h.partner.database, id))!;
+    const [copy] = await listTransactions(h.partner.database, inBook(h.partner.ws, h.family), { id: head });
+    expect([copy!.originalCurrency, copy!.originalAmountMinor]).toEqual([null, null]);
+    // The owner's own copy keeps the whole's pair.
+    const [own] = await listTransactions(h.owner.database, inBook(h.owner.ws, h.family), { id });
+    expect([own!.originalCurrency, own!.originalAmountMinor]).toEqual(['USD', 7_700]);
+    await expectNothingPrivateSent(h);
+  });
+});

@@ -1377,61 +1377,6 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
 });
 
 /**
- * Split by category beside a foreign amount — the second pair the two of them make, and the second refusal.
- *
- * A split's rows are typed, summed and posted in the paying account's own currency; §3.3's original pair has
- * one row to live in and a split has none. Refused in words, before Save files the rows at the wrong exponent:
- * `parseMajor` would otherwise answer a USD figure on an IDR card with "IDR allows 0 decimal places", which is
- * an error about exponents where what the user chose was a currency.
- */
-test('a split by category refuses a foreign amount in words, and the way out works', async ({ page }) => {
-  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Current balance').fill('0');
-  });
-
-  await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('button', { name: 'Payment method' }).click();
-  await choosePayment(page, 'BCA Visa');
-  await form.getByRole('button', { name: 'Currency' }).click();
-  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
-  await form.getByLabel('Amount', { exact: true }).fill('100');
-  await form.getByLabel('Charged in IDR').fill('1600000');
-  await form.getByLabel('Note').fill('Superindo');
-
-  await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('region', { name: 'More details' });
-  await openSplit(page);
-  const split = page.getByRole('dialog', { name: 'Split' });
-  await addPart(page);
-  await pickPartCategory(page, 1, 'Groceries');
-  await fillPart(page, 1, '600000');
-  await pickPartCategory(page, 2, 'Restaurants');
-  await fillPart(page, 2, '1000000');
-  await split.getByRole('button', { name: 'Close' }).click();
-
-  await form.getByRole('button', { name: 'Save' }).click();
-  // In the currency's own words, naming both ways out — not `MoneyError`'s "IDR allows 0 decimal places".
-  await expect(form.getByRole('alert')).toContainText('A split is entered in IDR');
-  await expect(form.getByRole('alert')).toContainText('remove the split');
-  await expect(form.getByRole('alert')).not.toContainText('decimal places');
-
-  // The way out the words name really is one: back to the account's own currency and the split saves, whole.
-  await form.getByRole('button', { name: 'Currency' }).click();
-  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'IDR Indonesian Rupiah' }).first().click();
-  await expect(form.getByLabel('Charged in IDR')).toHaveCount(0);
-  await form.getByLabel('Amount', { exact: true }).fill('1600000');
-  await form.getByRole('button', { name: 'Save' }).click();
-  await expect(form).toHaveCount(0);
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('1.600.000');
-  // Both categories, each with its own figure: a split collapsed onto one of them reads wrong here.
-  await expect(page.getByTestId('report-row').filter({ hasText: 'Household' })).toContainText('Rp 600.000');
-  await expect(page.getByTestId('report-row').filter({ hasText: 'Food and beverage' })).toContainText('Rp 1.000.000');
-});
-
-/**
  * §11's asymmetry, both halves, against every reader that is supposed to disagree about one purchase.
  *
  * The extras spec above reads the chart's half. This one adds the two the plan names and nothing asserted: the

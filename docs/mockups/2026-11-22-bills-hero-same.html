@@ -1,0 +1,85 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Recurring bills hero: same box in every state</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; --up:#248a3d; --warn:#c77700; --alarm:#d70015; --track:#e5e5ea; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1180px; line-height:1.4; }
+  .rowh { display:flex; gap:14px; align-items:flex-start; margin-bottom:22px; }
+  .lead { width:200px; flex:none; font-size:13px; color:#444; line-height:1.45; } .lead h2 { font-size:16px; margin:0 0 6px; color:var(--ink); }
+  .lead h2 b { display:inline-block; min-width:24px; height:24px; border-radius:7px; background:var(--ink); color:#fff; text-align:center; line-height:24px; font-size:13px; margin-right:6px; padding:0 5px; }
+  .cell { width:300px; flex:none; }
+  .cap { font-weight:700; margin:0 0 6px; font-size:13px; color:#333; }
+  .ph { background:var(--ground); border-radius:22px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .panel { background:#fff; border-radius:14px; padding:14px 16px; }
+  .lbl { font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--ink3); text-transform:uppercase; margin:0; }
+  .fig { height:32px; white-space:nowrap; font-size:26px; line-height:32px; font-weight:700; letter-spacing:-.02em; margin:0; font-variant-numeric:tabular-nums; }
+  .l2 { font-size:13px; line-height:17px; color:var(--ink3); margin:0; height:17px; }
+  .bar { display:flex; height:8px; gap:2px; border-radius:4px; overflow:hidden; background:var(--track); margin-top:12px; }
+  .leg { list-style:none; padding:0; margin:12px 0 0; min-height:78px; font-size:12.5px; color:var(--ink3); }
+  .leg li { height:26px; display:flex; align-items:center; gap:6px; } .leg i { width:8px; height:8px; border-radius:50%; display:block; } .leg b { font-weight:400; color:var(--ink2); }
+  .short p { font-size:17px; line-height:22px; font-weight:600; margin:0; }
+  .dots { display:flex; justify-content:center; gap:6px; margin:10px 0 4px; } .dots i { width:7px; height:7px; border-radius:50%; background:#c7c7cc; } .dots i:first-child { background:#1c1c1e; }
+  .list { background:#fff; border-radius:12px; margin-top:10px; padding:12px 14px; color:var(--ink3); font-size:13px; }
+  .new { box-shadow:inset 0 0 0 2px #ff9f0a; }
+  .center { min-height:202px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:6px; }
+  .center .big { font-size:36px; line-height:40px; }
+  .center p { margin:0; }
+</style></head>
+<body>
+<h1>Recurring bills: the box at the top keeps its size</h1>
+<p class="sub">Today the box shrinks to one line when every bill of the month is paid, when there are no monthly bills, or when every bill is paused, so the page jumps. Two ways to keep it the same size and shape. New parts outlined in orange. Invented figures.</p>
+
+<!-- TODAY -->
+<div class="rowh">
+  <div class="lead"><h2><b>·</b>Today</h2>Normal month: label, figure, bar, key. The other states: one short line.</div>
+  <div class="cell"><p class="cap">Bills still to pay</p><div class="ph">
+    <div class="panel"><p class="lbl">Still to pay in November</p><p class="fig">Rp 1.350.000</p><p class="l2">of Rp 4.250.000 this month</p>
+      <div class="bar"><span style="width:68%;background:var(--up)"></span><span style="width:12%;background:var(--alarm)"></span><span style="width:20%;background:#c7c7cc"></span></div>
+      <ul class="leg"><li><i style="background:var(--alarm)"></i>Late <b>Rp 500.000</b></li><li><i style="background:#c7c7cc"></i>Later <b>Rp 850.000</b></li><li><i style="background:var(--up)"></i>Paid <b>Rp 2.900.000</b></li></ul></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+  <div class="cell"><p class="cap">All paid</p><div class="ph">
+    <div class="panel short"><p style="color:var(--up)">All paid for November ✓</p></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+  <div class="cell"><p class="cap">No monthly bills</p><div class="ph">
+    <div class="panel short"><p style="color:var(--ink2)">No monthly bills yet</p></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+</div>
+
+<!-- A -->
+<div class="rowh">
+  <div class="lead"><h2><b>A</b>Same layout</h2>The same label, figure, bar and key in every state. All paid reads Rp 0 with a full green bar. No bills or all paused: Rp 0, an empty bar and one line saying why.</div>
+  <div class="cell"><p class="cap">Bills still to pay (unchanged)</p><div class="ph">
+    <div class="panel"><p class="lbl">Still to pay in November</p><p class="fig">Rp 1.350.000</p><p class="l2">of Rp 4.250.000 this month</p>
+      <div class="bar"><span style="width:68%;background:var(--up)"></span><span style="width:12%;background:var(--alarm)"></span><span style="width:20%;background:#c7c7cc"></span></div>
+      <ul class="leg"><li><i style="background:var(--alarm)"></i>Late <b>Rp 500.000</b></li><li><i style="background:#c7c7cc"></i>Later <b>Rp 850.000</b></li><li><i style="background:var(--up)"></i>Paid <b>Rp 2.900.000</b></li></ul></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+  <div class="cell"><p class="cap">All paid</p><div class="ph">
+    <div class="panel new"><p class="lbl">Still to pay in November</p><p class="fig">Rp 0 <span style="font-size:15px;color:var(--up);font-weight:600;letter-spacing:0">All paid ✓</span></p><p class="l2">of Rp 4.250.000 this month</p>
+      <div class="bar"><span style="width:100%;background:var(--up)"></span></div>
+      <ul class="leg"><li><i style="background:var(--up)"></i>Paid <b>Rp 4.250.000</b></li></ul></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+  <div class="cell"><p class="cap">No monthly bills</p><div class="ph">
+    <div class="panel new"><p class="lbl">Still to pay in November</p><p class="fig">Rp 0</p><p class="l2"></p>
+      <div class="bar"></div>
+      <ul class="leg"><li>No monthly bills yet</li></ul></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+</div>
+
+<!-- B -->
+<div class="rowh">
+  <div class="lead"><h2><b>B</b>Same size, a message</h2>The box keeps the normal height, but the other states show one centred message instead of figures.</div>
+  <div class="cell"><p class="cap">Bills still to pay (unchanged)</p><div class="ph">
+    <div class="panel"><p class="lbl">Still to pay in November</p><p class="fig">Rp 1.350.000</p><p class="l2">of Rp 4.250.000 this month</p>
+      <div class="bar"><span style="width:68%;background:var(--up)"></span><span style="width:12%;background:var(--alarm)"></span><span style="width:20%;background:#c7c7cc"></span></div>
+      <ul class="leg"><li><i style="background:var(--alarm)"></i>Late <b>Rp 500.000</b></li><li><i style="background:#c7c7cc"></i>Later <b>Rp 850.000</b></li><li><i style="background:var(--up)"></i>Paid <b>Rp 2.900.000</b></li></ul></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+  <div class="cell"><p class="cap">All paid</p><div class="ph">
+    <div class="panel new center"><p class="big" style="color:var(--up)">✓</p><p style="font-size:17px;font-weight:600;color:var(--up)">All paid for November</p><p style="font-size:13px;color:var(--ink3)">Rp 4.250.000 this month</p></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+  <div class="cell"><p class="cap">No monthly bills</p><div class="ph">
+    <div class="panel new center"><p style="font-size:17px;font-weight:600;color:var(--ink2)">No monthly bills yet</p></div>
+    <div class="dots"><i></i><i></i></div></div></div>
+</div>
+<p class="sub" style="font-size:13px">Either way the Repeating box (swipe right) follows the same rule when it has no repeating bills.</p>
+</body></html>

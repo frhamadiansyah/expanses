@@ -408,6 +408,55 @@ describe('a spend from foreign cash (withdrawal rate §7)', () => {
   });
 });
 
+describe('a split bought in another currency (option C, owner 22 Nov 2026)', () => {
+  const withHotel = [
+    ...accounts,
+    { id: 'cat-hotel', name: 'Hotel', kind: 'expense', subtype: 'category', currency: null },
+  ] as AccountRow[];
+  // Invented: USD 120,00 on an IDR card, charged Rp 1.944.000 — the room Rp 1.296.000, breakfast Rp 648.000.
+  const hotel = dinner({
+    description: 'Hotel Contoh',
+    originalCurrency: 'USD',
+    originalAmountMinor: 12_000,
+    entries: [
+      { accountId: 'acct-card', accountKind: 'liability', amountMinor: -1_944_000, amountBaseMinor: -1_944_000, currency: 'IDR' },
+      { accountId: 'cat-hotel', accountName: 'Hotel', accountKind: 'expense', amountMinor: 1_296_000, amountBaseMinor: 1_296_000, currency: 'IDR' },
+      { accountId: 'cat-restaurants', accountName: 'Restaurants', accountKind: 'expense', amountMinor: 648_000, amountBaseMinor: 648_000, currency: 'IDR' },
+    ] as TransactionView['entries'],
+  });
+
+  it('lists each part in rupiah with its share of the USD figure, even in one workspace', () => {
+    expect(splitParts(hotel, withHotel).map((part) => [part.categoryName, part.amountMinor, part.original])).toEqual([
+      ['Hotel', 1_296_000, { minor: 8_000, currency: 'USD' }],
+      ['Restaurants', 648_000, { minor: 4_000, currency: 'USD' }],
+    ]);
+    // The whole keeps its Original amount line, as any foreign purchase does.
+    expect(said(receiptLines({ tx: hotel, accounts: withHotel, cards: [card], currency: 'IDR', points: null, owed: [] }))).toContainEqual(['Original amount', 'US$120,00']);
+  });
+
+  it('lands rounding on the last part, so the parts add up to the foreign figure', () => {
+    const odd = {
+      ...hotel,
+      originalAmountMinor: 10_000,
+      entries: [
+        { accountId: 'acct-card', accountKind: 'liability', amountMinor: -300_000, amountBaseMinor: -300_000, currency: 'IDR' },
+        { accountId: 'cat-hotel', accountName: 'Hotel', accountKind: 'expense', amountMinor: 100_000, amountBaseMinor: 100_000, currency: 'IDR' },
+        { accountId: 'cat-restaurants', accountName: 'Restaurants', accountKind: 'expense', amountMinor: 100_000, amountBaseMinor: 100_000, currency: 'IDR' },
+        { accountId: 'cat-groceries', accountName: 'Groceries', accountKind: 'expense', amountMinor: 100_000, amountBaseMinor: 100_000, currency: 'IDR' },
+      ] as TransactionView['entries'],
+    };
+    const shares = splitParts(odd, withHotel).map((part) => part.original?.minor ?? 0);
+    expect(shares.reduce((a, b) => a + b, 0)).toBe(10_000);
+    expect([...shares].sort()).toEqual([3_333, 3_333, 3_334]);
+  });
+
+  it('lists nothing for a single foreign purchase, and no foreign figure on a split in the account’s own currency', () => {
+    const single = { ...hotel, entries: [hotel.entries[0]!, { ...hotel.entries[1]!, amountMinor: 1_944_000, amountBaseMinor: 1_944_000 }] };
+    expect(splitParts(single, withHotel)).toEqual([]);
+    expect(splitParts({ ...hotel, originalCurrency: null, originalAmountMinor: null }, withHotel)).toEqual([]);
+  });
+});
+
 describe('a purchase split across workspaces', () => {
   const family = { id: 'family', name: 'Family', kind: 'family' as const };
   const business = { id: 'business', name: 'Business', kind: 'business' as const };

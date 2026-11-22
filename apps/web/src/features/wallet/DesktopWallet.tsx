@@ -14,7 +14,7 @@ import { CARD_W, cardHeightFor, leaveFrom, TwoPersonMark, type WalletCard, Walle
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { BalanceSpark } from '../accounts/BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from '../accounts/balance-series';
-import { parentTotal, pocketsOf } from '../accounts/pockets';
+import { pocketsOf } from '../accounts/pockets';
 import { sharedSections } from '../accounts/shared-accounts';
 import { dueNowMinor } from '../cards/limit-usage';
 import { owedMinor } from '../networth/debt-rows';
@@ -22,7 +22,7 @@ import { useOwnedTogether, useOwnerRings, useSharedNetWorth } from '../networth/
 import { BOX, NOTE } from '../transactions/CashflowBoxes';
 import { BillsToPaySheet } from './BillsToPaySheet';
 import { useMoneyOnHand } from './use-money-on-hand';
-import { filteredCards, toggleFilter, type WalletFilter, walletFilterSets } from './wallet-balance';
+import { filteredCards, jointFaceMinor, moneyCardMinor, moneyFace, toggleFilter, type WalletFilter, walletFilterSets } from './wallet-balance';
 import {
   type DeskGroup,
   deskGroups,
@@ -111,7 +111,7 @@ export function DesktopWallet() {
   const invalidateAll = useInvalidateAll();
   const base = ws.baseCurrency;
   const onHand = useMoneyOnHand();
-  const { box, month, wallet } = onHand;
+  const { box, month, wallet, setAsides } = onHand;
   const { accounts, cards, money, credit, joint, book, all, held, everything, parents, today, ready, laterOnCards } = wallet;
 
   // ── Each card's figure and group ──────────────────────────────────────────────────────────────────────────────────
@@ -126,13 +126,14 @@ export function DesktopWallet() {
         side: shared.side,
         subtype: shared.subtype,
         currencies: [shared.currency],
-        minor: shared.minor,
+        // Joint money is what is free to spend of it, as its face and Spending money count it (`jointFaceMinor`).
+        minor: jointFaceMinor(shared),
         currency: shared.currency,
       };
       const baseMinor =
         shared.side === 'money'
           ? sumToBase({
-              amounts: [{ minor: shared.minor, currency: shared.currency }],
+              amounts: [{ minor: jointFaceMinor(shared), currency: shared.currency }],
               baseCurrency: base,
               ratesToBase: held,
             }).totalMinor
@@ -162,27 +163,25 @@ export function DesktopWallet() {
         },
       ];
     }
+    // Money is what is free to spend on it (owner, 22 Nov 2026): its balance less what goals and sinking funds set aside
+    // of it, the face's own figure (`moneyFace`), so the money groups add up to Spending money.
     const pockets = parents.has(account.id) ? pocketsOf(account.id, book) : [];
+    const face = moneyFace(account, book, all, base, held, setAsides);
+    const baseMinor = moneyCardMinor(account, book, all, base, held, setAsides);
     if (pockets.length > 0) {
-      const total = parentTotal(pockets, all, base, held).totalMinor;
       const item: DeskItem = {
         key: card.key,
         name: card.name,
         side: 'money',
         subtype: account.subtype,
         currencies: pockets.map((pocket) => pocket.currency!),
-        minor: total,
+        minor: face.minor,
         currency: base,
       };
-      return [{ card, item, baseMinor: total, account, pockets }];
+      return [{ card, item, baseMinor, account, pockets }];
     }
-    const minor = all[account.id] ?? 0;
-    const currency = account.currency ?? base;
-    const baseMinor = sumToBase({
-      amounts: [{ minor, currency }],
-      baseCurrency: base,
-      ratesToBase: held,
-    }).totalMinor;
+    const minor = face.minor;
+    const currency = face.currency;
     return [
       {
         card,
@@ -547,12 +546,9 @@ function BoxRow({
   dimmed,
   chevron = false,
   testId,
-  sub,
 }: {
   colour: string;
   label: string;
-  /** A small grey line under the label: what the figure is net of. */
-  sub?: { text: string; testId: string };
   value: number;
   currency: string;
   onClick: () => void;
@@ -575,14 +571,7 @@ function BoxRow({
       )}
     >
       <span aria-hidden className="h-[8px] w-[8px] shrink-0 rounded-full" style={{ background: colour, opacity: dimmed ? 0.5 : 1 }} />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate">{label}</span>
-        {sub && (
-          <span data-testid={sub.testId} className="truncate text-[11.5px] font-normal text-[var(--ph-ink-3)]">
-            {sub.text}
-          </span>
-        )}
-      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
       <span className="shrink-0 tabular-nums">{formatMinor(value, currency)}</span>
       {pressed && <span className="shrink-0 text-[11px] text-[var(--ph-ink-3)]">✓</span>}
       {chevron && (
@@ -661,8 +650,6 @@ function BalanceBox({
         dimmed={filtering !== null && filtering !== 'spending'}
         onClick={() => onFilter('spending')}
         testId="wallet-spending-row"
-        // What Spending money is net of, so the money groups below and this row tie together.
-        sub={box.setAsideMinor !== null && box.setAsideMinor > 0 ? { text: `after ${formatMinor(box.setAsideMinor, currency)} set aside for ${box.setAsideFor}`, testId: 'wallet-setaside-line' } : undefined}
       />
       <BoxRow
         colour="var(--ph-alarm)"

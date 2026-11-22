@@ -145,6 +145,8 @@ export async function openAccountHistory(page: Page, name: string) {
 export async function showBalance(page: Page) {
   // A wide screen's account page has no card to turn: its Balance box is always there.
   if (wideScreen(page) && (await page.getByTestId('account-desk').count()) > 0) return expect(page.getByTestId('balance-card')).toBeVisible();
+  // The raised card is drawn once Wallet's cards are read (set-asides too): wait for it before asking which side is up.
+  await page.getByTestId('balance-card').waitFor({ state: 'attached' });
   const turn = page.getByRole('button', { name: /, show balance$/ });
   if ((await turn.count()) > 0) await turn.click();
   await expect(page.getByTestId('balance-card')).toBeVisible();

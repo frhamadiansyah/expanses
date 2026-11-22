@@ -59,5 +59,8 @@ test('with nothing repeating, the Repeating list says so', async ({ page }) => {
   await page.goto('/bills');
   await showRepeating(page);
   await expect(page.getByTestId('repeating-summary')).toContainText('No repeating bills yet');
+  // The same shape as the Monthly box, which with no bills at all keeps its own (owner, 22 Nov 2026).
+  await expect(page.getByTestId('bills-empty-note')).toHaveText('No monthly bills yet');
+  expect((await page.getByTestId('repeating-summary').boundingBox())?.height).toBe((await page.getByTestId('bills-summary').boundingBox())?.height);
   await expect(page.getByTestId('repeating-empty')).toContainText('No repeating bills yet');
 });

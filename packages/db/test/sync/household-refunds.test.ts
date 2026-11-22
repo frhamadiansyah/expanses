@@ -1,4 +1,4 @@
-import { expenseLines, refundLines } from '@expanses/core';
+import { expenseLines, refundLines, splitExpenseLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { categoryTotalsIn, confirmReview, createBook, createCardAccount, replaceTransaction, inBook, paidFromAccount, paidWithItems, listTransactions, postTransaction, saveEvent, tagTransaction } from '../../src/index';
 import { itemIdOf } from '../../src/sync/net-worth/summaries';
@@ -55,6 +55,28 @@ describe('refunds in a shared workspace', () => {
     expect(await skipsOf(b.database)).toEqual([]);
     expect(await figures(b)).toEqual([['USD', 12_500, '2010000']]);
     expect(await figures(a)).toEqual(await figures(b));
+  });
+
+  it('a purchase in another currency split by category reaches the partner with the same parts and the same original figure (option C, owner 22 Nov 2026)', async () => {
+    const { home, a, b, bookId, card, cat } = await setup();
+    const dining = await categoryOf(a.database, bookId, 'Restaurants');
+    // Invented: USD 120,00 charged Rp 1.944.000 — the room Rp 1.296.000 (USD 80,00 typed), breakfast the Rest.
+    const lines = (room: number, rest: number) =>
+      splitExpenseLines({ paymentAccountId: card.id, currency: 'IDR', splits: [{ categoryAccountId: cat, amountMinor: room }, { categoryAccountId: dining, amountMinor: rest }] });
+    const id = await postTransaction(a.database, a.ws, { occurredOn: '2026-09-15', description: 'Hotel split', originalCurrency: 'USD', originalAmountMinor: 12_000, acrossBooks: true, lines: lines(1_296_000, 648_000) });
+    await home.settle();
+    expect(await skipsOf(b.database)).toEqual([]);
+    const figures = async (d: Device) =>
+      (await listTransactions(d.database, inBook(d.ws, bookId), { from: '2026-09-01', to: '2026-09-30' }))
+        .filter((r) => r.description === 'Hotel split')
+        .map((r) => [r.originalCurrency, r.originalAmountMinor, r.entries.filter((e) => e.accountKind === 'expense').map((e) => `${e.accountName}:${e.amountMinor}`).sort().join('/')]);
+    expect(await figures(b)).toEqual([['USD', 12_000, 'Groceries:1296000/Restaurants:648000']]);
+    expect(await figures(a)).toEqual(await figures(b));
+    // A part changed on the owner's phone: the partner's copy follows, the original figure still the whole's.
+    await replaceTransaction(a.database, a.ws, id, { occurredOn: '2026-09-15', description: 'Hotel split', originalCurrency: 'USD', originalAmountMinor: 12_000, acrossBooks: true, lines: lines(1_620_000, 324_000) });
+    await home.settle();
+    expect(await skipsOf(b.database)).toEqual([]);
+    expect(await figures(b)).toEqual([['USD', 12_000, 'Groceries:1620000/Restaurants:324000']]);
   });
 
   it('a refund in a shared workspace is never tagged to an event (sync gaps D1), and reaches the partner as it is', async () => {

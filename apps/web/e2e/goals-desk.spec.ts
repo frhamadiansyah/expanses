@@ -93,8 +93,17 @@ test('the boxes and the table read the phone’s figures, Wallet’s set-aside l
   };
 
   // Wallet's Spending money is net of the same money: every goal's set-aside sits in Jenius and BCA, both for spending.
+  // Each money face is what is free to spend on it (owner, 22 Nov 2026), so the money groups add up to Spending money
+  // with no line under it to explain a difference.
   await page.goto('/wallet');
-  await expect(page.getByTestId('wallet-setaside-line')).toHaveText('after Rp 42.000.000 set aside for goals');
+  const rupiah = (text: string | null) => Number((text ?? '').replace(/[^\d-]/g, ''));
+  await expect(page.getByTestId('wallet-spending-row')).toBeVisible();
+  const groupsTotal = (await page.locator('[data-testid^="wallet-group-"]:not([data-testid="wallet-group-credit"]) [data-testid="wallet-group-total"]').allTextContents()).reduce(
+    (sum, text) => sum + rupiah(text),
+    0,
+  );
+  expect(groupsTotal).toBe(rupiah(await page.getByTestId('wallet-spending-row').locator('span.tabular-nums').textContent()));
+  await expect(page.getByTestId('wallet-setaside-line')).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/goals');

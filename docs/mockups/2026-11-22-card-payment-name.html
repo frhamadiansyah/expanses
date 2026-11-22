@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Card payment row name</title>
+<style>
+  :root { --ink:#1c1c1e; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:900px; line-height:1.4; }
+  .wrap { display:flex; gap:22px; align-items:flex-start; }
+  .col { width:360px; }
+  .cap { font-weight:700; margin:0 0 6px; font-size:14px; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#8e8e93; border-radius:9px; padding:1px 7px; margin-left:6px; vertical-align:2px; } .ok { background:#2e8b3e; }
+  .phone { background:var(--ground); border-radius:22px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .hd { display:flex; justify-content:space-between; font-size:12px; letter-spacing:.05em; color:var(--ink3); margin:4px 8px 6px; font-weight:600; }
+  .grp { background:#fff; border-radius:12px; overflow:hidden; }
+  .row { display:flex; align-items:center; gap:10px; padding:10px 12px; } .row + .row { border-top:.5px solid var(--hair); }
+  .rc { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; color:#fff; flex-shrink:0; }
+  .grow { flex:1; min-width:0; } .grow .n { font-size:15.5px; } .grow .s { font-size:12.5px; color:var(--ink3); }
+  .am { font-variant-numeric:tabular-nums; white-space:nowrap; font-size:15.5px; color:var(--ink3); }
+  .new { box-shadow:inset 0 0 0 2px #ff9f0a; border-radius:8px; padding:0 4px; margin-left:-4px; }
+  .note { font-size:12.5px; color:#555; margin:10px 4px 0; line-height:1.4; }
+</style></head>
+<body>
+<h1>A credit card payment's row name</h1>
+<p class="sub">Paying a card from a bank account (the card's Pay, or a transfer into a card). Today the row is titled "Transfer" with the note under it. After: titled "Credit card payment", the note not repeated. New parts outlined in orange. Invented accounts and figures.</p>
+<div class="wrap">
+  <div class="col">
+    <p class="cap">Today <span class="tag">TRANSFER</span></p>
+    <div class="phone">
+      <div class="hd"><span>SAT, 21 NOV</span></div>
+      <div class="grp">
+        <div class="row"><span class="rc" style="background:#8e8e93">⇄</span><div class="grow"><div class="n">Transfer</div><div class="s">Credit card payment · Bank Contoh → Kartu Contoh</div></div><span class="am">Rp 2.450.000</span></div>
+        <div class="row"><span class="rc" style="background:#8e8e93">⇄</span><div class="grow"><div class="n">Transfer</div><div class="s">Bank Contoh → Tabungan Contoh</div></div><span class="am">Rp 500.000</span></div>
+        <div class="row"><span class="rc" style="background:#8e8e93">⇄</span><div class="grow"><div class="n">Cash withdrawal</div><div class="s">Bank Contoh → Cash</div></div><span class="am">Rp 300.000</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <p class="cap">After <span class="tag ok">CREDIT CARD PAYMENT</span></p>
+    <div class="phone">
+      <div class="hd"><span>SAT, 21 NOV</span></div>
+      <div class="grp">
+        <div class="row"><span class="rc" style="background:#8e8e93">⇄</span><div class="grow"><div class="n"><span class="new">Credit card payment</span></div><div class="s">Bank Contoh → Kartu Contoh</div></div><span class="am">Rp 2.450.000</span></div>
+        <div class="row"><span class="rc" style="background:#8e8e93">⇄</span><div class="grow"><div class="n">Transfer</div><div class="s">Bank Contoh → Tabungan Contoh</div></div><span class="am">Rp 500.000</span></div>
+        <div class="row"><span class="rc" style="background:#8e8e93">⇄</span><div class="grow"><div class="n">Cash withdrawal</div><div class="s">Bank Contoh → Cash</div></div><span class="am">Rp 300.000</span></div>
+      </div>
+    </div>
+    <p class="note">Rule: money from a bank, e-wallet or cash into a credit card is named Credit card payment, the same way Cash withdrawal is named today. Older payments are renamed too. A different note (e.g. "Pay off October") still shows under it.</p>
+  </div>
+</div>
+</body></html>

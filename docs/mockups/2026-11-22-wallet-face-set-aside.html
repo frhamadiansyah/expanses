@@ -1,0 +1,93 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Wallet card faces and set-aside money</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; --up:#248a3d; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1240px; line-height:1.4; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; }
+  .col { width:300px; flex:none; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .cap b { display:inline-block; min-width:22px; height:22px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:22px; font-size:12px; margin-right:6px; padding:0 4px; }
+  .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:68px; line-height:1.4; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#2e8b3e; border-radius:9px; padding:1px 7px; margin-left:4px; vertical-align:2px; }
+  .phone { background:var(--ground); border-radius:24px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .box { background:#fff; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
+  .box .r { display:flex; justify-content:space-between; font-size:14px; padding:4px 0; font-variant-numeric:tabular-nums; } .box .r span:first-child { color:var(--ink2); }
+  .box .t { border-top:.5px solid var(--hair); margin-top:4px; padding-top:8px; font-weight:600; }
+  .box .lbl { font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--ink3); text-transform:uppercase; margin:0 0 4px; }
+  .card { height:150px; border-radius:14px; padding:12px 14px; color:#fff; position:relative; margin-bottom:-96px; box-shadow:0 -2px 8px rgba(0,0,0,.18); }
+  .card:last-child { margin-bottom:0; }
+  .card .nm { position:absolute; left:14px; top:12px; font-weight:700; font-size:13px; letter-spacing:.04em; }
+  .card .fig { position:absolute; right:14px; top:10px; text-align:right; font-variant-numeric:tabular-nums; font-size:16px; font-weight:600; }
+  .card .fig small { display:block; font-size:11.5px; font-weight:500; opacity:.85; margin-top:1px; }
+  .a { background:linear-gradient(135deg,#1f4e9c,#3a78d8); } .b { background:linear-gradient(135deg,#7a1f3d,#c0456b); } .c { background:linear-gradient(135deg,#3b3b3f,#6b6b72); }
+  .stack { padding-bottom:4px; }
+  .new { outline:2px solid #ff9f0a; outline-offset:1px; border-radius:6px; padding:0 3px; }
+  .sum { font-size:12.5px; color:#555; margin:10px 4px 0; line-height:1.4; }
+  .bad { color:#b45309; } .good { color:#2e7d32; }
+</style></head>
+<body>
+<h1>Wallet: card faces and money set aside</h1>
+<p class="sub">Spending money in the box at the top leaves out what goals have set aside, but each card face shows the full balance, so the faces add up to more than Spending money. Three ways to make them agree. New parts outlined in orange. Invented accounts and figures: Bank Contoh holds Rp 10.000.000, of which Rp 2.000.000 is set aside for a goal.</p>
+
+<div class="wrap">
+  <div class="col">
+    <p class="cap">Today</p>
+    <p class="note">Faces show Rp 10.000.000 + Rp 650.000 + Rp 400.000 = Rp 11.050.000. Spending money says Rp 9.050.000.</p>
+    <div class="phone">
+      <div class="box"><p class="lbl">Balance</p><div class="r"><span>Spending money</span><span>Rp 9.050.000</span></div></div>
+      <div class="stack">
+        <div class="card a"><span class="nm">CONTOH</span><span class="fig">Rp 10.000.000</span></div>
+        <div class="card b"><span class="nm">TABUNGAN</span><span class="fig">Rp 650.000</span></div>
+        <div class="card c"><span class="nm">CASH</span><span class="fig">Rp 400.000</span></div>
+      </div>
+    </div>
+    <p class="sum bad">Faces add up to Rp 2.000.000 more than Spending money.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><b>A</b>Face shows what is free <span class="tag">SUGGESTED</span></p>
+    <p class="note">The big figure is the balance less what is set aside. A small line under it says how much is set aside, so the bank's own balance is the two together. The account page still shows the full balance.</p>
+    <div class="phone">
+      <div class="box"><p class="lbl">Balance</p><div class="r"><span>Spending money</span><span>Rp 9.050.000</span></div></div>
+      <div class="stack">
+        <div class="card a"><span class="nm">CONTOH</span><span class="fig new">Rp 8.000.000<small>+ Rp 2.000.000 set aside</small></span></div>
+        <div class="card b"><span class="nm">TABUNGAN</span><span class="fig">Rp 650.000</span></div>
+        <div class="card c"><span class="nm">CASH</span><span class="fig">Rp 400.000</span></div>
+      </div>
+    </div>
+    <p class="sum good">Faces add up to Spending money exactly.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><b>B</b>Face keeps the bank balance</p>
+    <p class="note">The big figure stays the full balance, as the bank's app shows it. A small line under it says what is free to spend.</p>
+    <div class="phone">
+      <div class="box"><p class="lbl">Balance</p><div class="r"><span>Spending money</span><span>Rp 9.050.000</span></div></div>
+      <div class="stack">
+        <div class="card a"><span class="nm">CONTOH</span><span class="fig">Rp 10.000.000<small class="new">Rp 8.000.000 free</small></span></div>
+        <div class="card b"><span class="nm">TABUNGAN</span><span class="fig">Rp 650.000</span></div>
+        <div class="card c"><span class="nm">CASH</span><span class="fig">Rp 400.000</span></div>
+      </div>
+    </div>
+    <p class="sum">The small "free" lines add up to Spending money; the big figures match the bank apps.</p>
+  </div>
+
+  <div class="col">
+    <p class="cap"><b>C</b>Faces unchanged, box explains</p>
+    <p class="note">The faces stay as today. The box at the top shows the full balances first, then takes the set-aside money off.</p>
+    <div class="phone">
+      <div class="box new"><p class="lbl">Balance</p>
+        <div class="r"><span>In accounts</span><span>Rp 11.050.000</span></div>
+        <div class="r"><span>Set aside for goals</span><span>− Rp 2.000.000</span></div>
+        <div class="r t"><span>Spending money</span><span>Rp 9.050.000</span></div></div>
+      <div class="stack">
+        <div class="card a"><span class="nm">CONTOH</span><span class="fig">Rp 10.000.000</span></div>
+        <div class="card b"><span class="nm">TABUNGAN</span><span class="fig">Rp 650.000</span></div>
+        <div class="card c"><span class="nm">CASH</span><span class="fig">Rp 400.000</span></div>
+      </div>
+    </div>
+    <p class="sum">Faces add up to "In accounts".</p>
+  </div>
+</div>
+</body></html>
