@@ -1,0 +1,93 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mark pasted card rows paid off</title><style>
+:root{--ink:#1d1d1f;--ink2:#3c3c43;--ink3:#86868b;--hair:#e5e5ea;--accent:#0a7cff;--up:#248a3d;--down:#d70015;--warn:#b25000}
+*{box-sizing:border-box}
+body{margin:0;padding:28px;background:#d9d9de;font:13px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+h1{font-size:22px;margin:0 0 4px}.sub{color:#555;margin:0 0 22px;max-width:1180px;line-height:1.45;font-size:14px}
+h2{font-size:18px;margin:34px 0 4px}.lead{color:#555;margin:0 0 14px;max-width:1180px;line-height:1.45;font-size:14px}
+.win{width:1240px;height:760px;background:#fff;border-radius:11px;box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 22px 60px rgba(0,0,0,.25);display:flex;overflow:hidden;position:relative}
+.side{width:210px;background:#ececef;border-right:.5px solid #d6d6db;padding:14px 10px;display:flex;flex-direction:column;flex-shrink:0}
+.ws{display:flex;align-items:center;gap:8px;padding:4px 8px 12px}.ws b{font-size:13px;display:block}.ws span{color:var(--ink3);font-size:11px}
+.av{width:22px;height:22px;border-radius:50%;background:#1d1d1f;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sh{font-size:11px;font-weight:600;color:var(--ink3);padding:10px 8px 4px}
+.it{padding:3px 8px;border-radius:6px;height:25px;display:flex;align-items:center;gap:8px;font-size:12.5px}.it i{width:13px;height:13px;border:1.5px solid var(--accent);border-radius:3px;display:block;flex-shrink:0}
+.it .n{margin-left:auto;color:var(--ink3);font-size:11.5px}
+.it.on{background:rgba(0,0,0,.08)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:#f5f5f7}
+.tb{height:52px;display:flex;align-items:center;gap:10px;padding:0 14px 0 18px;border-bottom:.5px solid var(--hair);background:#fff;flex-shrink:0}
+.tb .t{font-size:16px;font-weight:600}.tb .ts{color:var(--ink3);font-size:12px}.sp{flex:1}
+.ob{border:.5px solid #c7c7cc;border-radius:6px;padding:3px 10px;font-size:12px;background:#fff}
+.blk{background:#1d1d1f;color:#fff;border-radius:6px;padding:4px 11px;font-size:12px;font-weight:500}
+.gear{width:26px;height:24px;border:.5px solid #c7c7cc;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;background:#fff}
+.nav{display:flex;align-items:center;gap:4px;font-size:12.5px}.nav i{font-style:normal;color:var(--ink3)}
+.pad{padding:16px 20px;display:flex;flex-direction:column;gap:14px;min-height:0;flex:1}
+.row{display:grid;gap:14px}
+.box{background:#fff;border-radius:10px;border:.5px solid #e2e2e7;overflow:hidden}
+.bh{display:flex;align-items:baseline;justify-content:space-between;padding:11px 14px 6px;font-weight:600;font-size:13px}
+.bh span{font-weight:400;color:var(--ink3);font-size:11.5px}
+.big{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;padding:0 14px}
+.cap{color:var(--ink3);font-size:12px;padding:2px 14px 0}
+.kv{display:flex;justify-content:space-between;padding:8px 14px;font-size:13px;border-top:.5px solid var(--hair)}
+.kv .v{font-variant-numeric:tabular-nums}
+.face{width:168px;height:106px;border-radius:12px;margin:4px 14px 12px;position:relative;overflow:hidden;color:#fff;padding:12px 14px;font-weight:600;flex-shrink:0}
+.face small{position:absolute;left:14px;bottom:12px;font-size:11px;letter-spacing:.12em;font-weight:500}
+.face .num{position:absolute;left:14px;bottom:30px;font-size:13px;letter-spacing:.1em}
+.bca{background:linear-gradient(135deg,#6cc4f2,#2a8fd9)}
+.kf{background:linear-gradient(135deg,#eceef0,#c9ccd1);color:#1d1d1f}
+.faceRow{display:flex;align-items:flex-start}
+.green{color:var(--up)}.red{color:var(--down)}.warnc{color:var(--warn)}.grey{color:var(--ink3)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;font-weight:600;color:var(--ink3);text-align:left;padding:7px 10px;border-top:.5px solid var(--hair);border-bottom:.5px solid var(--hair);background:#fafafa}
+td{padding:6px 10px;white-space:nowrap;height:30px}
+tbody tr:nth-child(even) td{background:#f7f7f9}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.d{color:var(--ink3)}
+.cat{display:inline-flex;align-items:center;gap:7px}.cat i{width:18px;height:18px;border-radius:50%;display:inline-block}
+.g i{background:#d8f0dc}.o i{background:#fde3d3}.b i{background:#dde8fb}.x i{background:#ececf0}
+.seg{display:flex;background:#e9e9ec;border-radius:7px;padding:2px;font-size:12px}.seg span{padding:2px 10px;border-radius:5px;color:var(--ink2)}.seg .on{background:#fff;box-shadow:0 .5px 1.5px rgba(0,0,0,.18);color:var(--ink);font-weight:500}
+.bar{height:6px;border-radius:3px;background:#ececf0;margin:6px 14px 4px;overflow:hidden}.bar i{display:block;height:100%;border-radius:3px}
+.callout{position:absolute;background:#fff4c2;border:1px solid #e6c84a;color:#5c4a00;font-size:12px;padding:5px 9px;border-radius:7px;max-width:240px;line-height:1.35;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:3}
+.note{font-size:12.5px;color:#555;margin:10px 0 0;max-width:1240px;line-height:1.45}
+
+.unk{color:var(--ink2)}.unk u{text-decoration:none;border-bottom:1px dashed #a1a1a6}
+.rec{display:inline-block;background:#1d1d1f;color:#fff;border-radius:5px;padding:2px 9px;font-size:11.5px;font-weight:500}.rec.off{background:#c7c7cc}
+.x{color:var(--ink3);padding-left:8px}
+tr.new td{border-top:.5px dashed #c7c7cc;background:#fff!important;color:var(--ink3)}
+td.edit{box-shadow:inset 0 0 0 2px var(--accent);background:#fff!important}
+.pop{position:absolute;width:300px;background:#fff;border-radius:10px;box-shadow:0 0 0 .5px rgba(0,0,0,.15),0 12px 36px rgba(0,0,0,.22);padding:6px;z-index:4;font-size:13px}
+.pop .o{padding:7px 10px;border-radius:6px;display:flex;align-items:center;gap:8px}.pop .o.hi{background:var(--accent);color:#fff}
+.pop .o small{margin-left:auto;color:var(--ink3);font-size:11.5px}.pop .o.hi small{color:rgba(255,255,255,.8)}
+.pop .sep{height:.5px;background:var(--hair);margin:5px 4px}
+.pop .gh{font-size:11px;color:var(--ink3);padding:4px 10px 2px;font-weight:600}
+.peek{width:330px;background:#fff;border-left:.5px solid var(--hair);padding:18px;flex-shrink:0}
+.peek h5{font-size:15px;margin:0 0 4px}.peek .m{color:var(--ink3);font-size:12px;margin-bottom:14px}
+.fr{border:.5px solid #e2e2e7;border-radius:9px}.fr div{display:flex;justify-content:space-between;padding:8px 12px;font-size:13px}.fr div+div{border-top:.5px solid var(--hair)}
+.fr span:first-child{color:var(--ink3)}
+.content{flex:1;display:flex;min-height:0}
+</style><style>
+.tk{display:inline-flex;width:18px;height:18px;border-radius:50%;border:1.5px solid #c7c7cc;vertical-align:middle;align-items:center;justify-content:center;font-size:11px;color:#fff}
+.tk.on{background:#1c1c1e;border-color:#1c1c1e}
+.chk{display:inline-flex;width:16px;height:16px;border-radius:4px;border:1.5px solid #c7c7cc;vertical-align:middle;align-items:center;justify-content:center;font-size:11px;color:#fff}
+.chk.on{background:#1c1c1e;border-color:#1c1c1e}
+.po{color:#86868b} .po s{color:#86868b}
+.selbar{position:absolute;left:50%;transform:translateX(-50%);bottom:22px;background:#1c1c1e;color:#fff;border-radius:14px;padding:9px 10px 9px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.22);font-size:13px;white-space:nowrap}
+.selbar b{font-weight:600}.selbar .pb{background:#fff;color:#1c1c1e;border-radius:9px;padding:6px 13px;font-weight:600}.selbar .pg{background:#3a3a3c;color:#fff;border-radius:9px;padding:6px 13px;font-weight:600}
+.orange{outline:2px solid #ff9f0a;outline-offset:2px;border-radius:8px}
+.pros{font-size:13px;color:#444;max-width:980px;margin:6px 0 0;line-height:1.5}.pros .g{color:#2e7d32}.pros .r{color:#b45309}
+.tag{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:#2e8b3e;border-radius:9px;padding:1px 7px;margin-left:6px;vertical-align:2px}
+.hdrsw{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#3c3c43;margin-right:10px}
+.sw{display:inline-block;width:30px;height:18px;border-radius:9px;background:#d1d1d6;position:relative;vertical-align:middle}.sw::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+.sw.on{background:#34c759}.sw.on::after{left:14px}
+</style></head><body>
+<h1>Mark pasted card purchases as paid off</h1>
+<p class="sub">Card purchases pasted from Notion or Google Sheets that were already paid, so the card does not owe them. Today Paid off is one row at a time on the card's statement. Two ways to do many at once, shown on the Mac. New parts outlined in orange. Invented card and figures.</p>
+<h2>A · On the statement: Select, then Paid off <span class="tag">SUGGESTED</span></h2>
+<p class="lead">After the paste is recorded, open the card. Select ticks rows; the bar at the bottom gets Paid off beside Pay.</p>
+<div class="win" style="height:430px"><div class="side"><div class="ws"><div class="av">P</div><div><b>Personal</b><span>IDR · on this device</span></div></div><div class="it"><i></i>Overview</div><div class="it"><i></i>Cashflow</div><div class="it"><i></i>Budget</div><div class="it"><i></i>Bills</div><div class="it"><i></i>Review</div><div class="sh">Money</div><div class="it on"><i></i>Wallet</div><div class="it"><i></i>Net worth</div><div class="it"><i></i>Points</div></div><div class="main"><div class="tb"><span class="t">Kartu Contoh</span><span class="sp"></span><span class="blk">Pay</span></div><div class="pad"><div class="box"><div class="bh">Statement · 17 Sep – 16 Oct<span><span class="ob">Cancel</span></span></div><table><thead><tr><th></th><th style="width:90px">Date</th><th>Note</th><th>Category</th><th class="num">Amount</th><th style="width:96px"></th></tr></thead><tbody><tr><td style="width:34px"><span class="tk on">✓</span></td><td class="d">16 Oct</td><td>Toko Buah Contoh</td><td><span class="cat g"><i></i>Groceries</span></td><td class="num">Rp 412.300</td><td></td></tr><tr><td style="width:34px"><span class="tk on">✓</span></td><td class="d">15 Oct</td><td>Bioskop Contoh</td><td><span class="cat b"><i></i>Movies</span></td><td class="num">Rp 120.000</td><td></td></tr><tr><td style="width:34px"><span class="tk on">✓</span></td><td class="d">14 Oct</td><td>Kedai Kopi Contoh</td><td><span class="cat o"><i></i>Cafe &amp; dessert</span></td><td class="num">Rp 58.000</td><td></td></tr><tr><td style="width:34px"><span class="tk "></span></td><td class="d">12 Oct</td><td>Parkir Contoh</td><td><span class="cat b"><i></i>Parking</span></td><td class="num">Rp 15.000</td><td></td></tr><tr><td style="width:34px"><span class="tk "></span></td><td class="d">10 Oct</td><td>Roti Contoh</td><td><span class="cat o"><i></i>Cafe &amp; dessert</span></td><td class="num">Rp 32.000</td><td></td></tr></tbody></table></div></div><div class="selbar orange"><span><b>3 selected</b> · Rp 590.300</span><span class="pg">Paid off</span><span class="pb">Pay</span></div></div></div>
+<p class="lead" style="margin-top:14px">After Paid off: the three rows are greyed with "Paid off ✓", and the card no longer owes them. Each can be taken back from its row, as today.</p>
+<div class="win" style="height:380px"><div class="side"><div class="ws"><div class="av">P</div><div><b>Personal</b><span>IDR · on this device</span></div></div><div class="it"><i></i>Overview</div><div class="it"><i></i>Cashflow</div><div class="it"><i></i>Budget</div><div class="it"><i></i>Bills</div><div class="it"><i></i>Review</div><div class="sh">Money</div><div class="it on"><i></i>Wallet</div><div class="it"><i></i>Net worth</div><div class="it"><i></i>Points</div></div><div class="main"><div class="tb"><span class="t">Kartu Contoh</span><span class="sp"></span><span class="blk">Pay</span></div><div class="pad"><div class="box"><div class="bh">Statement · 17 Sep – 16 Oct<span><span class="ob">Select</span></span></div><table><thead><tr><th style="width:90px">Date</th><th>Note</th><th>Category</th><th class="num">Amount</th><th style="width:96px"></th></tr></thead><tbody><tr class="po"><td class="d">16 Oct</td><td>Toko Buah Contoh</td><td><span class="cat g"><i></i>Groceries</span></td><td class="num"><s>Rp 412.300</s></td><td style="color:#86868b">Paid off ✓</td></tr><tr class="po"><td class="d">15 Oct</td><td>Bioskop Contoh</td><td><span class="cat b"><i></i>Movies</span></td><td class="num"><s>Rp 120.000</s></td><td style="color:#86868b">Paid off ✓</td></tr><tr class="po"><td class="d">14 Oct</td><td>Kedai Kopi Contoh</td><td><span class="cat o"><i></i>Cafe &amp; dessert</span></td><td class="num"><s>Rp 58.000</s></td><td style="color:#86868b">Paid off ✓</td></tr><tr><td class="d">12 Oct</td><td>Parkir Contoh</td><td><span class="cat b"><i></i>Parking</span></td><td class="num">Rp 15.000</td><td></td></tr><tr><td class="d">10 Oct</td><td>Roti Contoh</td><td><span class="cat o"><i></i>Cafe &amp; dessert</span></td><td class="num">Rp 32.000</td><td></td></tr></tbody></table></div></div></div></div>
+<p class="pros"><span class="g">+ Works for every purchase, pasted or typed, any time later. + Paid off stays in one place.</span><br><span class="r">− Two steps: record the paste, then open the card.</span></p>
+<h2>B · In the paste table: a Paid off column</h2>
+<p class="lead">A Paid off tick on each card row before Record, plus one switch in the header that ticks every card row. Rows paid from a bank have no tick (—).</p>
+<div class="win" style="height:360px"><div class="side"><div class="ws"><div class="av">P</div><div><b>Personal</b><span>IDR · on this device</span></div></div><div class="it"><i></i>Overview</div><div class="it on"><i></i>Cashflow</div><div class="it"><i></i>Budget</div><div class="it"><i></i>Bills</div><div class="it"><i></i>Review</div><div class="sh">Money</div><div class="it"><i></i>Wallet</div><div class="it"><i></i>Net worth</div><div class="it"><i></i>Points</div></div><div class="main"><div class="tb"><span class="t">Cashflow</span><span class="sp"></span><span class="nav"><i>‹</i> October 2026 <i>›</i></span><span class="blk">＋ Add</span></div><div class="pad"><div class="box"><div class="bh">Transactions<span><span class="hdrsw orange">Paid off: all card rows <span class="sw on"></span></span><span class="rec" style="font-size:12px;padding:4px 11px">Record all 4</span></span></div><table><thead><tr><th style="width:80px">Date</th><th>Note</th><th>Category</th><th style="width:150px">Paid with</th><th class="num">Amount</th><th class="orange" style="width:70px;text-align:center">Paid off</th><th style="width:96px"></th></tr></thead><tbody><tr><td class="d">16 Oct</td><td>Toko Buah Contoh</td><td><span class="cat g"><i></i>Groceries</span></td><td>Kartu Contoh</td><td class="num">Rp 412.300</td><td style="text-align:center"><span class="chk on">✓</span></td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">15 Oct</td><td>Bioskop Contoh</td><td><span class="cat b"><i></i>Movies</span></td><td>Kartu Contoh</td><td class="num">Rp 120.000</td><td style="text-align:center"><span class="chk on">✓</span></td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">14 Oct</td><td>Kedai Kopi Contoh</td><td><span class="cat o"><i></i>Cafe &amp; dessert</span></td><td>Kartu Contoh</td><td class="num">Rp 58.000</td><td style="text-align:center"><span class="chk on">✓</span></td><td><span class="rec">Record</span><span class="x">✕</span></td></tr><tr><td class="d">12 Oct</td><td>Parkir Contoh</td><td><span class="cat b"><i></i>Parking</span></td><td>Bank Contoh</td><td class="num">Rp 15.000</td><td style="text-align:center"><span style="color:#c7c7cc">—</span></td><td><span class="rec">Record</span><span class="x">✕</span></td></tr></tbody></table></div></div></div></div>
+<p class="pros"><span class="g">+ One step: paste, tick, record.</span><br><span class="r">− One more column and switch on the paste table; only for rows being pasted now.</span></p>
+</body></html>

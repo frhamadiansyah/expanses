@@ -160,8 +160,8 @@ describe('the sum is the total to the minor unit in every currency', () => {
 });
 
 describe('the line under the bar', () => {
-  it('says all assigned, left, or over, and nothing without a total', () => {
-    expect(plain(assignmentLine(assignment([row('a', '100.000'), row('b', '150.000')], 250_000, 'IDR'), 'IDR'))).toBe('All of it assigned');
+  it('says left or over, and nothing when all of it is assigned or without a total', () => {
+    expect(assignmentLine(assignment([row('a', '100.000'), row('b', '150.000')], 250_000, 'IDR'), 'IDR')).toBeNull();
     expect(plain(assignmentLine(assignment([row('a', '100.000')], 250_000, 'IDR'), 'IDR'))).toBe('Rp 150.000 left to assign');
     expect(plain(assignmentLine(assignment([row('a', '300.000')], 250_000, 'IDR'), 'IDR'))).toBe('Over by Rp 50.000');
     expect(assignmentLine(assignment([row('a', '1')], null, 'IDR'), 'IDR')).toBeNull();

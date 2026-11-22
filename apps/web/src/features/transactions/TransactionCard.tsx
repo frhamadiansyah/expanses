@@ -22,7 +22,6 @@ import {
   replaceTransaction,
   getCardTerms,
   settledBeforeAppOf,
-  isPastDefault,
   pastPurchaseOf,
   pastSidesOf,
   saveMerchantMcc,
@@ -73,17 +72,18 @@ import { DateRow, NoteRow } from './CardRows';
 import { CardCashbackMark, CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { useOpenings, useOpeningDay } from '../accounts/queries';
-import { Chevron, FieldRow, FixedRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowHintLine, RowLead, SelectFormRow } from './FormRow';
+import { Chevron, FieldRow, FixedRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { CARD_PAY_OMITS, cardPayFrom, offersTransferGoal } from '../cards/card-pay';
 import { MoreDetails } from './MoreDetails';
 import { TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from './TradeRows';
 import { NoteSuggestions } from './NoteSuggestions';
 import { partnerTitle, partnerTransferSections } from './member-transfer';
 import { WithdrawalLine } from './WithdrawalLine';
+import { PastBadge, PastBadgeOverRow } from './PastBadge';
 import { PaymentSheet, chosenPayment, removedCardPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { beforeStartLine, extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
+import { extraRowRefusal, extraRows, offersTransferFee, pastMarkOn, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { offerStatement } from '../../capture/statements';
 import { PhotosSheet, usePhotoAttach } from './PhotosSheet';
@@ -502,9 +502,9 @@ function CardBody({
   const door = post ? doorOfForm(draft, post, accounts, canHold) : null;
   /*
    * A transfer or a card's payment dated before an account was added (owner, 22 Nov 2026): that account's balance stays,
-   * by the rule the ledger posts by (`pastSidesOf`) — a money account only, so a card being paid always owes less. One
-   * plain line, no choice. A partner's transfer and a card's top-up of a wallet are not this. A saved move with no pair
-   * (recorded before the rule) keeps none until its day, accounts or amounts change, as the ledger keeps it (review fix).
+   * by the rule the ledger posts by (`pastSidesOf`) — a money account only, so a card being paid always owes less. No
+   * words and no choice: that row's icon carries a small ✓ (`PastBadge`). A partner's transfer and a card's top-up of a
+   * wallet are not this. A saved move with no pair (recorded before the rule) keeps none until its day, accounts or amounts change, as the ledger keeps it (review fix).
    */
   const startSides = useQuery({
     queryKey: ['past-sides', ws.workspaceId, draft.moneyId, draft.toId, draft.occurredOn],
@@ -518,7 +518,7 @@ function CardBody({
     !savedMove ||
     (['occurredOn', 'moneyId', 'toId', 'amount', 'toAmount', 'fee'] as const).some((field) => savedMove[field] !== draft[field]);
   const keptSides = draft.mode === 'transfer' && !draft.partner && startSides.isSuccess && moveDecided ? startSides.data : [];
-  const startDayLine = beforeStartLine(keptSides.map((id) => byId.get(id)?.name ?? '').filter(Boolean));
+  const toKept = !!draft.toId && keptSides.includes(draft.toId);
   // Money that left before its account was added draws on no goal: the question is not asked (the ledger agrees).
   const fromKept = keptSides.includes(draft.moneyId);
   const saved = useSetAsideChoiceOf(initial?.id ?? null);
@@ -874,7 +874,9 @@ function CardBody({
   /*
    * A credit card purchase can be recorded as already paid off: the spending it was, with a settlement beside it so
    * what the card owes today stays as it is. The card's icon on Paid with says so with a tick and is what changes it.
-   * Off by default for every date; only a tap on the icon ticks it. A saved one reads back what it was saved as.
+   * Set by itself from the date, as a money account's past purchase is (owner, 22 Nov 2026): before the day the card
+   * is counted from, paid off — what it owed when it was added already holds it; on or after, owed — until a tap says
+   * otherwise. A saved one reads back what it was saved as until its date or account changes.
    */
   const payingAccount = accounts.find((account) => account.id === draft.moneyId);
   // A card's purchase under Top-ups grows Into and Fee rows under Category, and saves as the top-up it is.
@@ -900,8 +902,12 @@ function CardBody({
     enabled: !!initial,
     queryFn: () => settledBeforeAppOf(database, ws, initial!.id),
   });
-  // Never ticked by itself, whatever the date: the owner says so (asked 22 Oct).
-  const paidOff = offersAlreadyPaid && (draft.alreadyPaid ?? (initial ? savedSettled.data === true : false));
+  const cardOpeningDay = useOpeningDay(offersAlreadyPaid ? payingAccount : null);
+  // An edit that keeps its day and its account keeps what it was saved as; anything else is decided by the date again.
+  const sameAsSaved = !!initial && initial.occurredOn === draft.occurredOn && initial.entries.some((e) => e.accountId === draft.moneyId);
+  const paidOff = pastMarkOn({
+    offered: offersAlreadyPaid, touched: draft.alreadyPaid, sameAsSaved, saved: savedSettled.data, openedOn: cardOpeningDay, occurredOn: draft.occurredOn,
+  });
   /*
    * An expense or income on a money account can be a past purchase: its balance does not hold it, while reports do.
    * The icon on Paid with is the button. It is set by itself from the date — before the day the account's balance
@@ -917,8 +923,7 @@ function CardBody({
     enabled: !!initial && offersPast,
     queryFn: () => pastPurchaseOf(database, ws, initial!.id),
   });
-  const sameAsSaved = !!initial && initial.occurredOn === draft.occurredOn && initial.entries.some((e) => e.accountId === draft.moneyId);
-  const pastOn = offersPast && (draft.pastPurchase ?? (sameAsSaved ? savedPast.data === true : isPastDefault(openedOn, draft.occurredOn)));
+  const pastOn = pastMarkOn({ offered: offersPast, touched: draft.pastPurchase, sameAsSaved, saved: savedPast.data, openedOn, occurredOn: draft.occurredOn });
   // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
@@ -1248,14 +1253,9 @@ function CardBody({
                       <Check size={9} strokeWidth={3.5} />
                     </span>
                   )}
+                  {/* A card purchase paid off: only the statement's ✓ on the card's icon, no words (owner, 22 Nov 2026). */}
                   {paidOff && (
-                    <span
-                      aria-hidden
-                      data-testid="paid-off-tick"
-                      className="absolute -right-1 -bottom-1 flex h-[14px] w-[14px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)] ring-2 ring-[var(--ph-surface)]"
-                    >
-                      <Check size={9} strokeWidth={3.5} />
-                    </span>
+                    <PastBadge label="Paid off" testId="paid-off-tick" />
                   )}
                 </span>
               }
@@ -1275,13 +1275,15 @@ function CardBody({
               disabled={accountsLocked}
               chevron={!accountsLocked}
             />
+            {/* Dated before this account was added: its balance stays, said by a ✓ on its icon (owner, 22 Nov 2026). */}
+            {fromKept && <PastBadgeOverRow label="Balance stays" testId="past-side-badge" />}
             {/* The card's icon is its own button, laid over the row's lead: a tap ticks or unticks Already paid off. */}
             {offersAlreadyPaid && (
               <button
                 type="button"
                 aria-label="Already paid off"
                 aria-pressed={paidOff}
-                title={paidOff ? 'Already paid off: the card owes the same' : 'Still owed on the card'}
+                title={paidOff ? 'Paid off' : 'Not paid off'}
                 onClick={() => set({ alreadyPaid: !paidOff })}
                 className="ph-focus absolute top-0 bottom-0 left-[10px] w-[34px] rounded-full"
               />
@@ -1320,8 +1322,11 @@ function CardBody({
                   caption="To"
                 />
               ) : (
+              // Wrapped, for the ✓ laid over its icon, so it draws its own hairline under From.
+              <div className="relative">
               <FormRow
                 lead="value"
+                divided
                 icon={
                   <RowGlyph>
                     <ArrowDownLeft size={15} />
@@ -1334,6 +1339,8 @@ function CardBody({
                 chevron={!accountsLocked}
                 onClick={() => setSheet('to')}
               />
+              {toKept && <PastBadgeOverRow label="Balance stays" testId="past-side-badge" />}
+              </div>
               )
             )}
             <AmountRow
@@ -1431,8 +1438,6 @@ function CardBody({
                 : {})}
             />
             <DateRow on={draft.occurredOn} onChange={(occurredOn) => set({ occurredOn })} />
-            {/* A transfer or a card's payment dated before an account was added: that account's balance stays (owner, 22 Nov 2026). */}
-            {startDayLine && <RowHintLine><span data-testid="before-start-line">{startDayLine}</span></RowHintLine>}
             <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
           </FormRows>
         )}

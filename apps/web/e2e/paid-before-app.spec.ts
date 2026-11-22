@@ -22,11 +22,10 @@ test('an old card purchase already paid off is spending, and the card still owes
   const paidOff = form.getByRole('button', { name: 'Already paid off' });
   await expect(paidOff).toHaveAttribute('aria-pressed', 'false');
   await expect(form.getByTestId('paid-off-tick')).toHaveCount(0);
-  // Before the card started in the app: still unticked until it is ticked by hand.
+  // Before the card started in the app: ticked by itself, as a money account's past purchase is (owner, 22 Nov 2026).
   const day = await todayIn(page, 90);
   await form.getByLabel('Date').fill(day);
-  await expect(paidOff).toHaveAttribute('aria-pressed', 'false');
-  await paidOff.click();
+  await expect(paidOff).toHaveAttribute('aria-pressed', 'true');
   await expect(form.getByTestId('paid-off-tick')).toBeVisible();
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
@@ -36,7 +35,7 @@ test('an old card purchase already paid off is spending, and the card still owes
   // In its own month it is the spending it was; the settlement beside it is an opening entry, out of the list.
   await page.goto(`/transactions?month=${day.slice(0, 7)}`);
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Anniversary dinner' })).toHaveCount(1);
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Settled before the app' })).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Paid off' })).toHaveCount(0);
 });
 
 test('a recent card purchase can be ticked paid off by hand, and the card still owes what it owed', async ({ page }) => {

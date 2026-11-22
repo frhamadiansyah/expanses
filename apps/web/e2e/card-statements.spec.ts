@@ -31,7 +31,7 @@ async function setUp(page: Page) {
 
 async function buy(page: Page, description: string, amount: string, on: string) {
   await page.goto('/transactions');
-  await addTransaction(page, { description, paidWith: 'BCA Visa', category: 'Groceries', amount, date: on });
+  await addTransaction(page, { description, paidWith: 'BCA Visa', category: 'Groceries', amount, date: on, paidOff: false });
 }
 
 async function openCardPage(page: Page) {
@@ -362,7 +362,7 @@ test('a purchase on a closed statement is marked paid off from the statement, an
 
   // Its ✓ opens the bubble, whose Not paid off asks first in the same sheet as before.
   const bubble = await openPaidBubble(page, hotel);
-  await expect(bubble.getByTestId('statement-paid-how')).toHaveText('Paid before cicis');
+  await expect(bubble.getByTestId('statement-paid-how')).toHaveText('Paid off');
   await bubble.getByRole('button', { name: 'Not paid off' }).click();
   await expect(bubble).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Already paid off' })).toBeVisible();

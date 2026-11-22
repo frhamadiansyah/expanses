@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
 import { openAccount, openAccountHistory, openCard, walletCard, openFace } from './accounts';
 import { cardPage, chooseCardPayFrom, openCardPay, openStatementPay, saveCardTerms, showCardBack } from './card-section';
-import { addForm, choosePayment, saveButton, chooseGoal } from './add-transaction';
+import { addForm, choosePayment, saveButton, chooseGoal, setPaidOff } from './add-transaction';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
@@ -62,6 +62,8 @@ async function buyOnCard(page: Page, note: string, amount: string, on: string) {
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').pressSequentially(note);
   await form.getByLabel('Date').fill(on);
+  // Owed on the card, an old date or not: the spec pays it from the bank.
+  await setPaidOff(form, false);
   await form.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(form).toHaveCount(0);
 }

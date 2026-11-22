@@ -47,11 +47,13 @@ export function ToastCard({
   onBlur?: (e: React.FocusEvent<HTMLDivElement>) => void;
 }) {
   const { done, glyph } = toastIconStyle(icon);
+  // The tab bar's own pill (owner, 22 Nov 2026, mockup 2026-11-22-undo-toast-shape A): its width, round ends, frosted
+  // glass, border and shadow, 8px above it — one family with the bar instead of a card stacked on it.
   return (
     <div
       role="status"
       {...rest}
-      className={`fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md ${wide ? 'md:max-w-[640px]' : ''} items-center gap-[10px] rounded-[16px] bg-[var(--ph-surface)] py-[10px] pr-[10px] pl-[14px] shadow-[0_8px_28px_rgba(0,0,0,0.14),0_0_0_0.5px_var(--ph-hair)] md:bottom-6`}
+      className={`fixed inset-x-4 bottom-[calc(81px+env(safe-area-inset-bottom))] z-40 mx-auto flex min-h-[60px] max-w-md ${wide ? 'md:max-w-[640px]' : ''} items-center gap-[10px] rounded-full border border-[var(--ph-hair)] bg-[var(--ph-chrome)] py-[6px] pr-[8px] pl-[16px] shadow-lg shadow-black/10 backdrop-blur-xl md:bottom-6`}
     >
       <span
         data-icon={icon}

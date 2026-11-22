@@ -98,7 +98,7 @@ export function PasteListPage() {
   const carried = search.account ? payable.find((option) => option.accountId === search.account && (option.cardId ?? '') === (search.card ?? '')) : undefined;
   const payer = chosen ?? carried ?? payable[0] ?? null;
   const payerAccount = accounts.find((account) => account.id === payer?.accountId);
-  // Where the payer's balance is counted from: a line dated before it is posted as a past purchase.
+  // Where the payer's balance is counted from: a line dated before it is posted as a past purchase, or paid off on a card.
   const payerOpeningDay = useOpeningDay(payerAccount);
   const currency = payerAccount?.currency ?? ws.baseCurrency;
   const payerName = payer ? (payer.cardId ? `${payer.accountName} ···· ${payer.last4 ?? '????'}` : payer.accountName) : '';

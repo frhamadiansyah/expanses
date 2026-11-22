@@ -25,7 +25,11 @@ import { type EventBookRow, eventBookTx, expenseRecordTx, settlementRecordTx } f
 export type EventPostingKind = 'expense' | 'settlement';
 export type EventUnposted = 'choose-account' | 'no-rate' | 'malformed';
 
-/** Facts about a purchase this phone recorded itself, set on its first posting only; a replacement carries them. */
+/**
+ * Facts about a purchase this phone recorded itself, set on its first posting only; a replacement carries them. The card
+ * is the exception: given on a replacement (the payer moved the payment to another account or card), it is the
+ * replacement's — a card id, or null for the account's only card, as the ledger reads it.
+ */
 export interface EventPostingExtras {
   cardId?: string | null;
   mcc?: string | null;
@@ -296,12 +300,15 @@ export async function postEventRecordTx(tx: Tx, bookId: string, kind: EventPosti
     ...(author ? { syncAuthor: author } : {}),
   };
   if (posted) {
-    if (await samePostingTx(tx, posted, input, ws.baseCurrency)) {
+    // Another card on the same account moves nothing but the card: the lines alone would call it unchanged.
+    const [carded] = extras.cardId ? await tx.values<[string | null]>(sql`SELECT card_id FROM transactions WHERE id = ${posted}`) : [];
+    const newCard = !!extras.cardId && carded?.[0] !== extras.cardId;
+    if (!newCard && (await samePostingTx(tx, posted, input, ws.baseCurrency))) {
       // Still named by its live head, should a replacement have been followed to it (C1).
       await tx.run(sql`UPDATE event_postings SET transaction_id = ${posted}, unposted = NULL WHERE book_id = ${bookId} AND record_id = ${recordId}`);
       return;
     }
-    const replaced = await replaceTransactionTx(tx, ws, posted, input, DERIVATION);
+    const replaced = await replaceTransactionTx(tx, ws, posted, extras.cardId !== undefined ? { ...input, cardId: extras.cardId } : input, DERIVATION);
     // "Changed by Andi" (spec §7): someone else's change replaced it. This phone's own edit clears it.
     const changedBy = author !== null && author !== book.me ? author : null;
     await tx.run(sql`UPDATE event_postings SET transaction_id = ${replaced}, unposted = NULL, changed_by = ${changedBy} WHERE book_id = ${bookId} AND record_id = ${recordId}`);

@@ -123,6 +123,16 @@ describe('what is posted', () => {
     expect(inputs[0]!.ratesToBase).toEqual({ USD: 16_000 });
   });
 
+  it('marks a line dated before the payer was added: paid off on a card, a past purchase on a bank, nothing on or after', () => {
+    const rows = rowsOf('26/10\ngocar 18000\n27/10\nkopi 12000');
+    const marks = (account: AccountRow, openedOn: string | null) =>
+      purchaseInputs(rows, { account, cardId: null }, accounts, 'uncat', () => undefined, openedOn).map((i) => [i.occurredOn, i.settledBeforeApp ?? false, i.pastPurchase ?? false]);
+    expect(marks(accounts[1]!, '2026-10-27')).toEqual([['2026-10-26', true, false], ['2026-10-27', false, false]]);
+    expect(marks(accounts[0]!, '2026-10-27')).toEqual([['2026-10-26', false, true], ['2026-10-27', false, false]]);
+    // A card with no opening day has no default.
+    expect(marks(accounts[1]!, null)).toEqual([['2026-10-26', false, false], ['2026-10-27', false, false]]);
+  });
+
   it('refuses a row with no amount', () => {
     expect(() => purchaseInputs(rowsOf('parkir'), { account: accounts[0]!, cardId: null }, accounts, 'uncat', () => undefined)).toThrow(/Line 1/);
   });

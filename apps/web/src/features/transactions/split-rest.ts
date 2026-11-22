@@ -247,10 +247,13 @@ export function assignment(splits: readonly SplitRow[], total: number | null, cu
   return left === 0 ? { state: 'assigned', minor: 0 } : left > 0 ? { state: 'left', minor: left } : { state: 'over', minor: -left };
 }
 
-/** The line under the proportion bar. */
+/**
+ * The line under the proportion bar, only when something is wrong: what is left or over. Fully assigned says nothing
+ * (owner, 22 Nov 2026) — the Rest makes it so on its own, and a line repeating it every time was noise.
+ */
 export function assignmentLine(a: Assignment, currency: string): string | null {
-  if (!a) return null;
-  return a.state === 'assigned' ? 'All of it assigned' : a.state === 'left' ? `${formatMinor(a.minor, currency)} left to assign` : overBy(a.minor, currency);
+  if (!a || a.state === 'assigned') return null;
+  return a.state === 'left' ? `${formatMinor(a.minor, currency)} left to assign` : overBy(a.minor, currency);
 }
 
 /** Each part's width as a fraction of the bar: its figure over the total (or over what the parts hold, if that is more). */

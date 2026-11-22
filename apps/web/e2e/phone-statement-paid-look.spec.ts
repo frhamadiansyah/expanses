@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
-import { addForm, addTransaction, choosePayment, openAmount, saveButton } from './add-transaction';
+import { addForm, addTransaction, choosePayment, openAmount, saveButton, setPaidOff } from './add-transaction';
 import { cardPage, closePaidBubble, openPaidBubble, paidTick, payCard, payStatementPurchases, startPlan } from './card-section';
 
 /*
@@ -51,7 +51,7 @@ test('every paid purchase wears one green ✓, and a tap on it says how it was p
   // Oldest first, a payment covers the oldest purchase not settled on its own: the petrol.
   await page.goto('/transactions');
   const buy = (description: string, amount: string, day: number) =>
-    addTransaction(page, { description, paidWith: 'Kartu Contoh', category: 'Groceries', amount, date: lastMonth(day) });
+    addTransaction(page, { description, paidWith: 'Kartu Contoh', category: 'Groceries', amount, date: lastMonth(day), paidOff: false });
   await buy('Restoran Contoh', '520000', 3);
   await buy('SPBU Contoh', '340000', 5);
   await buy('Toko Sepatu Contoh', '410000', 8);
@@ -70,6 +70,8 @@ test('every paid purchase wears one green ✓, and a tap on it says how it was p
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Refund Toko Contoh');
   await form.getByLabel('Date').fill(lastMonth(27));
+  // Still to settle on the card, an old date or not: the statement settles it below.
+  await setPaidOff(form, false);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
@@ -108,7 +110,7 @@ test('every paid purchase wears one green ✓, and a tap on it says how it was p
   const states: { what: string; how: string | RegExp; detail: string | RegExp | null; button: string | null }[] = [
     { what: 'Restoran Contoh', how: /^Paid \d+ \w+$/, detail: /^Rp\s520\.000 from Bank Contoh$/, button: 'Open payment' },
     { what: 'SPBU Contoh', how: /^Paid with the \d+ \w+ payment$/, detail: /^Rp\s340\.000 from Bank Contoh$/, button: 'Open payment' },
-    { what: 'Toko Sepatu Contoh', how: 'Paid before cicis', detail: null, button: 'Not paid off' },
+    { what: 'Toko Sepatu Contoh', how: 'Paid off', detail: null, button: 'Not paid off' },
     { what: 'Refund Toko Contoh', how: 'Settled', detail: null, button: 'Not settled' },
     { what: 'Kursi Contoh', how: 'Paid', detail: null, button: 'Not paid' },
   ];

@@ -25,7 +25,7 @@ import {
   transferWithFeeLines,
   yourShare,
 } from '@expanses/core';
-import { cardTopsUpWallet, NetWorthError, TOP_UP_KEY, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
+import { cardTopsUpWallet, isPastDefault, NetWorthError, TOP_UP_KEY, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -641,14 +641,22 @@ export function receivedField(draft: FormDraft, accounts: readonly AccountRow[])
 }
 
 /**
- * The one line a transfer or a card's payment shows when it is dated before an account was added (owner, 22 Nov 2026):
- * that account's balance stays, as a past purchase's does. `names` are the accounts the ledger keeps (`pastSidesOf`).
- * Null when there are none.
+ * Whether the Paid with icon's mark is on: a money account's Past purchase, or a credit card's Already paid off — one
+ * rule for both (owner, 22 Nov 2026). A tap decides it (`touched`) for as long as the form is open. Otherwise an edit
+ * that keeps its day and account reads back what it was saved as (`saved`), and anything else goes by the date:
+ * strictly before the day the account is counted from, on. Never on where the form does not offer it.
  */
-export function beforeStartLine(names: readonly string[]): string | null {
-  if (names.length === 0) return null;
-  if (names.length === 1) return `Before ${names[0]} was added: its balance stays.`;
-  return `Before ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} were added: their balances stay.`;
+export function pastMarkOn(p: {
+  offered: boolean;
+  touched: boolean | undefined;
+  sameAsSaved: boolean;
+  saved: boolean | undefined;
+  openedOn: string | null;
+  occurredOn: string;
+}): boolean {
+  if (!p.offered) return false;
+  if (p.touched !== undefined) return p.touched;
+  return p.sameAsSaved ? p.saved === true : isPastDefault(p.openedOn, p.occurredOn);
 }
 
 /**

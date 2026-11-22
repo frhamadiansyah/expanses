@@ -58,10 +58,10 @@ test('a card purchase is marked paid off from its receipt, and from the ⋯ on i
   const hotel = page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' });
   await expect(hotel.getByTestId('statement-paid-off')).toBeVisible();
   // The row keeps its date; how it was paid is in the ✓'s name and in the bubble a tap opens.
-  await expect(hotel).not.toContainText('Paid before cicis');
-  await expect(paidTick(hotel)).toHaveAccessibleName('Hotel Mulia, Paid before cicis');
+  await expect(hotel).not.toContainText('Paid off');
+  await expect(paidTick(hotel)).toHaveAccessibleName('Hotel Mulia, Paid off');
   const bubble = await openPaidBubble(page, hotel);
-  await expect(bubble.getByTestId('statement-paid-how')).toHaveText('Paid before cicis');
+  await expect(bubble.getByTestId('statement-paid-how')).toHaveText('Paid off');
   await expect(bubble.getByTestId('statement-paid-detail')).toHaveCount(0);
   await expect(bubble.getByRole('button', { name: 'Not paid off' })).toBeVisible();
   // A tap anywhere shuts it.

@@ -29,8 +29,8 @@ export function feeRows(record: FeeYearRecord, feeMinor: number | null, currency
   const withFee = (head: string) => (fee ? `${head} · ${fee}` : head);
   return record.lines.map((kind): FeeRow => {
     if (kind === 'charged' && record.charge) return { kind, title: 'Charged', value: `${date(record.charge.on)} · ${formatMinor(record.charge.amountMinor, currency)}`, transactionId: record.charge.transactionId };
-    // Charged before the app reads as any charge, with the card's fee (owner, 22 Nov 2026): its words only with no fee set.
-    if (kind === 'charged-before-app') return { kind, title: 'Charged', value: `${date(record.covered)} · ${fee ?? 'before the app'}`, transactionId: null };
+    // Charged before the app reads as any charge, with the card's fee (owner, 22 Nov 2026), or just its date with no fee set.
+    if (kind === 'charged-before-app') return { kind, title: 'Charged', value: withFee(date(record.covered)), transactionId: null };
     if (kind === 'reversal' && record.reversal) return { kind, title: 'Reversal', value: `${date(record.reversal.on)} · ${formatMinor(record.reversal.amountMinor, currency)}`, transactionId: record.reversal.transactionId };
     if (kind === 'waived') return { kind, title: 'Waived', value: withFee('not charged'), transactionId: null };
     return { kind: 'pending', title: 'Pending', value: withFee(date(record.covered)), transactionId: null };

@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Undo box beside the tab bar</title>
+<style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:rgba(60,60,67,.18); --ground:#f2f2f7; --up:#34c759; --fill:#efeff2; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1300px; line-height:1.4; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; }
+  .col { width:340px; flex:none; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .cap b { display:inline-block; min-width:22px; height:22px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:22px; font-size:12px; margin-right:6px; padding:0 4px; }
+  .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:52px; line-height:1.4; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#2e8b3e; border-radius:9px; padding:1px 7px; margin-left:4px; vertical-align:2px; } .grey { background:#8e8e93; }
+  .phone { position:relative; height:560px; border-radius:34px; overflow:hidden; background:var(--ground); box-shadow:0 1px 3px rgba(0,0,0,.18); }
+  .content { padding:56px 14px 0; }
+  .ttl { font-size:28px; font-weight:800; margin:0 4px 12px; }
+  .grp { background:#fff; border-radius:12px; overflow:hidden; }
+  .row { display:flex; align-items:center; gap:10px; padding:10px 12px; } .row + .row { border-top:.5px solid #e5e5ea; }
+  .ic { width:34px; height:34px; border-radius:50%; background:#e9ebef; flex:none; }
+  .grow { flex:1; min-width:0; } .n { font-size:15px; } .s { font-size:12px; color:var(--ink3); } .a { font-variant-numeric:tabular-nums; }
+  /* the real tab bar: full pill, frosted, thin border */
+  .tabbar { position:absolute; left:16px; right:16px; bottom:22px; height:58px; border-radius:999px; background:rgba(249,249,251,.82); backdrop-filter:blur(20px); border:.5px solid var(--hair); box-shadow:0 8px 20px rgba(0,0,0,.10); display:flex; align-items:center; justify-content:space-around; padding:6px; }
+  .tabbar i { width:24px; height:24px; border-radius:6px; border:2px solid #3c3c43; opacity:.75; display:block; }
+  .tabbar i.on { background:#e5e5ea; border-color:#1c1c1e; opacity:1; width:56px; height:44px; border-radius:999px; border:none; position:relative; }
+  .tabbar i.on::after { content:""; position:absolute; left:16px; top:10px; width:24px; height:24px; border-radius:6px; border:2px solid #1c1c1e; }
+  .tabbar .plus { width:44px; height:44px; border-radius:50%; background:#1c1c1e; color:#fff; display:flex; align-items:center; justify-content:center; font-size:24px; }
+  .chk { width:26px; height:26px; border-radius:50%; background:var(--up); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; flex:none; }
+  .tt { font-size:14.5px; line-height:19px; white-space:nowrap; } .td { font-size:12px; color:var(--ink3); line-height:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .undo { background:var(--fill); border-radius:999px; padding:5px 13px; font-weight:600; font-size:14px; flex:none; }
+  /* today */
+  .today { position:absolute; left:16px; right:16px; bottom:94px; background:#fff; border-radius:16px; padding:10px 10px 10px 14px; display:flex; gap:10px; align-items:center; box-shadow:0 8px 28px rgba(0,0,0,.14),0 0 0 .5px rgba(60,60,67,.18); }
+  /* A: same pill as the bar */
+  .pillA { position:absolute; left:16px; right:16px; bottom:88px; height:58px; border-radius:999px; background:rgba(249,249,251,.82); backdrop-filter:blur(20px); border:.5px solid var(--hair); box-shadow:0 8px 20px rgba(0,0,0,.10); display:flex; gap:10px; align-items:center; padding:6px 8px 6px 16px; }
+  /* B: the bar itself shows it */
+  .barB { position:absolute; left:16px; right:16px; bottom:22px; height:58px; border-radius:999px; background:rgba(249,249,251,.82); backdrop-filter:blur(20px); border:.5px solid var(--hair); box-shadow:0 8px 20px rgba(0,0,0,.10); display:flex; gap:10px; align-items:center; padding:6px 8px 6px 16px; }
+  .undoD { background:#1c1c1e; color:#fff; border-radius:999px; padding:9px 16px; font-weight:600; font-size:14px; flex:none; }
+  /* C: small capsule centred */
+  .pillC { position:absolute; left:50%; transform:translateX(-50%); bottom:90px; height:44px; border-radius:999px; background:rgba(249,249,251,.88); backdrop-filter:blur(20px); border:.5px solid var(--hair); box-shadow:0 8px 20px rgba(0,0,0,.10); display:flex; gap:8px; align-items:center; padding:4px 5px 4px 8px; white-space:nowrap; }
+  .pillC .chk { width:24px; height:24px; font-size:12px; }
+  .pillC .undo { padding:6px 12px; }
+  .new { outline:2px solid #ff9f0a; outline-offset:3px; }
+</style></head>
+<body>
+<h1>The Undo box after Record, beside the tab bar</h1>
+<p class="sub">Today the Undo box is a white card with 16 px corners and a heavy shadow, sitting over a frosted, fully round tab bar: two different shapes stacked. Three ways to make them one family. New parts outlined in orange. Invented purchase.</p>
+<div class="wrap">
+  <div class="col"><p class="cap">Today <span class="tag grey">CARD ON A PILL</span></p><p class="note">White card, square-ish corners, its own shadow, over the frosted pill.</p>
+    <div class="phone"><div class="content"><div class="ttl">Cashflow</div><div class="grp"><div class="row"><span class="ic"></span><div class="grow"><div class="n">Kedai Kopi Contoh</div><div class="s">Bank Contoh</div></div><span class="a">Rp 53.000</span></div><div class="row"><span class="ic"></span><div class="grow"><div class="n">Toko Buah Contoh</div><div class="s">Kartu Contoh</div></div><span class="a">Rp 412.300</span></div></div></div>
+      <div class="today"><span class="chk">✓</span><div class="grow"><div class="tt">Recorded</div><div class="td">Kedai Kopi Contoh · Rp 53.000</div></div><span class="undo">Undo</span></div>
+      <div class="tabbar"><i class="on"></i><i></i><span class="plus">+</span><i></i><i></i></div></div></div>
+
+  <div class="col"><p class="cap"><b>A</b>A second pill, same as the bar <span class="tag">SUGGESTED</span></p><p class="note">Same width, same full round ends, same frosted glass, border and shadow as the tab bar, a small gap above it.</p>
+    <div class="phone"><div class="content"><div class="ttl">Cashflow</div><div class="grp"><div class="row"><span class="ic"></span><div class="grow"><div class="n">Kedai Kopi Contoh</div><div class="s">Bank Contoh</div></div><span class="a">Rp 53.000</span></div><div class="row"><span class="ic"></span><div class="grow"><div class="n">Toko Buah Contoh</div><div class="s">Kartu Contoh</div></div><span class="a">Rp 412.300</span></div></div></div>
+      <div class="pillA new"><span class="chk">✓</span><div class="grow"><div class="tt">Recorded</div><div class="td">Kedai Kopi Contoh · Rp 53.000</div></div><span class="undo">Undo</span></div>
+      <div class="tabbar"><i class="on"></i><i></i><span class="plus">+</span><i></i><i></i></div></div></div>
+
+  <div class="col"><p class="cap"><b>B</b>The tab bar shows it for a moment</p><p class="note">For the few seconds Undo is open, the tab bar's icons give way to the message and Undo; then the icons come back. Nothing stacks.</p>
+    <div class="phone"><div class="content"><div class="ttl">Cashflow</div><div class="grp"><div class="row"><span class="ic"></span><div class="grow"><div class="n">Kedai Kopi Contoh</div><div class="s">Bank Contoh</div></div><span class="a">Rp 53.000</span></div><div class="row"><span class="ic"></span><div class="grow"><div class="n">Toko Buah Contoh</div><div class="s">Kartu Contoh</div></div><span class="a">Rp 412.300</span></div></div></div>
+      <div class="barB new"><span class="chk">✓</span><div class="grow"><div class="tt">Recorded</div><div class="td">Kedai Kopi Contoh · Rp 53.000</div></div><span class="undoD">Undo</span></div></div></div>
+
+  <div class="col"><p class="cap"><b>C</b>A small capsule, centred</p><p class="note">Only as wide as its words, round ends, frosted like the bar; one short line, no second line.</p>
+    <div class="phone"><div class="content"><div class="ttl">Cashflow</div><div class="grp"><div class="row"><span class="ic"></span><div class="grow"><div class="n">Kedai Kopi Contoh</div><div class="s">Bank Contoh</div></div><span class="a">Rp 53.000</span></div><div class="row"><span class="ic"></span><div class="grow"><div class="n">Toko Buah Contoh</div><div class="s">Kartu Contoh</div></div><span class="a">Rp 412.300</span></div></div></div>
+      <div class="pillC new"><span class="chk">✓</span><span class="tt">Recorded</span><span class="undo">Undo</span></div>
+      <div class="tabbar"><i class="on"></i><i></i><span class="plus">+</span><i></i><i></i></div></div></div>
+</div>
+<p class="sub" style="margin-top:14px;font-size:13px">Whichever is chosen applies to every Undo in the app (Record, Pay a bill, Delete, Paid off…), same place, same shape.</p>
+</body></html>

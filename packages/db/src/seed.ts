@@ -11,7 +11,9 @@ export const SYSTEM_ACCOUNTS = [
   // The other side of the balancing pair beside a past purchase on a money account (an old expense or income that must
   // not change today's balance). Equity, so no report counts it; never the opening entry the way Opening Balances is.
   // Made on first use (`ensureSystemAccountTx`), as Balance corrections is.
-  { key: 'before_the_app', name: 'Before the app' },
+  // Named 'Before the app' until 22 Nov 2026 (older workspaces keep that stored name). No screen shows this account:
+  // its pairs are left out of every list, receipt and the activity page.
+  { key: 'before_the_app', name: 'Paid off earlier' },
 ] as const;
 
 export type SystemAccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'];

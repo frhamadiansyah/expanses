@@ -272,7 +272,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
               label: pastWord(side),
               on: draft.cashAccountId === '',
               set: goPast,
-              info: 'Owned before using this app, so no account’s balance moves.',
+              info: 'Already owned, so no account’s balance moves.',
             }}
           >
             {rateRow}

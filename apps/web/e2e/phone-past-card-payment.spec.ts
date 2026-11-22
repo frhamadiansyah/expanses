@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { expectWalletFigure, openAccount, openCard, walletCard } from './accounts';
 import { addForm, addTransaction, choosePayment, chooseTo, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage, chooseCardPayFrom, openCardPay, saveCardTerms, showCardBack } from './card-section';
@@ -6,7 +6,7 @@ import { cardPage, chooseCardPayFrom, openCardPay, saveCardTerms, showCardBack }
 /*
  * The start day rule for card payments and transfers (owner, 22 Nov 2026): money paid out of an account on a day before
  * that account was added leaves its balance as it is — its starting balance already holds it — while the card being
- * paid owes less. One plain line on the form, no choice. Today is pinned to 22 November 2026. Invented names and figures.
+ * paid owes less. No words on the form and no choice: a small ✓ on that account's icon, heard as Balance stays. Today is pinned to 22 November 2026. Invented names and figures.
  */
 const TODAY = new Date('2026-11-22T12:00:00');
 const SHOTS = process.env.PAST_PAY_SHOTS;
@@ -25,7 +25,7 @@ async function setUp(page: Page) {
   await page.getByLabel('Due date').fill('5');
   await saveCardTerms(page);
   await page.goto('/transactions');
-  await addTransaction(page, { description: 'Toko Contoh', paidWith: 'Kartu Contoh', category: 'Groceries', amount: '2970000', date: '2026-10-15' });
+  await addTransaction(page, { description: 'Toko Contoh', paidWith: 'Kartu Contoh', category: 'Groceries', amount: '2970000', date: '2026-10-15', paidOff: false });
 }
 
 async function openCardPage(page: Page) {
@@ -34,7 +34,7 @@ async function openCardPage(page: Page) {
   await expect(page).toHaveURL(/\/cards\/[^/?]+$/);
 }
 
-test('Pay credit card dated before the bank was added: one line says so, the bank stays, the card owes less', async ({ page }) => {
+test('Pay credit card dated before the bank was added: a ✓ on the bank says so, the bank stays, the card owes less', async ({ page }) => {
   await setUp(page);
   await openCardPage(page);
   const form = await openCardPay(page);
@@ -42,12 +42,14 @@ test('Pay credit card dated before the bank was added: one line says so, the ban
   await form.getByRole('button', { name: 'Clear amount' }).click();
   await openAmount(form);
   await fillAmount(page, form, '1710000');
-  // On or after the bank's day: no line.
+  // On or after the bank's day: no ✓.
   await form.getByLabel('Date').fill('2026-11-21');
-  await expect(form.getByTestId('before-start-line')).toHaveCount(0);
-  // Before it: the one line, and no switch or choice beside it.
+  await expect(form.getByTestId('past-side-badge')).toHaveCount(0);
+  // Before it: the ✓ on the From row's icon, no words, and no switch or choice beside it.
   await form.getByLabel('Date').fill('2026-11-12');
-  await expect(form.getByTestId('before-start-line')).toHaveText('Before Bank Contoh was added: its balance stays.');
+  await expect(sideBadge(form, 'From')).toBeVisible();
+  await expect(form.getByTestId('past-side-badge')).toHaveCount(1);
+  await expect(form.getByText(/was added|balance stays|before the app/i)).toHaveCount(0);
   await expect(form.getByRole('switch')).toHaveCount(0);
   await expect(form.getByRole('button', { name: 'Past purchase' })).toHaveCount(0);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/past-pay-form.png` });
@@ -70,7 +72,7 @@ test('Pay credit card dated before the bank was added: one line says so, the ban
 
   // The receipt names the account that stayed; the balancing pair is on no list.
   await page.goto('/transactions?month=2026-11');
-  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Settled before the app' })).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Paid off' })).toHaveCount(0);
   await page.goto(`/transactions?account=${await accountIdOf(page, 'Kartu Contoh')}`);
   await page.getByText('Credit card payment').first().click();
   await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+$/);
@@ -81,9 +83,9 @@ test('Pay credit card dated before the bank was added: one line says so, the ban
   // Edited onto a day after the bank was added, the bank pays it after all.
   await page.getByRole('button', { name: 'Edit this transaction' }).click();
   const edit = page.getByRole('form', { name: 'Edit a transaction' });
-  await expect(edit.getByTestId('before-start-line')).toHaveText('Before Bank Contoh was added: its balance stays.');
+  await expect(sideBadge(edit, 'From')).toBeVisible();
   await edit.getByLabel('Date').fill('2026-11-21');
-  await expect(edit.getByTestId('before-start-line')).toHaveCount(0);
+  await expect(edit.getByTestId('past-side-badge')).toHaveCount(0);
   await saveButton(edit).click();
   await expect(edit).toHaveCount(0);
   await page.goto('/wallet');
@@ -105,13 +107,20 @@ test('a transfer between own accounts: each side follows its own account’s day
   await form.getByLabel('Note').fill('Pindah');
   await form.getByLabel('Date').fill('2026-11-10');
   // The money arrived before Bank Contoh was added: Bank Contoh stays, Tabungan Lama pays it.
-  await expect(form.getByTestId('before-start-line')).toHaveText('Before Bank Contoh was added: its balance stays.');
+  await expect(sideBadge(form, 'To')).toBeVisible();
+  await expect(form.getByTestId('past-side-badge')).toHaveCount(1);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/past-transfer-form.png` });
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
   await page.goto('/wallet');
   await expectWalletFigure(page, 'Bank Contoh', '7.350.000');
   await expectWalletFigure(page, 'Tabungan Lama', '2.240.000');
 });
+
+/** The ✓ laid over a From or To row's icon: beside the row's button, in the row's own wrapper. */
+function sideBadge(form: Locator, row: 'From' | 'To'): Locator {
+  return form.getByRole('button', { name: row, exact: true }).locator('xpath=..').getByRole('img', { name: 'Balance stays' });
+}
 
 /** An account's id, read from its page's address. */
 async function accountIdOf(page: Page, name: string): Promise<string> {

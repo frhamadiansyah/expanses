@@ -16,8 +16,8 @@ test('a statement travels from screenshots to a reconciled month', async ({ page
 
   // Two purchases recorded by hand: one as the statement prints it, one Rp 500 short of it.
   await page.goto('/transactions');
-  await addTransaction(page, { description: 'Kopi Senja', paidWith: 'BCA Visa', category: 'Cafe & dessert', amount: '85000', date: '2026-08-15' });
-  await addTransaction(page, { description: 'Toko Buku', paidWith: 'BCA Visa', category: 'Books', amount: '126000', date: '2026-08-18' });
+  await addTransaction(page, { description: 'Kopi Senja', paidWith: 'BCA Visa', category: 'Cafe & dessert', amount: '85000', date: '2026-08-15', paidOff: false });
+  await addTransaction(page, { description: 'Toko Buku', paidWith: 'BCA Visa', category: 'Books', amount: '126000', date: '2026-08-18', paidOff: false });
 
   await page.goto('/wallet');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
@@ -159,9 +159,14 @@ test('a statement older than the card’s start records as already paid off, wit
   await page.getByTestId('statement-files').setInputFiles(screenshotFiles(1));
   await page.getByRole('button', { name: 'Check 1 screenshot' }).click();
 
-  // Without the summary it cannot move the card's start; paid off, it needs nothing more.
+  // Wholly before the card's start, it starts out paid off and needs nothing more (owner, 22 Nov 2026). Switched off,
+  // it cannot move the card's start without the summary.
+  const paidOff = page.getByRole('checkbox', { name: 'Already paid off' });
+  await expect(paidOff).toBeChecked();
+  await expect(page.getByTestId('needs-previous')).toHaveCount(0);
+  await paidOff.click();
   await expect(page.getByTestId('needs-previous')).toBeVisible();
-  await page.getByRole('checkbox', { name: 'Already paid off' }).click();
+  await paidOff.click();
   await expect(page.getByTestId('needs-previous')).toHaveCount(0);
   await page.getByTestId('count-missing').click();
   await page.getByTestId('missing-row').getByRole('button', { name: /Choose category/ }).click();

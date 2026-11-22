@@ -54,7 +54,7 @@ export async function splitForeignJourney(page: Page) {
   await expect(two.getByLabel('Amount', { exact: true })).toHaveValue('648.000');
   await expect(two.getByLabel('In USD', { exact: true })).toHaveValue('40,00');
   await donePart(page);
-  await expect(split.getByTestId('split-status')).toHaveText('All of it assigned');
+  await expect(split.getByTestId('split-status')).toHaveCount(0);
 
   await split.getByRole('button', { name: 'Close' }).click();
   await saveButton(form).click();

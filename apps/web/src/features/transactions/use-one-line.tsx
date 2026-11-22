@@ -3,7 +3,6 @@ import {
   type AccountRow,
   type CardRow,
   guessCategoryFromHistory,
-  isPastDefault,
   lastPaidWith,
   moveIntoSharedEvent,
   type NoteSuggestion,
@@ -17,7 +16,6 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } 
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
-import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInOpenBook, useInvalidateAll, useIsBookShared, useResolveRates } from '../../lib/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { cx } from '../../ui';
@@ -44,6 +42,7 @@ import {
   type LinePart,
   type LinePreview,
   lineDraft,
+  lineMark,
   missingRateMessage,
   previewDay,
   previewOf,
@@ -168,10 +167,9 @@ export function useOneLine() {
 
   const payerAccount = preview.paid ? byId.get(preview.paid.accountId) : undefined;
   const payerCurrency = payerCurrencyOf(preview);
-  // A purchase from money kept for spending, dated before the day its balance is counted from, is a past purchase, as
-  // the Add form sets it by itself from the date.
-  const moneyAccount = !!payerAccount && payerAccount.kind === 'asset' && SPENDABLE_SUBTYPES.includes(payerAccount.subtype);
-  const openedOn = useOpeningDay(moneyAccount ? payerAccount : null);
+  // A purchase dated before the day its payer is counted from is a past purchase on money kept for spending, and paid
+  // off on a credit card, as the Add form sets it by itself from the date (`lineMark`).
+  const openedOn = useOpeningDay(payerAccount ?? null);
   const categoryName = (id: string | null) => (id ? (byId.get(id)?.name ?? null) : null);
 
   // The guard is let go only once the emptied field is on screen: a Return already queued behind the save then meets an
@@ -235,7 +233,7 @@ export function useOneLine() {
       const id = await postTransaction(database, ws, {
         ...post.input,
         ratesToBase,
-        ...(moneyAccount && isPastDefault(openedOn, day) ? { pastPurchase: true } : {}),
+        ...lineMark(payerAccount, openedOn, day),
       });
       // Posted: from here a failure (the move, the refresh below) must not let the same line be saved again.
       const settled = charged?.minor ?? amountMinor;

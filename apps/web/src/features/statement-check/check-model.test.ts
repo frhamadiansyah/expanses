@@ -2,6 +2,7 @@ import { type AccountRow, type CheckDraftRow, fillSameMerchant, type PreparedChe
 import { describe, expect, it } from 'vitest';
 import {
   canRecordAll,
+  firstDecisions,
   plasticChoice,
   corrected,
   isTopUpRow,
@@ -298,5 +299,15 @@ describe('withOwnCategory', () => {
     ]);
     expect(canRecordAll(after, {})).toBe(false);
     expect(canRecordAll(withOwnCategory(after, 71, 'unc'), {})).toBe(true);
+  });
+});
+
+describe('firstDecisions', () => {
+  it('starts a statement wholly before the card’s start as already paid off, by the date rule', () => {
+    expect(firstDecisions({ endsBeforeStart: true }, null)).toEqual({ differs: {}, flagged: {}, ask: {}, moveStart: false, cardId: null, paidOff: true });
+  });
+  it('leaves the switch off for a statement the card was added during, or after it, and for an older reading', () => {
+    expect(firstDecisions({ endsBeforeStart: false }, 'c1')).toEqual({ differs: {}, flagged: {}, ask: {}, moveStart: false, cardId: 'c1' });
+    expect(firstDecisions({}, null).paidOff).toBeUndefined();
   });
 });
