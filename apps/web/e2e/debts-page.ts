@@ -52,7 +52,7 @@ export async function oneOfEach(page: Page) {
     ['Superindo', '450000', TODAY],
   ] as const) {
     await page.goto('/transactions');
-    await addTransaction(page, { description, paidWith: 'BCA Visa', category: 'Groceries', amount, date, keyByKey: true });
+    await addTransaction(page, { description, paidWith: 'BCA Visa', category: 'Groceries', amount, date, keyByKey: true, paidOff: false });
   }
 
   await page.goto('/debts/new');

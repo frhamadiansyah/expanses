@@ -25,7 +25,7 @@ import {
   transferWithFeeLines,
   yourShare,
 } from '@expanses/core';
-import { cardTopsUpWallet, NetWorthError, TOP_UP_KEY, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
+import { cardTopsUpWallet, isPastDefault, NetWorthError, TOP_UP_KEY, type AccountRow, type MemberTransferInput, type PaidFrom, type PostTransactionInput, type RecordTradeInput, type SplitBillInput, type TaggedTransferInput, type TransactionView } from '@expanses/db';
 import { emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput } from './buy-in-form';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -638,6 +638,25 @@ export function receivedField(draft: FormDraft, accounts: readonly AccountRow[])
   const to = accounts.find((a) => a.id === draft.toId);
   if (!from?.currency || !to?.currency || from.currency === to.currency) return null;
   return { which: 'received', label: `Received amount (${to.currency})`, value: draft.toAmount, currency: to.currency };
+}
+
+/**
+ * Whether the Paid with icon's mark is on: a money account's Past purchase, or a credit card's Already paid off — one
+ * rule for both (owner, 22 Nov 2026). A tap decides it (`touched`) for as long as the form is open. Otherwise an edit
+ * that keeps its day and account reads back what it was saved as (`saved`), and anything else goes by the date:
+ * strictly before the day the account is counted from, on. Never on where the form does not offer it.
+ */
+export function pastMarkOn(p: {
+  offered: boolean;
+  touched: boolean | undefined;
+  sameAsSaved: boolean;
+  saved: boolean | undefined;
+  openedOn: string | null;
+  occurredOn: string;
+}): boolean {
+  if (!p.offered) return false;
+  if (p.touched !== undefined) return p.touched;
+  return p.sameAsSaved ? p.saved === true : isPastDefault(p.openedOn, p.occurredOn);
 }
 
 /**

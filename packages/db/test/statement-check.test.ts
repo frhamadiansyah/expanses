@@ -98,7 +98,7 @@ describe('preparing a check', () => {
     expect(prepared.rows.map((r) => r.outcome.status)).toEqual(['matched', 'missing', 'missing']);
     expect(prepared.rows[1]).toMatchObject({ categoryId: h.books, categorySource: 'known' });
     expect(prepared.rows[2]).toMatchObject({ isFee: true, categoryId: h.fees, categorySource: 'fee' });
-    expect(prepared).toMatchObject({ closingMinor: 260_000, alreadyChecked: false, startsAfterPeriod: false, cardBalanceAtEndMinor: 130_000, flagged: [] });
+    expect(prepared).toMatchObject({ closingMinor: 260_000, alreadyChecked: false, startsAfterPeriod: false, endsBeforeStart: false, cardBalanceAtEndMinor: 130_000, flagged: [] });
   });
 });
 
@@ -437,6 +437,12 @@ describe('recording a check', () => {
     expect((await h.balances())[h.card.id]).toBe(-2_000_000);
   });
 
+  it('a statement the card was added during is not wholly before its start: the date rule leaves it to the owner', async () => {
+    const h = await household({ openingBalanceMinor: 2_000_000, openedOn: '2026-05-20' });
+    const prepared = await h.prepare([image([['12MAY', 'TOKO ALFA', '100,000'], ['22MAY', 'KOPI SATU', '50,000']])], MAY, '2026-09-01');
+    expect(prepared).toMatchObject({ startsAfterPeriod: true, endsBeforeStart: false });
+  });
+
   it('records a statement older than the card’s start as already paid off, with no previous balance: spending in its month, today’s balance untouched', async () => {
     const h = await household({ openingBalanceMinor: 2_000_000, openedOn: '2026-08-01' });
     const prepared = await h.prepare(
@@ -444,7 +450,8 @@ describe('recording a check', () => {
       MAY,
       '2026-09-01',
     );
-    expect(prepared).toMatchObject({ startsAfterPeriod: true, needsPreviousBalance: true });
+    // Wholly before the card's start (1 August): the screen starts it out paid off, by the date rule.
+    expect(prepared).toMatchObject({ startsAfterPeriod: true, endsBeforeStart: true, needsPreviousBalance: true });
     const result = await recordStatementCheck(h.database, h.ws, { ...prepared, rows: categorised(prepared.rows, h.groceries) }, { ...NO_DECISIONS, paidOff: true });
     expect(result.status).toBe('open');
     // The card owes today exactly what it owed; the opening stays where it was.

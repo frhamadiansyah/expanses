@@ -29,7 +29,7 @@ test('payments are kept off the statement’s list, and Paid in the box opens th
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '20000000' });
   await openCard(page, { name: 'Kartu Contoh', last4: '4417', statementDay: '31', dueDay: '15' });
   await page.goto('/transactions');
-  const buy = (description: string, amount: string, date?: string) => addTransaction(page, { description, paidWith: 'Kartu Contoh', category: 'Groceries', amount, ...(date ? { date } : {}) });
+  const buy = (description: string, amount: string, date?: string) => addTransaction(page, { description, paidWith: 'Kartu Contoh', category: 'Groceries', amount, ...(date ? { date, paidOff: false } : {}) });
   await buy('Restoran Contoh', '640000', lastMonth(4));
   await buy('Toko Buku Contoh', '360000', lastMonth(9));
   await buy('Apotek Contoh', '150000');

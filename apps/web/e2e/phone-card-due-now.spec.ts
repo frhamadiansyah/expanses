@@ -34,7 +34,7 @@ test('Wallet and the card’s back show what is due now, the instalments not bil
   await saveCardTerms(page);
 
   await page.goto('/transactions');
-  await addTransaction(page, { description: 'Laptop', paidWith: 'BCA Visa', category: 'Groceries', amount: '12000000', date: bought.date });
+  await addTransaction(page, { description: 'Laptop', paidWith: 'BCA Visa', category: 'Groceries', amount: '12000000', date: bought.date, paidOff: false });
   await addTransaction(page, { description: 'Groceries', paidWith: 'BCA Visa', category: 'Groceries', amount: '500000' });
 
   // The laptop turned into 6 months from its receipt.

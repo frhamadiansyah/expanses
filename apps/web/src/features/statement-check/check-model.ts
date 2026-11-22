@@ -3,7 +3,7 @@
  * when Record all may go, and the missing rows laid out by day as the Cashflow list draws them.
  */
 import { currencyInfo } from '@expanses/core';
-import { type AccountRow, type CheckDraftRow, type PreparedCheck, TOP_UP_KEY } from '@expanses/db';
+import { type AccountRow, type CheckDecisions, type CheckDraftRow, type PreparedCheck, TOP_UP_KEY } from '@expanses/db';
 
 export interface CheckCounts {
   matched: number;
@@ -219,4 +219,17 @@ export function plasticChoice(
   const options = ordered.map((p) => ({ id: p.id, label: `${p.isPrimary ? 'Primary' : 'Supplementary'}${p.last4 ? ` ···· ${p.last4}` : ''}` }));
   const chosen = options.find((o) => o.id === picked)?.id ?? options[0]?.id ?? null;
   return { options, chosen, choosable: options.length > 1 };
+}
+
+/** Nothing decided yet: each row keeps what was recorded, the card's start stays. */
+export const NO_DECISIONS: CheckDecisions = { differs: {}, flagged: {}, ask: {}, moveStart: false };
+
+/**
+ * What a freshly read statement starts out decided as. A statement wholly before the card's start is Already paid off,
+ * by the date rule a purchase typed in follows (owner, 22 Nov 2026): what the card owed when it was added already holds
+ * every row of it. Switched off, the summary's previous balance is asked for as before. One the card was added during
+ * keeps the switch off: rows after the start are owed.
+ */
+export function firstDecisions(prepared: Pick<PreparedCheck, 'endsBeforeStart'>, cardId: string | null): CheckDecisions {
+  return { ...NO_DECISIONS, cardId, ...(prepared.endsBeforeStart ? { paidOff: true } : {}) };
 }

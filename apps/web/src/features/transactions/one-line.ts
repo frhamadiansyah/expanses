@@ -1,4 +1,5 @@
 import { convertMinor, matchCategory, minorToMajorString, type CategoryOption, type ExpenseLineReading, type PaymentOption } from '@expanses/core';
+import { pastMarkDefault, type PastMark } from '@expanses/db';
 import type { ListRow } from './list-model';
 import { paymentKey, shortDate } from './quick-row';
 import { emptyForm, estimatedChargeMinor, suggestedRate, type FormDraft } from './tx-form';
@@ -122,6 +123,15 @@ export function previewOf(reading: ExpenseLineReading, context: LineContext, cho
   if (!paid) missing.push('paid');
 
   return { description: reading.description, occurredOn, amountMinor, currency: reading.currency, paid, categoryId, unsure, missing };
+}
+
+/**
+ * The mark a saved line starts with, by the Add form's date rule: dated before the day its payer is counted from, a
+ * money account's is a past purchase and a credit card's paid off (`pastMarkDefault`). A line has no switch of its own,
+ * so this is what it posts with; the receipt or the statement changes it after.
+ */
+export function lineMark(payer: { kind: string; subtype: string } | undefined, openedOn: string | null, day: string): PastMark {
+  return pastMarkDefault(payer, openedOn, day);
 }
 
 export const canSaveLine = (preview: LinePreview): boolean => preview.missing.length === 0;

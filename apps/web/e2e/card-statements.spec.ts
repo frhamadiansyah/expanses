@@ -31,7 +31,7 @@ async function setUp(page: Page) {
 
 async function buy(page: Page, description: string, amount: string, on: string) {
   await page.goto('/transactions');
-  await addTransaction(page, { description, paidWith: 'BCA Visa', category: 'Groceries', amount, date: on });
+  await addTransaction(page, { description, paidWith: 'BCA Visa', category: 'Groceries', amount, date: on, paidOff: false });
 }
 
 async function openCardPage(page: Page) {

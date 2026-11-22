@@ -118,7 +118,7 @@ export async function refundFlow(page: Page, name: string) {
   const charged = days(-15);
   const year = charged.getFullYear();
   await page.goto('/transactions');
-  await addTransaction(page, { description: 'BIAYA KARTU TAHUNAN', paidWith: name, category: 'Fees & charges', amount: '800000', date: iso(charged) });
+  await addTransaction(page, { description: 'BIAYA KARTU TAHUNAN', paidWith: name, category: 'Fees & charges', amount: '800000', date: iso(charged), paidOff: false });
   await openWalletCard(page, name);
   await showCardBack(page);
   const bonus = page.getByTestId('back-bonus');
