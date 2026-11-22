@@ -1,7 +1,7 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { spendingBook } from '../accounts/pockets';
-import { type BillMonthInput, billsToPay, filteredCards, type JointBoxInput, moneyCardMinor, toggleFilter, walletBox, type WalletBoxInput, walletFilterSets } from './wallet-balance';
+import { type AccountSetAsideInput, type BillMonthInput, billsToPay, filteredCards, jointFaceMinor, type JointBoxInput, moneyCardMinor, moneyFace, toggleFilter, walletBox, type WalletBoxInput, walletFilterSets } from './wallet-balance';
 import { walletCredit, walletMoney } from './wallet-model';
 
 const account = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
@@ -291,5 +291,88 @@ describe('instalments not billed yet stay out of the Balance', () => {
 
   it('never counts a card below nothing, nor a card owing nothing for its plans', () => {
     expect(walletBox(input({ visa: 20_000_000, mandiri: 3_000_000 }))).toMatchObject({ cardsMinor: 0, balanceMinor: 6_000_000 });
+  });
+});
+
+/*
+ * Each money card's face is what is free to spend on it (owner, 22 Nov 2026, option A): its balance less what goals and
+ * sinking funds set aside of it, the per-account amount Spending money takes off, so the faces add up to Spending money.
+ */
+describe('money faces show what is free to spend', () => {
+  const accounts = [
+    account('payroll', 'bank'),
+    account('wise', 'bank'),
+    account('wise-usd', 'bank', { parentId: 'wise', currency: 'USD' }),
+    account('wise-idr', 'bank', { parentId: 'wise' }),
+    account('wise-try', 'bank', { parentId: 'wise', currency: 'TRY', forSpending: 0 }),
+    account('ewallet', 'ewallet'),
+    account('rainy', 'savings', { forSpending: 0 }),
+    card('card-1234'),
+  ];
+  const book = spendingBook(accounts);
+  const money = walletMoney(accounts);
+  const balances = { payroll: 5_900_000, 'wise-usd': 10_000, 'wise-idr': 100_000, 'wise-try': 50_000, ewallet: 900_000, rainy: 4_000_000, 'card-1234': -1_650_000 };
+  const rates = { USD: 16_000, TRY: 500 };
+  const setAsides: AccountSetAsideInput[] = [
+    // A goal's money on the payroll account.
+    { accountId: 'payroll', setAsideMinor: 2_000_000, currency: 'IDR', funds: [] },
+    // A sinking fund saving in the dollar pocket.
+    { accountId: 'wise-usd', setAsideMinor: 2_500, currency: 'USD', funds: [{ billId: 'insurance', promisedMinor: 2_500 }] },
+    // Money set aside on savings switched off, and on a pocket switched off: neither is Spending money nor a face.
+    { accountId: 'rainy', setAsideMinor: 1_000_000, currency: 'IDR', funds: [] },
+    { accountId: 'wise-try', setAsideMinor: 10_000, currency: 'TRY', funds: [] },
+  ];
+  const box = walletBox({ book, balances, credit: walletCredit(accounts), baseCurrency: 'IDR', rates, setAsides, bills: [], month: '2026-11' });
+
+  it('the faces add up to Spending money, a goal and a fund taken off', () => {
+    // US$100 at 16.000 is 1.600.000, of which US$25 (400.000) is the fund's.
+    expect(box.spendingMinor).toBe(5_900_000 - 2_000_000 + 100_000 + 1_600_000 - 400_000 + 900_000);
+    const total = money.reduce((sum, a) => sum + moneyCardMinor(a, book, balances, 'IDR', rates, setAsides)!, 0);
+    expect(total).toBe(box.spendingMinor);
+  });
+
+  it('a plain account is read in its own money, its set-aside taken off', () => {
+    expect(moneyFace(accounts[0]!, book, balances, 'IDR', rates, setAsides)).toEqual({ minor: 3_900_000, currency: 'IDR', converted: false, missing: [], setAsideMinor: 2_000_000 });
+    expect(moneyFace(accounts.find((a) => a.id === 'ewallet')!, book, balances, 'IDR', rates, setAsides)).toMatchObject({ minor: 900_000, setAsideMinor: 0 });
+  });
+
+  it('an account with pockets is its spending pockets less what is set aside on them, in the base', () => {
+    expect(moneyFace(accounts[1]!, book, balances, 'IDR', rates, setAsides)).toEqual({ minor: 1_300_000, currency: 'IDR', converted: true, missing: [], setAsideMinor: 400_000 });
+  });
+
+  it('a missing rate gives no figure rather than a partial subtraction, as Spending money does', () => {
+    expect(moneyFace(accounts[1]!, book, balances, 'IDR', {}, setAsides)).toMatchObject({ minor: null, missing: ['USD'] });
+    expect(moneyCardMinor(accounts[1]!, book, balances, 'IDR', {}, setAsides)).toBeNull();
+    // A plain account needs no rate: its set-aside is in its own money.
+    expect(moneyFace(accounts[0]!, book, balances, 'IDR', {}, setAsides)).toMatchObject({ minor: 3_900_000 });
+  });
+
+  it('set aside beyond the balance shows below nothing, as Spending money counts it', () => {
+    const short = [{ accountId: 'ewallet', setAsideMinor: 1_200_000, currency: 'IDR', funds: [] }];
+    expect(moneyFace(accounts.find((a) => a.id === 'ewallet')!, book, balances, 'IDR', rates, short)).toMatchObject({ minor: -300_000, setAsideMinor: 1_200_000 });
+  });
+
+  it('a plain account in another currency shows its own money, and still adds up to Spending money in the base', () => {
+    const usd = [account('travel', 'bank', { currency: 'USD' })];
+    const held = { travel: 20_000 };
+    const aside = [{ accountId: 'travel', setAsideMinor: 5_000, currency: 'USD', funds: [] }];
+    expect(moneyFace(usd[0]!, usd, held, 'IDR', {}, aside)).toMatchObject({ minor: 15_000, currency: 'USD', setAsideMinor: 5_000 });
+    const usdBox = walletBox({ book: usd, balances: held, credit: [], baseCurrency: 'IDR', rates, setAsides: aside, bills: [], month: '2026-11' });
+    expect(moneyCardMinor(usd[0]!, usd, held, 'IDR', rates, aside)).toBe(usdBox.spendingMinor);
+    expect(usdBox.spendingMinor).toBe(2_400_000);
+  });
+
+  it('with nothing set aside the face is the balance it always was', () => {
+    expect(moneyCardMinor(accounts[1]!, book, balances, 'IDR', rates)).toBe(1_700_000);
+  });
+
+  it('joint money is its holder’s figure less the set-aside its phone sent; a joint card is what it owes', () => {
+    expect(jointFaceMinor({ side: 'money', minor: 8_000_000, setAsideMinor: 3_000_000 })).toBe(5_000_000);
+    expect(jointFaceMinor({ side: 'money', minor: 8_000_000, setAsideMinor: 0 })).toBe(8_000_000);
+    expect(jointFaceMinor({ side: 'credit', minor: 850_000, setAsideMinor: 500_000 })).toBe(850_000);
+    const joint: JointBoxInput[] = [{ key: 'joint:savings', side: 'money', minor: 8_000_000, currency: 'IDR', setAsideMinor: 3_000_000 }];
+    const withJoint = walletBox({ book, balances, credit: [], baseCurrency: 'IDR', rates, setAsides, bills: [], month: '2026-11', joint });
+    const own = money.reduce((sum, a) => sum + moneyCardMinor(a, book, balances, 'IDR', rates, setAsides)!, 0);
+    expect(own + jointFaceMinor({ side: 'money', minor: 8_000_000, setAsideMinor: 3_000_000 })).toBe(withJoint.spendingMinor);
   });
 });

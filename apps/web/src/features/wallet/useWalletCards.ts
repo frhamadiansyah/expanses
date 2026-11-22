@@ -7,6 +7,7 @@ import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { groupedFigure, type WalletCard } from '../../ui/native';
 import { parentTotal, pocketCount, pocketsOf, spendingBook } from '../accounts/pockets';
+import { useSetAsideViews } from '../goals/queries';
 import { useHeldRates } from '../accounts/queries';
 import { useAccountNumberLast4, useCardIdentities, useCards, useCardTiers, useWalletLast4 } from '../cards/card-queries';
 import { faceFor } from '../cards/debit-art/faces';
@@ -15,6 +16,7 @@ import { dueNowMinor, laterByCard } from '../cards/limit-usage';
 import { useInstallments } from '../loans/queries';
 import { owedMinor } from '../networth/debt-rows';
 import { useAssetProfiles, useSharedNetWorth } from '../networth/queries';
+import { jointFaceMinor, moneyFace } from './wallet-balance';
 import { jointChip, readJointOrder, walletJoint, walletKeys } from './wallet-joint';
 import { bankOf, moneyChip, moneyFaceOf, walletAsideCredit, walletAsideMoney, walletCredit, walletMoney } from './wallet-model';
 
@@ -73,6 +75,9 @@ export function useWalletCards(open: { cardId?: string; accountId?: string } = {
     ...asidePockets.map((a) => a.currency!),
   ]);
   const held = rates.data?.rates ?? {};
+  // What goals and sinking funds have set aside of each account: off its face as off Spending money (owner, 22 Nov 2026).
+  const setAsideViews = useSetAsideViews();
+  const setAsides = Object.values(setAsideViews.data ?? {});
 
   /* Each credit card's points, for the line beside the stack and its catalogue art. */
   const data = useQuery({
@@ -90,15 +95,25 @@ export function useWalletCards(open: { cardId?: string; accountId?: string } = {
   });
 
   /**
-   * A money card's figure: its balance, or — for an account with pockets — what its pockets kept for spending come to
-   * here. A pocket switched off (the lira left after a trip) is savings, so it is not in the card's figure any more than
-   * in the Balance box; the account's page and Assets still count it. Money kept aside is read from `pool`, its every
-   * open pocket, as its page reads it.
+   * A money card's figure: what is free to spend on it (owner, 22 Nov 2026) — its balance, or for an account with
+   * pockets what its pockets kept for spending come to, less what goals and sinking funds have set aside of it, the
+   * same amount Spending money takes off (`moneyFace`), so the faces add up to it. No mark on the face says so; its
+   * label reads "Free to spend" once anything is set aside, and the account's page shows the balance and the split.
+   * A pocket switched off (the lira left after a trip) is savings, so it is not in the card's figure any more than in
+   * the Balance box; the account's page and Assets still count it.
+   *
+   * Money kept aside (switched off "For spending") is in no Spending money: read from `pool`, its every open pocket, as
+   * its page reads it, at its full balance.
    */
-  const moneyFigure = (account: AccountRow, pool: readonly AccountRow[] = book) => {
-    if (!parents.has(account.id)) return formatMinor(all[account.id] ?? 0, account.currency!);
-    const pockets = pocketsOf(account.id, pool);
-    return groupedFigure(parentTotal(pockets, all, ws.baseCurrency, held), ws.baseCurrency, pockets.some((p) => p.currency !== ws.baseCurrency)).text;
+  const moneyFigure = (account: AccountRow, pool: readonly AccountRow[] | null = null) => {
+    if (pool !== null) {
+      if (!parents.has(account.id)) return { text: formatMinor(all[account.id] ?? 0, account.currency!), setAside: false };
+      const pockets = pocketsOf(account.id, pool);
+      return { text: groupedFigure(parentTotal(pockets, all, ws.baseCurrency, held), ws.baseCurrency, pockets.some((p) => p.currency !== ws.baseCurrency)).text, setAside: false };
+    }
+    const face = moneyFace(account, book, all, ws.baseCurrency, held, setAsides);
+    const text = !parents.has(account.id) ? formatMinor(face.minor!, face.currency) : groupedFigure({ totalMinor: face.minor, missing: face.missing }, face.currency, face.converted).text;
+    return { text, setAside: face.setAsideMinor !== 0 };
   };
   /*
    * The drawn face for each money card: its bank's (the tax report's Nama institusi, read off its profile or its
@@ -108,8 +123,9 @@ export function useWalletCards(open: { cardId?: string; accountId?: string } = {
    * are its phone's. Money nothing is drawn for keeps the plain face with its chip of words ("E-money").
    */
   const faceOf = (account: AccountRow) => moneyFaceOf(bankOf(account.id, everything, profiles), account.name, account.subtype, tiers[account.id]);
-  const moneyCard = (account: AccountRow, pool: readonly AccountRow[] = book): WalletCard => {
+  const moneyCard = (account: AccountRow, pool: readonly AccountRow[] | null = null): WalletCard => {
     const face = faceOf(account);
+    const figure = moneyFigure(account, pool);
     const debit = face?.kind === 'debit' ? [...plastic.filter((card) => card.accountId === account.id)].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0] : undefined;
     return {
       key: account.id,
@@ -119,9 +135,9 @@ export function useWalletCards(open: { cardId?: string; accountId?: string } = {
       holderName: face?.kind === 'debit' ? (debit?.holderName ?? account.name) : undefined,
       kind: moneyChip(account, digits[account.id]),
       face: face ?? undefined,
-      figure: moneyFigure(account, pool),
-      figureLabel: 'Balance',
-      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, pool).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
+      figure: figure.text,
+      figureLabel: figure.setAside ? 'Free to spend' : 'Balance',
+      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, pool ?? book).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
       to: '/accounts/$accountId' as const,
       params: { accountId: account.id },
       label: account.name,
@@ -188,8 +204,9 @@ export function useWalletCards(open: { cardId?: string; accountId?: string } = {
       whose,
       ...(card.side === 'money' ? { kind: jointChip(card.subtype, card.last4) } : {}),
       face: face ? { key: face.key, kind: face.kind, mark: face.mark } : undefined,
-      figure: formatMinor(card.minor, card.currency),
-      figureLabel: card.side === 'money' ? 'Balance' : 'Owed',
+      // Joint money less what its holder's phone set aside of it, as Spending money counts it (`jointFaceMinor`).
+      figure: formatMinor(jointFaceMinor(card), card.currency),
+      figureLabel: card.side === 'credit' ? 'Owed' : card.setAsideMinor > 0 ? 'Free to spend' : 'Balance',
       ...(card.side === 'credit' ? { figureTone: 'alarm' as const } : {}),
       subtitle: [whose, SUBTYPE_LABELS[card.subtype as keyof typeof SUBTYPE_LABELS] ?? card.subtype, card.currency].join(' · '),
       to: '/wallet/joint/$itemId' as const,
@@ -205,7 +222,7 @@ export function useWalletCards(open: { cardId?: string; accountId?: string } = {
    */
   const byKey = new Map([...moneyCards, ...creditCards, ...jointCards].map((card) => [card.key, card]));
   const cards = walletKeys(everything, joint, readJointOrder()).flatMap((key) => byKey.get(key) ?? []);
-  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess && !plans.isPending && !shared.isPending && (asideAccount === undefined || !asideData.isPending);
+  const ready = accounts.isSuccess && balances.isSuccess && data.isSuccess && !setAsideViews.isPending && !plans.isPending && !shared.isPending && (asideAccount === undefined || !asideData.isPending);
 
   return { accounts, balances, everything, all, parents, book, money, credit, joint, rates, held, today, cards, aside, ready, laterOnCards, plansRead: !plans.isPending };
 }
