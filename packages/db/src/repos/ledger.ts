@@ -214,6 +214,12 @@ export interface PostTransactionInput {
    * its lineage id (spec §7.2). Everyone else lets the ledger mint one. `replaceTransaction` never passes it on.
    */
   id?: string;
+  /**
+   * With `id`: a row the app makes by itself, which every linked device makes the same (link my devices): its lines,
+   * and the settlement `settledBeforeApp` posts beside it, are named by its id, so two devices that both make it hold
+   * it once. Only an app-made row given a `stableId` asks for it.
+   */
+  stableLines?: boolean;
   /** The member whose change this posting applies (spec §7.3): lands in the audit 'post' payload, as all input does. */
   syncAuthor?: string;
   /**
@@ -468,9 +474,10 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   if (exact !== null && exact % 100 !== 0 && (await exactExists(tx))) {
     await tx.run(sql`UPDATE transactions SET exact_hundredths = ${exact} WHERE id = ${id}`);
   }
+  const lineIds = input.stableLines && input.id ? await Promise.all(planned.map((_, i) => stableId(input.id!, `line:${i}`))) : null;
   await tx.insert(entries).values(
-    planned.map((p) => ({
-      id: uuidv7(),
+    planned.map((p, i) => ({
+      id: lineIds?.[i] ?? uuidv7(),
       workspaceId: ws.workspaceId,
       transactionId: id,
       accountId: p.accountId,
@@ -587,7 +594,41 @@ async function settlementInputOf(tx: Db, ws: WorkspaceContext, purchaseId: strin
 
 async function settleBeforeAppTx(tx: Db, ws: WorkspaceContext, purchaseId: string, input: PostTransactionInput): Promise<void> {
   const settlement = await settlementInputOf(tx, ws, purchaseId, input);
-  if (settlement) await postTransactionTx(tx, ws, settlement);
+  if (!settlement) return;
+  // A purchase every linked device makes the same has a settlement every device makes the same.
+  if (input.stableLines && input.id) await postTransactionTx(tx, ws, { ...settlement, id: await stableId(purchaseId, 'before-app'), stableLines: true });
+  else await postTransactionTx(tx, ws, settlement);
+}
+
+/** The ref of an annual fee row the app adds beside a fee reversed before the app (card-fee.ts), by the reversal's id. */
+export const FEE_BEFORE_APP_REF = 'fee-before-app:';
+
+/**
+ * A fee row the app added beside a fee reversal before the app goes with that reversal (owner, 22 Nov 2026): once no
+ * edit of the reversal is posted, the fee row is voided, and its settlement with it, so the card owes what it did.
+ * Nothing when the void was of anything else, or an edit of the reversal still stands.
+ */
+async function voidFeePairsOfTx(tx: Db, ws: WorkspaceContext, id: string, author?: string): Promise<void> {
+  const [any] = await tx.values(sql`SELECT 1 FROM transactions WHERE workspace_id = ${ws.workspaceId} AND status = 'posted' AND external_ref LIKE ${FEE_BEFORE_APP_REF + '%'} LIMIT 1`);
+  if (!any) return;
+  // The voided transaction and every one it replaced: the fee row names the reversal by the id it had when paired.
+  const pairs = await tx.values<[string, string]>(sql`
+    WITH RECURSIVE up(id) AS (
+      SELECT ${id}
+      UNION SELECT t.replaces_transaction_id FROM transactions t JOIN up ON t.id = up.id WHERE t.replaces_transaction_id IS NOT NULL
+    )
+    SELECT p.id, substr(p.external_ref, ${FEE_BEFORE_APP_REF.length + 1}) FROM transactions p
+    WHERE p.workspace_id = ${ws.workspaceId} AND p.status = 'posted'
+      AND p.external_ref IN (SELECT ${FEE_BEFORE_APP_REF} || up.id FROM up)`);
+  for (const [pairId, reversalId] of pairs) {
+    const [standing] = await tx.values(sql`
+      WITH RECURSIVE down(id) AS (
+        SELECT ${reversalId}
+        UNION SELECT t.id FROM transactions t JOIN down ON t.replaces_transaction_id = down.id
+      )
+      SELECT 1 FROM transactions WHERE id IN (SELECT id FROM down) AND status = 'posted' LIMIT 1`);
+    if (!standing) await voidTransactionTx(tx, ws, pairId, {}, author);
+  }
 }
 
 /** The posted settlement of a purchase paid off before the app, when it has one. */
@@ -770,6 +811,8 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
   // A purchase paid off before the app takes its settlement with it: left behind, it would lower what the card owes.
   const settlement = await settlementOfTx(tx, ws, id);
   if (settlement) await voidTransactionTx(tx, ws, settlement, {}, author);
+  // A fee reversal before the app takes the fee row the app added beside it.
+  await voidFeePairsOfTx(tx, ws, id, author);
   // A deposit event this posted is reopened, and the rest of what that event posted is voided with it (whole: `{}`).
   for (const other of await reopenDepositEventTx(tx, ws, id)) {
     const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, other));

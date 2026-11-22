@@ -157,7 +157,7 @@ export function StatementPanel({
   /** The swipe's and the ⋯'s word for the mark. */
   const markWord = (line: StatementLine) => (planRow(line) ? 'Paid' : line.owedMinor < 0 ? 'Settled' : 'Paid off');
   /** Whether a line's mark can be taken back here: any paid-off purchase, and a plan's latest ticked instalment. */
-  const unmarkable = (line: StatementLine) => line.paidOff && (!planRow(line) || latestTicked(line));
+  const unmarkable = (line: StatementLine) => line.paidOff && !line.feeSettled && (!planRow(line) || latestTicked(line));
   /** Takes the mark back: a purchase is owed again; a plan's instalment is unticked, those before it stay paid. */
   const unmark = (line: StatementLine) =>
     run(() => (planRow(line) ? setPlanPaidSoFar(database, ws, line.instalment!.planId, line.instalment!.number - 1) : setSettledBeforeApp(database, ws, line.transactionId, false)));
@@ -289,6 +289,9 @@ export function StatementPanel({
     // Covered by a payment, paid off before the app (or settled, or a plan's instalment ticked paid), paid one by one.
     coveredWhole(line) ? (
       paidButton(line, 'statement-covered')
+    ) : line.feeSettled ? (
+      // An annual fee's money back (and a fee added beside one before the app) is settled on its own (owner, 22 Nov 2026).
+      paidButton(line, 'statement-fee-settled')
     ) : line.paidOff ? (
       paidButton(line, 'statement-paid-off')
     ) : line.paidBy ? (

@@ -18,7 +18,16 @@ import { feeFieldsByCard } from './fee-columns';
  */
 
 /** Each database's answer, per workspace, with what it was worked out from. */
-const remembered = new WeakMap<Database, Map<string, { key: string; ids: Promise<ReadonlySet<string>> }>>();
+/** What one reading of the fee cards gives: what reports leave out, and every annual fee reversal on them. */
+interface FeeReading {
+  leftOut: ReadonlySet<string>;
+  /** Each fee year's money back, reversed in full or not: what a statement shows settled on its own. */
+  reversals: ReadonlySet<string>;
+}
+
+const NOTHING: FeeReading = { leftOut: new Set(), reversals: new Set() };
+
+const remembered = new WeakMap<Database, Map<string, { key: string; reading: Promise<FeeReading> }>>();
 
 /**
  * What the answer was worked out from: every row change on this database (SQLite's own count, which any write moves),
@@ -34,6 +43,15 @@ async function stateKey(database: Database): Promise<string> {
  * Worked out once until anything is written: a page that adds up several figures pays for it once.
  */
 export async function feeLeftOutIds(database: Database, ws: WorkspaceContext): Promise<ReadonlySet<string>> {
+  return (await feeReading(database, ws)).leftOut;
+}
+
+/** Every annual fee reversal on the workspace's fee cards, as the Fee waiver page reads them: a statement shows each settled. */
+export async function feeReversalIds(database: Database, ws: WorkspaceContext): Promise<ReadonlySet<string>> {
+  return (await feeReading(database, ws)).reversals;
+}
+
+async function feeReading(database: Database, ws: WorkspaceContext): Promise<FeeReading> {
   const key = await stateKey(database);
   let byWorkspace = remembered.get(database);
   if (!byWorkspace) {
@@ -41,20 +59,20 @@ export async function feeLeftOutIds(database: Database, ws: WorkspaceContext): P
     remembered.set(database, byWorkspace);
   }
   const seen = byWorkspace.get(ws.workspaceId);
-  if (seen && seen.key === key) return seen.ids;
-  const ids = workOut(database, ws).catch((error: unknown) => {
+  if (seen && seen.key === key) return seen.reading;
+  const reading = workOut(database, ws).catch((error: unknown) => {
     // A failed read is never remembered: the next figure asks again.
     byWorkspace.delete(ws.workspaceId);
     throw error;
   });
-  byWorkspace.set(ws.workspaceId, { key, ids });
-  return ids;
+  byWorkspace.set(ws.workspaceId, { key, reading });
+  return reading;
 }
 
-async function workOut(database: Database, ws: WorkspaceContext): Promise<ReadonlySet<string>> {
+async function workOut(database: Database, ws: WorkspaceContext): Promise<FeeReading> {
   const db = database.db;
   const cards = [...(await feeFieldsByCard(db, ws)).entries()].filter(([, fields]) => fields.annualFeeOn !== null).map(([id]) => id);
-  if (cards.length === 0) return new Set();
+  if (cards.length === 0) return NOTHING;
   // Only a card with a credit that could be money back for its fee is read year by year: most cards have none.
   const credits = await db.values<[string, string, string | null, string]>(sql`
     SELECT DISTINCT e.account_id, t.description, ca.system_key, ca.kind
@@ -64,7 +82,7 @@ async function workOut(database: Database, ws: WorkspaceContext): Promise<Readon
     JOIN accounts ca ON ca.id = ce.account_id AND ca.kind IN ('expense', 'income')
     WHERE e.workspace_id = ${ws.workspaceId} AND e.amount_minor > 0 AND e.account_id IN ${cards}`);
   const read = new Set(credits.filter(([, description, systemKey, kind]) => mayBeFeeMoneyBack(description, systemKey, kind)).map(([cardId]) => cardId));
-  if (read.size === 0) return new Set();
+  if (read.size === 0) return NOTHING;
 
   const today = isoDate();
   const records: FeeYearRecord[] = [];
@@ -73,7 +91,8 @@ async function workOut(database: Database, ws: WorkspaceContext): Promise<Readon
     if (years) records.push(years.current, ...years.earlier);
   }
   const named = records.filter((record) => record.reversal !== null);
-  if (named.length === 0) return new Set();
+  if (named.length === 0) return NOTHING;
+  const reversals = new Set(named.map((record) => record.reversal!.transactionId));
 
   // How many category lines each charge and money back holds: a fee inside a split stays as it is.
   const ids = [...new Set(named.flatMap((record) => [record.reversal!.transactionId, ...(record.charge ? [record.charge.transactionId] : [])]))];
@@ -92,7 +111,7 @@ async function workOut(database: Database, ws: WorkspaceContext): Promise<Readon
     const reversal = { ...record.reversal!, split: split(record.reversal!.transactionId) };
     for (const id of feeLeftOut({ charge, reversal })) out.add(id);
   }
-  return out;
+  return { leftOut: out, reversals };
 }
 
 /**

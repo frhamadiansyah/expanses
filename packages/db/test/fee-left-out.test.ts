@@ -136,13 +136,23 @@ describe('a reversed fee is left out of every report', () => {
     expect([...(await t.out())].sort()).toEqual([edited, back].sort());
   });
 
-  it('reads a card charged before the app the same way: its money back is left out', async () => {
+  it('reads a card charged before the app the same way: its fee row and its money back are left out', async () => {
     const t = await card({ minor: 4_000_000, on: '2026-11-01' });
     const back = await addFeeReversal(t.database, t.ws, { cardId: t.id, today: TODAY, amountMinor: FEE, on: '2026-11-13' });
-    expect([...(await t.out())]).toEqual([back]);
+    const out = [...(await t.out())];
+    expect(out).toHaveLength(2);
+    expect(out).toContain(back);
+    expect(await t.membership('2026-10-01', '2026-10-31')).toBe(0);
     expect(await t.membership('2026-11-01', '2026-11-30')).toBe(0);
     // Its own stored mark (addFeeReversal's) is the form's to show; the rule reads beside it.
     expect(await t.view(back)).toMatchObject({ excluded: true, feeLeftOut: true, excludedMark: true });
+  });
+
+  it('leaves out money back on a card charged before the app that came with no fee row (an older phone’s)', async () => {
+    const t = await card({ minor: 4_000_000, on: '2026-11-01' });
+    const back = await t.refund('Annual fee reversal', 'miscellaneous.membership_fee', FEE, '2026-11-13');
+    expect([...(await t.out())]).toEqual([back]);
+    expect(await t.membership('2026-11-01', '2026-11-30')).toBe(0);
   });
 
   it('matches money back typed in by hand, with the fee already recorded and counting (the owner’s existing data)', async () => {

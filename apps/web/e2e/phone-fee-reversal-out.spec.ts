@@ -1,14 +1,15 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
 import { iso, openWalletCard, setFee } from './card-spend-bonus';
-import { cardPage } from './card-section';
+import { cardPage, showCardBack } from './card-section';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /*
  * A reversed fee is left out (owner, 22 Nov 2026, option 1 of docs/mockups/2026-11-22-fee-same-everywhere.html): on
  * every card the fee and its reversal read Rp 0 with ⊘ in Cashflow, as if the fee was never charged. Sample One was in
- * the app when its fee came, so its fee has a row; Sample Two was added after, so its fee is in its starting balance.
+ * the app when its fee came, so its fee has a row; Sample Two was added after, so its fee is in its starting balance,
+ * and the app adds the fee as a row of its own beside the reversal, paid off before the app.
  * Names and figures are invented.
  */
 
@@ -51,16 +52,31 @@ test('phone: a reversed fee is left out on every card — the fee and both rever
   await expect(page.getByTestId('fee-line-charged-value')).toHaveText(`${lineDate(charged, year)} · Rp 1.200.000`);
   await page.waitForTimeout(800);
 
-  // Sample Two: added after its fee, so only the reversal is added; its fee line reads the same as Sample One's.
+  // Sample Two: added after its fee, so only the reversal is added; the app adds the fee beside it on its own day, and
+  // its fee lines read the same as Sample One's.
   await cardWithPastFee(page, 'Sample Two', '3000000');
   await page.getByTestId('fee-waiver-row').click();
   await page.getByTestId('fee-line-pending').click();
   await page.getByTestId('fee-menu-add-reversal').click();
   await saveSheet(page, 'Add reversal');
-  await expect(page.getByTestId('fee-line-charged-before-app-value')).toHaveText(`${lineDate(charged, year)} · Rp 1.200.000`);
+  await expect(page.getByTestId('fee-line-charged-value')).toHaveText(`${lineDate(charged, year)} · Rp 1.200.000`);
   await expect(page.getByTestId('fee-line-reversal-value')).toHaveText(`${lineDate(new Date(), year)} · Rp 1.200.000`);
   if (shots) await page.screenshot({ path: `${shots}/fee-page-before-app.png` });
+  // Open the charge opens the fee row the app added.
+  await page.getByTestId('fee-line-charged').click();
+  await page.getByTestId('fee-menu-open-charge').click();
+  await expect(page).toHaveURL(/\/transactions\/[^/]+$/);
+  await expect(page.getByTestId('excluded-note')).toContainText('Annual fee reversed');
   await page.waitForTimeout(800);
+
+  // What Sample Two owes is its starting balance less the reversal: the fee row added changes nothing.
+  await openWalletCard(page, 'Sample Two');
+  await showCardBack(page);
+  await expect(page.getByTestId('tile-unpaid-balance')).toContainText('1.800.000');
+  // Its statement shows the reversal settled on its own.
+  await cardPage(page, 'Statement');
+  await expect(page.getByTestId('statement-fee-settled').first()).toBeVisible();
+  if (shots) await page.screenshot({ path: `${shots}/statement-before-app.png` });
 
   // This month: both reversals grey, Rp 0 with the fee under it; nothing counted.
   await page.goto('/transactions');
@@ -73,16 +89,16 @@ test('phone: a reversed fee is left out on every card — the fee and both rever
   await expect(page.getByTestId('spending-report').getByTestId('period-total')).toHaveText('Rp 0');
   if (shots) await page.screenshot({ path: `${shots}/cashflow-reversals.png` });
 
-  // The fee's month: Sample One's fee grey too, and the month's spending without it.
+  // The fee's month: both cards' fees grey too, and the month's spending without them.
   await page.goto(`/transactions?month=${monthOf(charged)}`);
-  const fee = page.getByTestId('transaction-row').filter({ hasText: 'Annual fee' });
-  await expect(fee).toHaveCount(1);
-  await expect(fee.getByLabel(/^Excluded from report, Rp.1\.200\.000$/)).toBeVisible();
+  const fees = page.getByTestId('transaction-row').filter({ hasText: 'Annual fee' });
+  await expect(fees).toHaveCount(2);
+  for (const row of await fees.all()) await expect(row.getByLabel(/^Excluded from report, Rp.1\.200\.000$/)).toBeVisible();
   await expect(page.getByTestId('spending-report').getByTestId('period-total')).toHaveText('Rp 0');
   if (shots) await page.screenshot({ path: `${shots}/cashflow-fee.png` });
 
-  // Its receipt says why, and the Edit form leaves the Exclude switch as the purchase's own (off).
-  await fee.getByRole('button').first().click();
+  // A receipt says why.
+  await fees.first().getByRole('button').first().click();
   await expect(page.getByTestId('excluded-note')).toContainText('Annual fee reversed');
   if (shots) await page.screenshot({ path: `${shots}/receipt-fee.png` });
 });

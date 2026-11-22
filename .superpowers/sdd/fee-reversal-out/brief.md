@@ -53,3 +53,40 @@ spending (today the fee pushes its month up and the reversal pulls a later month
 - A fee inside a split charge (or a reversal inside a split) is left as it is: hiding the whole charge would hide the
   other spending in it.
 - Only cards with a fee date set (the fee page needs it) follow the rule.
+
+## Scope addition 1 (owner, 2026-11-22): the before-the-app card looks paired
+When a fee year's charge date is before the card's start day (no fee row; `beforeApp`) and that fee is reversed, the
+app also has a fee charge row for it: dated the fee's charge date, amount = the reversal's, Membership fee,
+"Annual fee", on the card, excluded from reports like its reversal. What the card owes must not change (take it off the
+starting balance in one database transaction); Settings and every place showing the starting balance still show what
+the owner typed; existing before-app reversals get their row once, idempotent, never twice across the household's
+phones; Reset / removing the reversal removes the row and puts everything back exactly; decide what deleting the row by
+hand does; the fee page reads it as a real charged line ("Open the charge"). Tests: balances and net worth identical
+before/after at every date, undo round-trip, backfill run twice = one row.
+
+### Decisions taken
+- The fee row is posted **paid off before the app** (the ledger's existing `settledBeforeApp`): a settlement against
+  Opening Balances on the same day, in the same database transaction. The owner's typed opening entry is never edited,
+  so nothing that shows the starting balance changes; it works the same on a card with only a counted-from day.
+  `openingsOf`, `cardStartsOn` and the statement check's opening now skip such settlements (they are no opening).
+- Tied to the reversal by `external_ref = fee-before-app:<reversal id>`; made once per reversal (never again once made).
+  Ids are `stableId`s of the reversal (row, lines, settlement), so the owner's linked devices that both make it hold one.
+  Only a reversal kept against its year on this device (card_fee_refunds; household sharing never carries it) is paired:
+  a partner's phone never makes one.
+- The ledger voids the row (and its settlement) with its reversal once no edit of the reversal is posted (Reset, delete).
+- Deleted by hand: its settlement goes with it (the card owes the same); it is never made again; the reversal reads
+  "before the app" again and stays grey.
+- Existing data: `pairBeforeAppFees` runs at every open (upkeep, per workspace); asking again makes nothing.
+
+## Scope addition 2 (owner, 2026-11-22): statements treat fee reversals the same on every card
+A fee reversal line shows the green ✓ (Settled) on its own on every card, with no Settled mark to tick; the paired
+before-app fee row shows ✓ too and changes no statement figure; the normal card's fee charge stays a normal purchase paid
+by payments. Test the owner's example (fee 6 Oct 800.000, expense 15 Oct 1.000.000, payment 19 Oct 800.000, expense
+28 Oct 508.250, reversal 3 Nov 800.000, payments 12 Nov 200.000 and 508.250 → owes 0, every line ✓).
+
+### Decisions taken
+- `StatementLine.feeSettled`: the reversal still counts and is used as credit like any refund (so the cover maths is as
+  before); it is only drawn with the paid ✓ and "Settled", and offers no Settled mark (that would post a settlement and
+  change what the card owes).
+- The paired fee row and its settlement count nothing on statements (they net to nothing): no total, cover or
+  "N of M paid" moves; the row is drawn with ✓ "Settled" wherever its date falls.

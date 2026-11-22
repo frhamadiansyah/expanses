@@ -197,4 +197,9 @@ describe('the words that say how a paid line was paid', () => {
     expect(paidHowText(line({ paidOff: true, owedMinor: -120_000, countedMinor: -120_000 }), none)).toBe('Settled');
     expect(paidHowText(line({ paidOff: true, instalment: { planId: 'plan', number: 1, of: 12, noPurchase: true, paidSoFar: 1 } }), none)).toBe('Paid');
   });
+
+  it('says settled for an annual fee’s money back, and for the fee row added beside one before the app (owner, 22 Nov 2026)', () => {
+    expect(paidHowText(line({ feeSettled: true, owedMinor: -800_000, countedMinor: -800_000 }), none)).toBe('Settled');
+    expect(paidHowText(line({ feeSettled: true, paidOff: true, countedMinor: 0 }), none)).toBe('Settled');
+  });
 });
