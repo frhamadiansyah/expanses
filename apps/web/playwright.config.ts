@@ -43,11 +43,12 @@ export default defineConfig({
     // The phone shell is a different shape, not a narrower one: its own project, its own specs.
     // Chromium at an iPhone's size, not WebKit: Playwright's WebKit has no OPFS, so the database
     // cannot open there at all. WebKit itself is covered by running the app in the iOS Simulator.
-    // Household sharing is the one journey written once for both shapes: sharing.spec.ts runs here too.
+    // Household sharing is the one journey written once for both shapes: sharing.spec.ts runs here too, as does a
+    // shared event's Payment method edit.
     {
       name: 'phone',
       use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: false, deviceScaleFactor: 3 },
-      testMatch: [/phone[.-]/, /sharing\.spec\.ts$/, /sharing-simplified\.spec\.ts$/],
+      testMatch: [/phone[.-]/, /sharing\.spec\.ts$/, /sharing-simplified\.spec\.ts$/, /shared-expense-payment-method\.spec\.ts$/],
     },
   ],
 });

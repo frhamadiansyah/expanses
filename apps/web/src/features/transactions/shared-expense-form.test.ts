@@ -99,6 +99,31 @@ describe('the shared Add screen', () => {
     expect(sharedDraftToPatch({ ...draft, amount: '100', charged: '1764000' }, changedView, 'e2')).toEqual({ amountMinor: 10_000, chargedMinor: 1_764_000 });
   });
 
+  it('moves what this person paid to another account or card on an edit, asking a new foreign account what it was charged', () => {
+    const rupiah: SharedEventView = { ...view, currency: 'IDR' };
+    const more = [...accounts, { id: 'bank', name: 'Daily bank', kind: 'asset', subtype: 'bank', currency: 'IDR', archivedAt: null }] as unknown as AccountRow[];
+    const stay: SharedExpenseView = {
+      expenseId: 'e3', occurredOn: '2026-10-06', amountMinor: 1_350_000, currency: 'IDR', rateToEvent: '1', eventAmountMinor: 1_350_000, payerPersonId: 'p-rina', payerName: 'Rina', payerHasAccount: true,
+      categoryId: null, categoryName: null, note: 'Villa', split: { mode: 'equal', people: ['p-rina', 'p-andi'] }, splitText: 'Equal · 2 people', myShareMinor: 675_000, myShareEventMinor: 675_000,
+      voided: false, unsent: false, payerOnly: false, posting: { transactionId: 't3', unposted: null, changedByName: null, accountCurrency: 'IDR', accountId: 'card', accountAmountMinor: null, cardId: 'blue-1' },
+    };
+    const on = { ...rupiah, expenses: [stay] };
+    const draft = draftFromExpense(on, stay);
+    expect(draft).toMatchObject({ accountId: 'card', cardId: 'blue-1' });
+    // Untouched, or the account's only card picked back with no card named: no move.
+    expect(sharedDraftToPatch(draft, on, 'e3', more)).toEqual({});
+    expect(sharedDraftToPatch({ ...draft, cardId: '' }, on, 'e3', more)).toEqual({});
+    expect(sharedDraftToPatch({ ...draft, accountId: 'bank', cardId: '' }, on, 'e3', more)).toEqual({ paidFrom: { accountId: 'bank', cardId: null } });
+    expect(sharedDraftToPatch({ ...draft, cardId: 'blue-2' }, on, 'e3', more)).toEqual({ paidFrom: { accountId: 'card', cardId: 'blue-2' } });
+    // A euro wallet for a rupiah stay: what it was charged is asked for, as on Add.
+    const euro = { ...draft, accountId: 'wallet', cardId: '', charged: '' };
+    expect(() => sharedDraftToPatch(euro, on, 'e3', more)).toThrow('Enter what Euro wallet was charged in EUR');
+    expect(sharedDraftToPatch({ ...euro, charged: '77' }, on, 'e3', more)).toEqual({ paidFrom: { accountId: 'wallet', cardId: null }, chargedMinor: 7_700 });
+    // Another member's payment has no Payment method: nothing of the kind is sent for it.
+    const andis = { ...stay, expenseId: 'e4', payerPersonId: 'p-andi', payerName: 'Andi', payerOnly: true, posting: null };
+    expect(sharedDraftToPatch({ ...draftFromExpense(rupiah, andis), accountId: 'bank' }, { ...rupiah, expenses: [andis] }, 'e4', more)).toEqual({});
+  });
+
   it('asks for the rate of another currency, and reads a typed comma', () => {
     const draft = { ...emptySharedDraft(view, '2026-10-06'), amount: '90', currency: 'EUR', rate: '', accountId: 'wallet' };
     expect(() => sharedDraftToInput(draft, view, accounts)).toThrow('Enter the rate: TRY per 1 EUR');

@@ -6,6 +6,7 @@ import { localDeviceId, withCapture } from '../sync/capture';
 import { meetsVersion, TRIP_SWITCHES_MIN_APP_VERSION } from '../sync/events/version';
 import { secondDeviceInTx } from '../sync/authority';
 import { followEventOpTx, postEventRecordTx, rateToBaseTx, recordsReadingTx, setPaidFromTx } from './shared-event-postings';
+import { rederiveCardCycles } from './point-ledger';
 import { takeExpenseOffItemsTx } from './shared-item-state';
 import { type EventBookRow, eventBookOfEventTx, eventRecordsTx, expenseRecordTx, settlementRecordTx, type StoredExpense } from './shared-event-records';
 
@@ -173,6 +174,12 @@ export interface SharedExpensePatch {
   rateToEvent?: string;
   /** What this person's own account was charged, when it is in another currency. */
   chargedMinor?: number | null;
+  /**
+   * Another of this person's own accounts (or another card on it) for what this person paid: the payment moves off the
+   * one it was recorded from, once. Local, as the account always is (R5): nothing in the shared records changes, so no
+   * other phone hears of it. An account in another currency than the expense's needs `chargedMinor` with it.
+   */
+  paidFrom?: { accountId: string; cardId: string | null };
   split?: SplitInput;
   categoryId?: string | null;
   note?: string | null;
@@ -211,7 +218,7 @@ function splitKept(book: EventBookRow, record: StoredExpense, amountMinor: numbe
 }
 
 export async function editSharedExpense(database: Database, ws: WorkspaceContext, eventId: string, expenseId: string, patch: SharedExpensePatch): Promise<void> {
-  await database.transaction(async (tx) => {
+  const moved = await database.transaction(async (tx): Promise<{ accounts: string[]; dates: string[] } | null> => {
     const book = await openSharedEventTx(tx, ws, eventId);
     const people = await peopleTx(tx, book.bookId);
     const record = await liveExpenseTx(tx, book, expenseId);
@@ -248,12 +255,27 @@ export async function editSharedExpense(database: Database, ws: WorkspaceContext
           WHERE book_id = ${book.bookId} AND id = ${expenseId}`),
       );
     }
-    if (record.payerMemberId === book.me && (patch.chargedMinor !== undefined || next.currency !== record.currency)) {
-      const [held] = await tx.values<[string | null]>(sql`SELECT account_id FROM event_postings WHERE book_id = ${book.bookId} AND record_id = ${expenseId}`);
-      if (held?.[0]) await setPaidFromTx(tx, book.bookId, expenseId, 'expense', { accountId: held[0], amountMinor: await chargedFor(tx, ws, held[0], next.currency, patch.chargedMinor, true) });
+    const [held] = await tx.values<[string | null, number | null]>(sql`SELECT account_id, account_amount_minor FROM event_postings WHERE book_id = ${book.bookId} AND record_id = ${expenseId}`);
+    const heldAccount = held?.[0] ?? null;
+    if (patch.paidFrom !== undefined) {
+      // Only what this person paid from their own account moves to another of theirs.
+      if (record.payerPersonId !== book.me || record.payerMemberId !== book.me) throw invalid(`Only what ${nameIn(people, book.me)} paid is moved to another account`);
+      const to = patch.paidFrom.accountId;
+      const same = to === heldAccount;
+      // A new account is picked as on Add: open, and asked what it was charged when it is in another currency. The same
+      // account (another card on it) keeps what it was charged unless the edit says otherwise.
+      const charged = patch.chargedMinor !== undefined || !same || next.currency !== record.currency ? patch.chargedMinor : held![1] === null ? null : Number(held![1]);
+      await setPaidFromTx(tx, book.bookId, expenseId, 'expense', { accountId: to, amountMinor: await chargedFor(tx, ws, to, next.currency, charged, same) });
+    } else if (record.payerMemberId === book.me && (patch.chargedMinor !== undefined || next.currency !== record.currency)) {
+      if (heldAccount) await setPaidFromTx(tx, book.bookId, expenseId, 'expense', { accountId: heldAccount, amountMinor: await chargedFor(tx, ws, heldAccount, next.currency, patch.chargedMinor, true) });
     }
-    await postEventRecordTx(tx, book.bookId, 'expense', expenseId, null);
+    // The card goes with the account it is on: named when one was picked, else the account's only card (the ledger's).
+    await postEventRecordTx(tx, book.bookId, 'expense', expenseId, null, patch.paidFrom !== undefined ? { cardId: patch.paidFrom.cardId } : {});
+    const paying = [...new Set([heldAccount, patch.paidFrom?.accountId ?? null].filter((a): a is string => a !== null))];
+    return paying.length > 0 && (patch.paidFrom !== undefined || money) ? { accounts: paying, dates: [...new Set([record.occurredOn, next.occurredOn])] } : null;
   });
+  // A card's points follow its purchases, as an ordinary edit's do: each cycle the payment left or joined is worked out again.
+  if (moved) await rederiveCardCycles(database, ws, moved.accounts, moved.dates);
 }
 
 export async function voidSharedExpense(database: Database, ws: WorkspaceContext, eventId: string, expenseId: string): Promise<void> {
