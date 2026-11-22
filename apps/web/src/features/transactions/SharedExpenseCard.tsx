@@ -171,7 +171,7 @@ export function SharedExpenseCard({
   const ready = (() => {
     if (busy) return false;
     try {
-      if (editing) sharedDraftToPatch(draft, view, editing.expenseId);
+      if (editing) sharedDraftToPatch(draft, view, editing.expenseId, accounts);
       else sharedDraftToInput(draft, view, accounts);
       return true;
     } catch {
@@ -187,7 +187,7 @@ export function SharedExpenseCard({
       // The day's rates to the base currency, so this phone posts its share at once (§5).
       await resolveRates([...new Set([draft.currency, view.currency, ...(account?.currency ? [account.currency] : [])])], draft.occurredOn).catch(() => undefined);
       if (editing) {
-        await editSharedExpense(database, ownerScope(ws), view.eventId, editing.expenseId, sharedDraftToPatch(draft, view, editing.expenseId));
+        await editSharedExpense(database, ownerScope(ws), view.eventId, editing.expenseId, sharedDraftToPatch(draft, view, editing.expenseId, accounts));
       } else {
         const id = await recordSharedExpense(database, ownerScope(ws), view.eventId, sharedDraftToInput(draft, view, accounts));
         // Buy it now: the expense is a payment towards the item, the whole of it its share (D7). It adds to what the item
@@ -223,7 +223,10 @@ export function SharedExpenseCard({
   }
 
   const payerName = view.people.find((p) => p.personId === draft.payer)?.name ?? editing?.payerName ?? '';
-  const paying = payable.find((option) => option.accountId === draft.accountId && (option.cardId ?? '') === draft.cardId);
+  // An account with one card is one choice, named by the account alone, while the posting names its card: read as it.
+  const paying =
+    payable.find((option) => option.accountId === draft.accountId && (option.cardId ?? '') === draft.cardId) ??
+    payable.find((option) => option.accountId === draft.accountId && option.cardId === null);
   const category = view.categories.find((c) => c.categoryId === draft.categoryId) ?? null;
   const initials = (personId: string) => view.people.find((p) => p.personId === personId)?.initials ?? '?';
 
@@ -266,14 +269,14 @@ export function SharedExpenseCard({
                 label="Payment method"
                 value={paying?.cardId ? paying.accountName : editing ? (account?.name ?? '') : chosenPayment(payable, amountForm)}
                 caption={paying?.cardId ? `···· ${paying.last4 ?? '????'}` : 'Payment method'}
-                // The account a payment came from stays with it (R5): an edit changes the money, not where it came from.
-                disabled={!!editing}
-                chevron={!editing}
+                // What this person paid takes another account or card on an edit as on Add (owner, 22 Nov 2026): the
+                // payment moves there on this phone alone, as the account is never shared (R5).
                 onClick={() => setSheet('money')}
               />
             )}
 
-            <AmountRow draft={amountForm} accounts={accounts} set={setAmount} noRefund locked={!!locked} />
+            {/* An edit opens on what the bank took; another account picked on it starts its charged row afresh, as Add does. */}
+            <AmountRow key={editing ? `paid:${draft.accountId}` : 'add'} draft={amountForm} accounts={accounts} set={setAmount} noRefund locked={!!locked} />
 
             {draft.currency !== view.currency && (
               <FieldRow
@@ -368,7 +371,7 @@ export function SharedExpenseCard({
           options={payable}
           accounts={accounts}
           chosenAccountId={draft.accountId}
-          chosenCardId={draft.cardId}
+          chosenCardId={paying?.cardId ?? draft.cardId}
           cards
           onPick={(option) => set({ accountId: option.accountId, cardId: option.cardId ?? '', charged: '' })}
           onClose={() => setSheet(null)}
