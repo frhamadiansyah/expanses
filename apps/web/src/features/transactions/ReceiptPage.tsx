@@ -42,6 +42,8 @@ import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
+import { pastMoveRow } from './tx-form';
+import { isCardPayment } from '../cards/card-pay';
 import { isCorrection } from './draft';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines, splitParts } from './receipt-view';
@@ -160,6 +162,11 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   if (!tx) return <ErrorBox error={receipt.error} />;
 
   const kind = classify(tx);
+  // A transfer or a card's payment whose pair keeps an account unchanged names that account; the other side moved.
+  const pastMove =
+    tx.past && kind.type === 'transfer'
+      ? pastMoveRow((tx.pastAccountIds ?? []).map((id) => accounts.find((account) => account.id === id)?.name ?? '').filter(Boolean), isCardPayment(tx))
+      : null;
   const categoryNames = kind.categoryIds.map((id) => accounts.find((account) => account.id === id)?.name).filter(Boolean);
   const book = badges.of(tx.id);
   // Who owes what on *this* transaction: its own debt entries, named by the person each debt account belongs to.
@@ -449,9 +456,15 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         )}
 
         {/* A past purchase on a money account: read here, changed on its form. */}
-        {tx.past && tx.status === 'posted' && (
+        {tx.past && tx.status === 'posted' && !pastMove && (
           <InsetGroup>
             <InsetRow title="Past purchase" value="Balance unchanged" chevron={false} testId="receipt-past" />
+          </InsetGroup>
+        )}
+        {/* A transfer or a card's payment dated before an account was added: that account stayed (owner, 22 Nov 2026). */}
+        {pastMove && tx.status === 'posted' && (
+          <InsetGroup>
+            <InsetRow title={pastMove.title} value={pastMove.value} chevron={false} testId="receipt-past" />
           </InsetGroup>
         )}
 

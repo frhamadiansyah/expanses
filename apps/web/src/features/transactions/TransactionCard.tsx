@@ -24,6 +24,7 @@ import {
   settledBeforeAppOf,
   isPastDefault,
   pastPurchaseOf,
+  pastSidesOf,
   saveMerchantMcc,
   splitBill,
   cardTopsUpWallet,
@@ -72,7 +73,7 @@ import { DateRow, NoteRow } from './CardRows';
 import { CardCashbackMark, CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { useOpenings, useOpeningDay } from '../accounts/queries';
-import { Chevron, FieldRow, FixedRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
+import { Chevron, FieldRow, FixedRow, FormRow, FormRows, ROW_BODY, RowGlyph, RowHintLine, RowLead, SelectFormRow } from './FormRow';
 import { CARD_PAY_OMITS, cardPayFrom, offersTransferGoal } from '../cards/card-pay';
 import { MoreDetails } from './MoreDetails';
 import { TradeDetailRows, TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from './TradeRows';
@@ -82,7 +83,7 @@ import { WithdrawalLine } from './WithdrawalLine';
 import { PaymentSheet, chosenPayment, removedCardPayment, sharedTitle } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
-import { extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
+import { beforeStartLine, extraRowRefusal, extraRows, offersTransferFee, postingCurrency } from './tx-form';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { offerStatement } from '../../capture/statements';
 import { PhotosSheet, usePhotoAttach } from './PhotosSheet';
@@ -743,7 +744,7 @@ function CardBody({
         // Every branch sends the answer — an edit explicitly, so a question no longer asked clears the old answer.
         // The new id is kept from the two that make a purchase, for a follow-up that answers something with it.
         if (post.kind === 'split') posted = (await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice })).transactionId;
-        else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice, beforeStart: true });
         else if (initial) {
           const replaced = await replaceTransaction(database, ws, initial.id, {
             ...withoutEventTag(post.input),
@@ -752,6 +753,8 @@ function CardBody({
             ...(moveTo ? { moveToBook: true, toBookId: moveTo } : {}),
             ...(offersAlreadyPaid && savedSettled.isSuccess ? { settledBeforeApp: paidOff } : {}),
             ...(offersPast && savedPast.isSuccess ? { pastPurchase: pastOn } : {}),
+            // A transfer or a card's payment: a side dated before its account's start day stays (decided by the ledger).
+            ...(filed.mode === 'transfer' ? { beforeStart: true } : {}),
           });
           /*
            * Tagged into a shared event by the Event row: it moves there now (shared events §6, D2) — it leaves this
@@ -766,7 +769,14 @@ function CardBody({
           }
         }
         else {
-          posted = await postTransaction(database, ws, { ...withoutEventTag(post.input), ratesToBase, setAside: setAside.choice, settledBeforeApp: paidOff, ...(offersPast ? { pastPurchase: pastOn } : {}) });
+          posted = await postTransaction(database, ws, {
+            ...withoutEventTag(post.input),
+            ratesToBase,
+            setAside: setAside.choice,
+            settledBeforeApp: paidOff,
+            ...(offersPast ? { pastPurchase: pastOn } : {}),
+            ...(filed.mode === 'transfer' ? { beforeStart: true } : {}),
+          });
           if (moveInto) await moveInto(posted);
         }
         const memory = formToMemory(filed, accounts);
@@ -884,6 +894,17 @@ function CardBody({
   });
   const sameAsSaved = !!initial && initial.occurredOn === draft.occurredOn && initial.entries.some((e) => e.accountId === draft.moneyId);
   const pastOn = offersPast && (draft.pastPurchase ?? (sameAsSaved ? savedPast.data === true : isPastDefault(openedOn, draft.occurredOn)));
+  /*
+   * A transfer or a card's payment dated before an account was added (owner, 22 Nov 2026): that account's balance stays,
+   * by the rule the ledger posts by (`pastSidesOf`) — a money account only, so a card being paid always owes less. One
+   * plain line, no choice. A partner's transfer and a card's top-up of a wallet are not this.
+   */
+  const startSides = useQuery({
+    queryKey: ['past-sides', ws.workspaceId, draft.moneyId, draft.toId, draft.occurredOn],
+    enabled: draft.mode === 'transfer' && !draft.partner && !!payingAccount && payingAccount.subtype !== 'credit_card',
+    queryFn: () => pastSidesOf(database, ws, [draft.moneyId, draft.toId].filter(Boolean), draft.occurredOn),
+  });
+  const startDayLine = draft.mode === 'transfer' && !draft.partner && startSides.isSuccess ? beforeStartLine(startSides.data.map((id) => byId.get(id)?.name ?? '').filter(Boolean)) : null;
   // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.
@@ -1396,6 +1417,8 @@ function CardBody({
                 : {})}
             />
             <DateRow on={draft.occurredOn} onChange={(occurredOn) => set({ occurredOn })} />
+            {/* A transfer or a card's payment dated before an account was added: that account's balance stays (owner, 22 Nov 2026). */}
+            {startDayLine && <RowHintLine><span data-testid="before-start-line">{startDayLine}</span></RowHintLine>}
             <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
           </FormRows>
         )}

@@ -191,7 +191,8 @@ export async function changeOriginalCost(
 /**
  * The day of the first transaction that moves this account's balance, or null: what "As of" may not move past. Left
  * out: the opening entry itself, a purchase recorded as paid off before the app and its settlement (they net to
- * nothing on the account), so a past purchase never holds the day back.
+ * nothing on the account), so a past purchase never holds the day back. A transfer whose pair keeps another side
+ * unchanged still moved this one, so it counts here.
  */
 export async function firstCountedDayTx(tx: Db, ws: WorkspaceContext, accountId: string, openingId: string | null): Promise<string | null> {
   const rows = await tx.values<[string | null]>(sql`
@@ -200,7 +201,8 @@ export async function firstCountedDayTx(tx: Db, ws: WorkspaceContext, accountId:
       AND t.id IN (SELECT transaction_id FROM entries WHERE account_id = ${accountId})
       AND t.id <> ${openingId ?? ''}
       AND (t.external_ref IS NULL OR t.external_ref NOT LIKE 'before-app:%')
-      AND NOT EXISTS (SELECT 1 FROM transactions s WHERE s.external_ref = 'before-app:' || t.id AND s.status = 'posted')`);
+      AND NOT EXISTS (SELECT 1 FROM transactions s WHERE s.external_ref = 'before-app:' || t.id AND s.status = 'posted'
+        AND s.id IN (SELECT transaction_id FROM entries WHERE account_id = ${accountId}))`);
   return rows[0]?.[0] ?? null;
 }
 

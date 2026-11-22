@@ -66,7 +66,8 @@ export async function cardRecordsFrom(db: Db, given: WorkspaceContext, cardAccou
       AND (t.external_ref IS NULL OR NOT ${balanceLineRef})
       AND t.id NOT IN (
         SELECT substr(s.external_ref, ${BEFORE_APP.length + 1}) FROM transactions s
-        WHERE s.workspace_id = ${workspaceId} AND s.status = 'posted' AND s.external_ref LIKE ${BEFORE_APP + '%'})`);
+        WHERE s.workspace_id = ${workspaceId} AND s.status = 'posted' AND s.external_ref LIKE ${BEFORE_APP + '%'}
+          AND s.id IN (SELECT transaction_id FROM entries WHERE account_id = ${cardAccountId}))`);
   return first?.[0] ?? null;
 }
 

@@ -48,6 +48,8 @@ export interface TaggedTransferInput {
    * carries. Only a goal's due month (`transferGoalMonth`) passes it: what went past the source's free money.
    */
   promiseFollowsAtMost?: number;
+  /** The start day rule (`PostTransactionInput.beforeStart`): a side dated before its account's start day stays. */
+  beforeStart?: boolean;
 }
 
 export interface TaggedTransferResult {
@@ -144,6 +146,7 @@ export async function recordTaggedTransferTx(tx: Db, ws: WorkspaceContext, input
       eventId: input.eventId,
       photoIds: input.photoIds,
       setAside: input.setAside,
+      ...(input.beforeStart ? { beforeStart: true } : {}),
     });
 
     if (!input.goalId) return { transactionId, setAsideMinor: 0 };
