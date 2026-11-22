@@ -1,5 +1,5 @@
 import { expect, type Page, type TestInfo } from '@playwright/test';
-import { expectWalletFigure, openCard } from './accounts';
+import { expectWalletFigure, openCard, openFace, walletCard } from './accounts';
 import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './add-transaction';
 import { cardPage } from './card-section';
 
@@ -19,7 +19,8 @@ export async function addCard(page: Page) {
 
 async function openStatement(page: Page) {
   await page.goto('/wallet');
-  await page.getByRole('link', { name: CARD }).first().click();
+  // A tap on a phone; on a wide screen a click opens the card's side peek, a double-click its Mac page.
+  await openFace(walletCard(page, CARD));
   await cardPage(page, 'Statement');
 }
 

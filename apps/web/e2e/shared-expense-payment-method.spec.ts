@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { expectWalletFigure, openAccount } from './accounts';
+import { expect, type Page, test } from '@playwright/test';
+import { expectWalletFigure, openAccount, wideScreen } from './accounts';
 import { choosePayment, saveButton } from './add-transaction';
 import { corner, newEvent, openTrip, recordSharedSpend, sharedCard, spendingRow } from './shared-events';
 
@@ -11,6 +11,9 @@ import { corner, newEvent, openTrip, recordSharedSpend, sharedCard, spendingRow 
  */
 
 test.describe.configure({ timeout: 240_000 });
+
+/** The trip's total spent: the phone's Spending card, or the Mac trip page's Spent by category ring. */
+const eventTotal = (page: Page) => page.getByTestId('shared-event-total').or(page.getByTestId('event-ring').getByTestId('period-total'));
 
 test('an expense Rina paid moves to another account on edit: the first is back, the second charged, the event unchanged', async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -30,7 +33,7 @@ test('an expense Rina paid moves to another account on edit: the first is back, 
   await corner(page, 'Add spending');
   await recordSharedSpend(page, { note: 'Villa', amount: '300000', paidWith: 'Rina Daily' });
   await expect(spendingRow(page, 'Villa')).toBeVisible();
-  const total = (await page.getByTestId('shared-event-total').textContent())!;
+  const total = (await eventTotal(page).textContent())!;
   expect(total).toMatch(/300\.000/);
   await page.goto('/wallet');
   await expectWalletFigure(page, 'Rina Daily', '9.700.000');
@@ -51,8 +54,9 @@ test('an expense Rina paid moves to another account on edit: the first is back, 
 
   // The event: the same one expense, the same total.
   await expect(page.getByTestId('shared-expense-row')).toHaveCount(1);
-  await expect(spendingRow(page, 'Villa')).toContainText('Rina paid');
-  await expect(page.getByTestId('shared-event-total')).toHaveText(total);
+  // The phone's row says who paid; the Mac's table has a Paid column naming this phone's own account.
+  await expect(spendingRow(page, 'Villa')).toContainText(wideScreen(page) ? 'Rina Savings' : 'Rina paid');
+  await expect(eventTotal(page)).toHaveText(total);
 
   // Daily is whole again; Savings paid it, once.
   await page.goto('/wallet');
