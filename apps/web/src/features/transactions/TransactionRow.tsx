@@ -11,7 +11,7 @@ import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
-import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, categoryButtonLabel, type ListRow, paidWithLook, wholeLeftOut } from './list-model';
+import { type AmountExtraPart, amountExtraParts, amountLook, type AmountView, categoryButtonLabel, type ListRow, paidWithLook, transferNote, wholeLeftOut } from './list-model';
 import { canRefile, emptyForm, refiledPost } from './tx-form';
 import { ratesForSave } from './tx-save';
 import { RowEventBadge } from '../events/EventMode';
@@ -260,8 +260,8 @@ export function TransactionRow({
         <>
           {subtitle ?? (
             <>
-              {/* The default note "Transfer" only repeats a title that already says what the transfer is. */}
-              {row.description && !(row.transferName && row.description === 'Transfer') ? `${row.description}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}
+              {/* A transfer's note that only repeats its title ("Credit card payment", the default "Transfer") is left off. */}
+              {transferNote(row) ? `${transferNote(row)}${row.accountLabel || row.last4 ? ' · ' : ''}` : ''}
               <PaidWith row={row} />
             </>
           )}

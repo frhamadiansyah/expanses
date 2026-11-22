@@ -75,7 +75,7 @@ import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import type { PasteMark } from './paste-categories';
 import { isQuickEditable, keepsReadFigure, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate, withUncategorised } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, leaveOutNotMonthly, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, notMonthlyOutCount, sortRows, totals } from './list-model';
+import { accountsWithTransactions, amountExtraParts, buildRows, countsInOrOut, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, instalmentRows, leaveOutNotMonthly, type ListFilters, type ListRow, markSpread, outsideEvents, type Sort, notMonthlyOutCount, showsPaidWith, sortRows, totals, transferNote } from './list-model';
 import { leavesOutNotMonthly, notMonthlyNote, periodCountsNotMonthly, readNotMonthlyShown, writeNotMonthlyShown } from './not-monthly';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
@@ -456,6 +456,8 @@ export function TransactionsPage() {
   // The payer line a row shows instead of its own Paid with: never on a purchase paid from this member's own account,
   // which reads by its digits as in a private workspace.
   const payerShown = (tx: TransactionView) => payerToShow(payerOf(tx.id), tx, knownAccounts);
+  // Whether a row's second line names what paid (`showsPaidWith`): a transfer to a partner names both sides.
+  const paidWithShown = (tx: TransactionView, row: ListRow) => showsPaidWith(row, onPlaceholder(tx));
   const paidByOther = (tx: TransactionView) => {
     const payer = payerOf(tx.id);
     return onPlaceholder(tx) || (payer !== null && !payer.mine);
@@ -1342,12 +1344,10 @@ export function TransactionsPage() {
         }
         subtitle={
           <>
-            {tx.description ? `${tx.description} · ` : ''}
-            {payerShown(tx) ? (
-              payerLine(payerShown(tx)!)
-            ) : onPlaceholder(tx) ? null : (
-              <PaidWith row={row} />
-            )}
+            {/* A transfer's note that only repeats its title is left off; the dot goes only between two things. */}
+            {transferNote(row)}
+            {transferNote(row) && (payerShown(tx) || paidWithShown(tx, row)) ? ' · ' : ''}
+            {payerShown(tx) ? payerLine(payerShown(tx)!) : paidWithShown(tx, row) ? <PaidWith row={row} /> : null}
             {goal && ` · for ${goal}`}
             {row.spreadOver && ` · spread over ${row.spreadOver} months`}
           </>
@@ -1443,11 +1443,11 @@ export function TransactionsPage() {
       <li key={row.id} data-testid="shared-transfer-row" className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2">
         <CategoryIcon categoryId={null} accounts={accounts} transfer />
         <div className="min-w-0 flex-1">
-          {/* Named by its accounts ("Cash withdrawal"), the note moves to the grey line, where the default "Transfer" is not repeated. */}
+          {/* Named by its accounts ("Cash withdrawal"), the note moves to the grey line, where one repeating the title is not (`transferNote`). */}
           <div className="truncate text-sm font-medium">{row.transferName ?? (row.description ? `Transfer · ${row.description}` : 'Transfer')}</div>
-          {(withDate || row.accountLabel || (row.transferName && row.description && row.description !== 'Transfer')) && (
+          {(withDate || row.accountLabel || (row.transferName && transferNote(row))) && (
             <div className="truncate text-xs text-slate-500">
-              {[withDate ? row.date : '', row.transferName && row.description !== 'Transfer' ? row.description : '', row.accountLabel].filter(Boolean).join(' · ')}
+              {[withDate ? row.date : '', row.transferName ? transferNote(row) : '', row.accountLabel].filter(Boolean).join(' · ')}
             </div>
           )}
         </div>
