@@ -35,3 +35,17 @@ choice: one plain line on the form ("Before Bank Contoh was added: its balance s
   pair (bookkeeping on the owner's own accounts; the joint net worth summary is worked from balances). The next build
   carries 0127 (schema > TF's 0125), so an older linked device holds these changes until it updates — an older build
   would otherwise post a card settlement in place of the pair on editing such a payment. No version gate added.
+
+## Review fixes (22 Nov 2026)
+1. **A pair follows an edit only while the row is still its kind** (`pairKindTx`: move between own accounts / card
+   purchase / money purchase). A payment with a start day pair edited into a card's top-up of a wallet loses the pair
+   (no card settlement); a card purchase paid off before the app edited into a move loses its card settlement and gets
+   a start day pair only if asked (`beforeStart`).
+2. **Old payments with no pair stay as they were**: an edit that leaves the day, the accounts and the amounts alone
+   never adds a pair (`moneyShapeTx` compare in `replaceTransactionTx`), whatever the door says. Changing the day, From,
+   To or an amount decides again. The form hides its line in that case too (`moveDecided`).
+3. **Goals**: a goal-tagged transfer with a side before its account's start day is refused in plain words ("Money moved
+   before an account was added cannot go toward a goal. Leave Goal empty, or change the date."), on post and on edit:
+   parking would promise money on a side whose balance never took it, and the simplest safe answer is not to tag it.
+   Set-aside: no goal's money is drawn from a From that keeps its balance (that money left before the account was
+   added), so the form does not ask, and the ledger skips a draw it is given (post and edit).

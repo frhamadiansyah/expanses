@@ -1,7 +1,13 @@
 import { expenseLines, statementCycleFor, transferLines, transferWithFeeLines } from '@expanses/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import {
   activityOf,
+  goalsSchema,
+  listEarmarks,
+  recordTaggedTransfer,
+  saveEarmark,
+  saveGoal,
   cardStatement,
   categoryIdsByKey,
   categoryTotalsBetween,
@@ -350,5 +356,87 @@ describe('the start day', () => {
     await postTransaction(w.database, w.ws, { occurredOn: '2026-11-10', description: 'Tarik', lines: transferLines({ fromAccountId: w.bank.id, toAccountId: cash.id, amountMinor: 200_000, currency: 'IDR' }), beforeStart: true });
     expect(await w.balance(cash.id)).toBe(200_000);
     await expect(setCountedFrom(w.database, w.ws, cash.id, '2026-11-15', '2026-11-22')).rejects.toThrow();
+  });
+});
+
+describe('review fixes (22 Nov 2026)', () => {
+  it('a payment with a start day pair edited into a card’s top-up of a wallet loses the pair and takes no card settlement', async () => {
+    const w = await world();
+    const other = await createCardAccount(w.database, w.ws, { name: 'Kartu Lain', subtype: 'credit_card', currency: 'IDR' });
+    const id = await w.pay(w.bank.id, '2026-11-12', 1_710_000);
+    expect(await w.pairs()).toHaveLength(1);
+    // The From becomes the other card, the To the bank: money leaves a card, a top-up, no move between own accounts.
+    await replaceTransaction(w.database, w.ws, id, {
+      occurredOn: '2026-11-12',
+      description: 'Isi saldo',
+      lines: transferLines({ fromAccountId: other.id, toAccountId: w.bank.id, amountMinor: 1_710_000, currency: 'IDR' }),
+    });
+    expect(await w.pairs()).toEqual([]);
+    expect(await w.balance(other.id)).toBe(-1_710_000);
+    expect(await w.balance(w.bank.id)).toBe(7_350_000 + 1_710_000);
+    expect(await checkLedgerIntegrity(w.database, w.ws)).toEqual([]);
+  });
+
+  it('a card purchase paid off before the app, edited into a move between own accounts, loses its card settlement and takes no start day pair unasked', async () => {
+    const w = await world();
+    await setSettledBeforeApp(w.database, w.ws, w.purchase, true);
+    expect(await w.balance(w.card.id)).toBe(0);
+    await replaceTransaction(w.database, w.ws, w.purchase, {
+      occurredOn: '2026-10-15',
+      description: 'Pindah',
+      lines: transferLines({ fromAccountId: w.bank.id, toAccountId: w.card.id, amountMinor: 2_970_000, currency: 'IDR' }),
+    });
+    expect(await w.pairs()).toEqual([]);
+    expect(await w.balance(w.card.id)).toBe(2_970_000);
+    expect(await w.balance(w.bank.id)).toBe(7_350_000 - 2_970_000);
+    expect(await checkLedgerIntegrity(w.database, w.ws)).toEqual([]);
+  });
+
+  it('an old payment recorded with no pair keeps none when only its note changes, whatever the form says', async () => {
+    const w = await world();
+    const lines = transferLines({ fromAccountId: w.bank.id, toAccountId: w.card.id, amountMinor: 1_710_000, currency: 'IDR' });
+    // Recorded before this build: dated before the bank was added, the bank moved.
+    const id = await postTransaction(w.database, w.ws, { occurredOn: '2026-11-12', description: 'Credit card payment', lines });
+    const before = await nativeBalances(w.database, w.ws);
+    const edited = await replaceTransaction(w.database, w.ws, id, { occurredOn: '2026-11-12', description: 'Bayar kartu Oktober', lines, beforeStart: true });
+    expect(await nativeBalances(w.database, w.ws)).toEqual(before);
+    expect(await w.pairs()).toEqual([]);
+    // Its date changed, it is decided again.
+    await replaceTransaction(w.database, w.ws, edited, { occurredOn: '2026-11-11', description: 'Bayar kartu Oktober', lines, beforeStart: true });
+    expect(await w.balance(w.bank.id)).toBe(7_350_000);
+    expect(await w.pairs()).toHaveLength(1);
+  });
+
+  it('an old payment with no pair is decided again when its amount changes', async () => {
+    const w = await world();
+    const id = await postTransaction(w.database, w.ws, { occurredOn: '2026-11-12', description: 'Credit card payment', lines: transferLines({ fromAccountId: w.bank.id, toAccountId: w.card.id, amountMinor: 1_710_000, currency: 'IDR' }) });
+    await replaceTransaction(w.database, w.ws, id, { occurredOn: '2026-11-12', description: 'Credit card payment', lines: transferLines({ fromAccountId: w.bank.id, toAccountId: w.card.id, amountMinor: 1_700_000, currency: 'IDR' }), beforeStart: true });
+    expect(await w.balance(w.bank.id)).toBe(7_350_000);
+    expect(await w.balance(w.card.id)).toBe(-2_970_000 + 1_700_000);
+  });
+
+  it('a goal-tagged transfer with a side before its account was added is refused in plain words; after, it parks as before', async () => {
+    const w = await world();
+    const goalId = await saveGoal(w.database, w.ws, { name: 'Dana Darurat', kind: 'emergency', growthBps: 0, returnBps: 0, stages: [{ name: 'Dana Darurat', targetMinor: 9_000_000, targetMonths: null, dueOn: '2027-12-31' }] });
+    const tagged = (occurredOn: string) =>
+      recordTaggedTransfer(w.database, w.ws, { fromAccountId: w.old.id, toAccountId: w.bank.id, amountMinor: 400_000, occurredOn, description: 'Tabung', goalId, beforeStart: true });
+    await expect(tagged('2026-11-10')).rejects.toThrow(/before an account was added cannot go toward a goal/);
+    expect(await w.balance(w.old.id)).toBe(2_640_000);
+    expect((await listEarmarks(w.database, w.ws)).filter((row) => row.goalId === goalId)).toEqual([]);
+    await tagged('2026-11-21');
+    expect((await listEarmarks(w.database, w.ws)).find((row) => row.goalId === goalId && row.accountId === w.bank.id)?.amountMinor).toBe(400_000);
+  });
+
+  it('draws no goal’s money from a From that keeps its balance; one that moves is drawn as before', async () => {
+    const w = await world();
+    const goalId = await saveGoal(w.database, w.ws, { name: 'Umrah', kind: 'umrah', growthBps: 0, returnBps: 0, stages: [{ name: 'Tiket', targetMinor: 7_000_000, targetMonths: null, dueOn: '2027-03-31' }] });
+    await saveEarmark(w.database, w.ws, { goalId, accountId: w.bank.id, amountMinor: 7_000_000 });
+    const draws = () => w.database.db.select().from(goalsSchema.goalDraws).where(eq(goalsSchema.goalDraws.workspaceId, w.ws.workspaceId));
+    const setAside = { accountId: w.bank.id, goalId, intent: 'spend' as const, overMinor: 1_360_000 };
+    await postTransaction(w.database, w.ws, { occurredOn: '2026-11-12', description: 'Credit card payment', lines: transferLines({ fromAccountId: w.bank.id, toAccountId: w.card.id, amountMinor: 1_710_000, currency: 'IDR' }), beforeStart: true, setAside });
+    expect(await draws()).toEqual([]);
+    expect((await listEarmarks(w.database, w.ws)).find((row) => row.goalId === goalId)?.amountMinor).toBe(7_000_000);
+    await postTransaction(w.database, w.ws, { occurredOn: '2026-11-21', description: 'Credit card payment', lines: transferLines({ fromAccountId: w.bank.id, toAccountId: w.card.id, amountMinor: 1_710_000, currency: 'IDR' }), beforeStart: true, setAside });
+    expect(await draws()).toHaveLength(1);
   });
 });

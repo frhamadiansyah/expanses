@@ -496,8 +496,29 @@ function CardBody({
   // What Save would send, read by the function that builds it (a category not chosen yet does not hide the door).
   const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
   const door = post ? doorOfForm(draft, post, accounts, canHold) : null;
+  /*
+   * A transfer or a card's payment dated before an account was added (owner, 22 Nov 2026): that account's balance stays,
+   * by the rule the ledger posts by (`pastSidesOf`) — a money account only, so a card being paid always owes less. One
+   * plain line, no choice. A partner's transfer and a card's top-up of a wallet are not this. A saved move with no pair
+   * (recorded before the rule) keeps none until its day, accounts or amounts change, as the ledger keeps it (review fix).
+   */
+  const startSides = useQuery({
+    queryKey: ['past-sides', ws.workspaceId, draft.moneyId, draft.toId, draft.occurredOn],
+    enabled: draft.mode === 'transfer' && !draft.partner && !!account && account.subtype !== 'credit_card',
+    queryFn: () => pastSidesOf(database, ws, [draft.moneyId, draft.toId].filter(Boolean), draft.occurredOn),
+  });
+  const savedMove = useMemo(() => (initial && draft.mode === 'transfer' ? formFromTransaction(initial, accounts) : null), [initial, accounts, draft.mode]);
+  const moveDecided =
+    !initial ||
+    initial.past === true ||
+    !savedMove ||
+    (['occurredOn', 'moneyId', 'toId', 'amount', 'toAmount', 'fee'] as const).some((field) => savedMove[field] !== draft[field]);
+  const keptSides = draft.mode === 'transfer' && !draft.partner && startSides.isSuccess && moveDecided ? startSides.data : [];
+  const startDayLine = beforeStartLine(keptSides.map((id) => byId.get(id)?.name ?? '').filter(Boolean));
+  // Money that left before its account was added draws on no goal: the question is not asked (the ledger agrees).
+  const fromKept = keptSides.includes(draft.moneyId);
   const saved = useSetAsideChoiceOf(initial?.id ?? null);
-  const setAside = useSetAside(finish?.rowOnly ? null : door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
+  const setAside = useSetAside(finish?.rowOnly || fromKept ? null : door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
 
   /*
    * One list per question, because the label asks three different things. A purchase is paid with money you can spend
@@ -894,17 +915,6 @@ function CardBody({
   });
   const sameAsSaved = !!initial && initial.occurredOn === draft.occurredOn && initial.entries.some((e) => e.accountId === draft.moneyId);
   const pastOn = offersPast && (draft.pastPurchase ?? (sameAsSaved ? savedPast.data === true : isPastDefault(openedOn, draft.occurredOn)));
-  /*
-   * A transfer or a card's payment dated before an account was added (owner, 22 Nov 2026): that account's balance stays,
-   * by the rule the ledger posts by (`pastSidesOf`) — a money account only, so a card being paid always owes less. One
-   * plain line, no choice. A partner's transfer and a card's top-up of a wallet are not this.
-   */
-  const startSides = useQuery({
-    queryKey: ['past-sides', ws.workspaceId, draft.moneyId, draft.toId, draft.occurredOn],
-    enabled: draft.mode === 'transfer' && !draft.partner && !!payingAccount && payingAccount.subtype !== 'credit_card',
-    queryFn: () => pastSidesOf(database, ws, [draft.moneyId, draft.toId].filter(Boolean), draft.occurredOn),
-  });
-  const startDayLine = draft.mode === 'transfer' && !draft.partner && startSides.isSuccess ? beforeStartLine(startSides.data.map((id) => byId.get(id)?.name ?? '').filter(Boolean)) : null;
   // An older purchase made on a card since removed reads as that card, with its digits, and says it was removed.
   const removedCard = draft.mode === 'expense' || draft.mode === 'trade' ? removedCardPayment(everyCard, accounts, draft.moneyId, draft.cardId) : null;
   // Money back lands in the account it was paid with, so the row says where it goes.

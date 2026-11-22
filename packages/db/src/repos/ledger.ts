@@ -89,6 +89,7 @@ export interface BillLink {
 
 export type LedgerErrorCode =
   | 'INVALID_DATE'
+  | 'GOAL_BEFORE_START'
   | 'SHARED_EVENT_TAG'
   | 'PAID_BY_PARTNER'
   | 'NOT_FOUND'
@@ -548,7 +549,9 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   // What the purchase was, beside what it cost: the channel, the exclusion, and the photos a form wrote before
   // this transaction had an id. Their own tables, so a database stopped before 0048 simply has none of it.
   if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, { ...input, excludedFromReport: excludedWhole });
-  if (input.setAside && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
+  // No goal's money is drawn from a side that keeps its balance (start day rule): that money left before the account was added.
+  const drawFromPast = !!input.setAside && !!input.beforeStart && (await movesOwnMoneyTx(tx, ws, input.lines)) && (await pastSidesTx(tx, ws, [input.setAside.accountId], input.occurredOn)).length > 0;
+  if (input.setAside && !drawFromPast && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
   // Withdrawal rate §6: a foreign money account this touches is recalculated at the end of the db transaction, from
   // this date — before capture reads the figures, so a shared purchase goes out at the withdrawal rate (R9). Every
   // posting comes through here: a form, an import, a statement check, a conversion, a trade, a debt, a goal transfer,
@@ -727,6 +730,24 @@ async function movesOwnMoneyTx(tx: Db, ws: WorkspaceContext, lines: readonly Pos
   const balance = (id: string) => ['asset', 'liability'].includes(byId.get(id)?.kind ?? '');
   const out = lines.filter((line) => line.amountMinor < 0 && balance(line.accountId) && byId.get(line.accountId)?.subtype !== 'credit_card');
   return out.some((from) => lines.some((line) => line.amountMinor > 0 && line.accountId !== from.accountId && balance(line.accountId)));
+}
+
+/** What a goal-tagged move refuses when a side is before its account's start day. */
+export const GOAL_BEFORE_START_TEXT = 'Money moved before an account was added cannot go toward a goal. Leave Goal empty, or change the date.';
+
+/** Which kind of balancing pair lines take: a move's start day pair, a card's settlement, a money account's past mark. */
+async function pairKindTx(tx: Db, ws: WorkspaceContext, lines: readonly PostingLine[]): Promise<'move' | 'card' | 'money' | 'none'> {
+  if (await movesOwnMoneyTx(tx, ws, lines)) return 'move';
+  if (await cardLineOf(tx, ws, lines)) return 'card';
+  return (await moneyLinesOf(tx, ws, lines)).length > 0 ? 'money' : 'none';
+}
+
+/** A move's balance account lines (account and amount), in one order: what says whether an edit changed the move. */
+async function moneyShapeTx(tx: Db, ws: WorkspaceContext, lines: readonly Pick<PostingLine, 'accountId' | 'amountMinor'>[]): Promise<string> {
+  const ids = [...new Set(lines.map((line) => line.accountId))];
+  const rows = ids.length ? await tx.select({ id: accounts.id, kind: accounts.kind }).from(accounts).where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids))) : [];
+  const balance = new Set(rows.filter((row) => row.kind === 'asset' || row.kind === 'liability').map((row) => row.id));
+  return lines.filter((line) => balance.has(line.accountId)).map((line) => `${line.accountId}:${line.amountMinor}`).sort().join('|');
 }
 
 /**
@@ -1221,8 +1242,6 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   const { id: _ignored, settledBeforeApp: settleCard, pastPurchase, beforeStart, moveToBook, toBookId, fileTransfer: _file, acrossBooks, ...input } = withId;
   void _file;
   void _ignored;
-  // A transfer or a card's payment says the start day rule as `beforeStart`: the same settlement, decided by its sides.
-  const settle = (await movesOwnMoneyTx(tx, ws, input.lines)) ? beforeStart : (settleCard ?? pastPurchase);
   // Before anything is read or written: a derived transaction is the event's to change (C1). `markVoidTx` says it again.
   if (!door.eventDerivation) await refuseEventPostingTx(tx, id);
   // A due-month transfer's cap was worked from From's money before the transaction: refused if that money moved since.
@@ -1293,21 +1312,40 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   // the draw, re-pointed to the replacement. A different answer, or none, undoes the saved one and applies afresh.
   const tables = await setAsideTablesExist(tx);
   const oldLines = await tx
-    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency })
     .from(entries)
     .where(and(eq(entries.transactionId, id), eq(entries.workspaceId, ws.workspaceId)));
+  /*
+   * The balancing pair beside it (a past purchase, a card purchase paid off before the app, a move's side before its
+   * start day), read before the void. It follows the edit only while the edit is still its kind of row — a move between
+   * own accounts, a card purchase, a purchase on a money account — and is taken away otherwise: a payment edited into a
+   * card's top-up must never take a card settlement (review, 22 Nov 2026).
+   */
+  const moves = await movesOwnMoneyTx(tx, ws, input.lines);
+  const hadPair = await settlementOfTx(tx, ws, id);
+  const sameKind = hadPair !== null && (await pairKindTx(tx, ws, oldLines)) === (await pairKindTx(tx, ws, input.lines));
+  // A move with no pair (one recorded before the start day rule) keeps none when the edit leaves its day, accounts and
+  // amounts as they were: a new note or category never changes a balance. A move that changed is decided again.
+  const unmoved = moves && hadPair === null && original?.occurredOn === input.occurredOn && (await moneyShapeTx(tx, ws, oldLines)) === (await moneyShapeTx(tx, ws, input.lines));
+  // A move says the start day rule as `beforeStart`; a purchase its own mark.
+  const settle = moves ? (unmoved && beforeStart === true ? undefined : beforeStart) : (settleCard ?? pastPurchase);
+  // The sides the edited move keeps unchanged: no goal's money is drawn from them, and none is parked on them.
+  const pastNow = moves && (settle === true || (settle === undefined && sameKind)) ? await pastSidesTx(tx, ws, input.lines.map((line) => line.accountId), input.occurredOn) : [];
   const saved = tables ? await setAsideChoiceOfTx(tx, ws, id) : null;
   const carried = input.setAside === undefined ? saved : null;
   // A carried answer is dropped when the edit no longer pays from its account (or, a move, into its destination), or
-  // its goal was archived since: an edit that does not mention it is never refused over it.
-  const answered =
+  // its goal was archived since: an edit that does not mention it is never refused over it. Nor is one drawn from a
+  // side that keeps its balance: that money left before the account was added.
+  const asked =
     input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await goalActiveTx(tx, ws, carried.goalId)) ? carried : null;
+  const answered = asked && pastNow.includes(asked.accountId) ? null : asked;
   const keepAnswer = !!answered && !!saved && sameAnswer(answered, saved) && carryable(answered, input.lines) && (await goalActiveTx(tx, ws, answered.goalId));
   // A transfer tagged to a goal stays tagged when it is corrected. Between the same two accounts it is carried by the
   // difference; to another account, the old one is taken back and the new one parked.
   const [taggedGoal] = original?.goalId
     ? await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, original.goalId), eq(goals.workspaceId, ws.workspaceId)))
     : [];
+  if (taggedGoal && pastNow.length > 0) throw new LedgerError('GOAL_BEFORE_START', GOAL_BEFORE_START_TEXT);
   const nextMove = taggedGoal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
   const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
   const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
@@ -1410,13 +1448,14 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   await followDepositEventTx(tx, ws, id, replacement);
   // A purchase paid off before the app keeps its settlement level with it: the edited figure, day and card — or, no
   // longer on a credit card, none at all.
-  const settlement = await settlementOfTx(tx, ws, id);
-  if (settlement && settle !== false) {
+  if (hadPair && sameKind && settle !== false) {
     const next = await settlementInputOf(tx, ws, replacement, input);
-    if (next) await replaceTransactionTx(tx, ws, settlement, next);
-    else await voidTransactionTx(tx, ws, settlement);
-  } else if (settlement) await voidTransactionTx(tx, ws, settlement);
-  else if (settle === true) await settleBeforeAppTx(tx, ws, replacement, input);
+    if (next) await replaceTransactionTx(tx, ws, hadPair, next);
+    else await voidTransactionTx(tx, ws, hadPair);
+  } else {
+    if (hadPair) await voidTransactionTx(tx, ws, hadPair);
+    if (settle === true) await settleBeforeAppTx(tx, ws, replacement, input);
+  }
   // A fee reversal before the app keeps the fee row beside it at its amount. Not on applying another device's edit:
   // that device's own change to the fee row comes with it.
   if (input.syncAuthor === undefined) await followFeePairsTx(tx, ws, id, replacement);

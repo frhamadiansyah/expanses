@@ -7,7 +7,7 @@ import { goals } from '../schema-goals';
 import { systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { GoalDbError } from './goals';
-import { postTransactionTx, voidTransactionTx } from './ledger';
+import { GOAL_BEFORE_START_TEXT, pastSidesTx, postTransactionTx, voidTransactionTx } from './ledger';
 import { parkForGoalTx, type SetAsideChoice } from './set-aside-tx';
 
 export interface TaggedTransferInput {
@@ -136,6 +136,10 @@ export async function recordTaggedTransferTx(tx: Db, ws: WorkspaceContext, input
           fromIsCard: from?.subtype === 'credit_card',
         });
 
+    // Money moved before an account was added keeps that side's balance: none of it can be parked for a goal there.
+    if (input.goalId && input.beforeStart && (await pastSidesTx(tx, ws, [input.fromAccountId, input.toAccountId], input.occurredOn)).length > 0) {
+      throw new AssetError(GOAL_BEFORE_START_TEXT);
+    }
     const transactionId = await postTransactionTx(tx, ws, {
       occurredOn: input.occurredOn,
       description: input.description,
