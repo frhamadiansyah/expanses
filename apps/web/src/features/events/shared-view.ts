@@ -200,8 +200,11 @@ export function transferRow(t: SharedEventTransferView): { title: string; subtit
   const where =
     t.fromName && t.toName ? `${t.fromName} → ${t.toName}` : t.fromName ? `From ${t.fromName}` : t.toName ? `To ${t.toName}` : `Recorded by ${t.recordedByName}`;
   const note = t.description.trim();
-  // Named by its accounts ("Cash withdrawal"): the note moves to the grey line, where the default "Transfer" is not repeated.
-  if (t.name) return { title: t.name, subtitle: [note && note !== 'Transfer' ? note : '', where, 'not counted'].filter(Boolean).join(' · '), amount: formatMinor(t.amountMinor, t.currency) };
+  // Named by its accounts ("Cash withdrawal"): the note moves to the grey line, where one repeating the title is not.
+  if (t.name) {
+    const repeats = [t.name.toLowerCase(), 'transfer'].includes(note.toLowerCase());
+    return { title: t.name, subtitle: [repeats ? '' : note, where, 'not counted'].filter(Boolean).join(' · '), amount: formatMinor(t.amountMinor, t.currency) };
+  }
   return { title: note || 'Transfer', subtitle: `${where} · not counted`, amount: formatMinor(t.amountMinor, t.currency) };
 }
 

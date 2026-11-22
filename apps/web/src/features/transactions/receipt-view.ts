@@ -122,7 +122,10 @@ function exchangeRateOf(tx: TransactionView, baseCurrency: string, ratesToBase: 
  */
 export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const { tx, accounts, cards, points, owed } = input;
-  const nameOf = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? '';
+  // An account this phone does not list is named as its line names it: a household placeholder, the member it stands
+  // for ("Dewi"), as the edit form's To names it.
+  const nameOf = (accountId: string) =>
+    accounts.find((account) => account.id === accountId)?.name ?? tx.entries.find((entry) => entry.accountId === accountId && entry.placeholder)?.accountName ?? '';
   // The card's last four, and only when the transaction names the card the account was charged through: an
   // account holding two cards must not lend the primary's digits to a purchase made on the supplementary.
   // A card since removed is still the card it was made with: it keeps its digits, and says it was removed.
@@ -148,7 +151,7 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   } else if (payer) {
     if (payer.paidLabel) lines.push({ label: 'Payment method', value: payer.paidLabel });
     lines.push({ label: 'Paid by', value: payer.mine ? 'Me' : (payer.payerName ?? 'Someone else') });
-  } else if (paid) lines.push({ label: left[0] ? 'Payment method' : 'Paid into', value: accountText(paid.accountId) });
+  } else if (paid) lines.push({ label: left[0] ? (classify(tx).type === 'transfer' ? 'From' : 'Payment method') : 'Paid into', value: accountText(paid.accountId) });
   if (into) lines.push({ label: 'Into', value: accountText(into.accountId) });
   // What the account was really charged, never the share that was kept: a split bill's card entry is the whole
   // bill, and the chart's treatment of it changes nothing about what the bank will ask for.

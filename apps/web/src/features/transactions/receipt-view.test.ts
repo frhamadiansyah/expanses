@@ -169,10 +169,35 @@ describe('the figures a receipt has to get right', () => {
       owed: [],
     });
     expect(said(transfer)).toEqual([
-      ['Payment method', 'BCA Tahapan'],
+      // A transfer's source reads From, as its edit form does; a purchase keeps Payment method.
+      ['From', 'BCA Tahapan'],
       ['Into', 'BCA KrisFlyer ···· 1467'],
       ['Total', 'Rp 400.000'],
       ['Bill month', 'September 2026'],
+    ]);
+  });
+
+  it('names the partner a transfer between partners went to, though this phone lists no account of theirs', () => {
+    const toPartner = receiptLines({
+      tx: dinner({
+        description: 'Sekolah Contoh',
+        cardId: null,
+        entries: [
+          { accountId: 'acct-bank', accountName: 'BCA Tahapan', accountKind: 'asset', accountSubtype: 'bank', amountMinor: -1_800_000, amountBaseMinor: -1_800_000, currency: 'IDR' },
+          // the partner's hidden placeholder: listed nowhere here, named after the member it stands for
+          { accountId: 'ph-dewi', accountName: 'Dewi', accountKind: 'asset', accountSubtype: 'cash', placeholder: true, partnerSubtype: 'bank', amountMinor: 1_800_000, amountBaseMinor: 1_800_000, currency: 'IDR' },
+        ],
+      } as Partial<TransactionView>),
+      accounts,
+      cards: [card],
+      currency: 'IDR',
+      points: null,
+      owed: [],
+    });
+    expect(said(toPartner)).toEqual([
+      ['From', 'BCA Tahapan'],
+      ['Into', 'Dewi'],
+      ['Total', 'Rp 1.800.000'],
     ]);
   });
 
@@ -540,7 +565,7 @@ describe('a transfer between currencies (owner, 17 Nov 2026)', () => {
   it('reads one Rate row, the market under it, in place of Cost and Withdrawn; nothing says it counts', () => {
     const lines = receiptLines({ tx: exchange(), accounts: banks, cards: [], currency: 'IDR', points: null, owed: [], withdrawal, today: '2026-11-17', ratesToBase: { GBP: 21_000 } });
     expect(lineOf(lines, 'Rate')).toEqual({ value: 'Rp 20.700 per GBP', detail: 'market 21.000 · −1,4 %' });
-    expect(lines.map((line) => line.label)).toEqual(['Payment method', 'Into', 'Total', 'Rate']);
+    expect(lines.map((line) => line.label)).toEqual(['From', 'Into', 'Total', 'Rate']);
     expect(JSON.stringify(lines)).not.toMatch(/exchange|recorded as|spending|income/i);
   });
 

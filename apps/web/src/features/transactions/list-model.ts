@@ -1,4 +1,4 @@
-import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, parsePeriod, transferName } from '@expanses/core';
+import { compareWithinDay, dayNet, formatMinor, isExchangeResultKey, isNotCountedKey, isUncategorisedKey, matchesSearch, parsePeriod, transferName, transferSideOf } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, InstalmentRepayment, SharedTransferRow, SpreadLine, TransactionEntryView, TransactionView } from '@expanses/db';
 import type { PurchasePoints } from '../../lib/purchase-points';
 import { formatPoints } from '../cards/format-points';
@@ -82,7 +82,7 @@ export interface ListRow {
   last4: string | null;
   /** The digits named in a two-sided label, in its order: what a search by digits finds such a row by. Absent when none. */
   sidesLast4?: string[];
-  /** What a transfer is called when its two accounts say so: "Cash withdrawal", "Currency exchange", "Cash deposit". Absent otherwise. */
+  /** What a transfer is called when its two accounts say so: "Cash withdrawal", "Credit card payment", "Bank transfer"… Absent otherwise. */
   transferName?: string;
   /** A transfer's fee in the row's currency, read under its amount ("+ Rp 10.000"); absent on anything else. */
   feeMinor?: number;
@@ -462,7 +462,8 @@ export function buildRows(
     const type: RowType = tx.entries.some((e) => isPerson(e.accountId)) ? 'debt' : c.type;
     // Named by the two accounts the money moved between; a fee or an exchange spread beside them is not a side.
     const moved = type === 'transfer' && money.length === 2 ? [...money].sort((a, b) => a.amountMinor - b.amountMinor) : [];
-    const named = moved.length === 2 ? transferName({ subtype: moved[0]!.accountSubtype ?? '', currency: moved[0]!.currency }, { subtype: moved[1]!.accountSubtype ?? '', currency: moved[1]!.currency }) : null;
+    // A household placeholder side is read as the partner's item it stands for, never as its own 'cash' (`transferSideOf`).
+    const named = moved.length === 2 ? transferName(transferSideOf(moved[0]!), transferSideOf(moved[1]!)) : null;
     // Signed, so money back on a purchase (a refund credits its category) takes away from spending rather than adding to it.
     // `counted` leaves out the lines switched to Exclude from report on their own (0096), which the day's total must not add.
     // An exchange's gain or loss is never one of its lines: it counts nowhere (owner, 17 Nov 2026).
@@ -660,6 +661,18 @@ export function amountLook(row: ListRow, view: AmountView = 'report'): { sign: -
   if (row.type === 'debt' && row.earnedMinor > 0) return { sign: 1, plus: false, muted: false };
   if (row.moneyIn) return { sign: 0, plus: true, muted: true };
   return { sign: 0, plus: false, muted: false };
+}
+
+/**
+ * A transfer's note on its grey line, or '' when it only repeats the row's title: the note "Credit card payment" under
+ * the title Credit card payment, or the default note "Transfer" under any transfer's. A different note still shows.
+ * Anything but a transfer keeps its note as it is.
+ */
+export function transferNote(row: Pick<ListRow, 'type' | 'transferName' | 'description'>): string {
+  if (row.type !== 'transfer') return row.description;
+  // in any case: "credit card payment" typed by hand repeats the title as much as the card's own note does
+  const note = row.description.trim().toLowerCase();
+  return note === (row.transferName ?? 'Transfer').toLowerCase() || note === 'transfer' ? '' : row.description;
 }
 
 /**
