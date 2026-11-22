@@ -40,6 +40,34 @@ export function feeYearState(facts: FeeYearFacts): FeeYearState {
   return facts.charged ? 'charged' : 'pending';
 }
 
+/** A fee year's charge or money back, as the rule below weighs it. */
+export interface FeeMoneyLine {
+  transactionId: string;
+  amountMinor: number;
+  /** The transaction holds more than one category line: the fee is only part of it. */
+  split?: boolean;
+}
+
+/**
+ * A reversed fee is left out (owner, 22 Nov 2026): once money back for a year's annual fee is on the card, the fee
+ * charge and the money back both leave every report, as if the fee was never charged. Returns the transactions left
+ * out; balances and statements never read this.
+ *
+ * - Money back with no charge row (charged before the app, or never recorded) is left out alone.
+ * - With the charge in the app, both go only when the money back is the whole charge (within a percent); money back
+ *   for part of it leaves both counting, so the part the bank kept is still spending.
+ * - A fee inside a split charge, or money back inside one, is left as it is: the rest of it is real spending.
+ */
+export function feeLeftOut(year: { charge: FeeMoneyLine | null; reversal: FeeMoneyLine | null }): string[] {
+  const { charge, reversal } = year;
+  if (!reversal || reversal.split) return [];
+  if (!charge) return [reversal.transactionId];
+  if (charge.split) return [];
+  const tolerance = Math.max(1, Math.round(charge.amountMinor / 100));
+  if (reversal.amountMinor < charge.amountMinor - tolerance) return [];
+  return [charge.transactionId, reversal.transactionId];
+}
+
 /** The same month and day in `year`; 29 Feb falls on 28 Feb in a year without one. */
 function inYear(date: string, year: number): string {
   const month = date.slice(5, 7);

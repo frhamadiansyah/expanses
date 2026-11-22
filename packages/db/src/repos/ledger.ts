@@ -45,6 +45,7 @@ import {
 import { recordActivityTx } from './activity-log';
 import { rederiveCardCycles } from './point-ledger';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
+import { feeLeftOutIds } from './fee-left-out';
 import { purchaseSpreadsExist } from './instalment-spending';
 import { stableId } from '../self/stable-id';
 
@@ -1407,7 +1408,15 @@ export interface TransactionView {
    * without transaction_flags. Optional in the same way billMonth is, so a view built by hand need not name them.
    */
   channel?: 'online' | 'offline' | null;
+  /** Left out of the reports: marked so, or a reversed annual fee (`feeLeftOut`). What every list and receipt reads. */
   excluded?: boolean;
+  /**
+   * A reversed annual fee's charge or money back, left out of the reports by the fee rule (owner, 22 Nov 2026), worked
+   * out and never stored: `excluded` reads true. Absent on anything else.
+   */
+  feeLeftOut?: true;
+  /** Beside `feeLeftOut` only: the purchase's own exclude mark, which the Edit form shows and saves (never the rule's reading). */
+  excludedMark?: boolean;
   photoCount?: number;
   /**
    * Its place within its day when moved there by hand, or null (0067): what the list sorts a day by. Optional so a
@@ -1557,6 +1566,8 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
 
   // The channel, the exclusion and how many pictures were kept: one pair of queries per page, as bill months are.
   const extras = (await extrasTablesExist(database.db)) ? await extrasFor(database.db, ws, txs.map((t) => t.id)) : undefined;
+  // A reversed annual fee's charge and money back: out of the reports by the fee rule, worked out (never marked).
+  const feeOut = await feeLeftOutIds(database, ws);
 
   // A purchase split across workspaces: which workspace each of its category lines is in, and the workspaces' names.
   const parts = await splitPartsOfMany(database.db, txs.map((t) => t.id));
@@ -1610,7 +1621,8 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     billMonth: billMonths.get(t.id) ?? null,
     ...(notMonthly.has(t.id) ? { notMonthlyBill: true } : {}),
     channel: extras?.get(t.id)?.channel ?? null,
-    excluded: extras?.get(t.id)?.excluded ?? false,
+    excluded: (extras?.get(t.id)?.excluded ?? false) || feeOut.has(t.id),
+    ...(feeOut.has(t.id) ? { feeLeftOut: true as const, excludedMark: extras?.get(t.id)?.excluded ?? false } : {}),
     photoCount: extras?.get(t.id)?.photoCount ?? 0,
     dayOrder: t.dayOrder === null ? null : Number(t.dayOrder),
     exactHundredths: t.exactHundredths === null ? null : Number(t.exactHundredths),

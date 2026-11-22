@@ -70,6 +70,15 @@ const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(1, Math.round
 type Row = { choice: FeeChargeChoice; categoryId: string; key: string | null; worded: boolean };
 
 /**
+ * Whether a credit on a card could be money back for its annual fee, as `chargesNear` reads credits (named like the fee,
+ * or in a fee category on an expense line), or one of the app's own refunds ("Annual fee waived"): what tells
+ * `feeLeftOutIds` which cards to read.
+ */
+export function mayBeFeeMoneyBack(description: string, key: string | null, kind: string): boolean {
+  return description === WAIVED_DESCRIPTION || isWorded(description) || (kind === 'expense' && isFeeKey(key));
+}
+
+/**
  * The card's posted expense charges near `covered`, nearest first, one per transaction: a split charge is read by its
  * fee line (its own amount and category) when it has one, else by its first line. Each is marked with the credit on
  * the card that already reversed it, if any.

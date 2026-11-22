@@ -10,6 +10,7 @@ import { listEventCurrencies, setEventCurrency, storedConverter } from './event-
 import { type EventItemRow, listEventItems } from './event-items';
 import { EventError, type EventRow, eventOf, ofBook, toEventRow as toRow } from './event-scope';
 import { extrasTablesExist, notExcluded } from './transaction-extras';
+import { notFeeLeftOut } from './fee-left-out';
 import { partCountedWhere } from './book-splits';
 import { notExchangeResult } from './exchange-result';
 import { eventTagRefusalTx } from './shared-workspace-rows';
@@ -310,6 +311,7 @@ export async function eventPlanFor(database: Database, ws: WorkspaceContext, eve
         ...(await ofBook(database, ws, entries.accountId)),
         // Drops the same rows `categoryRows` does, so the event's Spent and the category report go on agreeing.
         ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
+        ...(await notFeeLeftOut(database, ws)),
         ...(await partCountedWhere(database.db, transactions.id, entries.accountId)),
       ),
     );

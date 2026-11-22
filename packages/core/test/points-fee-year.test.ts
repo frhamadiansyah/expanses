@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type FeeWaiver, feeProgressWindow, feeWaiverRowText, feeYearLines, feeYearState } from '../src/index';
+import { type FeeWaiver, feeLeftOut, feeProgressWindow, feeWaiverRowText, feeYearLines, feeYearState } from '../src/index';
 
 /*
  * The Fee waiver page's fee year (owner, 13 Nov 2026): which lines a fee year shows, how it stands, the window Progress
@@ -96,5 +96,38 @@ describe('fee waiver row', () => {
   it('reads charged when the challenge is another fee year’s', () => {
     expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, null, T, 2025)).toBe('2026 charged');
     expect(feeWaiverRowText({ year: 2026, state: 'charged' }, challenge, 'Rp 8,6 jt', T, null)).toBe('2026 charged');
+  });
+});
+
+describe('a reversed fee is left out (owner, 22 Nov 2026)', () => {
+  const charge = { transactionId: 'fee', amountMinor: 950_000 };
+  const back = { transactionId: 'back', amountMinor: 950_000 };
+
+  it('leaves out the fee and its reversal once the whole fee came back', () => {
+    expect(feeLeftOut({ charge, reversal: back })).toEqual(['fee', 'back']);
+  });
+
+  it('keeps a fee that was not reversed counting', () => {
+    expect(feeLeftOut({ charge, reversal: null })).toEqual([]);
+    expect(feeLeftOut({ charge: null, reversal: null })).toEqual([]);
+  });
+
+  it('leaves out money back with no charge row (charged before the app) alone', () => {
+    expect(feeLeftOut({ charge: null, reversal: back })).toEqual(['back']);
+  });
+
+  it('takes money back within a percent of the fee as the whole fee', () => {
+    expect(feeLeftOut({ charge, reversal: { ...back, amountMinor: 950_000 - 9_500 } })).toEqual(['fee', 'back']);
+  });
+
+  it('leaves both counting when only part of the fee came back', () => {
+    expect(feeLeftOut({ charge, reversal: { ...back, amountMinor: 950_000 - 9_501 } })).toEqual([]);
+    expect(feeLeftOut({ charge, reversal: { ...back, amountMinor: 475_000 } })).toEqual([]);
+  });
+
+  it('leaves a fee inside a split charge, or money back inside a split, as it is', () => {
+    expect(feeLeftOut({ charge: { ...charge, split: true }, reversal: back })).toEqual([]);
+    expect(feeLeftOut({ charge, reversal: { ...back, split: true } })).toEqual([]);
+    expect(feeLeftOut({ charge: null, reversal: { ...back, split: true } })).toEqual([]);
   });
 });
