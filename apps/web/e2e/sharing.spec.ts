@@ -813,6 +813,22 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await expect(transfer).toHaveCount(0);
   await accountReads(page, 'Fandri Bank', '5.000.000');
   await accountReads(dewi, 'Dewi Bank', '10.000.000');
+  // Named by Dewi's bank, never Cash withdrawal from the hidden account it is posted against here; the grey line names
+  // her, and the receipt reads From his bank, Into Dewi (owner's report, 22 Nov 2026).
+  await openAccountHistory(page, 'Fandri Bank');
+  const toDewi = page.locator('li', { hasText: /For the house/ }).first();
+  await expect(toDewi).toContainText('Bank transfer');
+  await expect(toDewi).toContainText('Dewi');
+  await expect(toDewi).not.toContainText('Cash withdrawal');
+  await shot(page, info, '18a-transfer-to-partner-row');
+  if (phoneProject(info)) {
+    await toDewi.click();
+    await expect(page.getByTestId('receipt-hero')).toBeVisible();
+    await expect(page.getByText('From', { exact: true }).locator('..')).toContainText('Fandri Bank');
+    await expect(page.getByText('Into', { exact: true }).locator('..')).toContainText('Dewi');
+    await expect(page.getByText('Payment method', { exact: true })).toHaveCount(0);
+    await shot(page, info, '18a-transfer-to-partner-receipt');
+  }
   // The household's figure is what it was, less the dinner on the card: 15 jt − 200.000.
   await netWorthReads(page, '14.800.000', ['Fandri', 'Dewi']);
   await netWorthReads(dewi, '14.800.000', ['Fandri', 'Dewi']);
