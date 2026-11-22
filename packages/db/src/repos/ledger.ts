@@ -48,6 +48,7 @@ import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx 
 import { feeLeftOutIds } from './fee-left-out';
 import { purchaseSpreadsExist } from './instalment-spending';
 import { stableId } from '../self/stable-id';
+import { placeholderLinesOf } from '../sync/placeholder';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email' | 'notification' | 'screen' | 'photo';
 
@@ -1656,6 +1657,16 @@ export interface TransactionEntryView {
    * here. Absent (counted) on a line view built by hand, on a database stopped before 0096, and on every non-category line.
    */
   excluded?: boolean;
+  /**
+   * The line is on a household placeholder (spec §4.4): another member's money posted here, never an account of this
+   * phone's, whatever its 'cash' subtype says. Absent on every other line.
+   */
+  placeholder?: true;
+  /**
+   * With `placeholder`, on a transfer between partners (joint net worth §7.2): the kind of the partner's shared item the
+   * line stands for ("bank"), what the row is named by (`transferSideOf`). Absent when that item is not known here.
+   */
+  partnerSubtype?: string;
 }
 
 /** A workspace a purchase split across workspaces has a part in. */
@@ -1907,6 +1918,9 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     if (bank) row.accountName = accountDisplayName({ name: row.accountName, subtype: row.accountSubtype, bank });
   }
 
+  // A household placeholder's line, and the partner's item it stands for on a transfer between partners (§7.2).
+  const held = await placeholderLinesOf(database.db, rows.filter((row) => row.accountKind === 'asset'));
+
   // The lines left out of their workspace's reports on their own (0096), and those of a part left out whole (0090).
   const lineOff = await lineExclusionsOfMany(database.db, txs.map((t) => t.id));
   const byTx = new Map<string, TransactionEntryView[]>();
@@ -1918,7 +1932,13 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
       (lineOff.get(transactionId)?.has(entry.accountId) ||
         (filedIn !== undefined && (parts.get(transactionId)?.some((part) => part.bookId === filedIn && part.excluded) ?? false)));
     const list = byTx.get(transactionId) ?? [];
-    list.push({ ...entry, ...(filedIn ? { bookId: filedIn } : {}), ...(off ? { excluded: true } : {}) });
+    const partnerSubtype = held.placeholders.has(entry.accountId) ? held.partnerSubtype(transactionId, entry.accountId) : null;
+    list.push({
+      ...entry,
+      ...(filedIn ? { bookId: filedIn } : {}),
+      ...(off ? { excluded: true } : {}),
+      ...(held.placeholders.has(entry.accountId) ? { placeholder: true as const, ...(partnerSubtype ? { partnerSubtype } : {}) } : {}),
+    });
     byTx.set(transactionId, list);
   }
   // Which of these carry the past mark: their balancing pair is posted, found by its ref and its Before the app line;

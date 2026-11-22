@@ -165,7 +165,7 @@ export interface SharedTransferRow {
 const bareName = (name: string) => name.replace(/ ···· \d{4}$/, '');
 
 /**
- * What a partner's transfer is called ("Cash withdrawal", "Currency exchange", "Cash deposit"), read on this phone from
+ * What a partner's transfer is called ("Cash withdrawal", "Credit card payment", "Bank transfer"…), read on this phone from
  * what it already holds: the recorder's net-worth items in the workspace's group (each carries its account's subtype
  * and currency). A side is found by its item id when the account is joint (`from_item`), else by its name — sent only
  * for an account the recorder shares with the household — matching exactly one of the recorder's items. A private
@@ -193,7 +193,9 @@ export async function partnerTransferNameTx(
   for (const [itemId, json] of rows) {
     try {
       const summary = JSON.parse(json) as { kind?: unknown; subtype?: unknown; currency?: unknown; name?: unknown } | null;
-      if (summary?.kind !== 'asset' || typeof summary.subtype !== 'string' || typeof summary.currency !== 'string' || typeof summary.name !== 'string') continue;
+      // A card is a liability: a payment into it reads Credit card payment here too. No other liability (a loan called
+      // like a bank would make the bank's name match two items).
+      if (!(summary?.kind === 'asset' || (summary?.kind === 'liability' && summary.subtype === 'credit_card')) || typeof summary.subtype !== 'string' || typeof summary.currency !== 'string' || typeof summary.name !== 'string') continue;
       items.push({ itemId, name: bareName(summary.name), side: { subtype: summary.subtype, currency: summary.currency } });
     } catch {
       // A summary that does not parse names nothing.

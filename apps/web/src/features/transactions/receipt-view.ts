@@ -48,6 +48,8 @@ export interface ReceiptInput {
   today?: string;
   /** The market rates held for the transaction's day, to the base: what a transfer between currencies is read against. */
   ratesToBase?: Readonly<Record<string, number>>;
+  /** Each household placeholder's member, by the name the workspace holds now (`memberPayerAccounts`): who a transfer went to. */
+  memberNames?: ReadonlyMap<string, { name: string }>;
 }
 
 /** Money accounts: the two kinds whose entry says what was actually charged or received. */
@@ -122,7 +124,15 @@ function exchangeRateOf(tx: TransactionView, baseCurrency: string, ratesToBase: 
  */
 export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const { tx, accounts, cards, points, owed } = input;
-  const nameOf = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? '';
+  // On a transfer, a household placeholder this phone does not list is the partner it stands for: by the member's name
+  // as the workspace holds it now, else as the line names it ("Dewi"), as the edit form's To does. A purchase never
+  // names one: who paid is the Paid by line's to say.
+  const transfer = classify(tx).type === 'transfer';
+  const partnerName = (accountId: string) =>
+    transfer && tx.entries.some((entry) => entry.accountId === accountId && entry.placeholder)
+      ? (input.memberNames?.get(accountId)?.name ?? tx.entries.find((entry) => entry.accountId === accountId)?.accountName ?? '')
+      : '';
+  const nameOf = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? partnerName(accountId);
   // The card's last four, and only when the transaction names the card the account was charged through: an
   // account holding two cards must not lend the primary's digits to a purchase made on the supplementary.
   // A card since removed is still the card it was made with: it keeps its digits, and says it was removed.
@@ -148,7 +158,7 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   } else if (payer) {
     if (payer.paidLabel) lines.push({ label: 'Payment method', value: payer.paidLabel });
     lines.push({ label: 'Paid by', value: payer.mine ? 'Me' : (payer.payerName ?? 'Someone else') });
-  } else if (paid) lines.push({ label: left[0] ? 'Payment method' : 'Paid into', value: accountText(paid.accountId) });
+  } else if (paid) lines.push({ label: left[0] ? (transfer ? 'From' : 'Payment method') : 'Paid into', value: accountText(paid.accountId) });
   if (into) lines.push({ label: 'Into', value: accountText(into.accountId) });
   // What the account was really charged, never the share that was kept: a split bill's card entry is the whole
   // bill, and the chart's treatment of it changes nothing about what the bank will ask for.

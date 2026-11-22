@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AccountRow, CardRow, DraftRow, SharedTransferRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import type { ListRow } from './list-model';
-import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions, sharedTransferRow, instalmentRows, markSpread } from './list-model';
+import { categoryButtonLabel, amountExtraParts, amountLook, wholeLeftOut, buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, paidWithLook, sortRows, totals , groupByCategory, excludedHere, hasNotCountedPart, outsideEvents, accountsWithTransactions, sharedTransferRow, instalmentRows, markSpread, showsPaidWith, transferNote } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -811,7 +811,7 @@ describe('categoryButtonLabel', () => {
 describe('a transfer named by its accounts', () => {
   const cash = account('cash', 'asset', 'cash', { name: 'Cash' });
   const cashTry = account('cash-try', 'asset', 'cash', { name: 'Cash · TRY', parentId: 'cash', currency: 'TRY' });
-  const all = [...accounts, cash, cashTry, account('fee', 'expense', 'category', { name: 'Fees', systemKey: 'fees' })];
+  const all = [...accounts, cash, cashTry, account('savings', 'asset', 'savings', { name: 'Tabungan Contoh' }), account('fee', 'expense', 'category', { name: 'Fees', systemKey: 'fees' })];
   const make = (lines: [string, number, number?][], currencies: Record<string, string> = {}) => {
     const t = tx('2026-10-04', 'Bank Contoh ATM', []);
     t.entries = lines.map(([accountId, amountMinor, base], i) => {
@@ -836,10 +836,68 @@ describe('a transfer named by its accounts', () => {
     expect(make([['cash', -5000000], ['kantong', 5000000]]).transferName).toBe('Cash deposit');
   });
 
-  it('leaves bank to bank, a card payment and an ordinary purchase unnamed', () => {
+  it('reads a bank into a card as a Credit card payment, and a bank into a bank as a Bank transfer', () => {
+    expect(make([['octo', 45000000], ['bca', -45000000]]).transferName).toBe('Credit card payment');
+    expect(make([['bca', -5000000], ['savings', 5000000]]).transferName).toBe('Bank transfer');
+  });
+
+  it('leaves a wallet top-up and an ordinary purchase unnamed', () => {
     expect(make([['bca', -5000000], ['kantong', 5000000]]).transferName).toBeUndefined();
-    expect(make([['octo', 45000000], ['bca', -45000000]]).transferName).toBeUndefined();
     expect(make([['groceries', 45000000], ['cash', -45000000]]).transferName).toBeUndefined();
+  });
+
+  /** A transfer to a partner (joint net worth §7.2): the bank out, the partner's hidden placeholder ('cash', listed nowhere here) in. */
+  const toPartner = (placeholder: Partial<TransactionView['entries'][number]>, description = 'Sekolah Contoh') => {
+    const t = tx('2026-10-31', description, []);
+    t.entries = [
+      { id: `${t.id}e0`, accountId: 'bca', accountName: 'BCA Tahapan', accountKind: 'asset', accountSubtype: 'bank', amountMinor: -180000000, currency: 'IDR', fxRateToBase: 1, amountBaseMinor: -180000000, memo: null, spendCategoryId: null },
+      { id: `${t.id}e1`, accountId: 'ph-dewi', accountName: 'Dewi', accountKind: 'asset', accountSubtype: 'cash', placeholder: true, amountMinor: 180000000, currency: 'IDR', fxRateToBase: 1, amountBaseMinor: 180000000, memo: null, spendCategoryId: null, ...placeholder },
+    ];
+    return buildRows([t], [], all, cards)[0]!;
+  };
+
+  it('never reads a transfer to a partner as a Cash withdrawal: by the partner’s item when known, else plain Transfer', () => {
+    const unknown = toPartner({});
+    expect(unknown.transferName).toBeUndefined();
+    // the grey line names both sides, the partner by name: nothing left dangling after the note
+    expect(unknown.accountLabel).toBe('BCA Tahapan → Dewi');
+    expect(toPartner({ partnerSubtype: 'bank' }).transferName).toBe('Bank transfer');
+    expect(toPartner({ partnerSubtype: 'credit_card' }).transferName).toBe('Credit card payment');
+  });
+});
+
+describe('showsPaidWith', () => {
+  const row = (type: ListRow['type'], accountLabel = 'BCA Tahapan → Dewi', last4: string | null = null) => ({ type, accountLabel, last4 });
+
+  it('names what paid, but never a purchase another member paid for (posted against their placeholder)', () => {
+    expect(showsPaidWith(row('expense', 'BCA Tahapan'), false)).toBe(true);
+    expect(showsPaidWith(row('expense', 'Dewi'), true)).toBe(false);
+  });
+
+  it('names both sides of a transfer to a partner, on the list and the wide table alike', () => {
+    expect(showsPaidWith(row('transfer'), true)).toBe(true);
+  });
+
+  it('says nothing when there is nothing to name', () => {
+    expect(showsPaidWith(row('transfer', ''), false)).toBe(false);
+    expect(showsPaidWith(row('expense', '', '4417'), false)).toBe(true);
+  });
+});
+
+describe('transferNote', () => {
+  const row = (type: ListRow['type'], description: string, transferName?: string) => ({ type, description, ...(transferName ? { transferName } : {}) });
+
+  it('leaves off a transfer’s note that repeats its title, in any case, and the default Transfer', () => {
+    expect(transferNote(row('transfer', 'Credit card payment', 'Credit card payment'))).toBe('');
+    expect(transferNote(row('transfer', 'credit card payment ', 'Credit card payment'))).toBe('');
+    expect(transferNote(row('transfer', 'Transfer', 'Cash withdrawal'))).toBe('');
+    expect(transferNote(row('transfer', 'Transfer'))).toBe('');
+  });
+
+  it('keeps a different note, and every note on anything but a transfer', () => {
+    expect(transferNote(row('transfer', 'Pay off October', 'Credit card payment'))).toBe('Pay off October');
+    expect(transferNote(row('transfer', 'Credit card payment'))).toBe('Credit card payment');
+    expect(transferNote(row('expense', 'Transfer'))).toBe('Transfer');
   });
 });
 

@@ -25,7 +25,7 @@ import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { Sheet } from '../../app/Sheet';
 import { loadPurchasePoints } from '../../lib/purchase-points';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useInvalidateAll, useMemberPayers } from '../../lib/queries';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { Card, cx, Empty, ErrorBox } from '../../ui';
 import { DestructiveRow, GROUP_GAP, InsetGroup, InsetRow, SwitchRow } from '../../ui/native';
@@ -135,6 +135,8 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   // A shared workspace's transfer listed on a shared event instead of the workspace (an ATM withdrawal for a trip): the
   // event it is on, and Remove from event to put it back.
   const onEvent = useQuery({ queryKey: ['event-transfer', transactionId], queryFn: () => eventTransferOf(database, transactionId) }).data ?? null;
+  // A transfer to a partner names them by the name the workspace holds now.
+  const memberNames = useMemberPayers().data;
   // Withdrawal rate §7: the withdrawals a spend from foreign money came from.
   const withdrawal = useWithdrawalsUsed(tx?.id ?? null).data ?? null;
   // The market rates held for the day, for a transfer between currencies' Rate row (owner, 17 Nov 2026). Only the
@@ -190,6 +192,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     withdrawal,
     today,
     ratesToBase: heldRates,
+    memberNames,
   });
 
   /*
