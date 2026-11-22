@@ -149,7 +149,19 @@ describe('a transfer between partners, named by the partner’s item', () => {
     });
     await settle(home);
 
+    // A second one in the same list: each is read by its own partner side.
+    await recordMemberTransfer(andi.database, bookId, {
+      occurredOn: '2026-11-01',
+      amountMinor: 300_000_00,
+      currency: 'IDR',
+      from: { owner: andi.memberId, itemId: await itemIdOf(groupBookId, andi.bank) },
+      to: { owner: rina.memberId, itemId: await itemIdOf(groupBookId, rina.bank) },
+      description: 'Balik',
+    });
+    await settle(home);
+
     for (const d of [rina, andi]) {
+      expect(await ownName(d, 'Balik')).toBe('Bank transfer');
       const tx = (await listTransactions(d.database, d.ws)).find((t) => t.description === 'Sekolah Contoh');
       // The placeholder line says whose money it is and what that is, never by its own 'cash'.
       expect(tx?.entries.find((e) => e.placeholder)).toMatchObject({ accountSubtype: 'cash', placeholder: true, partnerSubtype: 'bank' });
@@ -171,6 +183,11 @@ describe('a transfer between partners, named by the partner’s item', () => {
       description: 'Uang saku',
     });
     await settle(home);
+    // Cash handed into Andi's bank is no Cash deposit: plain Transfer, his bank known all the same.
+    const known = (await listTransactions(rina.database, rina.ws)).find((t) => t.description === 'Uang saku');
+    expect(known?.entries.find((e) => e.placeholder)?.partnerSubtype).toBe('bank');
+    expect(await ownName(rina, 'Uang saku')).toBeNull();
+    expect(await ownName(andi, 'Uang saku')).toBeNull();
     // Andi stops sharing his bank: Rina's phone no longer knows what it is.
     await confirmReview(andi.database, andi.ws, { [andi.bank]: 'hidden' });
     await settle(home);

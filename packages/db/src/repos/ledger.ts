@@ -1919,7 +1919,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
   }
 
   // A household placeholder's line, and the partner's item it stands for on a transfer between partners (§7.2).
-  const held = await placeholderLinesOf(database.db, txs.map((t) => t.id), rows.filter((row) => row.accountKind === 'asset').map((row) => row.accountId));
+  const held = await placeholderLinesOf(database.db, rows.filter((row) => row.accountKind === 'asset'));
 
   // The lines left out of their workspace's reports on their own (0096), and those of a part left out whole (0090).
   const lineOff = await lineExclusionsOfMany(database.db, txs.map((t) => t.id));

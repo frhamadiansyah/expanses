@@ -82,30 +82,40 @@ export async function memberPayerAccounts(database: Database, ws: WorkspaceConte
 }
 
 /**
- * Which of `accountIds` are household placeholders (spec §4.4), and — for a transfer between partners (joint net worth
- * §7.2) among `transactionIds` — the kind of the partner's shared item each placeholder line stands for: by its owner,
- * the member the placeholder is for, from that item's summary in the group log. What a row is named by (`transferName`):
- * the placeholder's own 'cash' says nothing. A side kept private, an item no longer shared, or a database from before
- * the group log knows no kind. Empty on a database one version behind, where nothing is shared yet.
+ * Which of `lines` are on household placeholders (spec §4.4), and — on a transfer between partners (joint net worth
+ * §7.2) — the kind of the partner's shared item each such line stands for: the transfer's side owned by the member the
+ * placeholder is for (never this phone's own side), read from that item's summary in the group log. What a row is named
+ * by (`transferSideOf`): the placeholder's own 'cash' says nothing. A side kept private, an item no longer shared, or a
+ * database from before the group log knows no kind. Three queries at most, however many rows. Empty on a database one
+ * version behind, where nothing is shared yet.
  */
 export async function placeholderLinesOf(
   db: Db,
-  transactionIds: readonly string[],
-  accountIds: readonly string[],
+  lines: readonly { transactionId: string; accountId: string }[],
 ): Promise<{ placeholders: Set<string>; partnerSubtype: (transactionId: string, accountId: string) => string | null }> {
   const none = { placeholders: new Set<string>(), partnerSubtype: () => null };
-  if (accountIds.length === 0 || transactionIds.length === 0 || !(await sharingTablesExist(db))) return none;
-  const memberOf = new Map(await db.values<[string, string]>(sql`SELECT account_id, member_id FROM book_member_accounts WHERE account_id IN ${[...new Set(accountIds)]}`));
+  if (lines.length === 0 || !(await sharingTablesExist(db))) return none;
+  const memberOf = new Map(
+    await db.values<[string, string]>(sql`SELECT account_id, member_id FROM book_member_accounts WHERE account_id IN ${[...new Set(lines.map((line) => line.accountId))]}`),
+  );
   if (memberOf.size === 0) return none;
-  // transaction id → the member a side is owned by → that side's item kind
+  // transaction id → the members its placeholder lines stand for: only their sides are looked up
+  const wanted = new Map<string, Set<string>>();
+  for (const line of lines) {
+    const member = memberOf.get(line.accountId);
+    if (member === undefined) continue;
+    wanted.set(line.transactionId, (wanted.get(line.transactionId) ?? new Set<string>()).add(member));
+  }
+  // transaction id → member → that member's item kind
   const kinds = new Map<string, Map<string, string>>();
   try {
     const transfers = await db.values<[string, string, string, string]>(sql`
       SELECT p.transaction_id, t.book_id, t.from_json, t.to_json FROM member_transfer_postings p
       JOIN member_transfers t ON t.book_id = p.book_id AND t.transfer_id = p.transfer_id
-      WHERE p.transaction_id IN ${[...new Set(transactionIds)]}`);
-    for (const [transactionId, groupBookId, ...sides] of transfers) {
-      for (const json of sides) {
+      WHERE p.transaction_id IN ${[...wanted.keys()]}`);
+    const sides: { transactionId: string; groupBookId: string; owner: string; itemId: string }[] = [];
+    for (const [transactionId, groupBookId, ...jsons] of transfers) {
+      for (const json of jsons) {
         let side: { owner?: unknown; itemId?: unknown } | null = null;
         try {
           side = JSON.parse(json) as { owner?: unknown; itemId?: unknown } | null;
@@ -113,19 +123,27 @@ export async function placeholderLinesOf(
           continue;
         }
         if (typeof side?.owner !== 'string' || typeof side.itemId !== 'string' || side.itemId === '') continue;
-        const [item] = await db.values<[string]>(
-          sql`SELECT summary_json FROM nw_items WHERE book_id = ${groupBookId} AND item_id = ${side.itemId} AND owner = ${side.owner} AND removed = 0`,
-        );
-        let subtype: unknown = null;
+        if (!wanted.get(transactionId)?.has(side.owner)) continue;
+        sides.push({ transactionId, groupBookId, owner: side.owner, itemId: side.itemId });
+      }
+    }
+    if (sides.length > 0) {
+      const key = (bookId: string, itemId: string, owner: string) => `${bookId}\u0000${itemId}\u0000${owner}`;
+      const subtypes = new Map<string, string>();
+      for (const [bookId, itemId, owner, json] of await db.values<[string, string, string, string]>(
+        sql`SELECT book_id, item_id, owner, summary_json FROM nw_items WHERE removed = 0 AND item_id IN ${[...new Set(sides.map((side) => side.itemId))]}`,
+      )) {
         try {
-          subtype = item ? (JSON.parse(item[0]) as { subtype?: unknown } | null)?.subtype : null;
+          const subtype = (JSON.parse(json) as { subtype?: unknown } | null)?.subtype;
+          if (typeof subtype === 'string') subtypes.set(key(bookId, itemId, owner), subtype);
         } catch {
           // A summary that does not parse names nothing.
         }
-        if (typeof subtype !== 'string') continue;
-        const byOwner = kinds.get(transactionId) ?? new Map<string, string>();
-        byOwner.set(side.owner, subtype);
-        kinds.set(transactionId, byOwner);
+      }
+      for (const side of sides) {
+        const subtype = subtypes.get(key(side.groupBookId, side.itemId, side.owner));
+        if (subtype === undefined) continue;
+        kinds.set(side.transactionId, (kinds.get(side.transactionId) ?? new Map<string, string>()).set(side.owner, subtype));
       }
     }
   } catch {

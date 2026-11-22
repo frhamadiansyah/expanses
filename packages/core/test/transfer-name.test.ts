@@ -60,7 +60,7 @@ describe('transferSideOf', () => {
   });
 
   it('reads a household placeholder by the partner’s item it stands for, never by its own cash subtype', () => {
-    expect(transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true, partnerSubtype: 'bank' })).toEqual({ subtype: 'bank', currency: 'IDR' });
+    expect(transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true, partnerSubtype: 'bank' })).toEqual({ subtype: 'bank', currency: 'IDR', partner: true });
     expect(transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true })).toBeNull();
     expect(transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true, partnerSubtype: null })).toBeNull();
   });
@@ -75,6 +75,11 @@ describe('transferSideOf', () => {
       expect(transferName(partner, bank)).toBeNull();
       expect(transferName(cash, partner)).toBeNull();
     }
+    // cash or a wallet into a partner's bank is handed over, not deposited; a partner's bank into this phone's cash is no withdrawal
+    const partnerBank = transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true, partnerSubtype: 'bank' });
+    expect(transferName(cash, partnerBank)).toBeNull();
+    expect(transferName(partnerBank, cash)).toBeNull();
+    expect(transferName(transferSideOf({ accountSubtype: 'ewallet', currency: 'IDR' }), partnerBank)).toBeNull();
     // cash into a partner's card is still the card paid
     expect(transferName(cash, transferSideOf({ accountSubtype: 'cash', currency: 'IDR', placeholder: true, partnerSubtype: 'credit_card' }))).toBe('Credit card payment');
   });

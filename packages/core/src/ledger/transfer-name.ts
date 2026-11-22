@@ -22,6 +22,8 @@
 export interface TransferSide {
   subtype: string;
   currency: string;
+  /** A partner's item this phone holds a placeholder for (`transferSideOf`): only Bank transfer or Credit card payment. */
+  partner?: boolean;
 }
 
 /** Where money is held other than cash: a bank, a saving account, an e-wallet. */
@@ -34,6 +36,11 @@ export type TransferName = 'Cash withdrawal' | 'Currency exchange' | 'Cash depos
 
 export function transferName(from: TransferSide | null | undefined, to: TransferSide | null | undefined): TransferName | null {
   if (!from || !to) return null;
+  if (from.partner || to.partner) {
+    // Money handed to or from a partner is never a withdrawal or a deposit: only their bank or card names it.
+    const named = transferName({ ...from, partner: false }, { ...to, partner: false });
+    return named === 'Bank transfer' || named === 'Credit card payment' ? named : null;
+  }
   if (HELD.has(from.subtype) && to.subtype === 'cash') return 'Cash withdrawal';
   if (from.subtype === 'cash' && to.subtype === 'cash') return from.currency !== to.currency ? 'Currency exchange' : null;
   if (from.subtype === 'cash' && HELD.has(to.subtype)) return 'Cash deposit';
@@ -48,10 +55,11 @@ const PARTNER_NAMED = new Set(['bank', 'savings', 'credit_card']);
 /**
  * One ledger line as a side of a transfer. A household placeholder is read as the partner's shared item it stands for
  * (`partnerSubtype`, a transfer between partners) only when that is a bank, a saving account or a card — so such a
- * transfer reads Bank transfer, Credit card payment or plain Transfer (owner, 22 Nov 2026) — and otherwise, or when the
+ * transfer reads Bank transfer, Credit card payment or plain Transfer, whatever this phone's side is (owner, 22 Nov
+ * 2026) — and otherwise, or when the
  * item is not known here, as no side: never by its own subtype.
  */
 export function transferSideOf(line: { accountSubtype?: string | null; currency: string; placeholder?: boolean; partnerSubtype?: string | null }): TransferSide | null {
-  if (line.placeholder) return line.partnerSubtype && PARTNER_NAMED.has(line.partnerSubtype) ? { subtype: line.partnerSubtype, currency: line.currency } : null;
+  if (line.placeholder) return line.partnerSubtype && PARTNER_NAMED.has(line.partnerSubtype) ? { subtype: line.partnerSubtype, currency: line.currency, partner: true } : null;
   return { subtype: line.accountSubtype ?? '', currency: line.currency };
 }
