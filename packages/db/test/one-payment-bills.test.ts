@@ -2,7 +2,9 @@ import { expenseLines, splitExpenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  billChoicesForPurchase,
   billOfPurchase,
+  categoryTotalsBetween,
   createAccount,
   createCardAccount,
   createDatabase,
@@ -264,7 +266,43 @@ describe('a split saying its bills (the Split sheet’s Bill row)', () => {
   });
 });
 
+describe('the bills a part may pay', () => {
+  it('are the bills not paid for the purchase’s month, and the months the purchase itself pays', async () => {
+    current = await setupDb();
+    const { database, ws } = current;
+    const b = await bills(database, ws);
+    const bought = await postTransaction(database, ws, {
+      occurredOn: TODAY,
+      description: 'Tokopedia',
+      lines: expenseLines({ categoryAccountId: b.internetCategory, paymentAccountId: b.card, amountMinor: 385_000, currency: 'IDR' }),
+      billLinks: [{ templateId: b.internet, billMonth: '2026-11' }],
+    });
+    const names = async (transactionId: string | null) =>
+      (await billChoicesForPurchase(database, ws, { purchasedOn: TODAY, transactionId, today: TODAY })).map((c) => `${c.name} ${c.billMonth}`);
+    expect(await names(null)).toEqual(['Mobile phone 2026-11', 'Mobile phone 2 2026-11']);
+    expect(await names(bought)).toEqual(['Internet 2026-11', 'Mobile phone 2026-11', 'Mobile phone 2 2026-11']);
+  });
+});
+
 describe('which month and which Cashflow a payment of several bills counts in', () => {
+  it('November’s bills paid together on 3 December count in November; bills of two months paid together count on the day paid', async () => {
+    current = await setupDb();
+    const { database, ws } = current;
+    const b = await bills(database, ws);
+    await recordBillsAsOnePayment(database, ws, { paidOn: '2026-12-03', moneyAccountId: b.card, payments: NOVEMBER(b).slice(0, 2) });
+    const total = async (from: string, to: string) => (await categoryTotalsBetween(database, ws, 'expense', from, to, { billMonths: true })).reduce((sum, row) => sum + row.amountBaseMinor, 0);
+    expect(await total('2026-11-01', '2026-11-30')).toBe(535_000);
+    expect(await total('2026-12-01', '2026-12-31')).toBe(0);
+
+    // Mobile phone 2 for November with Internet for December, on 3 January: no one month to move it to.
+    await recordBillsAsOnePayment(database, ws, {
+      paidOn: '2027-01-03', moneyAccountId: b.card,
+      payments: [{ templateId: b.phone2, billMonth: '2026-11', amountMinor: 100_000 }, { templateId: b.internet, billMonth: '2026-12', amountMinor: 385_000 }],
+    });
+    expect(await total('2027-01-01', '2027-01-31')).toBe(485_000);
+    expect(await total('2026-11-01', '2026-11-30')).toBe(535_000);
+  });
+
   it('a payment of one month’s bills counts in that month; one with a yearly bill and a monthly one is a monthly payment', async () => {
     current = await setupDb();
     const { database, ws } = current;
