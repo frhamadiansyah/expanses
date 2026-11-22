@@ -1,5 +1,5 @@
 import { type AccountRow, spendingSwitchOn } from '@expanses/db';
-import { keptForSpending } from '../../lib/account-types';
+import { keptForSpending, SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { spendingBook } from '../accounts/pockets';
 import { faceFor, type FaceKind, type FaceRef, prepaidFaceOf, tieredKey } from '../cards/debit-art/faces';
 
@@ -44,6 +44,21 @@ export function walletCredit(accounts: readonly AccountRow[]): AccountRow[] {
 export function walletAsideCredit(accounts: readonly AccountRow[], id: string | undefined): AccountRow | undefined {
   if (id === undefined) return undefined;
   return accounts.find((a) => a.id === id && a.archivedAt === null && a.kind === 'liability' && a.subtype === 'credit_card' && !spendingSwitchOn(a));
+}
+
+/**
+ * The money account open on its page that Wallet does not hold because it is switched off "For spending" — or because
+ * every pocket it has is (owner, 22 Nov 2026): reached from Net worth's Assets, it is raised as a Wallet money card is,
+ * with its face and its page under it, and it is still in none of Wallet's views, its Balance box, filters or totals.
+ * Only money that would be a Wallet card when kept for spending: a current or saving account, cash, a digital wallet,
+ * electronic money, another cash equivalent. A pocket, a deposit, a broker's cash and an archived account are not one;
+ * each keeps opening on its own page.
+ */
+export function walletAsideMoney(accounts: readonly AccountRow[], id: string | undefined): AccountRow | undefined {
+  if (id === undefined) return undefined;
+  const account = accounts.find((a) => a.id === id && a.archivedAt === null && a.parentId === null && a.kind === 'asset' && SPENDABLE_SUBTYPES.includes(a.subtype));
+  if (!account || walletMoney(accounts).some((a) => a.id === id)) return undefined;
+  return account;
 }
 
 /**

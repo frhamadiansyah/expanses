@@ -1,7 +1,7 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { faceFor, TIERS } from '../cards/debit-art/faces';
-import { bankOf, faceKindsOf, moneyChip, moneyFaceOf, readBalanceHidden, walletAsideCredit, walletCredit, walletMoney, walletOrder, writeBalanceHidden } from './wallet-model';
+import { bankOf, faceKindsOf, moneyChip, moneyFaceOf, readBalanceHidden, walletAsideCredit, walletAsideMoney, walletCredit, walletMoney, walletOrder, writeBalanceHidden } from './wallet-model';
 
 const row = (id: string, subtype: string, extra: Partial<AccountRow> = {}) =>
   ({ id, name: id, parentId: null, kind: 'asset', subtype, currency: 'IDR', archivedAt: null, sortOrder: 0, forSpending: 1, ...extra }) as AccountRow;
@@ -47,6 +47,38 @@ describe('the cards Wallet holds', () => {
 
   it('holds credit cards only of what is owed: a loan and a person are read on Net worth', () => {
     expect(walletCredit(book).map((a) => a.id)).toEqual(['blue']);
+  });
+});
+
+describe('money switched off "For spending", opened from elsewhere', () => {
+  const book = [
+    row('everyday', 'bank'),
+    row('rainy', 'savings', { forSpending: 0 }),
+    row('tin', 'cash', { forSpending: 0 }),
+    row('travel', 'bank'),
+    row('travel-try', 'bank', { parentId: 'travel', currency: 'TRY', forSpending: 0 }),
+    row('kept', 'savings', { forSpending: 0, archivedAt: '2026-04-01' }),
+    row('deposit', 'time_deposit', { forSpending: 0 }),
+    row('rdn', 'fund', { forSpending: 0 }),
+    row('lent', 'receivable', { forSpending: 0 }),
+    row('rare', 'credit_card', { kind: 'liability', forSpending: 0 }),
+  ];
+
+  it('is raised by Wallet as its money cards are, while it stays out of the cards Wallet holds', () => {
+    expect(walletAsideMoney(book, 'rainy')?.id).toBe('rainy');
+    expect(walletAsideMoney(book, 'tin')?.id).toBe('tin');
+    expect(walletMoney(book).map((a) => a.id)).toEqual(['everyday']);
+    expect(walletOrder(book).map((a) => a.id)).toEqual(['everyday']);
+  });
+
+  it('is an account whose every pocket is switched off, though its own switch is on — never the pocket itself', () => {
+    expect(walletAsideMoney(book, 'travel')?.id).toBe('travel');
+    expect(walletAsideMoney(book, 'travel-try')).toBeUndefined();
+  });
+
+  it('is never money Wallet already holds, an archived account, a deposit, a broker’s cash, money lent or a card', () => {
+    for (const id of ['everyday', 'kept', 'deposit', 'rdn', 'lent', 'rare', 'missing']) expect(walletAsideMoney(book, id)).toBeUndefined();
+    expect(walletAsideMoney(book, undefined)).toBeUndefined();
   });
 });
 
