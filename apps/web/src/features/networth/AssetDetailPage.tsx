@@ -718,8 +718,9 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           onClose={() => setSheet(null)}
         />
       )}
-      {sheet?.kind === 'value' && <ValueSheet accountId={accountId} currency={currency} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'edit-value' && <ValueSheet accountId={accountId} currency={currency} editing={sheet.valuation} onClose={() => setSheet(null)} />}
+      {/* A save closes its own sheet only: on the Mac the page stays in use while it saves, and Buy pressed meanwhile stays open. */}
+      {sheet?.kind === 'value' && <ValueSheet accountId={accountId} currency={currency} onClose={() => setSheet((open) => (open?.kind === 'value' ? null : open))} />}
+      {sheet?.kind === 'edit-value' && <ValueSheet accountId={accountId} currency={currency} editing={sheet.valuation} onClose={() => setSheet((open) => (open?.kind === 'edit-value' ? null : open))} />}
       {sheet?.kind === 'estimate' && (
         <TradeActionsSheet
           title={`${BASIS_LABELS[sheet.valuation.basis] ?? sheet.valuation.basis} · ${dayLabel(sheet.valuation.asOf)}`}
