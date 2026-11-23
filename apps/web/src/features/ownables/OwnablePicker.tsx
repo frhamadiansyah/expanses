@@ -1,11 +1,12 @@
 import { assetFamily, type OwnableFamily, type OwnableFlow } from '@expanses/core';
 import { Check, Search } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useContext, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SearchField, SearchPill } from '../../ui/native';
 import { type HandOverRow, MORE_ROW_ID, type PickerRow, pickerRows } from './catalogue-view';
+import { FormPanelContext } from '../../ui/native/form-panel-context';
 
 /**
  * Where the circle at the top left goes, named: the list this screen was opened from. A screen reached from two
@@ -63,6 +64,7 @@ export function OwnablePicker({
   confirm?: { label: string; disabled?: boolean; run: () => void };
 }) {
   const phone = usePhone();
+  const inPanel = useContext(FormPanelContext) !== null;
   const router = useRouter();
   const [query, setQuery] = useState(start?.query ?? '');
   /*
@@ -180,9 +182,10 @@ export function OwnablePicker({
         }
       />
       {/* One screen at a time on a phone; both at once on anything wider, the list on the left. */}
-      <div className={cx('gap-6', chosen ? 'md:grid md:grid-cols-2 md:items-start' : '')}>
-        <div className={cx(phone && chosen && 'hidden')}>{list}</div>
-        {chosen && <div className={cx(phone ? '' : 'mt-4 md:mt-0')}>{children}</div>}
+      {/* The Mac's form panel is a phone's width: one at a time there too, the list back behind ✕ (`back`). */}
+      <div className={cx('gap-6', chosen && !inPanel ? 'md:grid md:grid-cols-2 md:items-start' : '')}>
+        <div className={cx((phone || inPanel) && chosen && 'hidden')}>{list}</div>
+        {chosen && <div className={cx(phone || inPanel ? '' : 'mt-4 md:mt-0')}>{children}</div>}
       </div>
     </div>
   );
