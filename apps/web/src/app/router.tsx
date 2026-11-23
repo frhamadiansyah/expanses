@@ -1,5 +1,5 @@
 import { parsePeriod } from '@expanses/core';
-import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router';
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router';
 import { AddPocketPage } from '../features/accounts/AddPocketPage';
 import { MovePage } from '../features/accounts/MovePage';
 import { AccountPage } from '../features/accounts/AccountPage';
@@ -212,7 +212,13 @@ const assetSearch = (search: Record<string, unknown>): AssetSearch =>
 
 const categoriesSearch = (search: Record<string, unknown>): { kind?: 'income' } => (search.kind === 'income' ? { kind: 'income' } : {});
 
-const rootRoute = createRootRoute({ component: Layout });
+const mainRoot = createRootRoute({ component: Layout });
+
+/**
+ * Every page, under a root: the app's own (`mainRoot`, the Layout with its sidebar and tab bar), or a bare one for the
+ * page a Mac form floats over (`createBaseRouter`), so that page is the real page, working, under the form's panel.
+ */
+function buildRoutes(rootRoute: typeof mainRoot) {
 
 /*
  * Wallet, and a card or an account opened from it, are one screen: the card's page and the account's page are children
@@ -629,9 +635,22 @@ const routeTree = rootRoute.addChildren([
   // Joint net worth (§8.3): an item of the other's, read-only — from the household's Net worth or Wallet's "…, shared".
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/shared/$itemId', component: SharedItemPage }),
 ]);
+  return routeTree;
+}
+
+const routeTree = buildRoutes(mainRoot);
 
 export const router = createRouter({ routeTree });
 trackOrigin(router);
+
+/**
+ * The page under a Mac form's panel (option C, owner 2026-11-23): the same pages in a router of their own, held at the
+ * address the form was opened from, drawn without the app's chrome. What it navigates to is handed to the app's router.
+ */
+export function createBaseRouter(href: string) {
+  const root = createRootRoute({ component: Outlet });
+  return createRouter({ routeTree: buildRoutes(root), history: createMemoryHistory({ initialEntries: [href] }) });
+}
 
 declare module '@tanstack/react-router' {
   interface Register {
