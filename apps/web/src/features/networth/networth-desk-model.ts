@@ -261,3 +261,36 @@ export function peekOrder(assets: DeskSide, debts: DeskSide, folded: ReadonlySet
   }
   return keys;
 }
+
+/**
+ * The badge under the figure (v1, owner 2026-11-23): today's net worth against last month's month-end ("+2,1% since
+ * October"), and the per cent of that figure (one decimal). Null when the history has no figure for last month, or held
+ * nothing then. The per cent is left out when that month's figure was not above nothing.
+ */
+export function monthChange(
+  points: readonly { month: string; netWorthMinor: number | null; assetsMinor: number | null; liabilitiesMinor: number | null }[],
+  thisMonth: string,
+  todayMinor: number,
+): { changeMinor: number; percent: number | null; since: string } | null {
+  const month = addMonths(thisMonth, -1);
+  const then = points.find((point) => point.month === month);
+  if (!then || then.netWorthMinor === null) return null;
+  if ((then.assetsMinor ?? 0) === 0 && (then.liabilitiesMinor ?? 0) === 0) return null;
+  const changeMinor = todayMinor - then.netWorthMinor;
+  const percent = then.netWorthMinor > 0 ? Math.round((changeMinor / then.netWorthMinor) * 1000) / 10 : null;
+  return { changeMinor, percent, since: new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long' }) };
+}
+
+/** Debts against assets, the Debts card's bar: what is owed as a whole per cent of what is held. Null with nothing held. */
+export function debtsAgainstAssets(debtsMinor: number, assetsMinor: number): number | null {
+  if (assetsMinor <= 0) return null;
+  return Math.round((Math.max(0, debtsMinor) / assetsMinor) * 100);
+}
+
+/** The title's line: "21 November 2026 · 8 assets · 5 debts" — every row of each side, counted once. */
+export function sheetLine(today: string, assets: DeskSide, debts: DeskSide): string {
+  const count = (side: DeskSide) => side.kinds.reduce((sum, kind) => sum + kind.items.length, 0);
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const day = new Date(`${today}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `${day} · ${plural(count(assets), 'asset', 'assets')} · ${plural(count(debts), 'debt', 'debts')}`;
+}

@@ -1,8 +1,8 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, portfolioSummary, type SheetLiability, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import { type AccountSubtype, type LiabilityKind, pocketParentIds } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { type MouseEvent, useEffect, useRef, useState } from 'react';
+import { Banknote, ChevronDown, ChevronRight, CreditCard, Landmark, Shield, TrendingUp } from 'lucide-react';
+import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { DeskNotices } from '../../app/DeskNotices';
 import { compactMoney } from '../../app/sidebar-model';
@@ -16,32 +16,30 @@ import { useBaseCosts } from '../investments/queries';
 import { useIncomeYear } from '../investments/use-income-year';
 import { assetKindTile, assetSectionTile, debtKindTile } from '../ownables/catalogue-view';
 import { buyChoices } from '../transactions/buy-in-form';
-import { BOX, NOTE } from '../transactions/CashflowBoxes';
 import { type DeskChartMonth, DeskNetWorthChart, useBoxWidth } from './DeskNetWorthChart';
-import { STATUS_INK } from './HealthRatios';
 import { ratioDisplay } from './health-cards';
 import { figureOf, jointSeries, ownerRing, receivedPocketAccounts, sheetOwnerOf } from './joint-rows';
 import { type KindLook, NetWorthPeek, type NetWorthPeekSubject, tintOf } from './NetWorthPeek';
-import { assetSide, debtSide, type DeskKind, type DeskSide, type PeekKey, peekOrder, treemapOf, type TreemapBox, yearChange } from './networth-desk-model';
+import { assetSide, debtsAgainstAssets, debtSide, type DeskKind, type DeskSide, monthChange, type PeekKey, peekOrder, sheetLine, treemapOf, type TreemapBox, yearChange } from './networth-desk-model';
 import { foldPockets } from './overview-rows';
 import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useOwnedTogether, useOwnerRings, useSheet } from './queries';
 import { debtKind, rowKindOf, type RowKind } from './sheet-drawers';
 import { spanSlice } from './span';
 import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { useHealthInputs, useHealthRatios } from './use-health';
-import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
+import { CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, type IconColour, PILL, PILL_BLUE, Seg, StatTile, Tag, TileRow, type Tone, Track, tileMoney } from '../../ui/desk';
+import { macV2 } from '../../ui/mac-detail';
 
-const CHART_HEIGHT = 190;
+const CHART_HEIGHT = 176;
 const TREEMAP_HEIGHT = 150;
 
-const GBTN = PILL;
-const PBTN = PILL_BLUE;
-const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]';
-const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-[11px] font-semibold text-[var(--ph-ink-3)]';
+const H2 = CARD_HEAD;
+/** A group's name over its rows (v1): small capitals in grey, its total at the right. */
+const GROUP_HEAD = 'text-[12px] font-bold tracking-[0.06em] uppercase';
 
 /** The chart's two drawings and two ranges, as the title bar's switches name them. */
 type ChartView = 'line' | 'bars';
-type DeskSpan = '1y' | 'all';
+type DeskSpan = '6m' | '1y' | 'all';
 const VIEW_KEY = 'expanses.networth.chart';
 const SPAN_KEY = 'expanses.networth.desk.span';
 const FOLD_KEY = 'expanses.networth.desk.folded';
@@ -109,14 +107,19 @@ export function DesktopNetWorth() {
     setViewState(next);
     writeLocal(VIEW_KEY, next);
   };
-  const [span, setSpanState] = useState<DeskSpan>(() => (readLocal(SPAN_KEY) === 'all' ? 'all' : '1y'));
+  const [span, setSpanState] = useState<DeskSpan>(() => {
+    const kept = readLocal(SPAN_KEY);
+    return kept === 'all' || kept === '6m' ? kept : '1y';
+  });
+  // v1 draws the line only; Line / Bars is v2's.
+  const chartView: ChartView = macV2 ? view : 'line';
   const setSpan = (next: DeskSpan) => {
     setSpanState(next);
     writeLocal(SPAN_KEY, next);
   };
 
   // ── The sheet: the phone's own reading, the household's with one tax ID ───────────────────────────────────────────
-  // Thirteen month-ends for a year: the twelve drawn, and the one before them that the chip's change is read against.
+  // Thirteen month-ends for a year (or six months): those drawn, and the one before them that the chip's change is read against.
   const months = lastNMonths(monthOf(today), span === 'all' ? 60 : 13);
   const series = useNetWorthSeries(months);
   const sheetInputs = useSheet();
@@ -129,7 +132,7 @@ export function DesktopNetWorth() {
   const joint = household.data;
   const holding = household.status === 'pending' || household.status === 'error';
   const points = holding ? [] : joint ? jointSeries(series.data ?? [], joint.received, joint.ratesToBase, base) : (series.data ?? []);
-  const shown = span === 'all' ? spanSlice(points, 'all') : points.slice(-12);
+  const shown = span === 'all' ? spanSlice(points, 'all') : points.slice(span === '6m' ? -6 : -12);
   const sheetMissing = joint ? joint.missing : (sheetInputs.data?.missing ?? []);
   const unchartable = [...new Set(points.flatMap((point) => point.missing))].sort();
   const sheet = joint ? balanceSheet(joint.assets, joint.liabilities) : balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
@@ -175,6 +178,11 @@ export function DesktopNetWorth() {
     },
   }));
   const change = ready && sheetMissing.length === 0 ? yearChange(points, monthOf(today), sheet.netWorthMinor) : null;
+  const sinceLast = ready && sheetMissing.length === 0 ? monthChange(points, monthOf(today), sheet.netWorthMinor) : null;
+  const debtShare = ready && sheetMissing.length === 0 ? debtsAgainstAssets(debts.totalMinor, assets.totalMinor) : null;
+  // A side's total is a figure only while every one of its rows has one (a partner's item with no rate leaves it blank).
+  const sideFigure = (side: DeskSide) =>
+    figureOf(side.totalMinor, side.kinds.flatMap((kind) => kind.items.map((item) => item.accountId)), new Set(side.kinds.flatMap((kind) => kind.items.filter((item) => item.minor === null).map((item) => item.accountId))));
 
   // ── Folding and the peek ───────────────────────────────────────────────────────────────────────────────────────────
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set((readLocal(FOLD_KEY) ?? '').split(',').filter(Boolean)));
@@ -308,111 +316,115 @@ export function DesktopNetWorth() {
     setPeekKey(key);
   };
 
+  const totalsKnown = holding || !ready ? null : sheetMissing.length > 0 ? null : { assets: sideFigure(assets), debts: sideFigure(debts) };
+  const sideProps = { currency: base, lookOf, folded, onFold: toggleFold, peekKey, onRow, onOpen: openPage, ownerOf, together, destinationOf };
+
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="networth-page" data-desk="true" {...doubleClick}>
       <DeskBar crumb="Net worth" barRef={bar}>
-        <Segments label="Chart view" value={view} onChange={setView} options={[{ key: 'line', label: 'Line' }, { key: 'bars', label: 'Bars' }]} />
-        <Segments label="Range" value={span} onChange={setSpan} options={[{ key: '1y', label: '12 months' }, { key: 'all', label: 'All' }]} />
-        <Link to="/net-worth/prices" className={GBTN}>
+        {macV2 && (
+          <Seg
+            label="Chart view"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'line', label: 'Line' },
+              { value: 'bars', label: 'Bars' },
+            ]}
+          />
+        )}
+        <Seg
+          label="Range"
+          value={span}
+          onChange={setSpan}
+          options={[
+            { value: '6m', label: '6 months' },
+            { value: '1y', label: '1 year' },
+            { value: 'all', label: 'All' },
+          ]}
+        />
+        <Link to="/net-worth/prices" className={PILL}>
           Prices
         </Link>
         {canTrade ? (
-          <Link to="/transactions/new" search={{ mode: 'trade' }} className={GBTN}>
+          <Link to="/transactions/new" search={{ mode: 'trade' }} className={PILL}>
             Trade
           </Link>
         ) : (
-          <button type="button" disabled className={GBTN} title="Nothing held to trade yet">
+          <button type="button" disabled className={PILL} title="Nothing held to trade yet">
             Trade
           </button>
         )}
+        <Link to="/tax-report" className={PILL}>
+          Tax report
+        </Link>
         <AddMenu />
       </DeskBar>
       <DeskNotices />
-      <DeskTitle title="Net worth" />
+      <DeskTitle title="Net worth" line={ready && !sheetBlocked ? sheetLine(today, assets, debts) : undefined} />
 
       <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={series.error ?? sheetInputs.error ?? household.error ?? health.error} />
-        <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[900px]:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
-          <section className={BOX} aria-label="Net worth" data-testid="networth-box">
+
+        {/* Total: the figure, its change since last month, the two sides, and the months drawn beside them. */}
+        <section className={cx(CARD, 'grid grid-cols-1 gap-x-[24px] @min-[820px]:grid-cols-[minmax(330px,1fr)_minmax(0,1.75fr)]')} aria-label="Net worth" data-testid="networth-box">
+          <div className="min-w-0 pb-[18px]">
             <h2 className={H2}>
-              Net worth<span className={NOTE}>assets − debts</span>
+              <TrendingUp size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
+              Total
             </h2>
-            <div data-testid="net-worth" className="flex flex-wrap items-baseline gap-x-[8px] gap-y-1 px-[14px]">
+            <div data-testid="net-worth" className="px-[20px]">
               {holding || !ready ? (
-                <span className="text-[26px] leading-[32px] font-semibold text-[var(--ph-ink-3)]">—</span>
+                <span className="text-[42px] leading-[50px] font-extrabold text-[var(--mk-ink-3)]">—</span>
               ) : sheetMissing.length > 0 ? (
-                <p className="py-2 text-[13px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
+                <p className="py-2 text-[13px] text-[var(--mk-t-orange)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
               ) : (
                 <>
-                  <span data-testid="net-worth-figure" className="text-[26px] leading-[32px] font-semibold whitespace-nowrap text-[var(--ph-ink)] tabular-nums">
+                  <p data-testid="net-worth-figure" className="text-[clamp(30px,2.9vw,42px)] leading-[50px] font-extrabold tracking-[-0.6px] whitespace-nowrap text-[var(--mk-ink)] tabular-nums">
                     {formatMinor(sheet.netWorthMinor, base)}
-                  </span>
-                  {change && (
-                    <span
-                      data-testid="net-worth-change"
-                      className={cx(
-                        'rounded-[5px] px-[6px] py-px text-[11.5px] whitespace-nowrap tabular-nums',
-                        change.changeMinor < 0 ? 'bg-[color-mix(in_srgb,var(--ph-alarm)_13%,transparent)] text-[var(--ph-alarm)]' : 'bg-[color-mix(in_srgb,var(--ph-up)_13%,transparent)] text-[var(--ph-up)]',
-                      )}
-                    >
-                      {change.changeMinor > 0 ? '+' : ''}
-                      {formatMinor(change.changeMinor, base)}
-                      {change.percent !== null && ` · ${change.percent > 0 ? '+' : ''}${change.percent.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`} in 12 months
-                    </span>
-                  )}
+                  </p>
+                  <div className="mt-[8px] flex flex-col items-start gap-[6px]">
+                    {sinceLast && (
+                      <Tag tone={sinceLast.changeMinor < 0 ? 'red' : 'green'} testId="net-worth-month-change" className="px-[10px] py-[2px] text-[12.5px]">
+                        {sinceLast.percent !== null
+                          ? `${sinceLast.percent > 0 ? '+' : ''}${sinceLast.percent.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`
+                          : `${sinceLast.changeMinor > 0 ? '+' : ''}${tileMoney(sinceLast.changeMinor, base)}`}{' '}
+                        since {sinceLast.since}
+                      </Tag>
+                    )}
+                    {macV2 && change && (
+                      <Tag tone={change.changeMinor < 0 ? 'red' : 'green'} testId="net-worth-change" className="px-[10px] py-[2px] text-[12.5px]">
+                        {change.changeMinor > 0 ? '+' : ''}
+                        {formatMinor(change.changeMinor, base)}
+                        {change.percent !== null && ` · ${change.percent > 0 ? '+' : ''}${change.percent.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`} in 12 months
+                      </Tag>
+                    )}
+                  </div>
                 </>
               )}
             </div>
-            <div className="px-[14px] pt-[8px] pb-[10px]">
-              <DeskNetWorthChart months={chartMonths} view={view} currency={base} keys={STACK_KEYS} height={CHART_HEIGHT} />
-              {sheetMissing.length === 0 && unchartable.length > 0 && (
-                <p data-testid="chart-missing" className="pt-[6px] text-[12px] text-[var(--ph-warn)]">
-                  No {unchartable.join(', ')} rate for an earlier month, so the line breaks there.
-                </p>
-              )}
-            </div>
-          </section>
-
-          <section className={BOX} aria-label="Financial health" data-testid="health-box">
-            <h2 className={H2}>
-              <Link to="/net-worth/health" className="hover:underline">
-                Financial health
-              </Link>
-              <span className={NOTE}>last 12 months</span>
-            </h2>
-            {health.totals === null && health.missing.length > 0 ? (
-              <p data-testid="ratios-missing" className="border-t border-[var(--ph-hair)] px-[14px] py-[10px] text-[13px] text-[var(--ph-warn)]">
-                No {health.missing.join(', ')} rate yet, so the ratios cannot be worked out.
-              </p>
-            ) : (
-              HEALTH_KEYS.flatMap((key) => {
-                const ratio = ratios.find((each) => each.key === key);
-                if (!ratio) return [];
-                const display = ratioDisplay(ratio);
-                return [
-                  <Link key={key} to="/net-worth/health" data-testid={`health-${key}`} className="block border-t border-[var(--ph-hair)] px-[14px] py-[8px] hover:bg-[var(--ph-fill)]">
-                    <span className="flex items-baseline justify-between gap-2 text-[13px] text-[var(--ph-ink)]">
-                      <span className="min-w-0 truncate">{ratio.name}</span>
-                      <span className={cx('shrink-0 text-[10.5px] font-bold tracking-[0.04em] uppercase', STATUS_INK[ratio.status])}>{display.statusLabel}</span>
-                    </span>
-                    <span className="mt-[2px] flex items-baseline justify-between gap-2">
-                      <b className="text-[15px] font-semibold whitespace-nowrap text-[var(--ph-ink)] tabular-nums">{display.value}</b>
-                      <span className="min-w-0 truncate text-[11.5px] text-[var(--ph-ink-3)]">guide {ratio.benchmarkText}</span>
-                    </span>
-                  </Link>,
-                ];
-              })
+            {totalsKnown && (
+              <div className="mt-[16px] space-y-[8px] px-[20px] text-[14px]">
+                <SideLine colour="var(--mk-c-green)" label="Assets" minor={totalsKnown.assets} currency={base} testId="sheet-total-assets" />
+                <SideLine colour="var(--mk-c-red)" label="Debts" minor={totalsKnown.debts} currency={base} testId="sheet-total-liabilities" />
+              </div>
             )}
-            <Link to="/net-worth/health" className="flex items-center justify-between border-t border-[var(--ph-hair)] px-[14px] py-[7px] text-[13px] text-[var(--mac-accent)] hover:bg-[var(--ph-fill)]">
-              All ratios
-              <ChevronRight size={14} aria-hidden />
-            </Link>
-          </section>
-        </div>
+          </div>
+          <div className="min-w-0 px-[20px] pt-[18px] pb-[14px] @min-[820px]:pl-0">
+            <DeskNetWorthChart months={chartMonths} view={chartView} currency={base} keys={STACK_KEYS} height={CHART_HEIGHT} />
+            {sheetMissing.length === 0 && unchartable.length > 0 && (
+              <p data-testid="chart-missing" className="pt-[6px] text-[12px] text-[var(--mk-t-orange)]">
+                No {unchartable.join(', ')} rate for an earlier month, so the line breaks there.
+              </p>
+            )}
+          </div>
+        </section>
+
+        {macV2 && <HealthTiles missing={health.totals === null && health.missing.length > 0 ? health.missing : null} ratios={ratios} />}
 
         {ready && sheetBlocked ? (
-          <section className={BOX}>
-            <p data-testid="balance-sheet-missing" className="px-[14px] py-[12px] text-[13px] text-[var(--ph-warn)]">
+          <section className={CARD}>
+            <p data-testid="balance-sheet-missing" className="px-[20px] py-[14px] text-[13px] text-[var(--mk-t-orange)]">
               No {sheetMissing.join(', ')} rate yet, so the balance sheet cannot be added up.
             </p>
           </section>
@@ -420,84 +432,60 @@ export function DesktopNetWorth() {
           ready && (
             <>
               {sheetMissing.length > 0 && (
-                <section className={BOX}>
-                  <p data-testid="balance-sheet-missing" className="px-[14px] py-[12px] text-[13px] text-[var(--ph-warn)]">
+                <section className={CARD}>
+                  <p data-testid="balance-sheet-missing" className="px-[20px] py-[14px] text-[13px] text-[var(--mk-t-orange)]">
                     No {sheetMissing.join(', ')} rate yet, so the household's totals cannot be added up. Those items show in their own currency.
                   </p>
                 </section>
               )}
-              <div className="grid grid-cols-1 items-start gap-[14px] @min-[900px]:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
-                <SideBox
+              <div className="grid grid-cols-1 items-start gap-[16px] @min-[860px]:grid-cols-2">
+                <SideCard
                   side="asset"
                   data={assets}
-                  totalLabel="Total assets"
-                  totalTestId="sheet-total-assets"
-                  currency={base}
-                  lookOf={lookOf}
+                  total={totalsKnown?.assets ?? null}
                   kindIcon={(kind, item) => assetKindTile(kind.key, item.kind.key)}
-                  folded={folded}
-                  onFold={toggleFold}
-                  peekKey={peekKey}
-                  onRow={onRow}
-                  onOpen={openPage}
-                  ownerOf={ownerOf}
-                  together={together}
-                  destinationOf={destinationOf}
                   empty={nothing}
+                  {...sideProps}
                 />
-                <div className="flex min-w-0 flex-col gap-[14px]">
-                  <SideBox
-                    side="debt"
-                    data={debts}
-                    totalLabel="Total debts"
-                    totalTestId="sheet-total-liabilities"
-                    currency={base}
-                    lookOf={lookOf}
-                    kindIcon={(kind) => debtKindTile(kind.key)}
-                    folded={folded}
-                    onFold={toggleFold}
-                    peekKey={peekKey}
-                    onRow={onRow}
-                    onOpen={openPage}
-                    ownerOf={ownerOf}
-                    together={together}
-                    destinationOf={destinationOf}
-                    empty={false}
-                  />
-                  {investKind && investKind.totalMinor !== null && (
-                    <section className={BOX} aria-label="Investments" data-testid="investments-box">
+                <div className="flex min-w-0 flex-col gap-[16px]">
+                  <SideCard side="debt" data={debts} total={totalsKnown?.debts ?? null} kindIcon={(kind) => debtKindTile(kind.key)} empty={false} debtShare={debtShare} {...sideProps} />
+                  {macV2 && investKind && investKind.totalMinor !== null && (
+                    <section className={CARD} aria-label="Investments" data-testid="investments-box">
                       <h2 className={H2}>
+                        <Landmark size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
                         Investments
-                        <span className={NOTE}>{investKind.share}% of assets</span>
+                        <span className={CARD_NOTE}>{investKind.share}% of assets</span>
                       </h2>
-                      <Figure label="Value" testId="investments-value">
-                        {formatMinor(investKind.totalMinor, base)}
-                      </Figure>
-                      {gain && gain.gainBaseMinor !== null && gain.costBaseMinor !== null && gain.costBaseMinor > 0 && (
-                        <Figure label="Gain" testId="investments-gain" tone={gain.gainBaseMinor < 0 ? 'down' : gain.gainBaseMinor > 0 ? 'up' : undefined}>
-                          {gain.gainBaseMinor > 0 ? '+' : ''}
-                          {formatMinor(gain.gainBaseMinor, base)}
-                          {gain.gainBps !== null && ` · ${gain.gainBps > 0 ? '+' : ''}${(gain.gainBps / 100).toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`}
+                      <div className="pb-[6px]">
+                        <Figure label="Value" testId="investments-value">
+                          {formatMinor(investKind.totalMinor, base)}
                         </Figure>
-                      )}
-                      {income.received !== null && income.listed.length + income.bonds.length > 0 && (
-                        <Figure label="Dividends this year" testId="investments-dividends">
-                          {formatMinor(income.received, base)}
-                        </Figure>
-                      )}
-                      <div className="flex flex-wrap items-center gap-x-[6px] border-t border-[var(--ph-hair)] px-[14px] py-[7px] text-[13px] text-[var(--mac-accent)]">
-                        <Link to="/net-worth/assets" className="hover:underline">
-                          Holdings
-                        </Link>
-                        <span className="text-[var(--ph-ink-3)]">·</span>
-                        <Link to="/net-worth/investments/trades" className="hover:underline">
-                          Trades
-                        </Link>
-                        <span className="text-[var(--ph-ink-3)]">·</span>
-                        <Link to="/net-worth/investments/dividends" className="hover:underline">
-                          Dividends
-                        </Link>
-                        <ChevronRight size={14} aria-hidden />
+                        {gain && gain.gainBaseMinor !== null && gain.costBaseMinor !== null && gain.costBaseMinor > 0 && (
+                          <Figure label="Gain" testId="investments-gain" tone={gain.gainBaseMinor < 0 ? 'down' : gain.gainBaseMinor > 0 ? 'up' : undefined}>
+                            {gain.gainBaseMinor > 0 ? '+' : ''}
+                            {formatMinor(gain.gainBaseMinor, base)}
+                            {gain.gainBps !== null && ` · ${gain.gainBps > 0 ? '+' : ''}${(gain.gainBps / 100).toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`}
+                          </Figure>
+                        )}
+                        {income.received !== null && income.listed.length + income.bonds.length > 0 && (
+                          <Figure label="Dividends this year" testId="investments-dividends">
+                            {formatMinor(income.received, base)}
+                          </Figure>
+                        )}
+                        <div className="mx-[20px] flex flex-wrap items-center gap-x-[6px] border-t border-[var(--mk-line)] py-[9px] text-[13px] font-semibold text-[var(--mk-blue)]">
+                          <Link to="/net-worth/assets" className="hover:underline">
+                            Holdings
+                          </Link>
+                          <span className="text-[var(--mk-ink-3)]">·</span>
+                          <Link to="/net-worth/investments/trades" className="hover:underline">
+                            Trades
+                          </Link>
+                          <span className="text-[var(--mk-ink-3)]">·</span>
+                          <Link to="/net-worth/investments/dividends" className="hover:underline">
+                            Dividends
+                          </Link>
+                          <ChevronRight size={14} aria-hidden />
+                        </div>
                       </div>
                     </section>
                   )}
@@ -526,30 +514,74 @@ export function DesktopNetWorth() {
   );
 }
 
-/** A switch in the title bar: two words on a grey track, the chosen one raised. */
-function Segments<T extends string>({ label, value, onChange, options }: { label: string; value: T; onChange: (next: T) => void; options: readonly { key: T; label: string }[] }) {
+/** One side's line under the total: its dot, its name, its figure (a dash while a row has no rate). */
+function SideLine({ colour, label, minor, currency, testId }: { colour: string; label: string; minor: number | null; currency: string; testId: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
-      {options.map((option) => (
-        <button
-          key={option.key}
-          type="button"
-          role="radio"
-          aria-checked={value === option.key}
-          onClick={() => onChange(option.key)}
-          className={cx(
-            'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
-            value === option.key ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <p className="flex items-center gap-[9px]">
+      <span aria-hidden className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: colour }} />
+      <span className="min-w-0 flex-1 truncate text-[var(--mk-ink-2)]">{label}</span>
+      <span data-testid={testId} className="shrink-0 font-bold whitespace-nowrap text-[var(--mk-ink)] tabular-nums">
+        {minor === null ? '—' : formatMinor(minor, currency)}
+      </span>
+    </p>
   );
 }
 
-/** ＋ Add: what is added here — an asset (the add-asset picker) or a debt (the add-debt picker). */
+const HEALTH_LOOK: Record<(typeof HEALTH_KEYS)[number], { icon: typeof Shield; colour: IconColour }> = {
+  emergency_fund: { icon: Shield, colour: 'green' },
+  savings_ratio: { icon: TrendingUp, colour: 'blue' },
+  debt_payments: { icon: CreditCard, colour: 'orange' },
+  liquidity: { icon: Banknote, colour: 'teal' },
+};
+const STATUS_TONE: Record<string, Tone> = { good: 'green', watch: 'orange', act: 'red', unknown: 'grey' };
+
+/** v2's Financial health: the four ratios as tiles, each with its status and its guide, All ratios for the rest. */
+function HealthTiles({ missing, ratios }: { missing: readonly string[] | null; ratios: ReturnType<typeof useHealthRatios> }) {
+  return (
+    <section aria-label="Financial health" data-testid="health-box">
+      <h2 className="flex items-center gap-[9px] px-[4px] pb-[10px] text-[15.5px] font-bold text-[var(--mk-ink-2)]">
+        <Shield size={17} strokeWidth={1.9} aria-hidden />
+        <Link to="/net-worth/health" className="hover:underline">
+          Financial health
+        </Link>
+        <span className="ml-auto text-[12.5px] font-semibold">last 12 months</span>
+        <Link to="/net-worth/health" className="text-[12.5px] font-semibold text-[var(--mk-blue)] hover:underline">
+          All ratios ›
+        </Link>
+      </h2>
+      {missing ? (
+        <p data-testid="ratios-missing" className={cx(CARD, 'px-[20px] py-[14px] text-[13px] text-[var(--mk-t-orange)]')}>
+          No {missing.join(', ')} rate yet, so the ratios cannot be worked out.
+        </p>
+      ) : (
+        <TileRow>
+          {HEALTH_KEYS.flatMap((key) => {
+            const ratio = ratios.find((each) => each.key === key);
+            if (!ratio) return [];
+            const display = ratioDisplay(ratio);
+            return [
+              <StatTile
+                key={key}
+                testId={`health-${key}`}
+                to="/net-worth/health"
+                icon={HEALTH_LOOK[key].icon}
+                colour={HEALTH_LOOK[key].colour}
+                badge={<Tag tone={STATUS_TONE[ratio.status] ?? 'grey'}>{display.statusLabel}</Tag>}
+                value={display.value}
+                label={`${ratio.name} · guide ${ratio.benchmarkText}`}
+              />,
+            ];
+          })}
+        </TileRow>
+      )}
+    </section>
+  );
+}
+
+/**
+ * ＋ Add asset (v1's words): the same menu as before — an asset (the add-asset picker) or a debt (the add-debt picker) —
+ * so a debt is still one click away from the page that lists it.
+ */
 function AddMenu() {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -562,14 +594,14 @@ function AddMenu() {
     document.addEventListener('mousedown', away);
     return () => document.removeEventListener('mousedown', away);
   }, [open]);
-  const item = 'flex h-[26px] items-center rounded-[5px] px-[10px] text-[13px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--mac-accent)] hover:text-white';
+  const item = 'flex h-[30px] items-center rounded-[8px] px-[10px] text-[13.5px] whitespace-nowrap text-[var(--mk-ink)] hover:bg-[var(--mk-blue)] hover:text-white';
   return (
     <div ref={box} className="relative">
-      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((was) => !was)} className={PBTN}>
-        <span aria-hidden>＋</span>Add
+      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((was) => !was)} className={PILL_BLUE}>
+        <span aria-hidden>＋</span>Add asset
       </button>
       {open && (
-        <div role="menu" aria-label="Add" className="absolute top-full right-0 z-30 mt-1 min-w-[170px] rounded-[9px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[6px] shadow-[0_8px_24px_rgb(0_0_0/0.18)]">
+        <div role="menu" aria-label="Add" className="absolute top-full right-0 z-30 mt-[6px] min-w-[170px] rounded-[12px] bg-[var(--mk-page)] p-[6px] shadow-[0_8px_28px_rgb(0_0_0/0.18)] ring-1 ring-[var(--mk-line)]">
           <Link role="menuitem" to="/net-worth/assets/new" className={item} onClick={() => setOpen(false)}>
             Asset…
           </Link>
@@ -583,11 +615,14 @@ function AddMenu() {
 }
 
 /** One of the Investments box's figures: what it is on the left, the figure on the right. */
-function Figure({ label, testId, tone, children }: { label: string; testId: string; tone?: 'up' | 'down'; children: React.ReactNode }) {
+function Figure({ label, testId, tone, children }: { label: string; testId: string; tone?: 'up' | 'down'; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-3 border-t border-[var(--ph-hair)] px-[14px] py-[7px] text-[13px] text-[var(--ph-ink)]">
+    <div className="mx-[20px] flex items-center gap-3 border-t border-[var(--mk-line)] py-[8px] text-[13.5px] text-[var(--mk-ink)]">
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span data-testid={testId} className={cx('shrink-0 whitespace-nowrap tabular-nums', tone === 'up' && 'text-[var(--ph-up)]', tone === 'down' && 'text-[var(--ph-alarm)]')}>
+      <span
+        data-testid={testId}
+        className={cx('shrink-0 font-semibold whitespace-nowrap tabular-nums', tone === 'up' && 'text-[var(--mk-t-green)]', tone === 'down' && 'text-[var(--mk-t-red)]')}
+      >
         {children}
       </span>
     </div>
@@ -595,15 +630,15 @@ function Figure({ label, testId, tone, children }: { label: string; testId: stri
 }
 
 /**
- * A side of the sheet: its treemap strip (one box a kind, the largest first and showing its amount; Investments split
- * inside by holding type), then its table — a bold row a kind with its figure and share, folding with ▼, and its rows
- * under it — and the side's total. A click on a box or a row opens its peek; a double-click its page.
+ * A side of the sheet, v1's card: its total in the heading, then each kind as a group — its name in grey small capitals
+ * with its total, folding with ▾ — and its rows under it, a name and a figure. A click on a group or a row opens its peek;
+ * a double-click its page. The Debts card ends with Debts against assets. v2 adds the treemap strip over it (one box a
+ * kind, Investments split inside by holding type), each kind's share and each row's kind.
  */
-function SideBox({
+function SideCard({
   side,
   data,
-  totalLabel,
-  totalTestId,
+  total,
   currency,
   lookOf,
   kindIcon,
@@ -616,11 +651,12 @@ function SideBox({
   together,
   destinationOf,
   empty,
+  debtShare,
 }: {
   side: 'asset' | 'debt';
   data: DeskSide;
-  totalLabel: string;
-  totalTestId: string;
+  /** The side's total, or null while one of its rows has no rate. */
+  total: number | null;
   currency: string;
   lookOf: (side: 'asset' | 'debt', kind: string) => KindLook;
   kindIcon: (kind: DeskKind, item: DeskKind['items'][number]) => KindLook['Glyph'];
@@ -633,62 +669,55 @@ function SideBox({
   together: (accountId: string) => boolean;
   destinationOf: (accountId: string) => ReturnType<typeof accountDestination> | undefined;
   empty: boolean;
+  debtShare?: number | null;
 }) {
   const debt = side === 'debt';
   const kindKey = (key: string): PeekKey => (debt ? `debt-kind:${key}` : `asset-kind:${key}`);
   const itemKey = (id: string): PeekKey => (debt ? `debt:${id}` : `asset:${id}`);
-  const boxes = treemapOf(data);
+  const boxes = macV2 ? treemapOf(data) : [];
   const below = data.kinds.filter((kind) => kind.totalMinor !== null && kind.totalMinor < 0);
-  let stripe = 0;
-  // The figures' column is as wide as its widest figure (never a share of the box), so no figure is cut at any width.
-  const widest = Math.max(
-    formatMinor(data.totalMinor, currency).length,
-    ...data.kinds.flatMap((kind) => [formatMinor(kind.totalMinor ?? 0, currency).length, ...kind.items.map((item) => formatMinor(item.minor ?? 0, currency).length + (item.approx ? 2 : 0))]),
-  );
-  const figureWidth = Math.ceil(widest * 7.6 + 22);
+  const Icon = debt ? CreditCard : Landmark;
   return (
-    <section className={cx(BOX, 'min-w-0 overflow-hidden')} aria-label={debt ? 'Debts' : 'Assets'} data-testid={debt ? 'debts-box' : 'assets-box'}>
+    <section className={cx(CARD, 'min-w-0 overflow-hidden pb-[12px]')} aria-label={debt ? 'Debts' : 'Assets'} data-testid={debt ? 'debts-box' : 'assets-box'}>
       <h2 className={H2}>
+        <Icon size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
         <Link to={debt ? '/net-worth/loans' : '/net-worth/assets'} className="hover:underline">
           {debt ? 'Debts' : 'Assets'}
         </Link>
-        <span className={NOTE}>{debt ? 'all that is owed' : 'click a row to see it · ▼ folds'}</span>
+        <span className="ml-auto flex min-w-0 items-baseline gap-[10px]">
+          {macV2 && <span className="truncate text-[12.5px] font-semibold">{debt ? 'all that is owed' : 'click a row to see it · ▼ folds'}</span>}
+          {total !== null && data.kinds.length > 0 && (
+            <span data-testid={`${side}-card-total`} className="shrink-0 text-[14px] font-bold text-[var(--mk-ink)] tabular-nums">
+              {tileMoney(total, currency)}
+            </span>
+          )}
+        </span>
       </h2>
       {boxes.length > 0 && <Treemap side={side} boxes={boxes} currency={currency} lookOf={lookOf} peekKey={peekKey} onPick={(key) => onRow(kindKey(key))} onOpen={(key) => onOpen(kindKey(key))} />}
-      {below.length > 0 && (
-        <p data-testid={`${side}-below-zero`} className="px-[14px] pb-[8px] text-[11.5px] text-[var(--ph-ink-3)]">
+      {macV2 && below.length > 0 && (
+        <p data-testid={`${side}-below-zero`} className="px-[20px] pb-[8px] text-[12px] text-[var(--mk-ink-2)]">
           {below.map((kind) => `${kind.label} is below zero at ${formatMinor(kind.totalMinor!, currency)}`).join(' · ')}, so the strip divides the rest.
         </p>
       )}
       {empty && (
-        <p className="px-[14px] pb-[12px] text-[13px] text-[var(--ph-ink-3)]">
+        <p className="px-[20px] pb-[8px] text-[13px] text-[var(--mk-ink-2)]">
           Nothing yet. Accounts and cards are added on{' '}
-          <Link to="/wallet" className="text-[var(--mac-accent)] hover:underline">
+          <Link to="/wallet" className="text-[var(--mk-blue)] hover:underline">
             Wallet
           </Link>
-          ; a house, a car, gold or a fund with ＋ Add.
+          ; a house, a car, gold or a fund with ＋ Add asset.
         </p>
       )}
       {data.kinds.length > 0 && (
-        <table className="w-full table-fixed border-collapse text-[13px]" data-testid={debt ? 'debts-table' : 'assets-table'}>
-          <thead>
-            <tr className="text-left">
-              <th className={cx(TH, 'pl-[14px]')}>{debt ? 'Debt' : 'Asset'}</th>
-              <th className={cx(TH, 'text-right')} style={{ width: figureWidth }}>
-                {debt ? 'Owed' : 'Value'}
-              </th>
-              <th className={cx(TH, 'w-[50px] pr-[14px] text-right')}>Share</th>
-            </tr>
-          </thead>
+        <div className="px-[12px]" data-testid={debt ? 'debts-table' : 'assets-table'}>
           {data.kinds.map((kind) => {
             const key = kindKey(kind.key);
             const open = !folded.has(key);
-            const look = lookOf(side, kind.key);
             const selected = peekKey === key;
             const unratedKind = kind.totalMinor === null;
             return (
-              <tbody key={kind.key}>
-                <tr
+              <div key={kind.key} role="group" aria-label={kind.label} className="pt-[8px]">
+                <div
                   data-networth-row
                   data-peek-row={key}
                   data-testid={debt ? `type-drawer-debts:${kind.key}` : `type-drawer-section-${kind.key}`}
@@ -696,34 +725,34 @@ function SideBox({
                   aria-selected={selected}
                   onClick={onRow(key)}
                   onDoubleClick={() => onOpen(key)}
-                  className={cx('cursor-default scroll-mt-[64px] scroll-mb-[16px]', selected ? 'bg-[var(--mac-accent)] text-white' : 'bg-[var(--ph-surface)] hover:bg-[var(--ph-fill)]')}
+                  className={cx(
+                    'flex cursor-default scroll-mt-[64px] scroll-mb-[16px] items-center gap-[6px] rounded-[9px] py-[5px] pr-[8px] pl-[2px]',
+                    selected ? 'bg-[var(--mk-blue)] text-white' : 'text-[var(--mk-ink-3)] hover:bg-[var(--mk-pill)]',
+                  )}
                 >
-                  <td className="py-[5px] pr-[8px] pl-[6px]">
-                    <span className="flex min-w-0 items-center gap-[6px]">
-                      <button
-                        type="button"
-                        aria-label={`${open ? 'Fold' : 'Unfold'} ${kind.label}`}
-                        aria-expanded={open}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onFold(key);
-                        }}
-                        onDoubleClick={(event) => event.stopPropagation()}
-                        className={cx('flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px]', selected ? 'text-white' : 'text-[var(--ph-ink-3)] hover:bg-[var(--ph-hair)]')}
-                      >
-                        {open ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
-                      </button>
-                      <RowIcon size={22} tint={tintOf(look.colour)}>
-                        <look.Glyph size={12} aria-hidden />
-                      </RowIcon>
-                      <b className="min-w-0 font-semibold break-words">{kind.label}</b>
-                    </span>
-                  </td>
-                  <td data-testid={`kind-total-${kind.key}`} className="px-[10px] py-[5px] text-right font-semibold whitespace-nowrap tabular-nums">
+                  <button
+                    type="button"
+                    aria-label={`${open ? 'Fold' : 'Unfold'} ${kind.label}`}
+                    aria-expanded={open}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onFold(key);
+                    }}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    className={cx('flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px]', selected ? 'text-white' : 'text-[var(--mk-ink-3)] hover:bg-[var(--mk-pill-hover)]')}
+                  >
+                    {open ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
+                  </button>
+                  <span className={cx(GROUP_HEAD, 'min-w-0 truncate')}>{kind.label}</span>
+                  {macV2 && !unratedKind && kind.totalMinor! > 0 && (
+                    <Tag tone="grey">
+                      {kind.share}%
+                    </Tag>
+                  )}
+                  <span data-testid={`kind-total-${kind.key}`} className={cx('ml-auto shrink-0 text-[13px] font-bold whitespace-nowrap tabular-nums', !selected && 'text-[var(--mk-ink-3)]')}>
                     {unratedKind ? '—' : formatMinor(kind.totalMinor!, currency)}
-                  </td>
-                  <td className={cx('py-[5px] pr-[14px] text-right tabular-nums', !selected && 'text-[var(--ph-ink-3)]')}>{unratedKind || kind.totalMinor! <= 0 ? '' : `${kind.share}%`}</td>
-                </tr>
+                  </span>
+                </div>
                 {open &&
                   kind.items.map((item) => {
                     const rowKey = itemKey(item.accountId);
@@ -733,10 +762,9 @@ function SideBox({
                     const to = destinationOf(item.accountId);
                     const figure =
                       item.minor === null && owner?.native ? formatMinor(owner.native.minor, owner.native.currency) : item.minor === null ? '—' : `${item.approx ? '≈ ' : ''}${formatMinor(item.minor, currency)}`;
-                    const striped = stripe++ % 2 === 1;
                     const name = owner?.received ? `${owner.name}'s ${item.name}, ${figure}` : `${item.name}, ${figure}`;
                     return (
-                      <tr
+                      <div
                         key={item.accountId}
                         data-networth-row
                         data-peek-row={rowKey}
@@ -744,56 +772,56 @@ function SideBox({
                         aria-selected={on}
                         onClick={onRow(rowKey)}
                         onDoubleClick={() => onOpen(rowKey)}
-                        className={cx('cursor-default scroll-mt-[64px] scroll-mb-[16px]', on ? 'bg-[var(--mac-accent)] text-white' : striped ? 'bg-[var(--mac-zebra)]' : undefined)}
+                        className={cx(
+                          'flex cursor-default scroll-mt-[64px] scroll-mb-[16px] items-center gap-[9px] rounded-[9px] py-[5px] pr-[8px] pl-[8px] text-[14px]',
+                          on ? 'bg-[var(--mk-blue)] text-white' : 'text-[var(--mk-ink)] hover:bg-[var(--mk-pill)]',
+                        )}
                       >
-                        <td className="py-[4px] pr-[8px] pl-[34px]">
-                          <span className="flex min-w-0 items-center gap-[7px]">
-                            <RowIcon size={20} ring={owner?.ring ?? undefined} mark={together(item.accountId)}>
-                              <Glyph size={11} aria-hidden />
-                            </RowIcon>
-                            {to ? (
-                              <Link
-                                {...(to as { to: '/net-worth' })}
-                                aria-label={name}
-                                draggable={false}
-                                onClick={onRow(rowKey)}
-                                onDoubleClick={(event) => {
-                                  event.stopPropagation();
-                                  onOpen(rowKey);
-                                }}
-                                className="min-w-0 shrink truncate"
-                              >
-                                {item.name}
-                              </Link>
-                            ) : (
-                              <span className="min-w-0 truncate">{item.name}</span>
-                            )}
-                            {item.kind.label !== kind.label && <span className={cx('hidden min-w-0 shrink-[100] truncate text-[11.5px] @min-[560px]:inline', on ? 'text-white/80' : 'text-[var(--ph-ink-3)]')}>{item.kind.label}</span>}
-                          </span>
-                        </td>
-                        <td className="px-[10px] py-[4px] text-right whitespace-nowrap tabular-nums">{figure}</td>
-                        <td />
-                      </tr>
+                        <RowIcon size={20} ring={owner?.ring ?? undefined} mark={together(item.accountId)}>
+                          <Glyph size={11} aria-hidden />
+                        </RowIcon>
+                        <span className="flex min-w-0 flex-1 items-baseline gap-[6px]">
+                          {to ? (
+                            <Link
+                              {...(to as { to: '/net-worth' })}
+                              aria-label={name}
+                              draggable={false}
+                              onClick={onRow(rowKey)}
+                              onDoubleClick={(event) => {
+                                event.stopPropagation();
+                                onOpen(rowKey);
+                              }}
+                              className="min-w-0 shrink truncate"
+                            >
+                              {item.name}
+                            </Link>
+                          ) : (
+                            <span className="min-w-0 truncate">{item.name}</span>
+                          )}
+                          {macV2 && item.kind.label !== kind.label && (
+                            <span className={cx('hidden min-w-0 shrink-[100] truncate text-[12px] @min-[560px]:inline', on ? 'text-white/80' : 'text-[var(--mk-ink-2)]')}>{item.kind.label}</span>
+                          )}
+                        </span>
+                        <span className="shrink-0 font-semibold whitespace-nowrap tabular-nums">{figure}</span>
+                      </div>
                     );
                   })}
-              </tbody>
+              </div>
             );
           })}
-          <tbody>
-            <tr className="border-t border-[var(--ph-hair)] bg-[var(--ph-surface)]">
-              <td className="py-[7px] pl-[14px] font-semibold">{totalLabel}</td>
-              <td data-testid={totalTestId} className="px-[10px] py-[7px] text-right font-semibold whitespace-nowrap tabular-nums">
-                {figureOf(data.totalMinor, data.kinds.flatMap((kind) => kind.items.map((item) => item.accountId)), new Set(data.kinds.flatMap((kind) => kind.items.filter((item) => item.minor === null).map((item) => item.accountId)))) === null
-                  ? '—'
-                  : formatMinor(data.totalMinor, currency)}
-              </td>
-              <td />
-            </tr>
-          </tbody>
-        </table>
+        </div>
       )}
-      {debt && data.kinds.some((kind) => kind.key === 'credit_card' || kind.items.some((item) => item.kind.key === 'credit_card')) && (
-        <p data-testid="debts-card-note" className="border-t border-[var(--ph-hair)] px-[14px] py-[8px] text-[11.5px] text-[var(--ph-ink-3)]">
+      {debt && debtShare !== null && debtShare !== undefined && data.kinds.length > 0 && (
+        <div className="mx-[20px] mt-[12px]" data-testid="debts-against-assets">
+          <p className={cx(GROUP_HEAD, 'flex items-baseline justify-between text-[var(--mk-ink-3)]')}>
+            Debts against assets
+            <span className="tracking-normal tabular-nums">{debtShare}%</span>
+          </p>
+          <Track share={debtShare / 100} colour="var(--mk-c-red)" className="mt-[8px]" />
+        </div>
+      )}
+      {macV2 && debt && data.kinds.some((kind) => kind.key === 'credit_card' || kind.items.some((item) => item.kind.key === 'credit_card')) && (
+        <p data-testid="debts-card-note" className="mx-[20px] mt-[12px] text-[12px] text-[var(--mk-ink-2)]">
           Cards count everything owed here, instalments included (Wallet shows only what is due now).
         </p>
       )}
@@ -825,7 +853,7 @@ function Treemap({
 }) {
   const [ref, width] = useBoxWidth<HTMLDivElement>();
   return (
-    <div ref={ref} role="group" aria-label={side === 'debt' ? 'Debts by kind' : 'Assets by kind'} data-testid={`${side}-treemap`} className="relative mx-[14px] mb-[10px] overflow-hidden rounded-[8px]" style={{ height: TREEMAP_HEIGHT }}>
+    <div ref={ref} role="group" aria-label={side === 'debt' ? 'Debts by kind' : 'Assets by kind'} data-testid={`${side}-treemap`} className="relative mx-[20px] mb-[6px] overflow-hidden rounded-[12px]" style={{ height: TREEMAP_HEIGHT }}>
       {width > 0 &&
         boxes.map((box, index) => {
           const look = lookOf(side, box.key);
@@ -850,7 +878,7 @@ function Treemap({
                 left: `${box.left}%`,
                 width: `${box.width}%`,
                 background: tint.background,
-                boxShadow: selected ? 'inset 0 0 0 2px var(--mac-accent)' : 'inset 0 0 0 1px var(--ph-surface)',
+                boxShadow: selected ? 'inset 0 0 0 2px var(--mk-blue)' : 'inset 0 0 0 1.5px var(--mk-card)',
               }}
             >
               {box.parts.length > 0 &&

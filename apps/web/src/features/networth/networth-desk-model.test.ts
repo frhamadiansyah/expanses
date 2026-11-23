@@ -1,6 +1,6 @@
 import { balanceSheet, type SheetRow } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { assetSide, debtSide, monthTicks, peekOrder, stripLayout, treemapOf, treemapStrip, wholeShares, yearChange } from './networth-desk-model';
+import { assetSide, debtsAgainstAssets, debtSide, monthChange, monthTicks, peekOrder, sheetLine, stripLayout, treemapOf, treemapStrip, wholeShares, yearChange } from './networth-desk-model';
 import type { RowKind } from './sheet-drawers';
 
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0);
@@ -220,5 +220,49 @@ describe('monthTicks', () => {
     expect(long.at(-1)).toBe(59);
     expect(long.length).toBeLessThanOrEqual(17);
     expect(monthTicks(0, 600)).toEqual([]);
+  });
+});
+
+describe('monthChange', () => {
+  const point = (month: string, netWorthMinor: number | null, assetsMinor = 1) => ({ month, netWorthMinor, assetsMinor, liabilitiesMinor: 0 });
+
+  it('is today against last month’s month-end, with its per cent and the month named', () => {
+    const points = [point('2025-11', 1_000_000_000), point('2026-10', 1_836_000_000)];
+    expect(monthChange(points, '2026-11', 1_875_000_000)).toEqual({ changeMinor: 39_000_000, percent: 2.1, since: 'October' });
+  });
+
+  it('reads a fall as a fall', () => {
+    expect(monthChange([point('2026-10', 2_000_000)], '2026-11', 1_900_000)).toEqual({ changeMinor: -100_000, percent: -5, since: 'October' });
+  });
+
+  it('says nothing without last month’s figure, or when nothing was held then', () => {
+    expect(monthChange([point('2026-09', 1_000)], '2026-11', 2_000)).toBeNull();
+    expect(monthChange([point('2026-10', null)], '2026-11', 2_000)).toBeNull();
+    expect(monthChange([point('2026-10', 0, 0)], '2026-11', 2_000)).toBeNull();
+  });
+
+  it('leaves the per cent out when last month was not above nothing; January looks back to December', () => {
+    expect(monthChange([point('2026-10', -500)], '2026-11', 500)).toEqual({ changeMinor: 1_000, percent: null, since: 'October' });
+    expect(monthChange([point('2025-12', 100)], '2026-01', 110)?.since).toBe('December');
+  });
+});
+
+describe('debtsAgainstAssets', () => {
+  it('is what is owed as a whole per cent of what is held', () => {
+    expect(debtsAgainstAssets(440, 2_310)).toBe(19);
+    expect(debtsAgainstAssets(0, 2_310)).toBe(0);
+    expect(debtsAgainstAssets(3_000, 1_000)).toBe(300);
+  });
+
+  it('has nothing to say with nothing held', () => {
+    expect(debtsAgainstAssets(100, 0)).toBeNull();
+    expect(debtsAgainstAssets(100, -5)).toBeNull();
+  });
+});
+
+describe('sheetLine', () => {
+  const kind = (count: number) => ({ key: 'k', label: 'K', totalMinor: 0, share: 0, parts: [], items: Array.from({ length: count }, (_, i) => ({ accountId: `a${i}`, name: 'x', minor: 0, kind: { key: 'k', label: 'K' }, approx: false })) });
+  it('names the day and counts each side’s rows', () => {
+    expect(sheetLine('2026-11-21', { kinds: [kind(5), kind(3)], totalMinor: 0 }, { kinds: [kind(1)], totalMinor: 0 })).toBe('21 November 2026 · 8 assets · 1 debt');
   });
 });

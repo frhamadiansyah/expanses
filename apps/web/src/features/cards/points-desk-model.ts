@@ -151,3 +151,18 @@ export function expiringRows<T extends { name: string; unit: string; expiry: Nex
 
 /** The singular a value per point is said in: "at Rp 200 a mile". Cashback is money already, so it has none. */
 export const PER_UNIT: Record<PointsUnit, string | null> = { points: 'point', miles: 'mile', cashback: null };
+
+/**
+ * The title's line (Mac v1): "3 programmes · worth Rp 1,2 jt" — the worth being the Worth tile's total, said only when at
+ * least one programme has a value per point or a redemption to go by (otherwise "worth Rp 0" would read as a fact).
+ */
+export function pointsLine(count: number, worth: Pick<WorthBox, 'totalMinor' | 'units'>, money: (minor: number) => string): string {
+  const programmes = `${count} ${count === 1 ? 'programme' : 'programmes'}`;
+  return worth.units.length > 0 ? `${programmes} · worth ${money(worth.totalMinor)}` : programmes;
+}
+
+/** The Expiring soon tile: how many programmes lose points within the phone's warning window, and the first of them. */
+export function expiringSoon<T extends { name: string; expiry: NextExpiry | null }>(rows: readonly T[]): { count: number; first: (T & { expiry: NextExpiry }) | null } {
+  const soon = rows.filter((row): row is T & { expiry: NextExpiry } => row.expiry?.soon === true).sort((a, b) => a.expiry.on.localeCompare(b.expiry.on) || a.name.localeCompare(b.name));
+  return { count: soon.length, first: soon[0] ?? null };
+}

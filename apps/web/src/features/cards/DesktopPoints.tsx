@@ -16,21 +16,20 @@ import { useApp } from '../../app/context';
 import { DeskNotices } from '../../app/DeskNotices';
 import { cx, ErrorBox } from '../../ui';
 import { useBoxWidth } from '../networth/DeskNetWorthChart';
-import { BOX, BoxHead } from '../transactions/CashflowBoxes';
 import { useCardIdentities, useProgrammeTiers } from './card-queries';
 import { formatPoints } from './format-points';
-import { earnedByMonth, type EarnedMonth, expiringRows, nextExpiry, pointsFaceRef, type PointsUnit, shortCount, tierLabel, UNIT_LABELS, worthBox } from './points-desk-model';
+import { earnedByMonth, type EarnedMonth, expiringRows, expiringSoon, nextExpiry, pointsFaceRef, pointsLine, type PointsUnit, shortCount, tierLabel, UNIT_LABELS, worthBox } from './points-desk-model';
 import { PointsPeek } from './PointsPeek';
 import { type DeskProgramme, ProgrammeFace, SMALL_FACE } from './programme-face';
 import { balanceText, earnersLine, expiryNote } from './programme-text';
 import { AddProgrammeSheet } from './ProgrammeSheets';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
-import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
+import { Award, Coins, Hourglass, TrendingUp } from 'lucide-react';
+import { Card, DeskBar, DeskTitle, PILL, PILL_BLUE, StatTile, Tag, tileMoney } from '../../ui/desk';
+import { macV2 } from '../../ui/mac-detail';
 
-const GBTN = PILL;
-const PBTN = PILL_BLUE;
-const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-left text-[11px] font-semibold whitespace-nowrap text-[var(--ph-ink-3)]';
-const ROW = 'flex items-baseline gap-3 border-t border-[var(--ph-hair)] px-[14px] py-[7px] text-[13px]';
+const TH = 'border-b border-[var(--mk-line)] px-[10px] pt-[2px] pb-[8px] text-left text-[12px] font-semibold whitespace-nowrap text-[var(--mk-ink-3)]';
+const ROW = 'mx-[20px] flex items-baseline gap-3 border-t border-[var(--mk-line)] py-[8px] text-[13.5px] text-[var(--mk-ink)]';
 
 /**
  * Points on a wide screen (Mac Points, owner 2026-11-17, option A): a title bar with Which card? and ＋ Add programme;
@@ -171,83 +170,107 @@ export function DesktopPoints() {
     rows.flatMap((row) => row.history),
     today,
   );
+  const thisMonth = earned.at(-1)?.quantity ?? 0;
   const expiring = expiringRows(rows.map((row) => ({ id: row.id, name: row.programme.name, unit: row.programme.unit, expiry: row.expiry })));
+  const soon = expiringSoon(rows.map((row) => ({ id: row.id, name: row.programme.name, expiry: row.expiry })));
+  const unvalued = worth.unvalued > 0 ? `${worth.unvalued === 1 ? '1 programme' : `${worth.unvalued} programmes`} with no value per point` : null;
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="points-page" data-desk="true" {...doubleClick}>
       <DeskBar crumb="Points" barRef={bar}>
-        <Link to="/recommend" className={GBTN}>
+        <Link to="/recommend" className={PILL}>
           Which card?
         </Link>
-        <button type="button" className={PBTN} onClick={() => setAdding(true)}>
+        <button type="button" className={PILL_BLUE} onClick={() => setAdding(true)}>
           <span aria-hidden>＋</span>Add programme
         </button>
       </DeskBar>
       <DeskNotices />
-      <DeskTitle title="Points" />
+      <DeskTitle title="Points" line={data.isSuccess ? pointsLine(rows.length, worth, (minor) => tileMoney(minor, base)) : undefined} />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
       <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={data.error} />
         {rows.length > 0 && (
-          <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[560px]:grid-cols-2 @min-[900px]:grid-cols-3">
-            <section className={BOX} aria-label="Worth" data-testid="points-worth">
-              <BoxHead title="Worth" note="at each programme’s value per point" />
-              <div data-testid="points-worth-total" className="px-[14px] text-[24px] leading-[30px] font-semibold tabular-nums text-[var(--ph-ink)]">
-                {formatMinor(worth.totalMinor, base)}
-              </div>
-              <div className="mt-[6px] pb-[4px]">
+          // Three across down to the peek-open page (1280 wide); the kit's TileRow stacks them below 700.
+          <div className="grid grid-cols-1 gap-[16px] @min-[520px]:grid-cols-3" data-testid="points-tiles">
+            <StatTile
+              icon={Coins}
+              colour="gold"
+              testId="points-worth-tile"
+              valueTestId="points-worth-total"
+              value={worth.units.length > 0 ? formatMinor(worth.totalMinor, base) : '—'}
+              label={
+                <>
+                  Worth
+                  {unvalued && <span data-testid={macV2 ? undefined : 'points-worth-unvalued'}> · {unvalued}</span>}
+                </>
+              }
+            />
+            <StatTile icon={TrendingUp} colour="green" testId="points-earned-month" value={formatPoints(thisMonth)} label="Earned this month · all programmes" />
+            <StatTile
+              icon={Hourglass}
+              colour="orange"
+              testId="points-expiring-tile"
+              badge={soon.count > 0 ? <Tag tone="orange">{soon.count === 1 ? '1 programme' : `${soon.count} programmes`}</Tag> : undefined}
+              value={soon.first ? soon.first.expiry.text : 'None'}
+              label={soon.first ? `Expiring soon · ${soon.first.name}` : 'Expiring soon'}
+              onClick={soon.first ? () => setPeekId(soon.first!.id) : undefined}
+            />
+          </div>
+        )}
+
+        {/* v2: what the Worth tile adds up, by unit; what the cards earned each month; every expiry to come. */}
+        {macV2 && rows.length > 0 && (
+          <div className="grid grid-cols-1 items-stretch gap-[16px] @min-[560px]:grid-cols-2 @min-[900px]:grid-cols-3">
+            <Card title="Worth" icon={Coins} note="at each programme’s value per point" testId="points-worth">
+              <div className="pb-[10px]">
                 {worth.units.map((unit) => (
                   <div key={unit.unit} data-testid={`points-worth-${unit.unit}`} className={ROW}>
                     <span className="min-w-0 flex-1 truncate">{unit.label}</span>
-                    <span className="shrink-0 tabular-nums">{formatMinor(unit.minor, base)}</span>
+                    <span className="shrink-0 font-semibold tabular-nums">{formatMinor(unit.minor, base)}</span>
                   </div>
                 ))}
-                {worth.unvalued > 0 && (
-                  <div data-testid="points-worth-unvalued" className={cx(ROW, 'text-[var(--ph-ink-3)]')}>
-                    <span className="min-w-0 flex-1">
-                      {worth.unvalued === 1 ? '1 programme' : `${worth.unvalued} programmes`} with no value per point
-                    </span>
+                {unvalued && (
+                  <div data-testid="points-worth-unvalued" className={cx(ROW, 'text-[var(--mk-ink-2)]')}>
+                    <span className="min-w-0 flex-1">{unvalued}</span>
                     <span className="shrink-0">—</span>
                   </div>
                 )}
               </div>
-            </section>
-            {/* Two boxes a row in a narrower page (the peek open at 1280): Earned goes under them, the width of both. */}
-            <section className={cx(BOX, '@min-[560px]:order-last @min-[560px]:col-span-2 @min-[900px]:order-none @min-[900px]:col-span-1')} aria-label="Earned" data-testid="points-earned">
-              <BoxHead title="Earned" note="each month, all programmes" />
+            </Card>
+            {/* Two cards a row in a narrower page (the peek open at 1280): Earned goes under them, the width of both. */}
+            <Card
+              title="Earned"
+              icon={TrendingUp}
+              note="each month, all programmes"
+              testId="points-earned"
+              className="@min-[560px]:order-last @min-[560px]:col-span-2 @min-[900px]:order-none @min-[900px]:col-span-1"
+            >
               <EarnedBars months={earned} />
-            </section>
-            <section className={BOX} aria-label="Expiring soon" data-testid="points-expiring">
-              <BoxHead title="Expiring soon" />
-              <div className="pb-[4px]">
-                {expiring.length === 0 && <div className={cx(ROW, 'text-[var(--ph-ink-3)]')}>Nothing has a date to expire</div>}
+            </Card>
+            <Card title="Expiring soon" icon={Hourglass} testId="points-expiring">
+              <div className="pb-[10px]">
+                {expiring.length === 0 && <div className={cx(ROW, 'text-[var(--mk-ink-2)]')}>Nothing has a date to expire</div>}
                 {expiring.map((row) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    data-testid="points-expiring-row"
-                    onClick={() => setPeekId(row.id)}
-                    className={cx(ROW, 'w-full text-left hover:bg-[var(--ph-fill)]')}
-                  >
+                  <button key={row.id} type="button" data-testid="points-expiring-row" onClick={() => setPeekId(row.id)} className={cx(ROW, 'w-full text-left hover:bg-[var(--mk-pill)]')}>
                     <span className="min-w-[96px] flex-1 break-words">{row.name}</span>
-                    <span className={cx('max-w-[62%] text-right tabular-nums', row.expiry.soon ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-ink-3)]')}>{row.expiry.text}</span>
+                    <span className={cx('max-w-[62%] text-right tabular-nums', row.expiry.soon ? 'text-[var(--mk-t-orange)]' : 'text-[var(--mk-ink-2)]')}>{row.expiry.text}</span>
                   </button>
                 ))}
               </div>
-            </section>
+            </Card>
           </div>
         )}
 
-        <section className={cx(BOX, 'overflow-clip')} aria-label="Programmes" data-testid="points-programmes">
-          <BoxHead title="Programmes" note={rows.length > 0 ? 'click a programme to see it' : undefined} />
+        <Card title="Programmes" icon={Award} note={rows.length > 0 ? 'click a programme to see it' : undefined} testId="points-programmes" className="overflow-clip">
           {data.isSuccess && rows.length === 0 && (
-            <p className="px-[14px] pt-1 pb-4 text-[13px] text-[var(--ph-ink-3)]">
+            <p className="px-[20px] pt-1 pb-4 text-[13px] text-[var(--mk-ink-2)]">
               No programmes yet. A card set up with rewards earns into a programme of its own; an airline or hotel programme filled by conversions is added with Add programme.
             </p>
           )}
           {rows.length > 0 && <ProgrammeTable rows={rows} peekId={peekId} onRow={onRow} onOpen={open} />}
-        </section>
+        </Card>
       </div>
 
       {peeked && (
@@ -271,22 +294,22 @@ export function DesktopPoints() {
 /** Every programme, one row each: the small card and name, unit, balance, worth, tier, what expires next, who earns into it. */
 function ProgrammeTable({ rows, peekId, onRow, onOpen }: { rows: readonly DeskProgramme[]; peekId: string | null; onRow: (id: string) => (event: MouseEvent) => void; onOpen: (id: string) => void }) {
   return (
-    <table className="w-full border-collapse text-[13px]" data-testid="points-table">
+    <table className="mb-[8px] w-full border-collapse text-[13.5px]" data-testid="points-table">
       <thead>
         <tr>
-          <th className={cx(TH, 'pl-[14px]')}>Programme</th>
+          <th className={cx(TH, 'pl-[20px]')}>Programme</th>
           <th className={cx(TH, 'hidden @min-[860px]:table-cell')}>Unit</th>
           <th className={cx(TH, 'text-right')}>Balance</th>
           <th className={cx(TH, 'text-right')}>Worth</th>
           <th className={cx(TH, 'hidden @min-[860px]:table-cell')}>Tier</th>
-          <th className={cx(TH, 'pr-[14px] @min-[860px]:pr-[10px]')}>Expiring next</th>
-          <th className={cx(TH, 'hidden pr-[14px] @min-[860px]:table-cell')}>Earned with</th>
+          <th className={cx(TH, 'pr-[20px] @min-[860px]:pr-[10px]')}>Expiring next</th>
+          <th className={cx(TH, 'hidden pr-[20px] @min-[860px]:table-cell')}>Earned with</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row, index) => {
           const on = peekId === row.id;
-          const grey = on ? 'text-white/85' : 'text-[var(--ph-ink-3)]';
+          const grey = on ? 'text-white/85' : 'text-[var(--mk-ink-2)]';
           const tier = tierLabel(row.programme.name, row.tier);
           const unit = UNIT_LABELS[row.programme.unit as PointsUnit] ?? row.programme.unit;
           return (
@@ -299,9 +322,9 @@ function ProgrammeTable({ rows, peekId, onRow, onOpen }: { rows: readonly DeskPr
               aria-selected={on}
               onClick={onRow(row.id)}
               onDoubleClick={() => onOpen(row.id)}
-              className={cx('cursor-default scroll-mt-[64px] scroll-mb-[16px]', on ? 'bg-[var(--mac-accent)] text-white' : index % 2 === 1 ? 'bg-[var(--mac-zebra)]' : undefined)}
+              className={cx('cursor-default scroll-mt-[64px] scroll-mb-[16px]', on ? 'bg-[var(--mk-blue)] text-white' : 'hover:bg-[var(--mk-pill)]', index > 0 && !on && 'border-t border-[var(--mk-line)]')}
             >
-              <td className="py-[5px] pr-[10px] pl-[14px]">
+              <td className="py-[7px] pr-[10px] pl-[20px]">
                 <span className="flex min-w-0 items-center gap-[10px]">
                   <ProgrammeFace card={row.card} width={SMALL_FACE} selected={on} />
                   <Link
@@ -322,20 +345,20 @@ function ProgrammeTable({ rows, peekId, onRow, onOpen }: { rows: readonly DeskPr
                   </Link>
                 </span>
               </td>
-              <td className={cx('hidden px-[10px] py-[5px] @min-[860px]:table-cell', grey)}>{unit}</td>
-              <td data-testid="points-row-balance" className="px-[10px] py-[5px] text-right font-semibold whitespace-nowrap tabular-nums">
+              <td className={cx('hidden px-[10px] py-[7px] @min-[860px]:table-cell', grey)}>{unit}</td>
+              <td data-testid="points-row-balance" className="px-[10px] py-[7px] text-right font-semibold whitespace-nowrap tabular-nums">
                 {formatPoints(row.balance.total)}
                 {/* Under 860px the Unit column folds into the figure, so the count still says what it counts. */}
                 <span className={cx('font-normal @min-[860px]:hidden', grey)}> {row.programme.unit}</span>
               </td>
-              <td data-testid="points-row-worth" className={cx('px-[10px] py-[5px] text-right whitespace-nowrap tabular-nums', !row.worth && grey)}>
+              <td data-testid="points-row-worth" className={cx('px-[10px] py-[7px] text-right whitespace-nowrap tabular-nums', !row.worth && grey)}>
                 {row.worth ? formatMinor(row.worth.valueMinor, row.worth.currency) : '—'}
               </td>
-              <td className={cx('hidden px-[10px] py-[5px] @min-[860px]:table-cell', grey)}>{tier ?? '—'}</td>
-              <td data-testid="points-row-expiry" className={cx('py-[5px] pr-[14px] pl-[10px] tabular-nums @min-[860px]:pr-[10px]', row.expiry?.soon ? (on ? 'text-white' : 'text-[var(--ph-warn)]') : grey)}>
+              <td className={cx('hidden px-[10px] py-[7px] @min-[860px]:table-cell', grey)}>{tier ?? '—'}</td>
+              <td data-testid="points-row-expiry" className={cx('py-[7px] pr-[20px] pl-[10px] tabular-nums @min-[860px]:pr-[10px]', row.expiry?.soon ? (on ? 'text-white' : 'text-[var(--mk-t-orange)]') : grey)}>
                 {row.expiry?.text ?? '—'}
               </td>
-              <td className={cx('hidden py-[5px] pr-[14px] pl-[10px] @min-[860px]:table-cell', grey)}>{earnersLine(row.earners)}</td>
+              <td className={cx('hidden py-[7px] pr-[20px] pl-[10px] @min-[860px]:table-cell', grey)}>{earnersLine(row.earners)}</td>
             </tr>
           );
         })}
@@ -354,7 +377,7 @@ function EarnedBars({ months }: { months: readonly EarnedMonth[] }) {
   const barW = Math.min(28, slot - 12);
   const chart = 74;
   return (
-    <div ref={box} className="mx-[14px] pt-[4px] pb-[10px]">
+    <div ref={box} className="mx-[20px] pt-[4px] pb-[12px]">
       <svg viewBox={`0 0 ${width} 112`} width={width} height={112} className="block" role="img" aria-label={months.map((month) => `${month.label} ${formatPoints(month.quantity)}`).join(', ')} data-testid="points-earned-bars">
         {months.map((month, index) => {
           const h = month.quantity > 0 ? Math.max(2, (month.quantity / top) * chart) : 0;
@@ -363,10 +386,10 @@ function EarnedBars({ months }: { months: readonly EarnedMonth[] }) {
           return (
             <g key={month.month}>
               {h > 0 && <rect x={x} y={y} width={barW} height={h} rx={3} fill="var(--mac-accent)" opacity={month.current ? 0.55 : 1} />}
-              <text x={x + barW / 2} y={y - 4} fontSize={9.5} textAnchor="middle" fill="var(--ph-ink)">
+              <text x={x + barW / 2} y={y - 4} fontSize={9.5} textAnchor="middle" fill="var(--mk-ink)">
                 {month.quantity > 0 ? shortCount(month.quantity) : ''}
               </text>
-              <text x={x + barW / 2} y={16 + chart + 16} fontSize={10} textAnchor="middle" fill="var(--ph-ink-3)">
+              <text x={x + barW / 2} y={16 + chart + 16} fontSize={10} textAnchor="middle" fill="var(--mk-ink-3)">
                 {month.label}
               </text>
             </g>

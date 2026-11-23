@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FACES as BANK_FACES } from './debit-art/faces.generated';
 import { programmeFaceRef } from './programme-art/programmes';
-import { earnedByMonth, expiringRows, nextExpiry, pointsFaceRef, shortCount, tierLabel, worthBox } from './points-desk-model';
+import { earnedByMonth, expiringRows, expiringSoon, nextExpiry, pointsFaceRef, pointsLine, shortCount, tierLabel, worthBox } from './points-desk-model';
 
 describe('pointsFaceRef: the face a programme wears on the Mac Points page', () => {
   it('a programme a membership family knows is that card at its tier, exactly as the iPhone draws it', () => {
@@ -126,5 +126,32 @@ describe('nextExpiry and the Expiring soon box', () => {
       { name: 'Jenius', unit: 'cashback', expiry: null },
     ]);
     expect(rows.map((row) => row.name)).toEqual(['BCA Rewards', 'KrisFlyer']);
+  });
+});
+
+describe('pointsLine', () => {
+  const money = (minor: number) => `Rp ${minor}`;
+  it('counts the programmes and says what they are worth, the Worth tile’s own total', () => {
+    const worth = worthBox([{ unit: 'miles', worth: { valueMinor: 900, currency: 'IDR' } }, { unit: 'points', worth: { valueMinor: 300, currency: 'IDR' } }], 'IDR');
+    expect(pointsLine(2, worth, money)).toBe('2 programmes · worth Rp 1200');
+  });
+  it('leaves the worth out when no programme has a value to go by', () => {
+    expect(pointsLine(1, worthBox([{ unit: 'points', worth: null }], 'IDR'), money)).toBe('1 programme');
+  });
+});
+
+describe('expiringSoon', () => {
+  const lot = (on: string, soon: boolean) => ({ on, remaining: 10, soon, text: '' });
+  it('counts only what expires within the warning window, the soonest first', () => {
+    const rows = [
+      { name: 'B', expiry: lot('2026-12-31', true) },
+      { name: 'A', expiry: lot('2026-12-15', true) },
+      { name: 'C', expiry: lot('2027-03-01', false) },
+      { name: 'D', expiry: null },
+    ];
+    const soon = expiringSoon(rows);
+    expect(soon.count).toBe(2);
+    expect(soon.first?.name).toBe('A');
+    expect(expiringSoon([{ name: 'C', expiry: lot('2027-03-01', false) }])).toEqual({ count: 0, first: null });
   });
 });

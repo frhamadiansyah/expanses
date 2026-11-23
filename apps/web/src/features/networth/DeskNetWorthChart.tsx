@@ -100,9 +100,12 @@ function Line({ months, width, height, currency }: { months: readonly DeskChartM
           {chart.ticks.map((tick) => (
             <g key={tick.value}>
               <line x1={GUTTER} x2={chart.plotRight} y1={tick.y} y2={tick.y} stroke="var(--ph-hair)" strokeWidth={1} />
-              <text x={GUTTER - 6} y={tick.y + 3.5} textAnchor="end" fontSize={10} fill="var(--ph-ink-3)">
-                {shortMoney(tick.value, currency)}
-              </text>
+              {/* A tick at the plot's floor would print over the first month's name: the foot has that corner. */}
+              {tick.y < height - FOOT - 6 && (
+                <text x={GUTTER - 6} y={tick.y + 3.5} textAnchor="end" fontSize={10} fill="var(--ph-ink-3)">
+                  {shortMoney(tick.value, currency)}
+                </text>
+              )}
             </g>
           ))}
         </g>
