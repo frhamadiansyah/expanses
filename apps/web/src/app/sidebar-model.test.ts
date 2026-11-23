@@ -256,7 +256,7 @@ describe('which pages run edge to edge', () => {
     expect(edgeToEdge('/accounts/a1', true)).toBe(false);
     expect(edgeToEdge('/cards/c1', false)).toBe(true);
     expect(edgeToEdge('/cards/c1', true)).toBe(false);
-    for (const path of ['/accounts/new', '/accounts/add', '/accounts/a1/move', '/accounts/a1/pocket', '/cards/merchants', '/cards/c1/statement', '/cards/c1/settings']) {
+    for (const path of ['/accounts/new', '/accounts/add', '/accounts/a1/move', '/accounts/a1/pocket', '/cards/merchants', '/cards/new', '/cards/c1/statement', '/cards/c1/settings']) {
       expect(edgeToEdge(path, false)).toBe(false);
     }
     expect(edgeToEdge('/cards/points', false)).toBe(true);

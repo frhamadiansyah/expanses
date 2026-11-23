@@ -292,9 +292,9 @@ const EDGE_TO_EDGE_WIDE = [
 const EDGE_TO_EDGE_PATTERNS = [
   /^\/events\/[^/]+$/,
   // An account's and a card's own page (Mac account pages): not the static pages beside them (New account, Add, Points,
-  // Merchants). A kind with no Mac page (a deposit, a debit card) brings the column itself (`DeskColumn`).
+  // Merchants, New card). A kind with no Mac page (a deposit, a debit card) brings the column itself (`DeskColumn`).
   /^\/accounts\/(?!new$|add$)[^/]+$/,
-  /^\/cards\/(?!points$|merchants$)[^/]+$/,
+  /^\/cards\/(?!points$|merchants$|new$)[^/]+$/,
   /^\/account\/devices\/[^/]+$/,
 ];
 export function edgeToEdge(pathname: string, phoneShell: boolean, accountScoped = false): boolean {
