@@ -154,8 +154,10 @@ export function Layout() {
         <div className={ownBar ? cx('w-full', deskBar && 'mk') : phoneShell ? 'desk-column mx-auto max-w-4xl p-4 md:p-8' : 'desk-column mk mk-col w-full max-w-[1000px] pb-8'}>
           {/* A Mac page with its own title bar draws the notices under it; every other page has them here, above it. */}
           {!deskBar && (phoneShell ? <AppNotices /> : <DeskNotices column />)}
-          {/* The column's screens take back its padding to paint their own ground (`ph-screen`, -m-8), so it is kept as they expect. */}
-          {phoneShell ? <Outlet /> : <div className="mk-col-body">{<Outlet />}</div>}
+          {/* The column's screens take back its padding to paint their own ground (`ph-screen`, -m-8), so it is kept as they expect.
+              A Mac page with its own bar is edge to edge (as under a form's panel), and keeps the phone's place in the tree:
+              a window crossing the phone's width does not mount the page again. */}
+          {phoneShell || ownBar ? <Outlet /> : <div className="mk-col-body">{<Outlet />}</div>}
         </div>
         )}
       </main>
