@@ -12,7 +12,9 @@ import { chartColour, OTHER_COLOUR } from '../transactions/category-colours';
 import { shortDate } from '../transactions/quick-row';
 import { useOpenReceipt } from '../transactions/ReceiptPeekHost';
 import { addSpendingTarget } from './buy-item';
-import { AddCostLink, BoxRow, EventDesk, EventTitleBar, PlanBox, PlanTable, TableTabs, TD, TH } from './DeskEventParts';
+import { AddCostLink, BoxRow, EventDesk, EventTiles, EventTitleBar, PlanBox, PlanTable, TABLE_WRAP, TableTabs, TD, TH } from './DeskEventParts';
+import { macV2 } from '../../ui/mac-detail';
+import { PILL_SMALL } from '../../ui/desk';
 import { eventDates } from './event-dates';
 import { sharedChip, splitCostsBox } from './events-desk-model';
 import { FinishSharing } from './FinishSharing';
@@ -76,7 +78,9 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
   const offerSettle = (p: NamedPayment) => mine.has(p) || !view.people.some((x) => x.hasApp && (x.personId === p.fromPersonId || x.personId === p.toPersonId));
   const others = view.people.filter((person) => !person.isMe && !person.removed).map((person) => ({ name: person.name, initials: person.initials }));
 
-  const planBox = showPlan && planData && planTotals && planData.itemCount > 0;
+  const hasPlan = showPlan && planData && planTotals && planData.itemCount > 0;
+  // v1 says the plan's figures in the tiles over the boxes; the Plan box itself is v2's.
+  const planBox = hasPlan && macV2;
   const boxes = 1 + (planBox ? 1 : 0) + (split ? 1 : 0);
   const grid =
     boxes === 3
@@ -101,7 +105,7 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
         <ErrorBox error={plan.error} />
         {locked ? null : <FinishSharing view={view} />}
         {readOnly && (
-          <p data-testid="shared-event-read-only" className="rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] px-[14px] py-[9px] text-[13px] text-[var(--ph-ink-2)]">
+          <p data-testid="shared-event-read-only" className="rounded-[14px] bg-[var(--mk-card)] px-[16px] py-[10px] text-[13.5px] text-[var(--mk-ink-2)]">
             {readOnlyLine(view)}
           </p>
         )}
@@ -110,17 +114,26 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
             type="button"
             data-testid="take-over-row"
             onClick={() => setTakingOver(true)}
-            className="flex w-full items-center justify-between rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] px-[14px] py-[9px] text-left text-[13px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]"
+            className="flex w-full items-center justify-between rounded-[14px] bg-[var(--mk-t-orange-bg)] px-[16px] py-[10px] text-left text-[13.5px] font-semibold text-[var(--mk-t-orange)] hover:opacity-90"
           >
             <span>
-              {waiting} <span className="text-[var(--ph-ink-3)]">· Choose the account for each</span>
+              {waiting} <span className="font-normal">· Choose the account for each</span>
             </span>
-            <span aria-hidden className="text-[var(--ph-chevron)]">
+            <span aria-hidden>
               ›
             </span>
           </button>
         )}
-        <div className={cx('grid items-stretch gap-[14px]', grid)}>
+        {hasPlan && (
+          <EventTiles
+            spentMinor={view.spentMinor}
+            totals={{ plannedMinor: planTotals.plannedMinor, plannedSpentMinor: planTotals.boughtMinor, toBuyMinor: planTotals.toBuyMinor }}
+            boughtCount={planData.boughtCount}
+            itemCount={planData.itemCount}
+            currency={view.currency}
+          />
+        )}
+        <div className={cx('grid items-stretch gap-[16px]', grid)}>
           <RingBox
             kind="expense"
             title="Spent by category"
@@ -169,9 +182,9 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
                     {formatMinor(split.shareMinor, view.currency)}
                   </BoxRow>
                 </dl>
-                <div className="px-[10px] pt-[4px] pb-[10px]">
+                <div className="px-[10px] pt-[4px] pb-[12px]">
                   {view.payments.length === 0 ? (
-                    <p data-testid="split-settled" className="px-[4px] py-[4px] text-[12.5px] text-[var(--ph-ink-3)]">
+                    <p data-testid="split-settled" className="px-[4px] py-[4px] text-[13px] text-[var(--mk-ink-2)]">
                       Nobody owes anything.
                     </p>
                   ) : (
@@ -179,15 +192,15 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
                       <div
                         key={`${p.fromPersonId}-${p.toPersonId}`}
                         data-testid="shared-payment-row"
-                        className="mt-[6px] flex items-center justify-between gap-[10px] rounded-[8px] bg-[var(--ph-warn-panel)] px-[10px] py-[7px] text-[13px] text-[var(--ph-warn-ink)]"
+                        className="mt-[6px] flex min-h-[38px] items-center justify-between gap-[10px] rounded-[12px] bg-[var(--mk-t-orange-bg)] px-[12px] py-[6px] text-[13px] text-[var(--mk-t-orange)]"
                       >
-                        <span className="min-w-0 font-medium">{paymentLine(p, view.currency)}</span>
+                        <span className="min-w-0 font-semibold">{paymentLine(p, view.currency)}</span>
                         {offerSettle(p) && !locked && (
                           <button
                             type="button"
                             aria-label={`Settle up: ${paymentLine(p, view.currency)}`}
                             onClick={() => setSettling(p)}
-                            className="shrink-0 rounded-[6px] border border-current bg-[var(--ph-surface)] px-[8px] py-[2px] text-[12px] font-medium"
+                            className={cx(PILL_SMALL, 'bg-[var(--mk-page)]')}
                           >
                             Settle up
                           </button>
@@ -202,7 +215,7 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
         </div>
 
         <section className={cx(BOX, 'overflow-clip')} aria-label="Event table" data-testid="event-table-box">
-          <div className="flex items-center gap-[10px] px-[14px] py-[9px]">
+          <div className="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[10px]">
             <TableTabs
               value={showPlan ? table : 'transactions'}
               onChange={setTable}
@@ -212,9 +225,9 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
               ]}
             />
             {picked !== null && table === 'transactions' && (
-              <span className="flex items-center gap-[6px] text-[12px] text-[var(--ph-ink-2)]">
+              <span className="flex items-center gap-[6px] text-[13px] text-[var(--mk-ink-2)]">
                 <span data-testid="event-filter">Only {slices.find((slice) => slice.key === picked)?.label ?? 'one category'}</span>
-                <button type="button" onClick={() => setPicked(null)} className="text-[var(--mac-accent)] hover:underline">
+                <button type="button" onClick={() => setPicked(null)} className="font-semibold text-[var(--mk-blue)] hover:underline">
                   Show all
                 </button>
               </span>
@@ -222,6 +235,7 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
             <span className="flex-1" />
             <span className={NOTE}>{table === 'plan' ? 'click a cost to change it on every phone' : 'click a row to open it'}</span>
           </div>
+          <div className={TABLE_WRAP}>
           {table === 'plan' && showPlan ? (
             planData ? (
               <PlanTable
@@ -238,9 +252,9 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
               />
             ) : null
           ) : records.length === 0 ? (
-            <p className="border-t border-[var(--ph-hair)] px-[14px] py-[12px] text-[13px] text-[var(--ph-ink-3)]">Nothing recorded on the trip yet.</p>
+            <p className="px-[6px] pt-[2px] pb-[10px] text-[13.5px] text-[var(--mk-ink-2)]">Nothing recorded on the trip yet.</p>
           ) : (
-            <table className="w-full table-fixed border-collapse text-[13px]" data-testid="event-transactions">
+            <table className="w-full table-fixed border-collapse text-[13.5px]" data-testid="event-transactions">
               <colgroup>
                 <col className="w-[80px]" />
                 <col />
@@ -258,13 +272,12 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
                 </tr>
               </thead>
               <tbody>
-                {records.map(({ date, item }, index) => (
+                {records.map(({ date, item }) => (
                   <SharedRecordRow
                     key={recordKey(item)}
                     date={date}
                     item={item}
                     view={view}
-                    zebra={index % 2 === 1}
                     mark={mark}
                     onOpen={open(item)}
                   />
@@ -272,6 +285,7 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
               </tbody>
             </table>
           )}
+          </div>
         </section>
       </div>
       {opened && view.splitCosts ? <SettlementSheet view={view} settlement={opened} onClose={() => setOpened(null)} /> : null}
@@ -302,7 +316,7 @@ function Initials({ text, me }: { text: string; me: boolean }) {
       aria-hidden
       className={cx(
         'inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9.5px] font-semibold',
-        me ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]',
+        me ? 'bg-[var(--mk-ink)] text-[var(--mk-page)]' : 'bg-[var(--mk-pill-hover)] text-[var(--mk-ink-2)]',
       )}
     >
       {text}
@@ -315,14 +329,12 @@ function SharedRecordRow({
   date,
   item,
   view,
-  zebra,
   mark,
   onOpen,
 }: {
   date: string;
   item: DayItem;
   view: SharedEventView;
-  zebra: boolean;
   mark: (key: string | null) => ReactNode;
   onOpen: (() => void) | undefined;
 }) {
@@ -342,7 +354,7 @@ function SharedRecordRow({
     note = (
       <>
         <span className="block truncate">{e.note?.trim() || row.title}</span>
-        {row.flags.length > 0 && <span className="block truncate text-[11.5px] text-[var(--ph-ink-3)]">{row.flags.join(' · ')}</span>}
+        {row.flags.length > 0 && <span className="block truncate text-[12px] text-[var(--mk-ink-2)]">{row.flags.join(' · ')}</span>}
       </>
     );
     category = (
@@ -354,7 +366,7 @@ function SharedRecordRow({
     const account = payer?.isMe ? (e.posting?.accountName ?? null) : null;
     paid = (
       <span className="flex min-w-0 items-center gap-[6px]">
-        <span aria-hidden className={cx('inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9.5px] font-semibold', payer?.isMe ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}>
+        <span aria-hidden className={cx('inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9.5px] font-semibold', payer?.isMe ? 'bg-[var(--mk-ink)] text-[var(--mk-page)]' : 'bg-[var(--mk-pill-hover)] text-[var(--mk-ink-2)]')}>
           {payer?.initials ?? '?'}
         </span>
         <span className="truncate">{account ?? e.payerName}</span>
@@ -402,15 +414,15 @@ function SharedRecordRow({
       data-testid={testId}
       onClick={onOpen}
       title={onOpen ? 'Click to open it' : undefined}
-      className={cx('select-none', onOpen ? 'cursor-pointer hover:bg-[var(--ph-fill)]' : 'cursor-default', zebra && 'bg-[var(--mac-zebra)]', grey ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}
+      className={cx('select-none', onOpen ? 'cursor-pointer hover:bg-[var(--mk-hover)]' : 'cursor-default', grey ? 'text-[var(--mk-ink-3)]' : 'text-[var(--mk-ink)]')}
     >
-      <td className={cx(TD, 'pl-[14px] text-[var(--ph-ink-3)] tabular-nums')}>{shortDate(date, today)}</td>
+      <td className={cx(TD, 'pl-[14px] text-[var(--mk-ink-2)] tabular-nums')}>{shortDate(date, today)}</td>
       <td className={TD}>{note}</td>
       <td className={TD}>{category}</td>
-      <td className={cx(TD, 'text-[var(--ph-ink-2)]')}>{paid}</td>
+      <td className={cx(TD, 'text-[var(--mk-ink-2)]')}>{paid}</td>
       <td className={cx(TD, 'pr-[14px] text-right whitespace-nowrap tabular-nums')}>
         <span className="font-semibold">{amount}</span>
-        {extra && <span className="ml-[6px] text-[11.5px] text-[var(--ph-ink-3)]">{extra}</span>}
+        {extra && <span className="ml-[6px] text-[12px] text-[var(--mk-ink-2)]">{extra}</span>}
       </td>
     </tr>
   );

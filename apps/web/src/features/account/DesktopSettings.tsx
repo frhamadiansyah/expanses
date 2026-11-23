@@ -89,7 +89,7 @@ function DeskDefaults() {
               value={current}
               disabled={!ready || !stored.isSuccess || busy}
               onChange={(event) => void choose(event.target.value)}
-              className="h-[24px] max-w-[260px] rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[6px] text-[12.5px] text-[var(--ph-ink)] disabled:opacity-40"
+              className="h-[30px] max-w-[260px] rounded-[9px] border border-[var(--mk-field-line)] bg-[var(--mk-field)] px-[8px] text-[13px] text-[var(--mk-ink)] focus:outline-2 focus:outline-[var(--mk-blue)] disabled:opacity-40"
             >
               <option value="">None</option>
               {money.length > 0 && <optgroup label="Money">{money.map(option)}</optgroup>}
@@ -98,7 +98,7 @@ function DeskDefaults() {
           }
         />
       </DeskGroup>
-      <p className="px-[2px] text-[11.5px] leading-[15px] text-[var(--ph-ink-3)]">What holding ＋ does and the One line look are phone settings, chosen on the phone where they are used.</p>
+      <p className="px-[4px] text-[12px] leading-[16px] text-[var(--mk-ink-2)]">What holding ＋ does and the One line look are phone settings, chosen on the phone where they are used.</p>
     </div>
   );
 }
@@ -130,7 +130,7 @@ function DeskActivity() {
   return (
     <div data-testid="settings-activity">
       <PaneTitle>Activity</PaneTitle>
-      <p className="mb-[14px] px-[2px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]">What was changed by hand, newest first, with Undo where the earlier figures are still whole.</p>
+      <p className="mb-[14px] px-[4px] text-[13px] leading-[18px] text-[var(--mk-ink-2)]">What was changed by hand, newest first, with Undo where the earlier figures are still whole.</p>
       <ActivityList narrow />
     </div>
   );
@@ -159,6 +159,16 @@ function DeskAbout() {
         <DeskRow title="Data version" right={<span>{`update ${LATEST_VERSION}`}</span>} />
       </DeskGroup>
     </div>
+  );
+}
+
+/** A section's mark in the list: its round coloured icon, white on its own colour when the section is open. */
+function SectionIcon({ icon: Icon, tint, on }: { icon: LucideIcon; tint: string; on: boolean }) {
+  if (!on) return <DeskIcon icon={Icon} tint={tint} size={24} />;
+  return (
+    <span aria-hidden className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full bg-white/25 text-white">
+      <Icon size={14} strokeWidth={2.2} />
+    </span>
   );
 }
 
@@ -209,16 +219,18 @@ export function DesktopSettings({ section: fixed, device }: { section?: Settings
   };
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[var(--ov-ground)]" data-testid="settings-page" data-desk="true">
+    <div className="flex min-h-dvh flex-col bg-[var(--mk-page)]" data-testid="settings-page" data-desk="true">
       <DeskBar crumb="Settings">
-        {isMacApp() && <span className="text-[12px] text-[var(--ph-ink-3)]">⌘,</span>}
+        {isMacApp() && <span className="text-[13px] font-semibold text-[var(--mk-ink-3)]">⌘,</span>}
       </DeskBar>
       {/* No reminder to back up over Backup itself (/backup and ?section=backup, as the phone's Backup page). */}
       <DeskNotices backup={section !== 'backup'} />
       <div className="flex min-h-0 flex-1">
-        <nav aria-label="Settings sections" className="sticky top-[var(--desk-bar)] h-[calc(100dvh-var(--desk-bar))] w-[230px] shrink-0 overflow-y-auto border-r border-[var(--ph-hair)] bg-[var(--mac-head)] px-[8px] py-[12px]">
-          <label className="relative mb-[10px] flex h-[26px] items-center rounded-[7px] bg-[var(--ph-fill)] text-[12px]">
-            <Search size={13} aria-hidden className="pointer-events-none absolute left-[8px] text-[var(--ph-ink-3)]" />
+        {/* v1: the sections on the white page, no rule beside them — rounded rows like the sidebar's, the open one filled
+            in its section's colour. */}
+        <nav aria-label="Settings sections" className="sticky top-[var(--desk-bar)] h-[calc(100dvh-var(--desk-bar))] w-[256px] shrink-0 overflow-y-auto py-[10px] pr-[8px] pl-[24px]">
+          <label className="relative mb-[12px] flex h-[34px] items-center rounded-[12px] bg-[var(--mk-pill)] text-[13.5px]">
+            <Search size={15} aria-hidden className="pointer-events-none absolute left-[11px] text-[var(--mk-ink-2)]" />
             <input
               type="search"
               value={query}
@@ -234,10 +246,10 @@ export function DesktopSettings({ section: fixed, device }: { section?: Settings
               placeholder="Search"
               aria-label="Search settings"
               autoComplete="off"
-              className="h-full w-full rounded-[7px] bg-transparent pr-2 pl-[26px] text-[12px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-2 focus:outline-[var(--mac-accent)]"
+              className="h-full w-full rounded-[12px] bg-transparent pr-[10px] pl-[33px] text-[13.5px] text-[var(--mk-ink)] placeholder:text-[var(--mk-ink-2)] focus:outline-2 focus:outline-[var(--mk-blue)]"
             />
           </label>
-          <ul className="space-y-[2px]">
+          <ul className="space-y-[3px]">
             {matches.map(({ key, hits }) => {
               const info = available.find((each) => each.key === key)!;
               const on = key === section;
@@ -247,22 +259,26 @@ export function DesktopSettings({ section: fixed, device }: { section?: Settings
                     type="button"
                     aria-current={on ? 'page' : undefined}
                     onClick={() => choose(key)}
-                    className={cx('flex w-full items-center gap-[9px] rounded-[7px] px-[8px] py-[5px] text-left text-[13px]', on ? 'bg-[var(--mac-accent)] text-white' : 'text-[var(--ph-ink)] hover:bg-[var(--ph-side-hover)]')}
+                    className={cx(
+                      'flex min-h-[34px] w-full items-center gap-[11px] rounded-[12px] px-[12px] py-[6px] text-left text-[14px]',
+                      on ? 'font-semibold text-white' : 'text-[var(--mk-ink)] hover:bg-[var(--mk-side-hover)]',
+                    )}
+                    style={on ? { background: info.tint } : undefined}
                   >
-                    <DeskIcon icon={ICONS[key]} tint={info.tint} size={22} />
+                    <SectionIcon icon={ICONS[key]} tint={info.tint} on={on} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{info.name}</span>
-                      {hits.length > 0 && <span className={cx('block truncate text-[11px]', on ? 'text-white/80' : 'text-[var(--ph-ink-3)]')}>{hits.join(' · ')}</span>}
+                      {hits.length > 0 && <span className={cx('block truncate text-[11.5px] font-normal', on ? 'text-white/85' : 'text-[var(--mk-ink-2)]')}>{hits.join(' · ')}</span>}
                     </span>
                   </button>
                 </li>
               );
             })}
           </ul>
-          {matches.length === 0 && <p className="px-[8px] pt-[4px] text-[12px] text-[var(--ph-ink-3)]">No setting by that name.</p>}
+          {matches.length === 0 && <p className="px-[12px] pt-[4px] text-[13px] text-[var(--mk-ink-2)]">No setting by that name.</p>}
         </nav>
         {/* A region, not a <section>: each group inside is one, and a group is found by its own heading. */}
-        <div role="region" className="min-w-0 flex-1 px-[30px] py-[22px]" aria-label={available.find((each) => each.key === section)?.name}>
+        <div role="region" className="min-w-0 flex-1 px-[32px] pt-[14px] pb-[32px]" aria-label={available.find((each) => each.key === section)?.name}>
           <div className="max-w-[620px]">
             <Pane section={section} device={device} />
           </div>

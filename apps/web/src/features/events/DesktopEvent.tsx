@@ -18,7 +18,9 @@ import { useRecategorise } from '../transactions/TransactionRow';
 import { editInsteadIn } from '../workspaces/filing';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { addSpendingTarget, buyTarget } from './buy-item';
-import { AddCostLink, BoxRow, EventDesk, EventTitleBar, PlanBox, PlanTable, TableTabs, TD, TH } from './DeskEventParts';
+import { AddCostLink, BoxRow, EventDesk, EventTiles, EventTitleBar, PlanBox, PlanTable, TABLE_WRAP, TableTabs, TD, TH } from './DeskEventParts';
+import { macV2 } from '../../ui/mac-detail';
+import { PILL_SMALL } from '../../ui/desk';
 import { eventDates } from './event-dates';
 import { beforeItStarts, paidWithRows, startsAhead } from './events-desk-model';
 import { chartUnder, planTotals } from './plan-view';
@@ -159,7 +161,9 @@ export function DesktopLocalEvent() {
   const ahead = event !== null && hasPlan && startsAhead(event, today);
   const paidWith = paidWithRows(txs);
   const third = ahead ? 'before' : paidWith.rows.length > 0 ? 'paid-with' : null;
-  const boxes = 1 + (hasPlan ? 1 : 0) + (third ? 1 : 0);
+  // v1 says the plan's figures in the tiles over the boxes; the Plan box itself (with Not on the plan and Money back) is v2's.
+  const planBox = hasPlan && macV2;
+  const boxes = 1 + (planBox ? 1 : 0) + (third ? 1 : 0);
   const grid =
     boxes === 3
       ? 'grid-cols-1 @min-[560px]:grid-cols-2 @min-[900px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]'
@@ -195,8 +199,11 @@ export function DesktopLocalEvent() {
       <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={error ?? events.error ?? plan.error} />
         {workspaceTabs}
+        {event && data && totals && hasPlan && (
+          <EventTiles spentMinor={totals.spentMinor} totals={totals} boughtCount={data.boughtCount} itemCount={data.itemCount} currency={currency} />
+        )}
         {event && data && totals && (
-          <div className={cx('grid items-stretch gap-[14px]', grid)}>
+          <div className={cx('grid items-stretch gap-[16px]', grid)}>
             <RingBox
               kind="expense"
               title="Spent by category"
@@ -214,7 +221,7 @@ export function DesktopLocalEvent() {
               ready={plan.isSuccess}
               footnote={chartUnder(totals, txs.length, currency)}
             />
-            {hasPlan && <PlanBox totals={totals} boughtCount={data.boughtCount} itemCount={data.itemCount} currency={currency} />}
+            {planBox && <PlanBox totals={totals} boughtCount={data.boughtCount} itemCount={data.itemCount} currency={currency} />}
             {third && (
               <div className={cx('flex min-w-0 flex-col', boxes === 3 && '@min-[560px]:col-span-2 @min-[900px]:col-span-1')}>
                 {third === 'before' ? (
@@ -229,7 +236,7 @@ export function DesktopLocalEvent() {
 
         {event && (
           <section className={cx(BOX, 'overflow-clip')} aria-label="Event table" data-testid="event-table-box">
-            <div className="flex items-center gap-[10px] px-[14px] py-[9px]">
+            <div className="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[10px]">
               <TableTabs
                 value={planned ? table : 'transactions'}
                 onChange={(next) => {
@@ -242,9 +249,9 @@ export function DesktopLocalEvent() {
                 ]}
               />
               {picked !== null && table === 'transactions' && (
-                <span className="flex items-center gap-[6px] text-[12px] text-[var(--ph-ink-2)]">
+                <span className="flex items-center gap-[6px] text-[13px] text-[var(--mk-ink-2)]">
                   <span data-testid="event-filter">Only {pickedName ?? 'one category'}</span>
-                  <button type="button" onClick={() => setPicked(null)} className="text-[var(--mac-accent)] hover:underline">
+                  <button type="button" onClick={() => setPicked(null)} className="font-semibold text-[var(--mk-blue)] hover:underline">
                     Show all
                   </button>
                 </span>
@@ -253,11 +260,12 @@ export function DesktopLocalEvent() {
               <span className={NOTE}>{table === 'plan' ? 'type a planned figure in its row · Status ticks Done buying' : shown.length > 0 ? 'click a row to see it' : ''}</span>
               {/* The phone's plan page, whole: its summary, what nobody planned and money back by row, Link to costs. */}
               {table === 'plan' && planned && (
-                <Link to="/events/$eventId/plan" params={{ eventId }} search={{ ws: openTab ?? undefined }} data-testid="open-plan" className="shrink-0 text-[12px] text-[var(--mac-accent)] hover:underline">
+                <Link to="/events/$eventId/plan" params={{ eventId }} search={{ ws: openTab ?? undefined }} data-testid="open-plan" className="shrink-0 text-[13px] font-semibold text-[var(--mk-blue)] hover:underline">
                   Whole plan ›
                 </Link>
               )}
             </div>
+            <div className={TABLE_WRAP}>
             {table === 'plan' && planned && data ? (
               <PlanTable
                 plan={data}
@@ -291,31 +299,33 @@ export function DesktopLocalEvent() {
                 refile={(row) => (recategorise.offers(row) && filedHere(row.id) ? () => recategorise.start(row) : null)}
               />
             )}
+            </div>
           </section>
         )}
 
         {(suggestions.data?.length ?? 0) > 0 && event && (
           <section className={BOX} aria-label={`Was this part of ${event.name}?`} data-testid="event-suggestions">
             <BoxHead title={`Was this part of ${event.name}?`} note="inside the dates, in a category it draws on, not tagged yet" />
-            <table className="w-full border-collapse text-[13px]">
+            <div className={TABLE_WRAP}>
+            <table className="w-full border-collapse text-[13.5px]">
               <tbody>
                 {(suggestions.data ?? []).map((candidate) => (
-                  <tr key={candidate.transactionId} className="border-t border-[var(--ph-hair)]">
-                    <td className={cx(TD, 'w-[70px] pl-[14px] text-[var(--ph-ink-3)] tabular-nums')}>{shortDate(candidate.occurredOn, today)}</td>
+                  <tr key={candidate.transactionId}>
+                    <td className={cx(TD, 'w-[70px] pl-[14px] text-[var(--mk-ink-2)] tabular-nums')}>{shortDate(candidate.occurredOn, today)}</td>
                     <td className={TD}>{candidate.description}</td>
-                    <td className={cx(TD, 'text-[var(--ph-ink-2)]')}>
+                    <td className={TD}>
                       <span className="flex items-center gap-[6px]">
                         <CategoryIcon categoryId={candidate.categoryAccountId} accounts={accounts} size="xs" />
                         {accounts.find((account) => account.id === candidate.categoryAccountId)?.name ?? ''}
                       </span>
                     </td>
-                    <td className={cx(TD, 'text-right tabular-nums')}>{formatMinor(candidate.amountBaseMinor, currency)}</td>
+                    <td className={cx(TD, 'text-right font-semibold tabular-nums')}>{formatMinor(candidate.amountBaseMinor, currency)}</td>
                     <td className={cx(TD, 'w-[70px] pr-[14px] text-right')}>
                       <button
                         type="button"
                         aria-label={`Tag ${candidate.description}`}
                         onClick={() => void run(() => tagTransaction(database, ws, candidate.transactionId, eventId))}
-                        className="rounded-[6px] border border-[var(--ph-chevron)] px-[8px] py-[1px] text-[12px] hover:bg-[var(--ph-fill)]"
+                        className={PILL_SMALL}
                       >
                         Tag
                       </button>
@@ -324,6 +334,7 @@ export function DesktopLocalEvent() {
                 ))}
               </tbody>
             </table>
+            </div>
           </section>
         )}
       </div>
@@ -372,10 +383,10 @@ function TransactionsTable({
 }) {
   const listRows = new Map(buildRows(txs, [], accounts, []).map((row) => [row.id, row]));
   if (txs.length === 0) {
-    return <p className="border-t border-[var(--ph-hair)] px-[14px] py-[12px] text-[13px] text-[var(--ph-ink-3)]">{filtered ? 'No payments in this category.' : 'Nothing tagged to it yet. ＋ Add spending records the first payment.'}</p>;
+    return <p className="px-[6px] pt-[2px] pb-[10px] text-[13.5px] text-[var(--mk-ink-2)]">{filtered ? 'No payments in this category.' : 'Nothing tagged to it yet. ＋ Add spending records the first payment.'}</p>;
   }
   return (
-    <table className="w-full table-fixed border-collapse text-[13px]" data-testid="event-transactions">
+    <table className="w-full table-fixed border-collapse text-[13.5px]" data-testid="event-transactions">
       <colgroup>
         <col className="w-[80px]" />
         <col />
@@ -393,13 +404,13 @@ function TransactionsTable({
         </tr>
       </thead>
       <tbody>
-        {txs.map((tx, index) => {
+        {txs.map((tx) => {
           const expense = tx.entries.find((entry) => entry.accountKind === 'expense');
           const paidWith = tx.entries.find((entry) => entry.accountKind === 'asset' || entry.accountKind === 'liability');
           const listRow = listRows.get(tx.id);
           const foreign = (listRow ? amountExtraParts(tx, undefined, listRow) : []).filter((part) => part.tone === 'foreign');
           const selected = peekId === tx.id;
-          const grey = selected ? 'text-white/80' : 'text-[var(--ph-ink-3)]';
+          const grey = 'text-[var(--mk-ink-2)]';
           return (
             <tr
               key={tx.id}
@@ -408,7 +419,7 @@ function TransactionsTable({
               aria-selected={selected}
               onClick={() => onPeek(tx.id)}
               title="Click to see it"
-              className={cx('cursor-default select-none', selected ? 'bg-[var(--mac-accent)] text-white' : cx('text-[var(--ph-ink)]', index % 2 === 1 && 'bg-[var(--mac-zebra)]'))}
+              className={cx('cursor-default text-[var(--mk-ink)] select-none', selected ? 'bg-[var(--mk-sel)]' : 'hover:bg-[var(--mk-hover)]')}
             >
               <td className={cx(TD, 'pl-[14px] tabular-nums', grey)}>{shortDate(tx.occurredOn, today)}</td>
               <td className={TD}>
@@ -416,7 +427,7 @@ function TransactionsTable({
                   {tx.description || expense?.accountName || 'No note'}
                 </button>
               </td>
-              <td className={cx(TD, selected && '[&_[data-testid=category-mark]]:bg-white!')}>
+              <td className={TD}>
                 <span className="flex min-w-0 items-center gap-[6px]">
                   {listRow && refile(listRow) ? (
                     <button
@@ -428,7 +439,7 @@ function TransactionsTable({
                         event.stopPropagation();
                         refile(listRow)?.();
                       }}
-                      className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]"
+                      className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-[var(--mk-blue)]"
                     >
                       <CategoryIcon categoryId={expense?.accountId ?? null} accounts={accounts} size="xs" />
                     </button>
@@ -438,10 +449,10 @@ function TransactionsTable({
                   <span className="truncate">{expense?.accountName ?? 'No category'}</span>
                 </span>
               </td>
-              <td className={cx(TD, 'truncate', selected ? 'text-white' : 'text-[var(--ph-ink-2)]')}>{paidWith?.accountName ?? ''}</td>
+              <td className={cx(TD, 'truncate text-[var(--mk-ink-2)]')}>{paidWith?.accountName ?? ''}</td>
               <td className={cx(TD, 'pr-[14px] text-right whitespace-nowrap tabular-nums')}>
                 <Money minor={expense?.amountBaseMinor ?? 0} currency={currency} className="font-semibold" />
-                {foreign.length > 0 && <span className={cx('ml-[6px] text-[11.5px]', grey)}>{foreign.map((part) => part.text).join(' · ')}</span>}
+                {foreign.length > 0 && <span className={cx('ml-[6px] text-[12px]', grey)}>{foreign.map((part) => part.text).join(' · ')}</span>}
               </td>
             </tr>
           );
@@ -502,33 +513,33 @@ function GoalRow({ goalId, onLink }: { goalId: string | null; onLink: (goalId: s
     onLink(id);
   };
   return (
-    <div className="relative border-t border-[var(--ph-hair)] px-[14px] py-[7px] text-[13px]" ref={box} data-testid="before-goal">
+    <div className="relative mx-[14px] border-t border-[var(--mk-line)] py-[8px] text-[13.5px]" ref={box} data-testid="before-goal">
       <div className="flex items-baseline justify-between gap-[10px]">
-        <dt className="shrink-0 text-[var(--ph-ink)]">Goal</dt>
+        <dt className="shrink-0 text-[var(--mk-ink)]">Goal</dt>
         <dd className="min-w-0 text-right">
           {linked ? (
             <span className="flex min-w-0 items-baseline justify-end gap-[6px]">
-              <Link to="/goals/$goalId" params={{ goalId: linked.goalId }} className="min-w-0 truncate text-[var(--mac-accent)] hover:underline" data-testid="before-goal-link">
+              <Link to="/goals/$goalId" params={{ goalId: linked.goalId }} className="min-w-0 truncate font-semibold text-[var(--mk-blue)] hover:underline" data-testid="before-goal-link">
                 {linked.name} ›
               </Link>
-              <button type="button" onClick={() => setOpen(!open)} className="shrink-0 text-[11.5px] text-[var(--ph-ink-3)] hover:text-[var(--ph-ink)]" aria-label="Change the goal">
+              <button type="button" onClick={() => setOpen(!open)} className="shrink-0 text-[12px] text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]" aria-label="Change the goal">
                 Change
               </button>
             </span>
           ) : (
-            <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} className="text-[var(--mac-accent)] hover:underline">
+            <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} className="font-semibold text-[var(--mk-blue)] hover:underline">
               Link a goal ›
             </button>
           )}
         </dd>
       </div>
       {linked && (
-        <div data-testid="before-goal-saved" className="mt-[1px] text-right text-[11.5px] text-[var(--ph-ink-3)] tabular-nums">
+        <div data-testid="before-goal-saved" className="mt-[1px] text-right text-[12px] text-[var(--mk-ink-2)] tabular-nums">
           {formatMinor(linked.currentMinor, linked.currency)} saved{linked.targetMinor > 0 && ` of ${formatMinor(linked.targetMinor, linked.currency)}`}
         </div>
       )}
       {open && (
-        <div role="menu" aria-label="Goals" className="absolute right-[8px] z-30 mt-[4px] w-[260px] rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[5px] text-left shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
+        <div role="menu" aria-label="Goals" className="absolute right-0 z-30 mt-[4px] w-[260px] rounded-[14px] bg-[var(--mk-panel)] p-[6px] text-left shadow-[var(--mk-panel-shadow)]">
           {running.length === 0 && <p className="px-[10px] py-[6px] text-[12.5px] text-[var(--ph-ink-3)]">No goal is running.</p>}
           {running.map((card) => (
             <button
@@ -537,14 +548,14 @@ function GoalRow({ goalId, onLink }: { goalId: string | null; onLink: (goalId: s
               role="menuitemradio"
               aria-checked={card.goalId === goalId}
               onClick={() => pick(card.goalId)}
-              className="flex w-full items-center justify-between gap-[8px] rounded-[5px] px-[10px] py-[4px] text-left text-[13px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]"
+              className="flex w-full items-center justify-between gap-[8px] rounded-[8px] px-[10px] py-[5px] text-left text-[13.5px] text-[var(--mk-ink)] hover:bg-[var(--mk-pill)]"
             >
               <span className="min-w-0 truncate">{card.name}</span>
               <span className="shrink-0 text-[11.5px] text-[var(--ph-ink-3)]">{card.kindLabel}</span>
             </button>
           ))}
           {goalId && (
-            <button type="button" role="menuitem" onClick={() => pick(null)} className="mt-[2px] w-full rounded-[5px] border-t border-[var(--ph-hair)] px-[10px] py-[4px] text-left text-[13px] text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]">
+            <button type="button" role="menuitem" onClick={() => pick(null)} className="mt-[2px] w-full rounded-[8px] px-[10px] py-[5px] text-left text-[13.5px] text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill)]">
               No goal
             </button>
           )}

@@ -8,21 +8,26 @@ import { useEscape } from '../../app/use-escape';
 import { usePhone, useSideways } from '../../app/use-phone';
 import { cx } from '../../ui';
 import { findTools, STATEMENT_CHECK, type ToolGroup, type ToolTile } from './tools-model';
-import { DeskBar, DeskTitle } from '../../ui/desk';
+import { CARD, DeskBar, DeskTitle } from '../../ui/desk';
 
-const TILE =
-  'flex h-full w-full flex-col items-start rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[14px] text-left hover:border-[var(--ph-chevron)] focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]';
-const GROUP_TITLE = 'mb-[8px] text-[11px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase';
+/** A tool's tile: v1's soft card, a round coloured icon, the name, a grey line. */
+const TILE = cx(
+  CARD,
+  'flex h-full w-full flex-col items-start px-[18px] pt-[16px] pb-[16px] text-left hover:bg-[var(--mk-pill)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mk-blue)]',
+);
+/** A group's head: small grey capitals, as v1's sidebar and Net worth sections. */
+const GROUP_TITLE = 'mb-[10px] px-[4px] text-[11.5px] font-bold tracking-[0.06em] text-[var(--mk-ink-3)] uppercase';
 
 function TileBody({ tile }: { tile: ToolTile }) {
   const Icon = tile.icon;
   return (
     <>
-      <span aria-hidden className="flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-[8px] text-white" style={{ background: tile.tint }}>
-        <Icon size={18} strokeWidth={1.9} />
+      {/* The tool's own colour (tools-model), on v1's round icon. */}
+      <span aria-hidden className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white" style={{ background: tile.tint }}>
+        <Icon size={16} strokeWidth={2.2} />
       </span>
-      <span className="mt-[10px] text-[13.5px] leading-[18px] font-semibold text-[var(--ph-ink)]">{tile.label}</span>
-      <span className="mt-[4px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]">{tile.line}</span>
+      <span className="mt-[12px] text-[14.5px] leading-[19px] font-bold text-[var(--mk-ink)]">{tile.label}</span>
+      <span className="mt-[4px] text-[12.5px] leading-[17px] text-[var(--mk-ink-2)]">{tile.line}</span>
     </>
   );
 }
@@ -40,7 +45,7 @@ function StatementCheckTile({ tile, accounts }: { tile: ToolTile; accounts: read
     document.addEventListener('mousedown', away);
     return () => document.removeEventListener('mousedown', away);
   }, [open]);
-  const item = 'flex h-[24px] items-center rounded-[5px] px-[10px] text-[13px] text-[var(--ph-ink)] hover:bg-[var(--mac-accent)] hover:text-white';
+  const item = 'flex h-[28px] items-center rounded-[8px] px-[10px] text-[13.5px] text-[var(--mk-ink)] hover:bg-[var(--mk-blue)] hover:text-white';
   return (
     <div ref={box} className="relative h-full">
       <button type="button" className={TILE} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} data-testid="tool-tile">
@@ -50,10 +55,10 @@ function StatementCheckTile({ tile, accounts }: { tile: ToolTile; accounts: read
         <div
           role="menu"
           aria-label="Statement check · which account?"
-          className="absolute top-full right-0 z-30 mt-1 max-h-[320px] min-w-[220px] overflow-y-auto rounded-[9px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[6px] shadow-[0_8px_24px_rgb(0_0_0/0.18)]"
+          className="absolute top-full right-0 z-30 mt-[6px] max-h-[320px] min-w-[220px] overflow-y-auto rounded-[12px] bg-[var(--mk-panel)] p-[6px] shadow-[var(--mk-panel-shadow)]"
         >
-          <p className="px-[10px] pt-[2px] pb-[2px] text-[11px] font-semibold text-[var(--ph-ink-3)]">Which account?</p>
-          {accounts.length === 0 && <p className="px-[10px] py-1 text-[12px] text-[var(--ph-ink-3)]">No accounts yet.</p>}
+          <p className="px-[10px] pt-[2px] pb-[4px] text-[11.5px] font-semibold text-[var(--mk-ink-2)]">Which account?</p>
+          {accounts.length === 0 && <p className="px-[10px] py-1 text-[12.5px] text-[var(--mk-ink-2)]">No accounts yet.</p>}
           {accounts.map((account) => (
             <Link key={account.id} role="menuitem" to={STATEMENT_CHECK} search={{ account: account.id }} className={item}>
               {account.name}
@@ -79,7 +84,7 @@ function Group({ group, accounts, columns }: { group: ToolGroup; accounts: reado
     <section aria-label={group.title} className="flex min-w-0 flex-col">
       <h2 className={GROUP_TITLE}>{group.title}</h2>
       {/* Every tile in a row as tall as the tallest, across the groups side by side too. */}
-      <div className="grid flex-1 gap-[12px]" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+      <div className="grid flex-1 gap-[16px]" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
         {group.tiles.map((tile) => (
           <Tile key={tile.key} tile={tile} accounts={accounts} />
         ))}
@@ -106,12 +111,14 @@ export function ToolsPage() {
   const rest = groups.filter((group) => group.key !== 'calculators');
   // Each group as wide as its tiles, so every tile in the row is the same width.
   const spans = rest.map((group) => `${group.tiles.length}fr`).join(' ');
+  const count = groups.reduce((total, group) => total + group.tiles.length, 0);
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="tools-page" data-desk="true">
+    <div className="min-h-dvh bg-[var(--mk-page)]" data-testid="tools-page" data-desk="true">
       <DeskBar crumb="Tools">
-        <label className="relative flex h-[26px] w-[180px] shrink-0 items-center rounded-[7px] bg-[var(--ph-fill)] text-[12px]">
-          <Search size={13} aria-hidden className="pointer-events-none absolute left-[8px] text-[var(--ph-ink-3)]" />
+        {/* v1's search: a grey pill in the bar. */}
+        <label className="relative flex h-[34px] w-[220px] shrink-0 items-center rounded-full bg-[var(--mk-pill)] text-[13.5px]">
+          <Search size={15} aria-hidden className="pointer-events-none absolute left-[13px] text-[var(--mk-ink-2)]" />
           <input
             type="search"
             value={query}
@@ -125,14 +132,14 @@ export function ToolsPage() {
             placeholder="Find a tool"
             aria-label="Find a tool"
             autoComplete="off"
-            className="h-full w-full rounded-[7px] bg-transparent pr-2 pl-[26px] text-[12px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-2 focus:outline-[var(--mac-accent)]"
+            className="h-full w-full rounded-full bg-transparent pr-[14px] pl-[34px] text-[13.5px] text-[var(--mk-ink)] placeholder:text-[var(--mk-ink-2)] focus:outline-2 focus:outline-[var(--mk-blue)]"
           />
         </label>
       </DeskBar>
       <DeskNotices />
-      <DeskTitle title="Tools" />
+      <DeskTitle title="Tools" line={query ? `${count} ${count === 1 ? 'tool' : 'tools'} found` : 'Calculators, cards, money, tax & data'} />
 
-      <div className="space-y-[22px] px-[32px] pt-[2px] pb-[32px]">
+      <div className="space-y-[26px] px-[32px] pt-[2px] pb-[32px]">
         {calculators && <Group group={calculators} accounts={accounts} columns={5} />}
         {rest.length > 0 && (
           <div className="grid gap-[16px]" style={{ gridTemplateColumns: spans }}>
@@ -141,7 +148,7 @@ export function ToolsPage() {
             ))}
           </div>
         )}
-        {groups.length === 0 && <p className="pt-[8px] text-[13px] text-[var(--ph-ink-3)]">No tool by that name.</p>}
+        {groups.length === 0 && <p className="pt-[8px] text-[14px] text-[var(--mk-ink-2)]">No tool by that name.</p>}
       </div>
     </div>
   );

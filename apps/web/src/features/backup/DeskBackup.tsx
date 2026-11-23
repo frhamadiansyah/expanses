@@ -83,16 +83,16 @@ export function DeskBackup() {
         />
       </DeskGroup>
 
-      {done && <p className="mb-[14px] px-[2px] text-[12.5px] leading-[17px] text-[var(--ph-up)]">{done}</p>}
+      {done && <p className="mb-[14px] px-[4px] text-[13px] leading-[18px] font-semibold text-[var(--mk-t-green)]">{done}</p>}
       <div className="mb-[14px] empty:hidden">
         <ErrorBox error={error} />
       </div>
 
       {/* Directly under the actions that raise it, as on the phone: the second press is never somewhere to go looking for. */}
       {pending && (
-        <section className="mb-[20px] rounded-[10px] border border-[var(--ph-warn)] bg-[var(--ph-surface)] px-[14px] py-[12px]" data-testid="restore-confirm">
-          <h3 className="text-[13px] font-semibold text-[var(--ph-ink)]">Before replacing the data</h3>
-          <p className="mt-[4px] text-[12.5px] leading-[17px] text-[var(--ph-warn)]">
+        <section className="mb-[22px] rounded-[18px] bg-[var(--mk-t-orange-bg)] px-[20px] py-[16px]" data-testid="restore-confirm">
+          <h3 className="text-[15px] font-bold text-[var(--mk-ink)]">Before replacing the data</h3>
+          <p className="mt-[4px] text-[13px] leading-[18px] text-[var(--mk-t-orange)]">
             Check that <strong>{pending.safetyName}</strong> is in Downloads. It is the only copy of the data on this device right now. Continue only once it is there.
           </p>
           <div className="mt-[12px] flex items-center justify-between gap-[12px]">

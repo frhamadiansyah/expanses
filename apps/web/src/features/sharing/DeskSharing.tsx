@@ -182,7 +182,7 @@ export function DeskWorkspaces() {
             label={`Open ${book.name}, archived`}
           />
         ))}
-        <DeskRow bodyTestId="add-workspace" title={<span className="text-[var(--mac-accent)]">＋ Add workspace</span>} label="Add workspace" onClick={() => setAdding(true)} />
+        <DeskRow bodyTestId="add-workspace" title={<span className="font-semibold text-[var(--mk-blue)]">＋ Add workspace</span>} label="Add workspace" onClick={() => setAdding(true)} />
       </DeskGroup>
 
       {open && <OpenWorkspaceSharing book={open} />}

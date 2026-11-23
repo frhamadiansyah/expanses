@@ -5,6 +5,7 @@ import { ChevronRight } from 'lucide-react';
 import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts } from '../../lib/queries';
 import { cx, Money } from '../../ui';
+import { Tag } from '../../ui/desk';
 import { iconTint, RowIcon } from '../../ui/native';
 import { PEEK_BUTTON, SidePeek } from '../../ui/native/SidePeek';
 import { UseBar } from '../budget/budget-rows';
@@ -124,12 +125,12 @@ export function GoalPeek({
         <span className="text-[11px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase" data-testid="peek-when">
           {when}
         </span>
-        <span className={cx('text-[12px] font-medium', warn ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-up-ink)]')} data-testid="peek-status">
+        <Tag tone={warn ? 'orange' : card.done || card.statusLabel === 'Funded' ? 'grey' : 'green'} testId="peek-status">
           {card.statusLabel}
-        </span>
+        </Tag>
       </div>
       <div className="px-[14px] pb-[10px]">
-        <div className="text-[22px] font-semibold tabular-nums text-[var(--ph-ink)]" data-testid="peek-target">
+        <div className="text-[24px] leading-[30px] font-extrabold tracking-[-0.3px] tabular-nums text-[var(--mk-ink)]" data-testid="peek-target">
           {formatMinor(card.targetMinor > 0 ? card.targetMinor : card.currentMinor, currency)}
         </div>
         <div className="my-[8px]">
@@ -273,7 +274,7 @@ export function GoalPeek({
           type="button"
           data-testid="peek-all-history"
           onClick={() => void navigate({ to: '/goals/$goalId/history', params: { goalId: card.goalId } })}
-          className="mb-3 flex items-center justify-between px-[14px] py-[6px] text-[13px] text-[var(--mac-accent)] hover:bg-[var(--ph-fill)]"
+          className="mb-3 flex items-center justify-between px-[14px] py-[6px] text-[13px] font-semibold text-[var(--mk-blue)] hover:bg-[var(--mk-hover)]"
         >
           All {history.length} {history.length === 1 ? 'entry' : 'entries'}
           <ChevronRight size={14} aria-hidden />

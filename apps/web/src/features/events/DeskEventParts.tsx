@@ -1,6 +1,6 @@
 import { type EventPlan, type EventPlanItemView, formatMinor, minorToMajorString } from '@expanses/core';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { Check, ChevronDown, Settings } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ClipboardList, Hourglass, Settings, ShoppingBag } from 'lucide-react';
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { DeskNotices } from '../../app/DeskNotices';
 import { cx, Money } from '../../ui';
@@ -12,7 +12,7 @@ import { useNewEvent } from './NewEventFlow';
 import { quantityWords } from './plan-view';
 import { useEvents } from './queries';
 import { isoDate } from '@expanses/core';
-import { DeskBar, PILL_ROUND } from '../../ui/desk';
+import { DeskBar, PILL_ROUND, StatTile, Tag, TileRow, tileMoney, type Tone } from '../../ui/desk';
 
 /*
  * The parts of a Mac event page (option A, owner 2026-11-18) a private event and a shared trip both draw: the title bar
@@ -20,8 +20,10 @@ import { DeskBar, PILL_ROUND } from '../../ui/desk';
  * the way the phone reads it — so the parts hold no queries but the event list the menu names.
  */
 
-export const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-left text-[11px] font-semibold whitespace-nowrap text-[var(--ph-ink-3)]';
-export const TD = 'px-[10px] py-[6px] align-middle';
+export const TH = 'border-b border-[var(--mk-head-line)] px-[10px] pt-[4px] pb-[8px] text-left text-[12.5px] font-semibold whitespace-nowrap text-[var(--mk-ink-2)]';
+export const TD = 'border-b border-[var(--mk-line)] px-[10px] py-[8px] align-middle';
+/** A table inside its card: v1 draws the rows inset from the card's sides, the last hairline dropped. */
+export const TABLE_WRAP = 'px-[10px] pb-[8px] [&_tbody_tr:last-child>td]:border-b-0';
 
 
 /** The event page's grey ground, edge to edge, with the bar on top. */
@@ -63,9 +65,9 @@ export function EventTitleBar({
     <>
       <DeskBar crumb={name} back={{ label: 'Events', to: '/events' }} barRef={barRef}>
         {chip && (
-          <span data-testid="event-shared-chip" className="shrink-0 rounded-full bg-[var(--mk-t-grey-bg)] px-[9px] py-[2px] text-[11.5px] font-bold whitespace-nowrap text-[var(--mk-t-grey)]">
+          <Tag tone="blue" testId="event-shared-chip">
             {chip}
-          </span>
+          </Tag>
         )}
         {mode && <DeskEventModeSwitch event={mode} />}
         <Link to={settings.to} params={{ eventId }} aria-label="Settings" title="Settings" className={PILL_ROUND}>
@@ -116,7 +118,7 @@ function EventMenu({ eventId, name }: { eventId: string; name: string }) {
       window.removeEventListener('keydown', keys, true);
     };
   }, [open]);
-  const item = 'flex w-full items-center gap-[8px] rounded-[5px] px-[10px] py-[4px] text-left text-[13px]';
+  const item = 'flex w-full items-center gap-[8px] rounded-[8px] px-[10px] py-[5px] text-left text-[13.5px]';
   return (
     <div ref={box} className="relative min-w-0 shrink -ml-[8px]">
       <h1 className="min-w-0">
@@ -133,10 +135,10 @@ function EventMenu({ eventId, name }: { eventId: string; name: string }) {
         </button>
       </h1>
       {open && (
-        <div role="menu" aria-label="Events" className="absolute top-[46px] left-0 z-30 w-[300px] rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[5px] shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
+        <div role="menu" aria-label="Events" className="absolute top-[46px] left-0 z-30 w-[300px] rounded-[14px] bg-[var(--mk-panel)] p-[6px] shadow-[var(--mk-panel-shadow)]">
           {sections.map((section) => (
             <div key={section.title} role="group" aria-label={section.title}>
-              <div className="px-[10px] pt-[6px] pb-[3px] text-[10.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{section.title}</div>
+              <div className="px-[10px] pt-[6px] pb-[3px] text-[11px] font-bold tracking-[0.06em] text-[var(--mk-ink-3)] uppercase">{section.title}</div>
               {section.rows.map((row) => (
                 <button
                   key={row.id}
@@ -147,16 +149,16 @@ function EventMenu({ eventId, name }: { eventId: string; name: string }) {
                     setOpen(false);
                     if (!row.current) void navigate({ to: '/events/$eventId', params: { eventId: row.id } });
                   }}
-                  className={cx(item, row.current ? 'bg-[var(--mac-accent)] text-white' : 'text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]')}
+                  className={cx(item, row.current ? 'bg-[var(--mk-blue)] text-white' : 'text-[var(--mk-ink)] hover:bg-[var(--mk-pill)]')}
                 >
                   <span className="w-[12px] shrink-0">{row.current && <Check size={12} strokeWidth={3} aria-hidden />}</span>
                   <span className="min-w-0 flex-1 truncate">{row.name}</span>
-                  <span className={cx('shrink-0 text-[12px] tabular-nums', row.current ? 'text-white/85' : 'text-[var(--ph-ink-3)]')}>{row.when}</span>
+                  <span className={cx('shrink-0 text-[12px] tabular-nums', row.current ? 'text-white/85' : 'text-[var(--mk-ink-2)]')}>{row.when}</span>
                 </button>
               ))}
             </div>
           ))}
-          <div className="my-[4px] border-t border-[var(--ph-hair)]" />
+          <div className="mx-[8px] my-[4px] border-t border-[var(--mk-line)]" />
           <button
             type="button"
             role="menuitem"
@@ -164,7 +166,7 @@ function EventMenu({ eventId, name }: { eventId: string; name: string }) {
               setOpen(false);
               create.start();
             }}
-            className={cx(item, 'text-[var(--mac-accent)] hover:bg-[var(--ph-fill)]')}
+            className={cx(item, 'text-[var(--mk-blue)] hover:bg-[var(--mk-pill)]')}
           >
             <span className="w-[12px] shrink-0" aria-hidden>
               ＋
@@ -178,7 +180,7 @@ function EventMenu({ eventId, name }: { eventId: string; name: string }) {
               setOpen(false);
               void navigate({ to: '/events' });
             }}
-            className={cx(item, 'text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]')}
+            className={cx(item, 'text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill)]')}
           >
             <span className="w-[12px] shrink-0" />
             All events…
@@ -190,12 +192,50 @@ function EventMenu({ eventId, name }: { eventId: string; name: string }) {
   );
 }
 
+/**
+ * The event's figures as v1's stat tiles, over the boxes: what it spent, what the plan holds, what is still to pay (or
+ * left of the plan, or over it — `planLine`, the Plan box's own words) and how many costs are bought. Drawn only for an
+ * event with a plan; each figure is the one the Plan box and the ring already read, rounded as a tile rounds.
+ */
+export function EventTiles({
+  spentMinor,
+  totals,
+  boughtCount,
+  itemCount,
+  currency,
+}: {
+  /** Everything the event spent: the ring's middle figure. */
+  spentMinor: number;
+  totals: { plannedMinor: number; plannedSpentMinor: number; toBuyMinor: number };
+  boughtCount: number;
+  itemCount: number;
+  currency: string;
+}) {
+  const line = planLine(totals);
+  const costs = `${itemCount} ${itemCount === 1 ? 'cost' : 'costs'}`;
+  return (
+    <TileRow count={4} testId="event-tiles">
+      <StatTile icon={ShoppingBag} colour="orange" value={tileMoney(spentMinor, currency)} label="Spent" testId="event-tile-spent" />
+      <StatTile icon={ClipboardList} colour="blue" value={tileMoney(totals.plannedMinor, currency)} label="Planned" badge={<Tag tone="blue">{costs}</Tag>} testId="event-tile-planned" />
+      <StatTile
+        icon={Hourglass}
+        colour={line.kind === 'over' ? 'red' : 'green'}
+        value={tileMoney(line.minor, currency)}
+        label={line.kind === 'to-pay' ? 'Still to pay' : line.kind === 'left' ? 'Left of the plan' : 'Over the plan'}
+        badge={line.kind === 'over' ? <Tag tone="red">Over</Tag> : undefined}
+        testId="event-tile-left"
+      />
+      <StatTile icon={CheckCheck} colour="purple" value={`${boughtCount} of ${itemCount}`} label="Bought" testId="event-tile-bought" />
+    </TileRow>
+  );
+}
+
 /** A line of a box: what it is on the left, its figure on the right, a hairline between lines. */
 export function BoxRow({ label, children, testId, tone }: { label: ReactNode; children: ReactNode; testId?: string; tone?: 'warn' }) {
   return (
-    <div data-testid={testId} className={cx('flex items-baseline justify-between gap-[10px] border-t border-[var(--ph-hair)] px-[14px] py-[7px] text-[13px]', tone === 'warn' && 'text-[var(--ph-warn)]')}>
-      <dt className="min-w-0 truncate text-[var(--ph-ink)]">{label}</dt>
-      <dd className="shrink-0 text-right tabular-nums text-[var(--ph-ink)]">{children}</dd>
+    <div data-testid={testId} className={cx('mx-[14px] flex items-baseline justify-between gap-[10px] border-t border-[var(--mk-line)] py-[8px] text-[13.5px]', tone === 'warn' && 'text-[var(--mk-t-orange)]')}>
+      <dt className="min-w-0 truncate text-[var(--mk-ink)]">{label}</dt>
+      <dd className="shrink-0 text-right font-semibold tabular-nums text-[var(--mk-ink)]">{children}</dd>
     </div>
   );
 }
@@ -222,16 +262,16 @@ export function PlanBox({
     <section className={BOX} aria-label="Plan" data-testid="event-plan-box">
       <BoxHead title="Plan" note={`${itemCount} ${itemCount === 1 ? 'cost' : 'costs'}`} />
       <div className="px-[14px] pb-[10px]">
-        <div data-testid="plan-box-spent" className="text-[24px] leading-[30px] font-semibold text-[var(--ph-ink)] tabular-nums">
+        <div data-testid="plan-box-spent" className="text-[26px] leading-[32px] font-extrabold tracking-[-0.3px] text-[var(--mk-ink)] tabular-nums">
           {formatMinor(totals.plannedSpentMinor, currency)}
         </div>
-        <div data-testid="plan-box-of" className="text-[12px] text-[var(--ph-ink-3)]">
+        <div data-testid="plan-box-of" className="text-[13px] text-[var(--mk-ink-2)]">
           of {formatMinor(totals.plannedMinor, currency)}
         </div>
         <div className="mt-[8px]">
           <PlanBar part={totals.plannedSpentMinor} whole={totals.plannedMinor} label="Spent against the plan" />
         </div>
-        <div data-testid="plan-box-line" className={cx('mt-[5px] text-[12px]', line.kind === 'over' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]')}>
+        <div data-testid="plan-box-line" className={cx('mt-[6px] text-[13px]', line.kind === 'over' ? 'text-[var(--mk-t-red)]' : 'text-[var(--mk-ink-2)]')}>
           {line.kind === 'to-pay'
             ? `${formatMinor(line.minor, currency)} still to pay`
             : line.kind === 'left'
@@ -250,7 +290,7 @@ export function PlanBox({
         )}
         {totals.moneyBackMinor > 0 && (
           <BoxRow label="Money back" testId="plan-box-money-back">
-            <Money minor={totals.moneyBackMinor} currency={currency} className="text-[var(--ph-up)]" />
+            <Money minor={totals.moneyBackMinor} currency={currency} className="text-[var(--mk-t-green)]" />
           </BoxRow>
         )}
       </dl>
@@ -341,17 +381,17 @@ export function PlanTable({
             </td>
           </tr>
         )}
-        {rows.map(({ item, categoryName }, index) => {
+        {rows.map(({ item, categoryName }) => {
           const word = planItemStatus(item);
           const open = editing?.id === item.id ? editing : null;
           const many = quantityWords(item, own(item));
           return (
-            <tr key={item.id} data-testid="plan-row" data-item-id={item.id} className={cx('text-[var(--ph-ink)]', index % 2 === 1 && 'bg-[var(--mac-zebra)]')}>
+            <tr key={item.id} data-testid="plan-row" data-item-id={item.id} className="text-[var(--mk-ink)]">
               <td className={cx(TD, 'pl-[14px]')}>
                 <button type="button" onClick={() => onOpen(item.id)} className="block max-w-[260px] truncate text-left font-medium hover:underline" title="Open the cost">
                   {item.name}
                 </button>
-                {many && <span className="block truncate text-[11.5px] text-[var(--ph-ink-3)]">{many}</span>}
+                {many && <span className="block truncate text-[12px] text-[var(--mk-ink-2)]">{many}</span>}
               </td>
               <td className={TD}>
                 <span className="flex min-w-0 items-center gap-[6px]">
@@ -381,10 +421,10 @@ export function PlanTable({
                           setEditing(null);
                         }
                       }}
-                      className="-my-px h-[22px] w-full rounded-[4px] bg-[var(--ph-surface)] px-[6px] text-right text-[13px] text-[var(--ph-ink)] tabular-nums outline-2 outline-[var(--mac-accent)]"
+                      className="-my-px h-[24px] w-full rounded-[7px] bg-[var(--mk-field)] px-[7px] text-right text-[13px] text-[var(--mk-ink)] tabular-nums outline-2 outline-[var(--mk-blue)]"
                     />
                     {open.error && (
-                      <span role="alert" className="absolute right-[10px] z-10 mt-[3px] max-w-[260px] rounded-[6px] bg-[var(--ph-alarm)] px-[8px] py-[3px] text-left text-[11.5px] whitespace-normal text-white shadow">
+                      <span role="alert" className="absolute right-[10px] z-10 mt-[3px] max-w-[260px] rounded-[8px] bg-[var(--mk-c-red)] px-[8px] py-[3px] text-left text-[11.5px] whitespace-normal text-white shadow">
                         {open.error}
                       </span>
                     )}
@@ -395,7 +435,7 @@ export function PlanTable({
                     aria-label={`Planned for ${item.name}`}
                     title={edit ? (item.quantity > 1 ? 'Opens the cost: price each and how many' : 'Type the planned figure') : 'Open the cost'}
                     onClick={() => begin(item)}
-                    className={cx('w-full rounded-[4px] text-right tabular-nums hover:bg-[var(--ph-fill)] focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]', edit && 'text-[var(--mac-accent)]')}
+                    className={cx('w-full rounded-[7px] px-[4px] text-right tabular-nums hover:bg-[var(--mk-pill)] focus-visible:outline-2 focus-visible:outline-[var(--mk-blue)]', edit && 'text-[var(--mk-blue)]')}
                   >
                     {planned(item)}
                   </button>
@@ -414,20 +454,22 @@ export function PlanTable({
                     aria-label={item.done ? `Reopen ${item.name}` : item.purchaseCount > 0 ? `Settle ${item.name}` : `Pay ${item.name}`}
                     title={item.done ? 'Reopen: more is still to be bought' : item.purchaseCount > 0 ? 'Done buying' : 'Pay it now'}
                     onClick={() => (item.done ? status.done(item, false) : item.purchaseCount > 0 ? status.done(item, true) : status.pay(item))}
-                    className={cx('rounded-[4px] px-[2px] hover:underline', STATUS_TONE[word])}
+                    className="rounded-full hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--mk-blue)]"
                   >
-                    {word}
-                    {word === 'Bought' && ' ✓'}
+                    <Tag tone={STATUS_TONE[word]}>
+                      {word}
+                      {word === 'Bought' && ' ✓'}
+                    </Tag>
                   </button>
                 ) : (
-                  <span className={STATUS_TONE[word]}>
+                  <Tag tone={STATUS_TONE[word]}>
                     {word}
                     {word === 'Bought' && ' ✓'}
-                  </span>
+                  </Tag>
                 )}
               </td>
-              <td className={cx(TD, 'pr-[14px] text-[var(--ph-ink-3)]')} data-testid="plan-payments">
-                <button type="button" onClick={() => onOpen(item.id)} className="block max-w-[220px] truncate text-left hover:text-[var(--ph-ink)] hover:underline" title="Open the cost">
+              <td className={cx(TD, 'pr-[14px] text-[var(--mk-ink-2)]')} data-testid="plan-payments">
+                <button type="button" onClick={() => onOpen(item.id)} className="block max-w-[220px] truncate text-left hover:text-[var(--mk-ink)] hover:underline" title="Open the cost">
                   {paymentsLine(item)}
                 </button>
               </td>
@@ -436,13 +478,13 @@ export function PlanTable({
         })}
       </tbody>
       <tfoot>
-        <tr className="border-t border-[var(--ph-hair)] bg-[var(--mac-head)]" data-testid="plan-total">
-          <td className={cx(TD, 'pl-[14px] font-semibold')} colSpan={2}>
+        <tr className="border-t border-[var(--mk-head-line)]" data-testid="plan-total">
+          <td className={cx(TD, 'border-b-0 pl-[14px] font-bold')} colSpan={2}>
             Total
           </td>
-          <td className={cx(TD, 'text-right font-semibold tabular-nums')}>{formatMinor(plannedTotal, currency)}</td>
-          <td className={cx(TD, 'text-right font-semibold tabular-nums')}>{formatMinor(paidTotal, currency)}</td>
-          <td className={cx(TD, 'pr-[14px]')} colSpan={2}>
+          <td className={cx(TD, 'border-b-0 text-right font-bold tabular-nums')}>{formatMinor(plannedTotal, currency)}</td>
+          <td className={cx(TD, 'border-b-0 text-right font-bold tabular-nums')}>{formatMinor(paidTotal, currency)}</td>
+          <td className={cx(TD, 'border-b-0 pr-[14px]')} colSpan={2}>
             {addCost}
           </td>
         </tr>
@@ -451,7 +493,7 @@ export function PlanTable({
   );
 }
 
-const STATUS_TONE = { 'To buy': 'text-[var(--ph-ink-3)]', Paying: 'text-[var(--mac-accent)]', Bought: 'text-[var(--ph-up)]' } as const;
+const STATUS_TONE: Record<'To buy' | 'Paying' | 'Bought', Tone> = { 'To buy': 'grey', Paying: 'blue', Bought: 'green' };
 
 /** The table box's tabs: Transactions · N and Plan · N costs, as a pill switch in the box's header. */
 export function TableTabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (next: T) => void; tabs: readonly { key: T; label: string }[] }) {
@@ -466,7 +508,7 @@ export function TableTabs<T extends string>({ value, onChange, tabs }: { value: 
           onClick={() => onChange(tab.key)}
           className={cx(
             'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
-            value === tab.key ? 'bg-[var(--ph-selected)] font-semibold text-[var(--ph-ink)] shadow-[0_0.5px_1.5px_rgba(0,0,0,0.18)]' : 'font-medium text-[var(--ph-ink-2)]',
+            value === tab.key ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
           )}
         >
           {tab.label}
@@ -479,7 +521,7 @@ export function TableTabs<T extends string>({ value, onChange, tabs }: { value: 
 /** "＋ Add a cost" at the foot of the Plan table. */
 export function AddCostLink({ to, eventId }: { to: '/events/$eventId/plan/new' | '/events/$eventId/shared-plan/new'; eventId: string }) {
   return (
-    <Link to={to} params={{ eventId }} className="text-[12.5px] text-[var(--mac-accent)] hover:underline">
+    <Link to={to} params={{ eventId }} className="text-[13px] font-semibold text-[var(--mk-blue)] hover:underline">
       <span aria-hidden>＋ </span>Add a cost
     </Link>
   );

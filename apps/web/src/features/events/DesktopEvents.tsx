@@ -16,29 +16,34 @@ import { useNewEvent } from './NewEventFlow';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
-import { DeskBar, DeskTitle, PILL_BLUE } from '../../ui/desk';
+import { CARD as SOFT_CARD, DeskBar, DeskTitle, PILL_BLUE, Tag } from '../../ui/desk';
 
 export const PBTN = PILL_BLUE;
-const SECTION_TITLE = 'pb-[8px] text-[11px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase';
+const SECTION_TITLE = 'pb-[10px] pl-[2px] text-[12px] font-bold tracking-[0.06em] text-[var(--mk-ink-3)] uppercase';
 // Four cards a row in a 1280 window, more in a wider one; a card never stretches past its share of the row.
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-[12px]';
-const CARD = 'flex min-h-[150px] flex-col rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] px-[14px] py-[13px]';
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-[16px]';
+const CARD = cx(SOFT_CARD, 'flex min-h-[164px] flex-col px-[20px] py-[18px]');
 
-/** The event's mark, as the phone's list draws it: the calendar in a tinted circle. */
-export function EventMarkCircle({ size = 34 }: { size?: number }) {
+/** The title's grey line (v1): how many events are running or ahead, and how many are over. */
+export function eventsTitleLine(nowCount: number, pastCount: number): string {
+  return `${nowCount} now and next · ${pastCount} past`;
+}
+
+/** The event's mark, as v1 draws a page's mark: the calendar, white, in a circle of the Events colour. */
+export function EventMarkCircle({ size = 30 }: { size?: number }) {
   return (
-    <span aria-hidden className="flex shrink-0 items-center justify-center rounded-full bg-[var(--ph-info-panel)] text-[var(--ph-info-ink)]" style={{ width: size, height: size }}>
-      <CalendarRange size={Math.round(size * 0.47)} strokeWidth={2.2} />
+    <span aria-hidden className="flex shrink-0 items-center justify-center rounded-full bg-[var(--nav-events)] text-white" style={{ width: size, height: size }}>
+      <CalendarRange size={Math.round(size * 0.52)} strokeWidth={2.3} />
     </span>
   );
 }
 
-/** The thin green bar a planned event's card and its Plan box draw: spent against planned. */
+/** The thin green bar a planned event's card and its Plan box draw: spent against planned, on v1's grey track. */
 export function PlanBar({ part, whole, label }: { part: number; whole: number; label: string }) {
   const percent = barPercent(part, whole);
   return (
-    <div role="progressbar" aria-label={label} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} className="h-[6px] overflow-hidden rounded-full bg-[var(--ph-track)]">
-      <div className="h-full rounded-full bg-[var(--ph-up)]" style={{ width: `${percent}%` }} />
+    <div role="progressbar" aria-label={label} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} className="h-[6px] overflow-hidden rounded-[3px] bg-[var(--mk-track)]">
+      <div className="h-full rounded-[3px] bg-[var(--mk-c-green)]" style={{ width: `${percent}%` }} />
     </div>
   );
 }
@@ -70,11 +75,11 @@ export function DesktopEvents() {
         </button>
       </DeskBar>
       <DeskNotices />
-      <DeskTitle title="Events" />
+      <DeskTitle title="Events" line={events.isSuccess ? eventsTitleLine(now.length, past.length) : null} />
       <div className="space-y-[18px] px-[32px] pt-[2px] pb-[32px]">
         <ErrorBox error={create.error ?? events.error} />
         {events.isSuccess && all.length === 0 && (
-          <p className="text-[13px] text-[var(--ph-ink-3)]">No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</p>
+          <p className="text-[13.5px] text-[var(--mk-ink-2)]">No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</p>
         )}
         {(now.length > 0 || (events.isSuccess && all.length === 0)) && (
           <section aria-labelledby="events-now">
@@ -116,9 +121,9 @@ function NewEventCard({ onClick }: { onClick: () => void }) {
       aria-hidden
       data-testid="new-event-card"
       onClick={onClick}
-      className="flex min-h-[150px] items-center justify-center gap-[4px] rounded-[10px] border border-dashed border-[var(--ph-chevron)] text-[13px] text-[var(--mac-accent)] hover:bg-[var(--ph-surface)]"
+      className="flex min-h-[164px] items-center justify-center gap-[5px] rounded-[18px] border-[1.5px] border-dashed border-[var(--mk-head-line)] text-[14px] font-semibold text-[var(--mk-blue)] hover:bg-[var(--mk-card)]"
     >
-      <span>＋</span>New event
+      <span aria-hidden>＋</span>New event
     </button>
   );
 }
@@ -141,19 +146,19 @@ function EventCard({ event, shared, ready }: { event: EventRow; shared: SharedEv
   if (shared && spent) {
     figure = (
       <span data-testid="event-shared-spent">
-        <Money minor={spent.spentMinor} currency={spent.currency} className="font-semibold text-[var(--ph-ink)]" /> <span className="text-[var(--ph-ink-3)]">spent</span>
+        <Money minor={spent.spentMinor} currency={spent.currency} className="font-bold text-[var(--mk-ink)]" /> <span className="text-[var(--mk-ink-2)]">spent</span>
       </span>
     );
   } else if (line) {
     figure =
       line.ofMinor === null ? (
         <span>
-          <Money minor={line.amountMinor} currency={ws.baseCurrency} className="font-semibold text-[var(--ph-ink)]" /> <span className="text-[var(--ph-ink-3)]">spent</span>
+          <Money minor={line.amountMinor} currency={ws.baseCurrency} className="font-bold text-[var(--mk-ink)]" /> <span className="text-[var(--mk-ink-2)]">spent</span>
         </span>
       ) : (
         <span className="flex flex-wrap gap-x-[4px]">
-          <Money minor={line.amountMinor} currency={ws.baseCurrency} className="font-semibold text-[var(--ph-ink)]" />
-          <span className="text-[var(--ph-ink-3)]">
+          <Money minor={line.amountMinor} currency={ws.baseCurrency} className="font-bold text-[var(--mk-ink)]" />
+          <span className="text-[var(--mk-ink-2)]">
             of <Money minor={line.ofMinor} currency={ws.baseCurrency} />
           </span>
         </span>
@@ -166,7 +171,7 @@ function EventCard({ event, shared, ready }: { event: EventRow; shared: SharedEv
         to="/events/$eventId"
         params={{ eventId: event.id }}
         data-testid="event-row"
-        className={cx(CARD, 'transition-shadow hover:shadow-[0_1px_6px_rgba(0,0,0,0.08)] focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]')}
+        className={cx(CARD, 'hover:bg-[var(--mk-pill)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mk-blue)]')}
         onContextMenu={(e) => {
           if (!offersMode) return;
           e.preventDefault();
@@ -176,18 +181,18 @@ function EventCard({ event, shared, ready }: { event: EventRow; shared: SharedEv
         <span className="flex items-start justify-between gap-[8px]">
           <EventMarkCircle />
           {shared && (
-            <span data-testid="event-shared-chip" className="max-w-[60%] truncate rounded-[5px] bg-[var(--ph-fill)] px-[6px] py-[1px] text-[11px] text-[var(--ph-ink-2)]">
-              {sharedChip(shared)}
-            </span>
+            <Tag tone="blue" testId="event-shared-chip" className="max-w-[60%] truncate">
+              <span className="truncate">{sharedChip(shared)}</span>
+            </Tag>
           )}
         </span>
-        <span className="mt-[10px] block truncate text-[14px] font-semibold text-[var(--ph-ink)]">{event.name}</span>
-        <span className="block truncate text-[12px] text-[var(--ph-ink-3)]">{eventDates(event)}</span>
+        <span className="mt-[12px] block truncate text-[16px] font-bold text-[var(--mk-ink)]">{event.name}</span>
+        <span className="mt-[1px] block truncate text-[13px] text-[var(--mk-ink-2)]">{eventDates(event)}</span>
         <span className="flex-1" />
         {/* Never cut: a figure too long for the card goes on to a second line. */}
-        <span className="mt-[12px] block text-[13px] tabular-nums">{figure}</span>
+        <span className="mt-[14px] block text-[14px] tabular-nums">{figure}</span>
         {/* What the clamp on the figure swallowed, said rather than left as a silent nought (the phone row's line). */}
-        {line?.backLine && <span className="block truncate text-[11.5px] text-[var(--ph-up)]">{line.backLine}</span>}
+        {line?.backLine && <span className="block truncate text-[12px] text-[var(--mk-t-green)]">{line.backLine}</span>}
         {line && line.ofMinor !== null && (
           <span className="mt-[8px] block">
             <PlanBar part={line.amountMinor} whole={line.ofMinor} label={`${event.name} against its plan`} />

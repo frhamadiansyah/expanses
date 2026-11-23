@@ -1,7 +1,7 @@
 import { formatMinor, fundingOrder, type GoalClass, goalClass, isoDate } from '@expanses/core';
 import { type GoalPlanRow, reorderGoals, retagTrade } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { CalendarClock, ChevronLeft, ChevronRight, Flag, PiggyBank, Target, TrendingUp } from 'lucide-react';
 import { type DragEvent, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { DeskNotices } from '../../app/DeskNotices';
@@ -12,7 +12,7 @@ import { cx, ErrorBox } from '../../ui';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { bareFigure } from '../networth/debt-rows';
 import { useTrades } from '../networth/queries';
-import { BOX, BoxHead, NOTE } from '../transactions/CashflowBoxes';
+import { BOX, BoxHead } from '../transactions/CashflowBoxes';
 import { TagPurchaseSheet } from './FundingSheet';
 import { fundingLines } from './funding-lines';
 import { setAsideOf } from './goal-actions';
@@ -40,12 +40,25 @@ import {
 } from './goals-desk-model';
 import { useEarmarks, useGoalPlans, useGoalShares } from './queries';
 import { SetAsideSheet } from './SetAside';
-import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
+import { goalsTitleLine } from './goals-title-line';
+import { macV2 } from '../../ui/mac-detail';
+import { Card, CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, PILL, PILL_BLUE, Seg, StatTile, Tag, TileRow, Track } from '../../ui/desk';
 
 const GBTN = PILL;
 const PBTN = PILL_BLUE;
-const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-left text-[11px] font-semibold whitespace-nowrap text-[var(--ph-ink-3)]';
-const TD = 'px-[10px] py-[6px] align-middle';
+/** v1's table: grey heads over a hairline, a hairline under every row but the last, no fill. */
+const TH = 'border-b border-[var(--mk-head-line)] px-[10px] pt-[2px] pb-[8px] text-left text-[12.5px] font-semibold whitespace-nowrap text-[var(--mk-ink-2)]';
+const TD = 'border-b border-[var(--mk-line)] px-[10px] py-[8px] align-middle';
+
+/** A tile's figure: the exact amount always, a step smaller when it is long, so nothing is cut. */
+function TileFigure({ minor, currency, testId }: { minor: number; currency: string; testId?: string }) {
+  const text = formatMinor(minor, currency);
+  return (
+    <span data-testid={testId} className={text.length > 14 ? 'text-[21px]' : text.length > 12 ? 'text-[23px]' : undefined}>
+      {text}
+    </span>
+  );
+}
 
 /** The table's two sections, in funding order: what is saved reaches the compulsory goals first. */
 const SECTIONS: { key: GoalClass; title: string; note: string }[] = [
@@ -240,11 +253,24 @@ export function DesktopGoals() {
 
   const ready = summary.data !== undefined;
   const anyGoals = goals.length > 0;
+  const [whyOpen, setWhyOpen] = useState(false);
+  const why = shortfallWhy(fitting, cards.length);
+  const titleLine = ready ? (
+    <>
+      {goalsTitleLine({ running: running.length, done: goals.length - running.length, savedMinor: totals.savedMinor, currency })}
+      {running.length > 0 && (
+        <>
+          {' · '}
+          <span data-testid="goals-on-track">{onTrackLine(totals)}</span>
+        </>
+      )}
+    </>
+  ) : undefined;
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="goals-page" data-desk="true" {...doubleClick}>
+    <div className="min-h-dvh bg-[var(--mk-page)]" data-testid="goals-page" data-desk="true" {...doubleClick}>
       <DeskBar crumb="Goals" barRef={bar}>
-        <Segments
+        <Seg
           label="Goals shown"
           value={segment}
           onChange={(next) => {
@@ -252,8 +278,8 @@ export function DesktopGoals() {
             setPeekId(null);
           }}
           options={[
-            { key: 'active', label: 'Active' },
-            { key: 'done', label: 'Done' },
+            { value: 'active', label: 'Active' },
+            { value: 'done', label: 'Done' },
           ]}
         />
         <SetAsideButton goals={running} peeked={peeked && !peeked.card.done ? peeked.card.goalId : null} onPick={(goalId) => setAside({ goalId })} />
@@ -262,64 +288,82 @@ export function DesktopGoals() {
         </button>
       </DeskBar>
       <DeskNotices />
-      <DeskTitle title="Goals" />
+      <DeskTitle title="Goals" line={titleLine} />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
       <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={summary.error ?? error} />
         {ready && segment === 'active' && running.length > 0 && summary.data && (
-          <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[560px]:grid-cols-2 @min-[900px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.55fr)]">
-            <section className={BOX} aria-label="Saved for goals" data-testid="goals-card">
-              <BoxHead title="Saved for goals" />
-              <div className="px-[14px] pb-[12px]">
-                <div data-testid="goals-saved" className="text-[26px] leading-[32px] font-semibold tabular-nums text-[var(--ph-ink)]">
-                  {formatMinor(totals.savedMinor, currency)}
-                </div>
-                <div data-testid="goals-on-track" className="mt-[2px] text-[12.5px] text-[var(--ph-ink-3)]">
-                  {onTrackLine(totals)}
-                </div>
-                {shortfall > 0 && <ShortChip text={`Short ${formatMinor(shortfall, currency)} a month`} why={shortfallWhy(fitting, cards.length)} />}
-                {fitLine(saving) && (
-                  <p data-testid="goals-fit-line" className="mt-[10px] text-[11.5px] leading-[15px] text-[var(--ph-ink-3)]">
-                    {fitLine(saving)}
-                  </p>
-                )}
-              </div>
-            </section>
-            <section className={BOX} aria-label="Each month" data-testid="goals-each-month">
-              <BoxHead title="Each month" />
-              <MonthFigures needed={summary.data.neededMonthlyMinor} setUp={summary.data.plannedMonthlyMinor} saved={summary.data.capacityMonthlyMinor} currency={currency} />
-            </section>
-            {/* Two boxes a row in a narrower page (the peek open at 1280): the chart goes under them, the width of both. */}
-            <div className="flex min-w-0 flex-col @min-[560px]:col-span-2 @min-[900px]:col-span-1">
-              <ChartBox
-                saving={saving}
-                savedMinor={summary.data.capacityMonthlyMinor}
-                lanes={lanes}
-                axisTicks={axis.ticks}
-                currency={currency}
-                onGoal={(id) => setPeekId(id)}
+          <div>
+            {/* v1's four tiles: what is saved for the goals (the Short badge when the month falls short), then needed, set up
+                and saved each month — the old Each month box's three figures. */}
+            <TileRow testId="goals-tiles">
+              <section aria-label="Saved for goals" data-testid="goals-card" className="min-w-0">
+                <StatTile
+                  icon={PiggyBank}
+                  colour="red"
+                  value={<TileFigure minor={totals.savedMinor} currency={currency} testId="goals-saved" />}
+                  label="Saved for goals"
+                  badge={shortfall > 0 ? <ShortBadge text={`Short ${formatMinor(shortfall, currency)} a month`} why={why} open={whyOpen} onToggle={() => setWhyOpen((was) => !was)} /> : undefined}
+                />
+              </section>
+              <StatTile
+                icon={Target}
+                colour="orange"
+                value={<TileFigure minor={summary.data.neededMonthlyMinor} currency={currency} testId="goals-needed" />}
+                label="Needed a month"
+                testId="goals-tile-needed"
               />
-            </div>
+              <div title="Monthly buys and standing transfers set up for the goals." className="min-w-0">
+                <StatTile
+                  icon={CalendarClock}
+                  colour="blue"
+                  value={<TileFigure minor={summary.data.plannedMonthlyMinor} currency={currency} testId="goals-set-up" />}
+                  label="Set up a month"
+                  testId="goals-tile-set-up"
+                />
+              </div>
+              <div title={SAVED_A_MONTH_WHY} className="min-w-0">
+                <StatTile
+                  icon={TrendingUp}
+                  colour="green"
+                  value={<TileFigure minor={summary.data.capacityMonthlyMinor} currency={currency} testId="goals-saved-monthly" />}
+                  label="Saved a month"
+                  testId="goals-tile-saved-monthly"
+                />
+              </div>
+            </TileRow>
+            {shortfall > 0 && whyOpen && (
+              <p data-testid="goals-short-why" className="-mt-[6px] mb-[4px] px-[4px] text-[12.5px] leading-[17px] text-[var(--mk-ink-2)]">
+                {why}
+              </p>
+            )}
           </div>
         )}
 
-        <section className={cx(BOX, 'overflow-clip')} aria-label="Goals" data-testid="goals-table-box">
-          <BoxHead title={segment === 'done' ? 'Done' : 'Goals'} note={shown.length > 0 ? 'click a goal to see it' : undefined} />
+        <Card
+          title={segment === 'done' ? 'Done' : 'Goals'}
+          icon={Flag}
+          note={shown.length > 0 ? 'click a goal to see it · double-click to open it' : undefined}
+          label="Goals"
+          testId="goals-table-box"
+          className="overflow-clip"
+          bodyClassName="px-[10px] pb-[8px]"
+        >
           {ready && shown.length === 0 && (
-            <p className="px-[14px] pt-1 pb-4 text-[13px] text-[var(--ph-ink-3)]">{segment === 'done' ? 'No goal is done yet.' : anyGoals ? 'Every goal is done.' : 'No goals yet.'}</p>
+            <p className="px-[10px] pt-1 pb-3 text-[13px] text-[var(--mk-ink-2)]">{segment === 'done' ? 'No goal is done yet.' : anyGoals ? 'Every goal is done.' : 'No goals yet.'}</p>
           )}
           {shown.length > 0 && (
-            <table className="w-full border-collapse text-[13px]" data-testid="goals-table">
+            <table className="w-full border-collapse text-[13.5px]" data-testid="goals-table">
               <thead>
                 <tr>
-                  <th className={cx(TH, 'pl-[14px]')}>Goal</th>
+                  <th className={TH}>Goal</th>
                   <th className={cx(TH, 'hidden @min-[1000px]:table-cell')}>By</th>
                   <th className={cx(TH, 'hidden @min-[760px]:table-cell')}>Status</th>
                   <th className={TH}>Progress</th>
                   <th className={cx(TH, 'text-right')}>Saved</th>
-                  <th className={cx(TH, 'text-right', 'pr-[14px] @min-[1000px]:pr-[10px]')}>Set up a month</th>
-                  <th className={cx(TH, 'hidden pr-[14px] @min-[1000px]:table-cell')}>Funded by</th>
+                  <th className={cx(TH, 'text-right')}>Set up a month</th>
+                  <th className={cx(TH, 'hidden @min-[1000px]:table-cell')}>Funded by</th>
                 </tr>
               </thead>
               {SECTIONS.map((section) => {
@@ -328,16 +372,15 @@ export function DesktopGoals() {
                 return (
                   <tbody key={section.key} data-testid={`goals-${section.key}`}>
                     <tr>
-                      <td colSpan={7} className="px-[14px] pt-[10px] pb-[4px] text-[11px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+                      <td colSpan={7} className="border-b border-[var(--mk-line)] px-[10px] pt-[14px] pb-[6px] text-[11.5px] font-bold tracking-[0.06em] text-[var(--mk-ink-3)] uppercase">
                         {section.title}
-                        <span className="ml-[8px] font-normal tracking-normal normal-case">{segment === 'active' ? section.note : section.note.split(' · ')[0]}</span>
+                        <span className="ml-[8px] font-medium tracking-normal normal-case">{segment === 'active' ? section.note : section.note.split(' · ')[0]}</span>
                       </td>
                     </tr>
-                    {rows.map((goal, index) => (
+                    {rows.map((goal) => (
                       <GoalRow
                         key={goal.card.goalId}
                         goal={goal}
-                        zebra={index % 2 === 1}
                         selected={peekId === goal.card.goalId}
                         dropTarget={over === goal.card.goalId && dragging !== goal.card.goalId}
                         onClick={onRow(goal.card.goalId)}
@@ -350,7 +393,30 @@ export function DesktopGoals() {
               })}
             </table>
           )}
-        </section>
+        </Card>
+
+        {/* Where saving goes / When each goal is due, under the table and the width of the page (v1 keeps it: it is the
+            reason behind the Short badge). v2 sets the Each month box's bars beside it. */}
+        {ready && segment === 'active' && running.length > 0 && summary.data && (
+          <div className={cx('grid grid-cols-1 items-stretch gap-[16px]', macV2 && '@min-[900px]:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)]')}>
+            {macV2 && (
+              <section className={BOX} aria-label="Each month" data-testid="goals-each-month">
+                <BoxHead title="Each month" />
+                <MonthFigures needed={summary.data.neededMonthlyMinor} setUp={summary.data.plannedMonthlyMinor} saved={summary.data.capacityMonthlyMinor} currency={currency} />
+              </section>
+            )}
+            <div className="flex min-w-0 flex-col">
+              <ChartBox
+                saving={saving}
+                savedMinor={summary.data.capacityMonthlyMinor}
+                lanes={lanes}
+                axisTicks={axis.ticks}
+                currency={currency}
+                onGoal={(id) => setPeekId(id)}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {peeked && (
@@ -403,7 +469,6 @@ export function DesktopGoals() {
 /** One goal in the table: its kind and name (initials on a shared goal), date, status, bar, saved, set up, funded by. */
 function GoalRow({
   goal,
-  zebra,
   selected,
   dropTarget,
   onClick,
@@ -411,7 +476,6 @@ function GoalRow({
   drag,
 }: {
   goal: DeskGoal;
-  zebra: boolean;
   selected: boolean;
   dropTarget: boolean;
   onClick: (event: MouseEvent) => void;
@@ -420,11 +484,11 @@ function GoalRow({
 }) {
   const { card } = goal;
   const warn = card.statusTone === 'warn';
-  const grey = selected ? 'text-white/85' : 'text-[var(--ph-ink-3)]';
-  const tone = (ink: string) => (selected ? 'text-white' : ink);
-  const statusInk = tone(warn ? 'text-[var(--ph-warn)]' : card.done || card.statusLabel === 'Funded' ? 'text-[var(--ph-ink-2)]' : 'text-[var(--ph-up)]');
+  const grey = 'text-[var(--mk-ink-2)]';
+  const tone = (ink: string) => ink;
+  // v1's tags: On track green, Behind orange, Funded and Done grey.
   const short = card.differenceMinor < 0 && !card.done && card.neededMonthlyMinor > 0;
-  const status = <span className={statusInk}>{card.statusLabel}</span>;
+  const status = <Tag tone={warn ? 'orange' : card.done || card.statusLabel === 'Funded' ? 'grey' : 'green'}>{card.statusLabel}</Tag>;
   return (
     <tr
       data-goal-row
@@ -435,14 +499,14 @@ function GoalRow({
       onDoubleClick={onOpen}
       {...drag}
       className={cx(
-        'cursor-default scroll-mt-[64px] scroll-mb-[16px]',
-        selected ? 'bg-[var(--mac-accent)] text-white' : zebra ? 'bg-[var(--mac-zebra)]' : undefined,
-        dropTarget && 'shadow-[inset_0_2px_0_var(--mac-accent)]',
+        'cursor-default scroll-mt-[64px] scroll-mb-[16px] text-[var(--mk-ink)] [&:last-child>td]:border-b-0',
+        selected ? 'bg-[var(--mk-sel)]' : 'hover:bg-[var(--mk-hover)]',
+        dropTarget && 'shadow-[inset_0_2px_0_var(--mk-blue)]',
       )}
     >
-      <td className={cx(TD, 'pl-[14px]')}>
-        <span className="flex min-w-0 items-center gap-[9px]">
-          <KindIcon kind={card.kind} size={24} />
+      <td className={cx(TD, 'rounded-l-[10px]')}>
+        <span className="flex min-w-0 items-center gap-[10px]">
+          <KindIcon kind={card.kind} size={26} />
           <span className="min-w-0">
             <span className="flex min-w-0 items-center gap-[6px]">
               {/* The name is the goal's page, as a link: a click still opens the peek, a double-click the page. */}
@@ -455,7 +519,7 @@ function GoalRow({
                   event.stopPropagation();
                   onOpen();
                 }}
-                className="min-w-0 break-words"
+                className="min-w-0 font-medium break-words"
                 data-testid="goal-row-name"
               >
                 {card.name}
@@ -463,9 +527,12 @@ function GoalRow({
               {goal.initials && <Initials initials={goal.initials} testId="goal-row-initials" selected={selected} />}
             </span>
             {/* In a narrower page the date, the status and Funded by fold under the name, so no figure is cut. */}
-            <span className={cx('block text-[11.5px] @min-[1000px]:hidden', grey)}>
+            <span className={cx('block text-[12px] @min-[1000px]:hidden', grey)}>
               by {card.dueLabel}
-              <span className="@min-[760px]:hidden"> · {status}</span>
+              <span className="@min-[760px]:hidden">
+                {' · '}
+                <span className={warn ? 'text-[var(--mk-t-orange)]' : card.done || card.statusLabel === 'Funded' ? undefined : 'text-[var(--mk-t-green)]'}>{card.statusLabel}</span>
+              </span>
               {goal.fundedBy.length > 0 ? ` · ${goal.fundedBy.join(' · ')}` : ''}
             </span>
           </span>
@@ -476,15 +543,8 @@ function GoalRow({
         {status}
       </td>
       <td className={TD}>
-        <span className="flex items-center gap-[8px]">
-          <span className="w-[56px] shrink-0">
-            <span className="block h-[4px] overflow-hidden rounded-full bg-[var(--ph-track)]">
-              <span
-                className="block h-full rounded-full"
-                style={{ width: `${card.done ? 100 : card.progressPercent}%`, background: selected ? 'white' : warn ? 'var(--ph-warn)' : 'var(--ph-up)' }}
-              />
-            </span>
-          </span>
+        <span className="flex items-center gap-[9px]">
+          <Track share={(card.done ? 100 : card.progressPercent) / 100} colour={warn ? 'var(--mk-c-orange)' : 'var(--mk-c-green)'} className="w-[72px] shrink-0" />
           <span data-testid="goal-row-progress" className={cx('text-[12px] whitespace-nowrap tabular-nums', grey)}>
             {Math.round(card.done ? 100 : card.progressPercent)}%{card.targetMinor > 0 ? ` of ${compactMoney(card.targetMinor, card.currency)}` : ''}
           </span>
@@ -493,57 +553,56 @@ function GoalRow({
       <td data-testid="goal-row-saved" className={cx(TD, 'text-right font-semibold whitespace-nowrap tabular-nums')}>
         {formatMinor(card.currentMinor, card.currency)}
       </td>
-      <td data-testid="goal-row-set-up" className={cx(TD, 'pr-[14px] text-right whitespace-nowrap tabular-nums @min-[1000px]:pr-[10px]')}>
+      <td data-testid="goal-row-set-up" className={cx(TD, 'text-right whitespace-nowrap tabular-nums')}>
         {card.neededMonthlyMinor === 0 && card.plannedMonthlyMinor === 0 ? (
           <span className={grey}>—</span>
         ) : short ? (
           <>
-            <span className={tone('text-[var(--ph-warn)]')}>{formatMinor(card.plannedMonthlyMinor, card.currency)}</span>
+            <span className={tone('text-[var(--mk-t-orange)]')}>{formatMinor(card.plannedMonthlyMinor, card.currency)}</span>
             <span className={grey}> of {bareFigure(card.neededMonthlyMinor, card.currency)}</span>
           </>
         ) : (
           formatMinor(card.plannedMonthlyMinor, card.currency)
         )}
       </td>
-      <td data-testid="goal-row-funded-by" className={cx(TD, 'hidden max-w-[220px] pr-[14px] @min-[1000px]:table-cell')}>
+      <td data-testid="goal-row-funded-by" className={cx(TD, 'hidden max-w-[220px] rounded-r-[10px] @min-[1000px]:table-cell')}>
         {goal.fundedBy.length > 0 ? (
           <span className={cx('block truncate', grey)} title={goal.fundedBy.join(' · ')}>
             {goal.fundedBy.join(' · ')}
           </span>
         ) : (
-          <span className={tone('text-[var(--ph-warn)]')}>Nothing yet</span>
+          <span className={tone('text-[var(--mk-t-orange)]')}>Nothing yet</span>
         )}
       </td>
     </tr>
   );
 }
 
-/** "Short Rp 4.520.000 a month", with why behind its ⓘ: the phone's chip and words. */
-function ShortChip({ text, why }: { text: string; why: string }) {
-  const [open, setOpen] = useState(false);
+/** Saved a month, as the tile's hover explains it. */
+const SAVED_A_MONTH_WHY = 'Saved a month: take-home pay minus spending minus loan principal, averaged over the last twelve full months. This month counts once it is over.';
+
+/**
+ * "Short Rp 4.520.000 a month" on the Saved for goals tile: an orange tag that is itself the button for why (the phone's
+ * ⓘ words, shown under the tiles), so the whole figure fits the tile's corner.
+ */
+function ShortBadge({ text, why, open, onToggle }: { text: string; why: string; open: boolean; onToggle: () => void }) {
   return (
-    <div className="mt-[10px]">
-      <div className="flex items-center gap-[6px]">
-        <span data-testid="goals-short" className="rounded-full bg-[var(--ph-warn-panel)] px-[10px] py-[3px] text-[12px] font-medium whitespace-nowrap text-[var(--ph-warn-ink)]">
-          {text}
-        </span>
-        <button
-          type="button"
-          aria-label="About the shortfall"
-          aria-expanded={open}
-          title={why}
-          onClick={() => setOpen((was) => !was)}
-          className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[var(--ph-ink-3)] hover:text-[var(--ph-ink)]"
-        >
-          <Info size={14} aria-hidden />
-        </button>
-      </div>
-      {open && (
-        <p data-testid="goals-short-why" className="pt-[6px] text-[11.5px] leading-[15px] text-[var(--ph-ink-3)]">
-          {why}
-        </p>
-      )}
-    </div>
+    <button
+      type="button"
+      aria-label="About the shortfall"
+      aria-expanded={open}
+      title={why}
+      onClick={onToggle}
+      className="flex min-w-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--mk-blue)]"
+    >
+      <span
+        data-testid="goals-short"
+        className="min-w-0 truncate rounded-full px-[9px] py-[1px] text-[11.5px] leading-[17px] font-bold whitespace-nowrap hover:opacity-80"
+        style={{ background: 'var(--mk-t-orange-bg)', color: 'var(--mk-t-orange)' }}
+      >
+        {text}
+      </span>
+    </button>
   );
 }
 
@@ -551,9 +610,9 @@ function ShortChip({ text, why }: { text: string; why: string }) {
 function MonthFigures({ needed, setUp, saved, currency }: { needed: number; setUp: number; saved: number; currency: string }) {
   const top = Math.max(1, needed, setUp, saved);
   const rows = [
-    { label: 'Needed a month', minor: needed, colour: 'var(--ph-ink)', testId: 'goals-needed' },
-    { label: 'Set up a month', minor: setUp, colour: 'var(--ph-ink-3)', testId: 'goals-set-up', why: 'Monthly buys and standing transfers set up for the goals.' },
-    { label: 'Saved a month', minor: saved, colour: 'var(--ph-up)', testId: 'goals-saved-monthly' },
+    { label: 'Needed a month', minor: needed, colour: 'var(--mk-c-orange)' },
+    { label: 'Set up a month', minor: setUp, colour: 'var(--mk-c-blue)', why: 'Monthly buys and standing transfers set up for the goals.' },
+    { label: 'Saved a month', minor: saved, colour: 'var(--mk-c-green)' },
   ];
   return (
     <div className="pb-[10px]">
@@ -561,7 +620,7 @@ function MonthFigures({ needed, setUp, saved, currency }: { needed: number; setU
         <div key={row.label} className="px-[14px] py-[5px]" title={row.why}>
           <div className="flex items-baseline justify-between gap-3 text-[12.5px] text-[var(--ph-ink)]">
             <span className="min-w-0 truncate">{row.label}</span>
-            <span data-testid={row.testId} className="shrink-0 whitespace-nowrap tabular-nums">
+            <span className="shrink-0 whitespace-nowrap tabular-nums">
               {formatMinor(row.minor, currency)}
             </span>
           </div>
@@ -570,9 +629,7 @@ function MonthFigures({ needed, setUp, saved, currency }: { needed: number; setU
           </div>
         </div>
       ))}
-      <p className="px-[14px] pt-[4px] text-[11.5px] leading-[15px] text-[var(--ph-ink-3)]">
-        Saved a month: take-home pay minus spending minus loan principal, averaged over the last twelve full months. This month counts once it is over.
-      </p>
+      <p className="px-[14px] pt-[4px] text-[11.5px] leading-[15px] text-[var(--ph-ink-3)]">{SAVED_A_MONTH_WHY}</p>
     </div>
   );
 }
@@ -653,12 +710,12 @@ function ChartBox({
     mine === page ? { visibility: 'visible' as const, transition: 'visibility 0s' } : { visibility: 'hidden' as const, transition: 'visibility 0s linear 300ms' };
   return (
     <>
-      <section ref={box} className={cx(BOX, 'flex-1 overflow-hidden')} aria-label="Goal charts" aria-roledescription="carousel" data-testid="goals-chart" data-page={page}>
-        <h2 className="flex items-center gap-[8px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
+      <section ref={box} className={cx(CARD, 'flex-1 overflow-hidden')} aria-label="Goal charts" aria-roledescription="carousel" data-testid="goals-chart" data-page={page}>
+        <h2 className={CARD_HEAD}>
           <span className="shrink-0" data-testid="goals-chart-title">
             {head.title}
           </span>
-          <span className={cx(NOTE, 'min-w-0 flex-1 truncate text-right')}>{head.note}</span>
+          <span className={CARD_NOTE}>{head.note}</span>
           <span className="flex shrink-0 items-center">
             <ArrowButton label="Previous chart" disabled={at === 0} onClick={() => turn(stepPage(page, -1))}>
               <ChevronLeft size={14} aria-hidden />
@@ -671,6 +728,11 @@ function ChartBox({
         <div className="flex transition-transform duration-300 ease-out motion-reduce:transition-none" style={{ transform: `translateX(-${at * 100}%)` }}>
           <div className="w-full shrink-0" role="group" aria-roledescription="slide" aria-label={PAGE_TITLES.saving.title} aria-hidden={page !== 'saving'} style={pageStyle('saving')} data-testid="goals-chart-saving">
             <SavingPage rows={saving} savedMinor={savedMinor} currency={currency} onGoal={onGoal} />
+            {fitLine(saving) && (
+              <p data-testid="goals-fit-line" className="px-[20px] pt-[4px] pb-[14px] text-[12.5px] leading-[17px] text-[var(--mk-ink-2)]">
+                {fitLine(saving)}
+              </p>
+            )}
           </div>
           <div className="w-full shrink-0" role="group" aria-roledescription="slide" aria-label={PAGE_TITLES.due.title} aria-hidden={page !== 'due'} style={pageStyle('due')} data-testid="goals-chart-due">
             <DuePage lanes={lanes} ticks={axisTicks} />
@@ -713,12 +775,12 @@ function ArrowButton({ label, disabled, onClick, children }: { label: string; di
 
 /** Page 1: each goal's need a month end to end in goal order, Saved a month's line, the short part hatched; then the rows. */
 function SavingPage({ rows, savedMinor, currency, onGoal }: { rows: readonly SavingRow[]; savedMinor: number; currency: string; onGoal: (goalId: string) => void }) {
-  if (rows.length === 0) return <p className="px-[14px] pb-[12px] text-[12.5px] text-[var(--ph-ink-3)]">No goal needs anything more a month.</p>;
+  if (rows.length === 0) return <p className="px-[20px] pb-[14px] text-[13px] text-[var(--mk-ink-2)]">No goal needs anything more a month.</p>;
   const bar = savingBar(rows, savedMinor);
   const label = `Saved ${compactMoney(savedMinor, currency)}`;
   return (
     <div className="pb-[6px]">
-      <div className="px-[14px] pt-[14px]">
+      <div className="px-[20px] pt-[18px]">
         <div className="relative h-[24px]" data-testid="goals-saving-bar" role="img" aria-label={`${rows.map((row) => `${row.name} ${formatMinor(row.neededMinor, currency)}`).join(', ')}; saved a month ${formatMinor(savedMinor, currency)}`}>
           <div className="absolute inset-0 overflow-hidden rounded-[4px] bg-[var(--ph-track)]">
             {bar.pieces.map((piece) => (
@@ -758,9 +820,9 @@ function SavingPage({ rows, savedMinor, currency, onGoal }: { rows: readonly Sav
               type="button"
               data-testid="goals-saving-row"
               onClick={() => onGoal(row.goalId)}
-              className="flex w-full items-center gap-[8px] border-t border-[var(--ph-hair)] px-[14px] py-[4px] text-left text-[12.5px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]"
+              className="flex w-full items-center gap-[10px] border-t border-[var(--mk-line)] px-[20px] py-[7px] text-left text-[13.5px] text-[var(--mk-ink)] hover:bg-[var(--mk-hover)]"
             >
-              <KindIcon kind={row.kind} size={18} />
+              <KindIcon kind={row.kind} size={22} />
               <span className="min-w-0 flex-1 truncate">{row.name}</span>
               <span data-testid="goals-saving-fit" className={cx('shrink-0 whitespace-nowrap tabular-nums', row.fits === 'full' ? 'text-[var(--ph-up)]' : 'text-[var(--ph-warn)]')}>
                 {fitText(row, currency)}
@@ -775,9 +837,9 @@ function SavingPage({ rows, savedMinor, currency, onGoal }: { rows: readonly Sav
 
 /** Page 2: from today, each goal a lane — its track to its date, filled as far as it is saved, a ring at the date. */
 function DuePage({ lanes, ticks }: { lanes: readonly Lane[]; ticks: readonly { label: string; at: number }[] }) {
-  if (lanes.length === 0) return <p className="px-[14px] pb-[12px] text-[12.5px] text-[var(--ph-ink-3)]">No goal has a date.</p>;
+  if (lanes.length === 0) return <p className="px-[20px] pb-[14px] text-[13px] text-[var(--mk-ink-2)]">No goal has a date.</p>;
   return (
-    <div className="px-[14px] pt-[4px] pb-[10px]" data-testid="goals-timeline">
+    <div className="px-[20px] pt-[4px] pb-[14px]" data-testid="goals-timeline">
       <div className="relative">
         {lanes.map((lane) => {
           const ink = lane.behind ? 'var(--ph-warn)' : GOAL_KIND_MARKS[lane.kind].colour;
@@ -878,29 +940,6 @@ function SetAsideButton({ goals, peeked, onPick }: { goals: readonly DeskGoal[];
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/** A switch in the title bar: two words on a grey track, the chosen one raised. */
-function Segments<T extends string>({ label, value, onChange, options }: { label: string; value: T; onChange: (next: T) => void; options: readonly { key: T; label: string }[] }) {
-  return (
-    <div role="radiogroup" aria-label={label} className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
-      {options.map((option) => (
-        <button
-          key={option.key}
-          type="button"
-          role="radio"
-          aria-checked={value === option.key}
-          onClick={() => onChange(option.key)}
-          className={cx(
-            'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
-            value === option.key ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
     </div>
   );
 }

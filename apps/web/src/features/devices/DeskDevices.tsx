@@ -169,7 +169,7 @@ export function DeskDevicePane({ deviceId }: { deviceId: string }) {
 
   return (
     <div data-testid="device-page">
-      <Link to="/account/devices" className="mb-[8px] -ml-[4px] inline-flex items-center text-[13px] text-[var(--mac-accent)] hover:underline">
+      <Link to="/account/devices" className="mb-[8px] -ml-[4px] inline-flex items-center text-[14px] font-semibold text-[var(--mk-blue)] hover:underline">
         <ChevronLeft size={15} aria-hidden />
         Devices
       </Link>

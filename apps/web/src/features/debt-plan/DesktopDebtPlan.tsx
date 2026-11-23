@@ -1,14 +1,13 @@
 import { formatMinor, isoDate, monthOf, type PayoffMethod } from '@expanses/core';
 import type { DebtPlanSettings } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { GripVertical, SlidersHorizontal } from 'lucide-react';
+import { CalendarCheck, CircleAlert, CircleCheck, GripVertical, ListOrdered, type LucideIcon, SlidersHorizontal, TrendingDown, Wallet } from 'lucide-react';
 import { type DragEvent, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { DeskNotices } from '../../app/DeskNotices';
 import { cx, ErrorBox } from '../../ui';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { movedBy } from '../transactions/DayReorder';
-import { BOX, BoxHead, NOTE } from '../transactions/CashflowBoxes';
 import { useBoxWidth } from '../networth/DeskNetWorthChart';
 import { gridStep, shortMoney } from '../networth/value-chart';
 import { type DeskContext, type DeskDebtRow, deskDebtRows, type PayoffLines, payoffLines, payoffStartMinor, shortMonth, yearTicks } from './debt-plan-desk-model';
@@ -23,44 +22,52 @@ import { type DebtPlanModel, useDebtPlan, useDebtPlanSettings, useLoanPlanFacts,
 import type { ReportPeriod } from './report-view';
 import { ShowSheet } from './SchedulePage';
 import type { MonthInput } from './schedule-view';
-import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
+import { macV2 } from '../../ui/mac-detail';
+import { CARD, Card, DeskBar, DeskTitle, type IconColour, PILL, PILL_BLUE, PILL_SMALL, RoundIcon, Seg, Tag, TileRow, Track } from '../../ui/desk';
 
-export const GBTN = PILL;
-export const PBTN = PILL_BLUE;
-export const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-left text-[11px] font-semibold whitespace-nowrap text-[var(--ph-ink-3)]';
-export const TD = 'px-[10px] py-[6px] align-middle';
+/** A table's head cell in v1: grey words over a hairline, no fill. */
+export const TH = 'border-b border-[var(--mk-head-line)] px-[10px] pt-[2px] pb-[8px] text-left text-[12.5px] font-semibold whitespace-nowrap text-[var(--mk-ink-2)]';
+/** A table's cell: a hairline under every row but the last. */
+export const TD = 'border-b border-[var(--mk-line)] px-[10px] py-[8px] align-middle group-last/row:border-b-0';
+/** A row of a v1 table (pairs with `TD`'s last-row rule). */
+export const TR = 'group/row';
+/** The field a figure is typed into: white, rounded, a hairline. */
+export const FIELD = 'flex h-[30px] items-center gap-[5px] rounded-[9px] border border-[var(--mk-field-line)] bg-[var(--mk-field)] px-[10px] focus-within:outline-2 focus-within:outline-[var(--mk-blue)]';
 
-export type DeskView = 'plan' | 'schedule' | 'report';
+/** A figure's size on a tile: the exact amount always, a step smaller when it is long, so nothing is cut. */
+export function tileFigureSize(text: string): string {
+  if (text.length <= 14) return 'text-[26px] leading-[32px]';
+  if (text.length <= 17) return 'text-[22px] leading-[32px]';
+  return 'text-[19px] leading-[32px]';
+}
 
-const VIEWS: { key: DeskView; label: string; to: string }[] = [
-  { key: 'plan', label: 'Plan', to: '/net-worth/plan' },
-  { key: 'schedule', label: 'Schedule', to: '/net-worth/plan/schedule' },
-  { key: 'report', label: 'Report', to: '/net-worth/plan/report' },
-];
-
-/** A switch in the title bar: words on a grey track, the chosen one raised. */
-export function Segments<T extends string>({ label, value, onChange, options, fill = false }: { label: string; value: T; onChange: (next: T) => void; options: readonly { key: T; label: string }[]; /** Each the same width, across the whole box. */ fill?: boolean }) {
+/**
+ * A stat tile (the kit's `StatTile` look) that keeps a money figure exact: a round icon and a badge, the figure, what
+ * it is. Its parts are divs, label first after the icon row, so a test reads the figure as the tile's second div.
+ */
+export function MoneyTile({ icon, colour, value, label, badge, testId, valueTestId, tone }: { icon: LucideIcon; colour: IconColour; value: ReactNode; label: ReactNode; badge?: ReactNode; testId?: string; valueTestId?: string; tone?: string }) {
+  const size = typeof value === 'string' ? tileFigureSize(value) : 'text-[26px] leading-[32px]';
   return (
-    <div role="radiogroup" aria-label={label} className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
-      {options.map((option) => (
-        <button
-          key={option.key}
-          type="button"
-          role="radio"
-          aria-checked={value === option.key}
-          onClick={() => onChange(option.key)}
-          className={cx(
-            'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
-            fill && 'min-w-0 flex-1',
-            value === option.key ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
+    <div data-testid={testId} className={cx(CARD, 'block min-w-0 px-[20px] py-[18px] text-left')}>
+      <div className="flex h-[26px] items-center justify-between gap-2">
+        <RoundIcon icon={icon} colour={colour} />
+        {badge}
+      </div>
+      <div data-testid={valueTestId} className={cx('mt-[14px] mb-[3px] truncate font-extrabold tracking-[-0.3px] whitespace-nowrap tabular-nums', size, tone ?? 'text-[var(--mk-ink)]')}>
+        {value}
+      </div>
+      <div className="truncate text-[13px] text-[var(--mk-ink-2)]">{label}</div>
     </div>
   );
 }
+
+export type DeskView = 'plan' | 'schedule' | 'report';
+
+const VIEWS: { value: DeskView; label: string; to: string }[] = [
+  { value: 'plan', label: 'Plan', to: '/net-worth/plan' },
+  { value: 'schedule', label: 'Schedule', to: '/net-worth/plan/schedule' },
+  { value: 'report', label: 'Report', to: '/net-worth/plan/report' },
+];
 
 /**
  * The Debt-free plan on a wide screen (Mac Debt-free plan, owner 2026-11-18), edge to edge under its own title bar: Plan,
@@ -84,30 +91,30 @@ export function DesktopDebtPlan({ view, month, period, debt }: { view: DeskView;
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="debt-plan-page" data-desk="true">
       <DeskBar crumb="Debt-free plan" barRef={bar}>
-        {!none && <Segments label="View" value={view} onChange={(next) => void navigate({ to: VIEWS.find((v) => v.key === next)!.to })} options={VIEWS} />}
+        {!none && <Seg label="View" value={view} onChange={(next) => void navigate({ to: VIEWS.find((v) => v.value === next)!.to })} options={VIEWS} />}
         {view === 'schedule' && !none && (
-          <button type="button" className={GBTN} aria-label="Show" aria-expanded={choosing} title="Which kinds the Schedule shows" onClick={() => setChoosing(true)}>
+          <button type="button" className={PILL} aria-label="Show" aria-expanded={choosing} title="Which kinds the Schedule shows" onClick={() => setChoosing(true)}>
             <SlidersHorizontal size={13} aria-hidden />
             Show
           </button>
         )}
-        <button type="button" className={GBTN} onClick={() => void navigate({ to: '/debts/new' })}>
+        <button type="button" className={PILL} onClick={() => void navigate({ to: '/debts/new' })}>
           <span aria-hidden>＋</span>Add debt
         </button>
         {payNext?.item.pay && (
-          <PayLink target={payNext.item.pay} className={cx(PBTN, 'max-w-[260px]')} testId="plan-pay-next" label={`Pay next · ${payNext.debt.name}`}>
+          <PayLink target={payNext.item.pay} className={cx(PILL_BLUE, 'max-w-[260px]')} testId="plan-pay-next" label={`Pay next · ${payNext.debt.name}`}>
             <span className="truncate">Pay next · {payNext.debt.name}</span>
           </PayLink>
         )}
       </DeskBar>
       <DeskNotices />
-      <DeskTitle title="Debt-free plan" />
+      <DeskTitle title="Debt-free plan" line={model && !none ? <TitleLine model={model} /> : undefined} />
       <ErrorBox error={error ?? facts.error} />
       {none && (
         <div className="px-[32px] pt-[2px] pb-[32px]">
-          <section className={cx(BOX, 'px-[14px] py-[16px] text-[13px] text-[var(--ph-ink-3)]')}>
+          <section className={cx(CARD, 'px-[20px] py-[18px] text-[13.5px] text-[var(--mk-ink-2)]')}>
             Nothing owed. Debts added on{' '}
-            <Link to="/net-worth/loans" className="text-[var(--mac-accent)] hover:underline">
+            <Link to="/net-worth/loans" className="font-semibold text-[var(--mk-blue)] hover:underline">
               Liabilities
             </Link>{' '}
             show up here.
@@ -258,10 +265,10 @@ function PlanView({ model, ctx, bar }: { model: DebtPlanModel; ctx: DeskContext;
 
   return (
     <div {...doubleClick}>
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={saveError} />
-        <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[560px]:grid-cols-2 @min-[960px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)]">
-          <LeftBox model={model} currency={ctx.baseCurrency} />
+        <PlanTiles model={model} currency={ctx.baseCurrency} />
+        <div className="mb-[16px] grid grid-cols-1 items-stretch gap-[16px] @min-[760px]:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
           <PayFirstBox
             model={model}
             saved={saved}
@@ -271,34 +278,38 @@ function PlanView({ model, ctx, bar }: { model: DebtPlanModel; ctx: DeskContext;
             }}
             currency={ctx.baseCurrency}
           />
-          <div className="min-w-0 @min-[560px]:col-span-2 @min-[960px]:col-span-1">
-            <ChartBox lines={lines} extraMinor={model.extraMinor} why={model.summary.debtFree.why} currency={ctx.baseCurrency} />
-          </div>
+          <ChartBox lines={lines} extraMinor={model.extraMinor} why={model.summary.debtFree.why} currency={ctx.baseCurrency} />
         </div>
 
-        <section className={cx(BOX, 'overflow-clip')} aria-label="Debts" data-testid="plan-debts">
-          <BoxHead title="Debts" note={byHand ? 'late first (!), then the order set here · drag to reorder · click one to see it' : 'in the order they get paid: late first (!), then by the chosen order · click one to see it'} />
-          <table className="w-full border-collapse text-[13px]" data-testid="plan-table">
+        <Card
+          title="Debts"
+          icon={ListOrdered}
+          label="Debts"
+          testId="plan-debts"
+          className="overflow-clip"
+          bodyClassName="px-[10px] pb-[8px]"
+          note={byHand ? 'late first (!), then the order set here · drag to reorder' : 'late first (!), then the order they get paid'}
+        >
+          <table className="w-full border-collapse text-[13.5px]" data-testid="plan-table">
             <thead>
               <tr>
-                <th className={cx(TH, 'w-[40px] pl-[14px]')}>#</th>
+                <th className={cx(TH, 'w-[40px]')}>#</th>
                 <th className={TH}>Debt</th>
                 <th className={cx(TH, 'hidden @min-[920px]:table-cell')}>Rate</th>
                 <th className={cx(TH, 'hidden @min-[720px]:table-cell')}>Progress</th>
                 <th className={cx(TH, 'text-right')}>Left</th>
                 <th className={cx(TH, 'hidden @min-[860px]:table-cell')}>Next</th>
                 <th className={TH}>Late</th>
-                <th className={cx(TH, 'pr-[14px]')}>
+                <th className={TH}>
                   <span className="sr-only">Pay</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => (
+              {rows.map((row) => (
                 <DebtTableRow
                   key={row.row.debt.key}
                   row={row}
-                  zebra={index % 2 === 1}
                   selected={peekKey === row.row.debt.key}
                   dropTarget={over === row.row.debt.key && dragging !== row.row.debt.key}
                   byHand={byHand}
@@ -315,7 +326,7 @@ function PlanView({ model, ctx, bar }: { model: DebtPlanModel; ctx: DeskContext;
               ))}
             </tbody>
           </table>
-        </section>
+        </Card>
       </div>
       {peeked && (
         <DebtPeek
@@ -336,128 +347,148 @@ function PlanView({ model, ctx, bar }: { model: DebtPlanModel; ctx: DeskContext;
   );
 }
 
-/** The ring of what is repaid. */
+/** The grey line under the title: how many debts are still owed and the month the last one clears. */
+function TitleLine({ model }: { model: DebtPlanModel }) {
+  const { counts, debtFree } = model.summary;
+  return (
+    <>
+      <span data-testid="plan-count-active">
+        {counts.active} {counts.active === 1 ? 'debt' : 'debts'}
+      </span>
+      {debtFree.month && <> · debt-free {debtFree.month}</>}
+    </>
+  );
+}
+
+/** The share repaid as a small ring and its figure: the Left to pay tile's badge. */
 function Ring({ percent }: { percent: number }) {
-  const r = 34;
+  const r = 9;
   const c = 2 * Math.PI * r;
   return (
-    <svg width={86} height={86} viewBox="0 0 86 86" role="img" aria-label={`${percent}% repaid`} data-testid="plan-ring" className="shrink-0">
-      <circle cx={43} cy={43} r={r} fill="none" stroke="var(--ph-track)" strokeWidth={9} />
-      {percent > 0 && <circle cx={43} cy={43} r={r} fill="none" stroke="var(--ph-up)" strokeWidth={9} strokeLinecap="round" strokeDasharray={`${(c * percent) / 100} ${c}`} transform="rotate(-90 43 43)" />}
-      <text x={43} y={48} textAnchor="middle" fontSize={16} fontWeight={600} fill="var(--ph-ink)">
-        {percent}%
-      </text>
-    </svg>
+    <span data-testid="plan-ring" role="img" aria-label={`${percent}% repaid`} className="flex items-center gap-[6px] text-[12.5px] font-bold text-[var(--mk-t-green)] tabular-nums">
+      <svg width={24} height={24} viewBox="0 0 24 24" aria-hidden className="shrink-0">
+        <circle cx={12} cy={12} r={r} fill="none" stroke="var(--mk-track)" strokeWidth={3.5} />
+        {percent > 0 && <circle cx={12} cy={12} r={r} fill="none" stroke="var(--mk-c-green)" strokeWidth={3.5} strokeLinecap="round" strokeDasharray={`${(c * percent) / 100} ${c}`} transform="rotate(-90 12 12)" />}
+      </svg>
+      {percent}% repaid
+    </span>
   );
 }
 
-/** Left to pay: the phone's header — the ring, the figure, repaid of borrowed, the Debt-free month, the three counts. */
-function LeftBox({ model, currency }: { model: DebtPlanModel; currency: string }) {
+/**
+ * The four tiles along the top (v1's stat cards): Left to pay with the share repaid, the Debt-free month, how many are
+ * late, how many are paid off. Every figure is the phone's header's own; the repaid-of-borrowed line is a v2 part.
+ */
+function PlanTiles({ model, currency }: { model: DebtPlanModel; currency: string }) {
   const { summary } = model;
   const { counts, debtFree } = summary;
+  const left = summary.leftMinor === null ? '—' : formatMinor(summary.leftMinor, currency);
   return (
-    <section className={BOX} aria-label="Left to pay" data-testid="plan-header">
-      <BoxHead title="Left to pay" note={`${counts.active} ${counts.active === 1 ? 'debt' : 'debts'}`} />
-      <div className="flex items-center gap-[14px] px-[14px] pb-[8px]">
-        <Ring percent={summary.percent} />
-        <div className="min-w-0">
-          {summary.leftMinor === null ? (
-            <div data-testid="plan-left" className="text-[15px] font-semibold text-[var(--ph-warn)]">
-              No {summary.missing.join(', ')} rate yet
-            </div>
-          ) : (
-            <div data-testid="plan-left" className="text-[20px] leading-[26px] font-semibold whitespace-nowrap text-[var(--ph-ink)] tabular-nums">
-              {formatMinor(summary.leftMinor, currency)}
-            </div>
-          )}
-          {summary.repaidMinor !== null && summary.borrowedMinor !== null && (
-            <div data-testid="plan-repaid" className="text-[12px] leading-[16px] text-[var(--ph-ink-3)]">
-              repaid {formatMinor(summary.repaidMinor, currency)} of {formatMinor(summary.borrowedMinor, currency)}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="flex items-baseline gap-3 border-t border-[var(--ph-hair)] px-[14px] py-[8px] text-[13px]">
-        <span className="flex-1 text-[var(--ph-ink)]">Debt-free</span>
-        <span data-testid="plan-debt-free" className="font-semibold text-[var(--ph-ink)]">
-          {debtFree.month ?? (counts.active > 0 ? 'Unknown' : '—')}
-        </span>
-      </div>
-      {debtFree.why && (
-        <p data-testid="plan-debt-free-why" className="-mt-[4px] px-[14px] pb-[6px] text-right text-[11.5px] text-[var(--ph-ink-3)]">
-          {debtFree.why}
+    <>
+      <TileRow testId="plan-header">
+        <MoneyTile
+          icon={Wallet}
+          colour="blue"
+          value={left}
+          valueTestId="plan-left"
+          badge={<Ring percent={summary.percent} />}
+          label={summary.leftMinor === null ? <span className="text-[var(--mk-t-orange)]">No {summary.missing.join(', ')} rate yet</span> : 'Left to pay'}
+        />
+        <MoneyTile
+          icon={CalendarCheck}
+          colour="green"
+          value={debtFree.month ?? (counts.active > 0 ? 'Unknown' : '—')}
+          valueTestId="plan-debt-free"
+          label={
+            debtFree.why ? (
+              <span data-testid="plan-debt-free-why" title={debtFree.why}>
+                {debtFree.why}
+              </span>
+            ) : (
+              'Debt-free'
+            )
+          }
+        />
+        <MoneyTile
+          icon={CircleAlert}
+          colour="red"
+          value={<span data-testid="plan-count-late">{counts.late}</span>}
+          tone={counts.late > 0 ? 'text-[var(--mk-t-red)]' : undefined}
+          label="Late"
+        />
+        <MoneyTile
+          icon={CircleCheck}
+          colour="teal"
+          value={<span data-testid="plan-count-paid-off">{counts.paidOff}</span>}
+          label="Paid off"
+        />
+      </TileRow>
+      {macV2 && summary.repaidMinor !== null && summary.borrowedMinor !== null && (
+        <p data-testid="plan-repaid" className="-mt-[6px] mb-[14px] px-[4px] text-[13px] text-[var(--mk-ink-2)] tabular-nums">
+          Repaid {formatMinor(summary.repaidMinor, currency)} of {formatMinor(summary.borrowedMinor, currency)} borrowed
         </p>
       )}
-      <div className="grid grid-cols-3 border-t border-[var(--ph-hair)] text-center">
-        <Count testId="plan-count-active" n={counts.active} word="active" tone="text-[var(--ph-ink)]" />
-        <Count testId="plan-count-late" n={counts.late} word="late" tone={counts.late > 0 ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink)]'} />
-        <Count testId="plan-count-paid-off" n={counts.paidOff} word="paid off" tone={counts.paidOff > 0 ? 'text-[var(--ph-up)]' : 'text-[var(--ph-ink)]'} />
-      </div>
-    </section>
+    </>
   );
 }
 
-function Count({ testId, n, word, tone }: { testId: string; n: number; word: string; tone: string }) {
+/** A label left, its value right, a hairline above: a row inside a card. */
+function CardRow({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
-    <div data-testid={testId} className="py-[8px]">
-      <span className={cx('block text-[18px] leading-[22px] font-semibold', tone)}>{n}</span>
-      <span className="block text-[11.5px] text-[var(--ph-ink-3)]">{word}</span>
+    <div className="flex min-h-[44px] items-center gap-3 border-t border-[var(--mk-line)] py-[7px] text-[13.5px]">
+      <span className="shrink-0 text-[var(--mk-ink)]">{label}</span>
+      <span className="flex min-w-0 flex-1 justify-end">{children}</span>
     </div>
   );
 }
 
-/** Pay first: the order (today's setting), what it means, the suggestion, Extra a month typed in place, where it goes. */
+/** Pay first: the order (today's setting), what it means, Extra a month typed in place, where it goes; the suggestion is v2's. */
 function PayFirstBox({ model, saved, save, currency }: { model: DebtPlanModel; saved: DebtPlanSettings; save: (next: DebtPlanSettings) => void; currency: string }) {
   const suggestion = suggestionWords(model.suggestion, model.debts);
   const line = LINES.find((l) => l.method === model.method)!;
   const extra = useExtraField(model, saved, save, currency);
   const rolls = rollsWords(model.effect.plan.order, model.debts);
   return (
-    <section className={BOX} aria-label="Pay first" data-testid="plan-pay-first">
-      <BoxHead title="Pay first" />
-      <div className="px-[14px]">
-        <Segments fill label="Order" value={model.method} onChange={(key) => save(withMethod(model, saved, key as PayoffMethod))} options={METHODS as unknown as { key: PayoffMethod; label: string }[]} />
-        <p data-testid="plan-method-lines" className="mt-[8px] mb-[6px] text-[12px] leading-[17px] text-[var(--ph-ink)]">
-          <b>{line.name}:</b> {line.text}
+    <Card title="Pay first" icon={TrendingDown} label="Pay first" testId="plan-pay-first" bodyClassName="px-[20px] pb-[8px]">
+      <Seg label="Order" value={model.method} onChange={(key) => save(withMethod(model, saved, key))} options={METHODS.map((m) => ({ value: m.key as PayoffMethod, label: m.label }))} />
+      <p data-testid="plan-method-lines" className="mt-[10px] mb-[10px] text-[12.5px] leading-[17px] text-[var(--mk-ink-2)]">
+        <b className="text-[var(--mk-ink)]">{line.name}:</b> {line.text}
+      </p>
+      {macV2 && suggestion && (
+        <p data-testid="plan-suggestion" className="mb-[10px] rounded-[10px] bg-[var(--mk-t-blue-bg)] px-[10px] py-[7px] text-[12px] leading-[16px] text-[var(--mk-t-blue)]">
+          {suggestion}
         </p>
-        {suggestion && (
-          <p data-testid="plan-suggestion" className="rounded-[6px] bg-[var(--ph-info-panel)] px-[8px] py-[6px] text-[11.5px] leading-[15px] text-[var(--ph-info-ink)]">
-            {suggestion}
-          </p>
-        )}
-      </div>
-      <label className="mt-[8px] flex items-center gap-3 border-t border-[var(--ph-hair)] px-[14px] py-[6px] text-[13px]">
-        <span className="flex-1 text-[var(--ph-ink)]">Extra a month</span>
-        <span className="flex h-[24px] items-center gap-[4px] rounded-[5px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[7px] focus-within:outline focus-within:outline-2 focus-within:outline-[var(--mac-accent)]">
-          <span className="text-[12px] text-[var(--ph-ink-3)]">{currency}</span>
-          <input
-            aria-label="Extra a month"
-            inputMode="decimal"
-            placeholder="Amount"
-            value={extra.shown}
-            onChange={(event) => extra.type(event.target.value)}
-            onBlur={extra.commit}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                extra.commit();
-              } else if (event.key === 'Escape') extra.reset();
-            }}
-            className="w-[104px] bg-transparent text-right text-[13px] text-[var(--ph-ink)] tabular-nums outline-none"
-          />
-        </span>
-      </label>
-      {extra.error && <p className="px-[14px] pb-[4px] text-right text-[11.5px] text-[var(--ph-alarm)]">{extra.error}</p>}
-      {model.extraMissing && <p className="px-[14px] pb-[4px] text-right text-[11.5px] text-[var(--ph-warn)]">No {model.extraMissing} rate yet, so the extra is left out</p>}
+      )}
+      <CardRow label="Extra a month">
+          <span className={FIELD}>
+            <span className="text-[12.5px] text-[var(--mk-ink-2)]">{currency}</span>
+            <input
+              aria-label="Extra a month"
+              inputMode="decimal"
+              placeholder="Amount"
+              value={extra.shown}
+              onChange={(event) => extra.type(event.target.value)}
+              onBlur={extra.commit}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  extra.commit();
+                } else if (event.key === 'Escape') extra.reset();
+              }}
+              className="w-[112px] bg-transparent text-right text-[13.5px] text-[var(--mk-ink)] tabular-nums outline-none placeholder:text-[var(--mk-ink-3)]"
+            />
+          </span>
+      </CardRow>
+      {extra.error && <p className="pb-[4px] text-right text-[12px] text-[var(--mk-t-red)]">{extra.error}</p>}
+      {model.extraMissing && <p className="pb-[4px] text-right text-[12px] text-[var(--mk-t-orange)]">No {model.extraMissing} rate yet, so the extra is left out</p>}
       {rolls && (
-        <div className="flex items-baseline gap-3 border-t border-[var(--ph-hair)] px-[14px] py-[8px] text-[13px]">
-          <span className="shrink-0 text-[var(--ph-ink)]">Goes to</span>
-          <span data-testid="plan-rolls" className="min-w-0 flex-1 text-right text-[11.5px] text-[var(--ph-ink-3)]">
+        <CardRow label="Goes to">
+          <span data-testid="plan-rolls" className="min-w-0 text-right text-[12.5px] text-[var(--mk-ink-2)]">
             {rolls.replace(/^Goes to /, '')}
           </span>
-        </div>
+        </CardRow>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -471,25 +502,31 @@ const RIGHT = 10;
 function ChartBox({ lines, extraMinor, why, currency }: { lines: PayoffLines | null; extraMinor: number; why: string | null; currency: string }) {
   const [box, width] = useBoxWidth<HTMLDivElement>();
   return (
-    <section className={cx(BOX, 'h-full')} aria-label="Left to pay over time" data-testid="plan-chart">
-      <BoxHead title="Left to pay over time" note={extraMinor > 0 ? `with ${formatMinor(extraMinor, currency)} extra a month` : 'no extra a month'} />
-      <div ref={box} className="px-[14px]" style={{ minHeight: CHART_H }}>
-        {!lines && <p className="pt-[30px] text-center text-[12.5px] text-[var(--ph-ink-3)]">{why ?? 'Nothing left to pay.'}</p>}
-        {lines && width > 0 && <PayoffDrawing lines={lines} width={width - 28} currency={currency} />}
+    <Card
+      title="Left to pay over time"
+      icon={TrendingDown}
+      label="Left to pay over time"
+      testId="plan-chart"
+      className="h-full"
+      note={extraMinor > 0 ? `with ${formatMinor(extraMinor, currency)} extra a month` : 'no extra a month'}
+    >
+      <div ref={box} className="px-[20px]" style={{ minHeight: CHART_H }}>
+        {!lines && <p className="pt-[30px] text-center text-[13px] text-[var(--mk-ink-2)]">{why ?? 'Nothing left to pay.'}</p>}
+        {lines && width > 0 && <PayoffDrawing lines={lines} width={width - 40} currency={currency} />}
       </div>
       {lines && (
-        <div className="flex flex-col gap-[2px] px-[14px] pt-[2px] pb-[10px] text-[11.5px]" data-testid="plan-chart-legend">
+        <div className="flex flex-wrap gap-x-[14px] gap-y-[2px] px-[20px] pt-[4px] pb-[16px] text-[12px]" data-testid="plan-chart-legend">
           <span data-testid="plan-chart-with" className="font-semibold text-[var(--ph-up)]">
             ━ {lines.without ? 'with extra · ' : ''}debt-free {shortMonth(lines.plan.endMonth)}
           </span>
           {lines.without && (
-            <span data-testid="plan-chart-without" className="text-[var(--ph-ink-3)]">
+            <span data-testid="plan-chart-without" className="text-[var(--mk-ink-2)]">
               ┅ without · {shortMonth(lines.without.endMonth)}
             </span>
           )}
         </div>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -511,18 +548,18 @@ function PayoffDrawing({ lines, width, currency }: { lines: PayoffLines; width: 
       <g aria-hidden>
         {ticks.map((v) => (
           <g key={v}>
-            <line x1={GUTTER} x2={GUTTER + plotW} y1={y(v)} y2={y(v)} stroke="var(--ph-hair)" strokeWidth={1} />
-            <text x={GUTTER - 6} y={y(v) + 3.5} textAnchor="end" fontSize={10} fill="var(--ph-ink-3)">
+            <line x1={GUTTER} x2={GUTTER + plotW} y1={y(v)} y2={y(v)} stroke="var(--mk-line)" strokeWidth={1} />
+            <text x={GUTTER - 6} y={y(v) + 3.5} textAnchor="end" fontSize={10.5} fill="var(--mk-ink-2)">
               {v === 0 ? '0' : shortMoney(v, currency)}
             </text>
           </g>
         ))}
         {yearTicks(lines.startMonth, span).map((tick) => (
-          <text key={tick.label} x={x(tick.at)} y={CHART_H - 4} textAnchor={tick.at === 0 ? 'start' : 'middle'} fontSize={10} fill="var(--ph-ink-3)">
+          <text key={tick.label} x={x(tick.at)} y={CHART_H - 4} textAnchor={tick.at === 0 ? 'start' : 'middle'} fontSize={10.5} fill="var(--mk-ink-2)">
             {tick.label}
           </text>
         ))}
-        {lines.without && <path data-testid="plan-line-without" d={path(lines.without.points)} fill="none" stroke="var(--ph-ink-3)" strokeWidth={1.6} strokeDasharray="4 4" />}
+        {lines.without && <path data-testid="plan-line-without" d={path(lines.without.points)} fill="none" stroke="var(--mk-ink-3)" strokeWidth={1.6} strokeDasharray="4 4" />}
         <path data-testid="plan-line" d={path(lines.plan.points)} fill="none" stroke="var(--ph-up)" strokeWidth={2.2} strokeLinejoin="round" />
         <circle cx={x(end)} cy={y(0)} r={4} fill="var(--ph-up)" />
       </g>
@@ -533,7 +570,6 @@ function PayoffDrawing({ lines, width, currency }: { lines: PayoffLines; width: 
 /** One debt in the table: badge, kind and name, rate, bar, left, next, late, Pay; narrower, the rest fold under the name. */
 function DebtTableRow({
   row,
-  zebra,
   selected,
   dropTarget,
   byHand,
@@ -545,7 +581,6 @@ function DebtTableRow({
   drag,
 }: {
   row: DeskDebtRow;
-  zebra: boolean;
   selected: boolean;
   dropTarget: boolean;
   byHand: boolean;
@@ -557,11 +592,8 @@ function DebtTableRow({
   drag: Record<string, unknown>;
 }) {
   const { debt, place, pay } = row.row;
-  const grey = selected ? 'text-white/85' : 'text-[var(--ph-ink-3)]';
+  const grey = 'text-[var(--mk-ink-2)]';
   const late = row.late;
-  const pill = (words: string): ReactNode => (
-    <span className={cx('rounded-[4px] px-[5px] text-[11px] font-semibold whitespace-nowrap', selected ? 'bg-white/20 text-white' : 'bg-[var(--ph-alarm-panel)] text-[var(--ph-alarm)]')}>{words}</span>
-  );
   return (
     <tr
       data-debt-row
@@ -573,14 +605,21 @@ function DebtTableRow({
       onDoubleClick={onOpen}
       {...drag}
       className={cx(
-        'cursor-default scroll-mt-[64px] scroll-mb-[16px]',
-        selected ? 'bg-[var(--mac-accent)] text-white' : zebra ? 'bg-[var(--mac-zebra)]' : undefined,
-        dropTarget && 'shadow-[inset_0_2px_0_var(--mac-accent)]',
+        TR,
+        'cursor-default scroll-mt-[64px] scroll-mb-[16px] text-[var(--mk-ink)]',
+        selected ? 'bg-[var(--mk-sel)]' : 'hover:bg-[var(--mk-hover)]',
+        dropTarget && 'shadow-[inset_0_2px_0_var(--mk-blue)]',
       )}
     >
-      <td className={cx(TD, 'pl-[14px]')}>
+      <td className={TD}>
         <span className="flex items-center gap-[2px]">
-          <span aria-hidden className={cx('flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white', place === null ? 'bg-[var(--ph-alarm)]' : selected ? 'bg-white/25' : 'bg-[var(--ph-ink)]')}>
+          <span
+            aria-hidden
+            className={cx(
+              'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[12px] font-bold',
+              place === null ? 'bg-[var(--mk-c-red)] text-white' : 'bg-[var(--mk-pill)] text-[var(--mk-ink-2)]',
+            )}
+          >
             {place === null ? '!' : place}
           </span>
           {byHand && place !== null && (
@@ -596,7 +635,7 @@ function DebtTableRow({
                 event.stopPropagation();
                 if ((event.key === 'ArrowUp' && !first) || (event.key === 'ArrowDown' && !last)) onNudge(event.key === 'ArrowUp' ? -1 : 1);
               }}
-              className={cx('flex h-[22px] w-[16px] cursor-grab items-center justify-center rounded', grey)}
+              className={cx('flex h-[22px] w-[16px] cursor-grab items-center justify-center rounded', 'text-[var(--mk-ink-3)]')}
             >
               <GripVertical size={14} aria-hidden />
             </button>
@@ -604,8 +643,8 @@ function DebtTableRow({
         </span>
       </td>
       <td className={TD}>
-        <span className="flex min-w-0 items-center gap-[9px]">
-          <DebtKindIcon debt={debt} size={24} />
+        <span className="flex min-w-0 items-center gap-[10px]">
+          <DebtKindIcon debt={debt} size={26} />
           <span className="min-w-0">
             <Link
               {...debtDestination(debt)}
@@ -615,13 +654,13 @@ function DebtTableRow({
                 event.stopPropagation();
                 onOpen();
               }}
-              className="block min-w-0 break-words"
+              className="block min-w-0 font-medium break-words"
               data-testid="plan-table-name"
             >
               {debt.name}
             </Link>
             {/* Narrower, the rate, the share repaid and the next payment fold under the name, so no figure is cut. */}
-            <span className={cx('block text-[11.5px] @min-[920px]:hidden', grey)}>
+            <span className={cx('block text-[12px] @min-[920px]:hidden', grey)}>
               {row.rate}
               <span className="@min-[720px]:hidden"> · {row.progress}% repaid</span>
               {row.next !== '—' && <span className="@min-[860px]:hidden"> · {row.next === 'no fixed months' ? row.next : `next ${row.next}`}</span>}
@@ -632,10 +671,8 @@ function DebtTableRow({
       <td className={cx(TD, 'hidden whitespace-nowrap @min-[920px]:table-cell', grey)}>{row.rate}</td>
       <td className={cx(TD, 'hidden @min-[720px]:table-cell')}>
         <span className="flex items-center gap-[8px]">
-          <span className="block h-[4px] w-[64px] shrink-0 overflow-hidden rounded-full bg-[var(--ph-track)]">
-            <span className="block h-full rounded-full" style={{ width: `${row.progress}%`, background: selected ? 'white' : 'var(--ph-up)' }} />
-          </span>
-          <span data-testid="plan-table-progress" className={cx('text-[11.5px] whitespace-nowrap tabular-nums', grey)}>
+          <Track share={row.progress / 100} colour="var(--mk-c-green)" className="w-[64px] shrink-0" />
+          <span data-testid="plan-table-progress" className={cx('text-[12px] whitespace-nowrap tabular-nums', grey)}>
             {row.progress}%
           </span>
         </span>
@@ -649,22 +686,18 @@ function DebtTableRow({
       <td data-testid="plan-table-late" className={TD}>
         {late ? (
           <span className="flex flex-wrap items-center gap-x-[6px] gap-y-[2px]">
-            {pill(late.words)}
+            <Tag tone="red">{late.words}</Tag>
             <span className={cx('text-[12px] whitespace-nowrap tabular-nums', grey)}>{formatMinor(late.minor, late.currency)}</span>
           </span>
         ) : (
           <span className={grey}>—</span>
         )}
       </td>
-      <td className={cx(TD, 'pr-[14px] text-right')}>
+      <td className={cx(TD, 'text-right')}>
         {pay && (
           // The Pay button is the debt's own sheet, never the row's peek.
           <span onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
-            <PayLink
-              target={pay}
-              label={`Pay ${debt.name}`}
-              className={cx('inline-flex h-[22px] items-center rounded-[6px] px-[10px] text-[12px] font-medium', selected ? 'bg-white text-[var(--mac-accent)]' : 'bg-[var(--ph-ink)] text-[var(--ph-surface)]')}
-            >
+            <PayLink target={pay} label={`Pay ${debt.name}`} className={PILL_SMALL}>
               Pay
             </PayLink>
           </span>
@@ -673,6 +706,3 @@ function DebtTableRow({
     </tr>
   );
 }
-
-/** A box's note, for the other views' boxes. */
-export const BoxNote = ({ children }: { children: ReactNode }) => <span className={NOTE}>{children}</span>;

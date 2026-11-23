@@ -1,17 +1,18 @@
 import { addMonths, formatMinor, monthOf } from '@expanses/core';
 import { useNavigate } from '@tanstack/react-router';
-import { Check, ChevronLeft, ChevronRight, Minus, ReceiptText } from 'lucide-react';
+import { BarChart3, CalendarClock, CalendarDays, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Minus, ReceiptText } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { iconTint, RowIcon } from '../../ui/native';
 import { ToastCard, UndoToast } from '../../ui/UndoToast';
-import { BOX, BoxHead, NOTE } from '../transactions/CashflowBoxes';
+import { Card, PILL, PILL_BLUE, PILL_SMALL, Tag, TileRow, type Tone } from '../../ui/desk';
+import { macV2 } from '../../ui/mac-detail';
 import { monthYearLabel } from '../loans/loan-view';
 import { comingUp, type DeskContext, groupWords, lateHead, type LateRow, lateRows, payOrder, tickable, tickedTotal, toggleTick } from './debt-plan-desk-model';
 import { DebtKindIcon } from './DebtPeek';
-import { GBTN, PBTN, TD, TH } from './DesktopDebtPlan';
+import { MoneyTile, TD, TH, TR } from './DesktopDebtPlan';
 import { DeskDueBars } from './DeskReport';
 import { type LoanToPay, type PaidInstalments, paidWords, undoInstalments } from './pay-instalments';
 import { PayInstalmentsSheet } from './PayInstalmentsSheet';
@@ -23,14 +24,16 @@ import { tagOf } from './SchedulePanel';
 import { type MonthInput, monthSections, monthTotals } from './schedule-view';
 
 const LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const STEP = 'flex h-[22px] w-[22px] items-center justify-center rounded-[5px] text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)] hover:text-[var(--ph-ink)]';
+const STEP = 'flex h-[28px] w-[28px] items-center justify-center rounded-full bg-[var(--mk-pill)] text-[var(--mk-ink)] hover:bg-[var(--mk-pill-hover)]';
+/** A tick's cell: the same hairline as the row's other cells. */
+const TICK_TD = 'w-[34px] border-b border-[var(--mk-line)] py-[5px] pl-[10px] group-last/row:border-b-0';
 
 /** A tick: blue and ticked, a dash for a debt's row with some of its instalments ticked, or an empty ring. */
 function Tick({ state }: { state: 'on' | 'some' | 'off' }) {
   return (
     <span
       aria-hidden
-      className={cx('flex h-[15px] w-[15px] items-center justify-center rounded-[4px]', state === 'off' ? 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset' : 'bg-[var(--mac-accent)] text-white')}
+      className={cx('flex h-[16px] w-[16px] items-center justify-center rounded-[5px]', state === 'off' ? 'bg-[var(--mk-field)] ring-[1.5px] ring-[var(--mk-ink-3)] ring-inset' : 'bg-[var(--mk-blue)] text-white')}
     >
       {state === 'on' && <Check size={10} strokeWidth={3} />}
       {state === 'some' && <Minus size={10} strokeWidth={3} />}
@@ -40,7 +43,7 @@ function Tick({ state }: { state: 'on' | 'some' | 'off' }) {
 
 function TickCell({ label, state, onTick }: { label: string; state: 'on' | 'some' | 'off' | null; onTick: () => void }) {
   return (
-    <td className="w-[34px] py-[5px] pl-[14px]">
+    <td className={TICK_TD}>
       {state !== null && (
         <button type="button" role="checkbox" aria-checked={state === 'on' ? true : state === 'some' ? 'mixed' : false} aria-label={label} onClick={onTick} className="flex h-[20px] w-[20px] items-center justify-center">
           <Tick state={state} />
@@ -52,19 +55,15 @@ function TickCell({ label, state, onTick }: { label: string; state: 'on' | 'some
 
 /** The When cell's tag: how late (red), Today / Tomorrow (amber), the day, or when it was paid (green). */
 function WhenTag({ tone, children }: { tone: 'alarm' | 'warn' | 'up' | 'quiet'; children: ReactNode }) {
-  const look = {
-    alarm: 'bg-[var(--ph-alarm-panel)] text-[var(--ph-alarm)] font-semibold',
-    warn: 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)] font-semibold',
-    up: 'bg-[var(--ph-up-panel)] text-[var(--ph-up-ink)] font-semibold',
-    quiet: 'text-[var(--ph-ink-3)]',
-  }[tone];
-  return <span className={cx('rounded-[4px] px-[5px] text-[11.5px] whitespace-nowrap', look)}>{children}</span>;
+  if (tone === 'quiet') return <span className="text-[12.5px] whitespace-nowrap text-[var(--mk-ink-2)]">{children}</span>;
+  const tag: Record<'alarm' | 'warn' | 'up', Tone> = { alarm: 'red', warn: 'orange', up: 'green' };
+  return <Tag tone={tag[tone]}>{children}</Tag>;
 }
 
 function SectionHead({ children, tone = 'grey', testId }: { children: ReactNode; tone?: 'alarm' | 'grey'; testId?: string }) {
   return (
     <tr>
-      <td colSpan={5} data-testid={testId} className={cx('bg-[var(--ph-surface)] px-[14px] pt-[12px] pb-[4px] text-[11px] font-semibold tracking-[0.04em] uppercase', tone === 'alarm' ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]')}>
+      <td colSpan={5} data-testid={testId} className={cx('border-b border-[var(--mk-line)] px-[10px] pt-[14px] pb-[6px] text-[11.5px] font-bold tracking-[0.06em] uppercase', tone === 'alarm' ? 'text-[var(--mk-t-red)]' : 'text-[var(--mk-ink-3)]')}>
         {children}
       </td>
     </tr>
@@ -179,17 +178,17 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
     const soFar = item.kind === 'card' && item.approximate && item.status !== 'paid';
     const tick = canTick(item) ? (picked.has(item.key) ? 'on' : 'off') : null;
     return (
-      <tr key={item.key} data-testid="schedule-row" data-title={item.title} className={cx(picked.has(item.key) ? 'bg-[var(--mac-accent-wash)]' : index % 2 === 1 && 'bg-[var(--mac-zebra)]')}>
+      <tr key={item.key} data-testid="schedule-row" data-title={item.title} className={cx(TR, 'text-[var(--mk-ink)]', picked.has(item.key) ? 'bg-[var(--mk-sel)]' : 'hover:bg-[var(--mk-hover)]')}>
         <TickCell label={`Select ${item.title}`} state={tick} onTick={() => toggle(item)} />
         <td className={cx(TD, opts.indent && 'pl-[44px]')}>
           <span className="flex min-w-0 items-center gap-[9px]">
             {!opts.indent && <span className="w-[14px] shrink-0" aria-hidden />}
             {iconOf(item)}
             <span className="min-w-0">
-              <span className="block break-words text-[var(--ph-ink)]">{item.title}</span>
-              <span className={cx('block text-[11.5px] text-[var(--ph-ink-3)]', item.inTotals === false && 'italic')}>{item.fromMessage ? 'from bank message' : item.detail}</span>
+              <span className="block font-medium break-words">{item.title}</span>
+              <span className={cx('block text-[12px] text-[var(--mk-ink-2)]', item.inTotals === false && 'italic')}>{item.fromMessage ? 'from bank message' : item.detail}</span>
               {item.includes && (
-                <span data-testid="schedule-includes" className="block text-[11.5px] text-[var(--ph-up)]">
+                <span data-testid="schedule-includes" className="block text-[12px] text-[var(--mk-t-green)]">
                   {item.includes}
                 </span>
               )}
@@ -200,16 +199,12 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
           <WhenTag tone={tag.tone}>{tag.text}</WhenTag>
         </td>
         <td className={cx(TD, 'text-right whitespace-nowrap tabular-nums', item.status === 'late' && 'font-semibold')}>
-          {soFar && <span className="mr-[4px] text-[11.5px] font-normal text-[var(--ph-ink-3)]">so far</span>}
+          {soFar && <span className="mr-[4px] text-[12px] font-normal text-[var(--mk-ink-2)]">so far</span>}
           {item.minor !== null ? formatMinor(item.minor, item.currency) : ''}
         </td>
-        <td className={cx(TD, 'pr-[14px] text-right')}>
+        <td className={cx(TD, 'text-right')}>
           {item.pay && item.status !== 'paid' && (
-            <PayLink
-              target={item.pay}
-              label={`Pay ${item.title}`}
-              className={cx('inline-flex h-[22px] items-center rounded-[6px] px-[10px] text-[12px] font-medium', item.status === 'late' ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'border border-[var(--ph-chevron)] text-[var(--ph-ink)]')}
-            >
+            <PayLink target={item.pay} label={`Pay ${item.title}`} className={PILL_SMALL}>
               Pay
             </PayLink>
           )}
@@ -224,7 +219,7 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
     const tickState = row.items.every(canTick) ? (on === row.items.length ? 'on' : on > 0 ? 'some' : 'off') : null;
     const owner = model.debts.find((d) => d.key === row.debtKey);
     return [
-      <tr key={row.key} data-testid="schedule-group" data-name={row.name} className={cx(on > 0 ? 'bg-[var(--mac-accent-wash)]' : index % 2 === 1 && 'bg-[var(--mac-zebra)]')}>
+      <tr key={row.key} data-testid="schedule-group" data-name={row.name} className={cx(TR, 'text-[var(--mk-ink)]', on > 0 ? 'bg-[var(--mk-sel)]' : 'hover:bg-[var(--mk-hover)]')}>
         <TickCell label={`Select every late instalment of ${row.name}`} state={tickState} onTick={() => toggleGroup(row.items)} />
         <td className={TD}>
           <span className="flex min-w-0 items-center gap-[9px]">
@@ -240,7 +235,7 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
                   return next;
                 })
               }
-              className="flex h-[16px] w-[14px] shrink-0 items-center justify-center text-[10px] text-[var(--ph-ink-3)]"
+              className="flex h-[16px] w-[14px] shrink-0 items-center justify-center text-[10px] text-[var(--mk-ink-2)]"
             >
               <span aria-hidden className={cx('inline-block transition-transform', open && 'rotate-90')}>
                 ▶
@@ -248,8 +243,8 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
             </button>
             {owner ? <DebtKindIcon debt={owner} size={24} /> : null}
             <span className="min-w-0">
-              <span className="block break-words text-[var(--ph-ink)]">{row.name}</span>
-              <span data-testid="schedule-group-range" className="block text-[11.5px] text-[var(--ph-ink-3)]">
+              <span className="block font-medium break-words">{row.name}</span>
+              <span data-testid="schedule-group-range" className="block text-[12px] text-[var(--mk-ink-2)]">
                 {row.range}
               </span>
             </span>
@@ -261,19 +256,14 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
         <td data-testid="schedule-group-total" className={cx(TD, 'text-right font-semibold whitespace-nowrap tabular-nums')}>
           {formatMinor(row.minor, row.currency)}
         </td>
-        <td className={cx(TD, 'pr-[14px] text-right')}>
+        <td className={cx(TD, 'text-right')}>
           {row.items.every(canTick) ? (
-            <button
-              type="button"
-              aria-label={`Pay all ${row.name}`}
-              onClick={() => setPaying({ title: `Pay all · ${row.name}`, items: row.items })}
-              className="inline-flex h-[22px] items-center rounded-[6px] bg-[var(--ph-ink)] px-[10px] text-[12px] font-medium whitespace-nowrap text-[var(--ph-surface)]"
-            >
+            <button type="button" aria-label={`Pay all ${row.name}`} onClick={() => setPaying({ title: `Pay all · ${row.name}`, items: row.items })} className={PILL_SMALL}>
               Pay all
             </button>
           ) : (
             row.items[0]?.pay && (
-              <PayLink target={row.items[0].pay} label={`Pay ${row.name}`} className="inline-flex h-[22px] items-center rounded-[6px] bg-[var(--ph-ink)] px-[10px] text-[12px] font-medium text-[var(--ph-surface)]">
+              <PayLink target={row.items[0].pay} label={`Pay ${row.name}`} className={PILL_SMALL}>
                 Pay
               </PayLink>
             )
@@ -288,61 +278,57 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
   const payingLoans = paying ? loansOf(paying.items) : [];
 
   return (
-    <div className="@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]" data-testid="schedule-panel">
+    <div className="@container px-[32px] pt-[2px] pb-[32px]" data-testid="schedule-panel">
       <ErrorBox error={error ?? after.error ?? barsError ?? payError} />
-      {debt && (
-        <div className="flex items-center gap-[8px] text-[13px]" data-testid="schedule-only">
-          <span className="text-[var(--ph-ink-3)]">Only</span>
-          <span className="flex items-center gap-[6px] rounded-full bg-[var(--ph-surface)] py-[2px] pr-[10px] pl-[4px] shadow-[0_0_0_0.5px_var(--ph-hair)]">
-            <DebtKindIcon debt={debt} size={18} />
-            {debt.name}
-          </span>
-          <button type="button" className={GBTN} onClick={() => void navigate({ to: '/net-worth/plan/schedule', search: { month }, replace: true })}>
-            Show all
-          </button>
-        </div>
-      )}
-      <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[700px]:grid-cols-2">
-        <section className={BOX} aria-label="This month" data-testid="schedule-month-box">
-          <h2 className="flex items-center gap-[6px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
-            <button type="button" aria-label="Previous month" className={STEP} onClick={() => setMonth(addMonths(month, -1))}>
-              <ChevronLeft size={15} aria-hidden />
-            </button>
-            <span data-testid="schedule-month" className="min-w-0 truncate">
-              {monthName}
+      <div className="mb-[14px] flex min-h-[30px] flex-wrap items-center gap-x-[10px] gap-y-[8px]" data-testid="schedule-month-box">
+        <button type="button" aria-label="Previous month" className={STEP} onClick={() => setMonth(addMonths(month, -1))}>
+          <ChevronLeft size={16} aria-hidden />
+        </button>
+        <h2 data-testid="schedule-month" className="min-w-[96px] text-center text-[17px] font-bold text-[var(--mk-ink)]">
+          {monthName}
+        </h2>
+        <button type="button" aria-label="Next month" className={STEP} onClick={() => setMonth(addMonths(month, 1))}>
+          <ChevronRight size={16} aria-hidden />
+        </button>
+        <span className="text-[13px] text-[var(--mk-ink-2)]">due this month</span>
+        {debt && (
+          <span className="ml-auto flex items-center gap-[8px] text-[13px]" data-testid="schedule-only">
+            <span className="text-[var(--mk-ink-2)]">Only</span>
+            <span className="flex items-center gap-[6px] rounded-full bg-[var(--mk-card)] py-[3px] pr-[11px] pl-[4px] font-semibold text-[var(--mk-ink)]">
+              <DebtKindIcon debt={debt} size={20} />
+              {debt.name}
             </span>
-            <button type="button" aria-label="Next month" className={STEP} onClick={() => setMonth(addMonths(month, 1))}>
-              <ChevronRight size={15} aria-hidden />
+            <button type="button" className={PILL} onClick={() => void navigate({ to: '/net-worth/plan/schedule', search: { month }, replace: true })}>
+              Show all
             </button>
-            <span className={cx(NOTE, 'ml-auto shrink-0')}>due this month</span>
-          </h2>
-          {totals && (
-            <div className="grid grid-cols-3 gap-[6px] px-[14px] pb-[12px]">
-              <Figure testId="schedule-tile-due" label="Due" minor={totals.dueMinor} currency={ws.baseCurrency} tone="text-[var(--ph-ink)]" />
-              <Figure testId="schedule-tile-paid" label="Paid" minor={totals.paidMinor} currency={ws.baseCurrency} tone="text-[var(--ph-up)]" />
-              <Figure testId="schedule-tile-late" label="Late" minor={totals.lateMinor} currency={ws.baseCurrency} tone="text-[var(--ph-alarm)]" />
-            </div>
-          )}
-          {totals && totals.missing.length > 0 && <p className="px-[14px] pb-[10px] text-[11.5px] text-[var(--ph-warn)]">No {totals.missing.join(', ')} rate yet, so those are not added up</p>}
-        </section>
-        <section className={BOX} aria-label="Paid against due" data-testid="schedule-bars">
-          <BoxHead title="Paid against due" note="grey due · green paid" />
-          {bars && <DeskDueBars bars={bars} currency={ws.baseCurrency} height={76} />}
-        </section>
+          </span>
+        )}
       </div>
+      {totals && (
+        <TileRow count={3}>
+          <MoneyTile testId="schedule-tile-due" icon={CalendarClock} colour="blue" value={formatMinor(totals.dueMinor, ws.baseCurrency)} label="Due" />
+          <MoneyTile testId="schedule-tile-paid" icon={CircleCheck} colour="green" value={formatMinor(totals.paidMinor, ws.baseCurrency)} tone="text-[var(--ph-up)]" label="Paid" />
+          <MoneyTile testId="schedule-tile-late" icon={CircleAlert} colour="red" value={formatMinor(totals.lateMinor, ws.baseCurrency)} tone={totals.lateMinor > 0 ? 'text-[var(--mk-t-red)]' : undefined} label="Late" />
+        </TileRow>
+      )}
+      {totals && totals.missing.length > 0 && <p className="-mt-[6px] mb-[14px] text-[12.5px] text-[var(--mk-t-orange)]">No {totals.missing.join(', ')} rate yet, so those are not added up</p>}
+      {macV2 && (
+        <Card title="Paid against due" icon={BarChart3} note="grey due · green paid" testId="schedule-bars" className="mb-[16px]">
+          {bars && <DeskDueBars bars={bars} currency={ws.baseCurrency} height={76} />}
+        </Card>
+      )}
 
-      <section className={cx(BOX, 'overflow-clip')} aria-label="Schedule" data-testid="schedule-table-box">
-        <BoxHead title="Schedule" note="tick instalments to pay several · ▶ opens a debt’s late instalments" />
-        <table className="w-full border-collapse text-[13px]" data-testid="schedule-table">
+      <Card title="Schedule" icon={CalendarDays} label="Schedule" testId="schedule-table-box" className="overflow-clip" bodyClassName="px-[10px] pb-[8px]" note="tick instalments to pay several · ▶ opens a debt’s late instalments">
+        <table className="w-full border-collapse text-[13.5px]" data-testid="schedule-table">
           <thead>
             <tr>
-              <th className={cx(TH, 'w-[34px] pl-[14px]')}>
+              <th className={cx(TH, 'w-[34px]')}>
                 <span className="sr-only">Tick</span>
               </th>
               <th className={TH}>Payment</th>
               <th className={TH}>When</th>
               <th className={cx(TH, 'text-right')}>Amount</th>
-              <th className={cx(TH, 'w-[84px] pr-[14px]')}>
+              <th className={cx(TH, 'w-[84px]')}>
                 <span className="sr-only">Pay</span>
               </th>
             </tr>
@@ -371,7 +357,7 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
           {all && all.length === 0 && coming.length === 0 && (
             <tbody>
               <tr>
-                <td colSpan={5} className="px-[14px] py-[18px] text-center text-[13px] text-[var(--ph-ink-3)]">
+                <td colSpan={5} className="px-[10px] py-[18px] text-center text-[13px] text-[var(--mk-ink-2)]">
                   Nothing due in {monthYearLabel(month)}.
                 </td>
               </tr>
@@ -383,22 +369,22 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
             role="toolbar"
             aria-label="Selected instalments"
             data-testid="select-bar"
-            className="sticky bottom-0 z-[1] flex items-center gap-[10px] border-t border-[var(--ph-hair)] bg-[var(--ph-surface)] bg-[linear-gradient(var(--mac-accent-wash),var(--mac-accent-wash))] px-[14px] py-[8px] text-[13px]"
+            className="sticky bottom-[8px] z-[1] mx-[-2px] mt-[6px] flex items-center gap-[10px] rounded-[14px] bg-[var(--mk-sel)] px-[14px] py-[8px] text-[13px]"
           >
-            <span className="font-semibold text-[var(--ph-ink)]">{chosen.length} selected</span>
-            <span data-testid="select-total" className="text-[var(--ph-ink-3)] tabular-nums">
+            <span className="font-semibold text-[var(--mk-ink)]">{chosen.length} selected</span>
+            <span data-testid="select-total" className="text-[var(--mk-ink-2)] tabular-nums">
               {formatMinor(tickedTotal(chosen), ws.baseCurrency)}
             </span>
             <span className="flex-1" />
-            <button type="button" onClick={() => setPicked(new Set())} className={GBTN}>
+            <button type="button" onClick={() => setPicked(new Set())} className={PILL}>
               Clear
             </button>
-            <button type="button" onClick={() => setPaying({ title: `Pay ${chosen.length}`, items: chosen })} className={PBTN}>
+            <button type="button" onClick={() => setPaying({ title: `Pay ${chosen.length}`, items: chosen })} className={PILL_BLUE}>
               Pay {chosen.length}
             </button>
           </div>
         )}
-      </section>
+      </Card>
 
       {paying && payingLoans.length > 0 && (
         <PayInstalmentsSheet
@@ -416,15 +402,6 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
         ) : (
           <TimedToast text={toast.text} detail={toast.detail} onDone={clearToast} />
         ))}
-    </div>
-  );
-}
-
-function Figure({ testId, label, minor, currency, tone }: { testId: string; label: string; minor: number; currency: string; tone: string }) {
-  return (
-    <div data-testid={testId} className="min-w-0">
-      <div className="text-[11.5px] text-[var(--ph-ink-3)]">{label}</div>
-      <div className={cx('text-[16px] leading-[21px] font-semibold break-words tabular-nums', tone)}>{formatMinor(minor, currency)}</div>
     </div>
   );
 }
