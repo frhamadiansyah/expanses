@@ -34,12 +34,13 @@ export function AppNotices({ backup = true }: { backup?: boolean } = {}) {
  * bar is the window's top edge and nothing sits above it. Each keeps its own press, alert and ✕. The page draws this
  * under its header; Layout leaves its own copy out for those pages. A phone never draws it: its notices stay where they were.
  */
-export function DeskNotices({ backup = true }: { backup?: boolean } = {}) {
+export function DeskNotices({ backup = true, column = false }: { backup?: boolean; column?: boolean } = {}) {
   const phone = usePhone();
   const sideways = useSideways();
   if (phone || sideways) return null;
   return (
-    <div data-testid="desk-notices">
+    // Above a column screen's own title bar, the notices start below the Mac window's title strip.
+    <div data-testid="desk-notices" className={column ? 'mk-col-notices' : undefined}>
       <NoticeStrip.Provider value={true}>
         <AppNotices backup={backup} />
       </NoticeStrip.Provider>

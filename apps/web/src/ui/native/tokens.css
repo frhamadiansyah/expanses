@@ -460,7 +460,7 @@ body:has([role='dialog']) .ph-under-dialog {
   height: var(--desk-bar);
 }
 @media (min-width: 768px) {
-  .mac-app .desk-column {
+  .mac-app .desk-column:not(.mk-col) {
     padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
   }
 }
@@ -645,6 +645,8 @@ body:has([role='dialog']) .ph-under-dialog {
   --ph-fill: var(--mk-seg);
   --ph-selected: var(--mk-seg-on);
   --ov-ground: var(--mk-page);
+  --ph-ground: var(--mk-page);
+  --ph-corner: var(--mk-pill);
   --mac-head: transparent;
   --mac-zebra: transparent;
   color: var(--mk-ink);
@@ -653,4 +655,24 @@ body:has([role='dialog']) .ph-under-dialog {
 /* Inside a floating panel the kit's surface is the panel's own white, not a card's grey. */
 .mk .mk-peek {
   --ph-surface: var(--mk-panel);
+}
+
+/* The notices above a column screen on the Mac: clear of the window's title strip, a little air above the first. */
+.mk-col-notices {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+}
+.mk-col-notices:empty {
+  padding-top: 0;
+}
+
+/*
+ * The column's body on the Mac: 32px sides, and the screen's title bar right under the notices. A screen that paints its
+ * own ground (`ph-screen`, -m-8 p-8) keeps its sides but not its 32px above the bar.
+ */
+.mk-col-body {
+  padding: 0 32px;
+}
+.mk-col-body .ph-screen {
+  margin-top: 0;
+  padding-top: 0;
 }

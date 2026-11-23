@@ -89,8 +89,9 @@ html[data-desk],
 html[data-desk] body {
   overscroll-behavior: none;
 }
-html[data-desk] {
-  background: var(--ph-ground);
+html[data-desk],
+html[data-desk] body {
+  background: var(--mk-page);
 }
 html[data-desk='bar'],
 html[data-desk='bar'] body {

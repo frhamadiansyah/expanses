@@ -3,7 +3,7 @@ import { Check, ChevronLeft, MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEscape } from '../../app/use-escape';
-import { usePhone } from '../../app/use-phone';
+import { usePhone, useSideways } from '../../app/use-phone';
 import { cx } from '../index';
 import { type CornerAction, planCornerActions, titleSteps } from './title';
 import { TAP } from './metrics';
@@ -231,6 +231,9 @@ export function CornerMenu({
  */
 export function LargeTitle(props: Parameters<typeof SectionTitle>[0]) {
   const { title, back, onBack, backTo, backParams, backSearch, actions, max, field, subtitle } = props;
+  // A wide screen (the Mac) draws the screen in the Mac look v1: its own title bar and a large title (`DeskColumnTitle`).
+  const wide = !usePhone() && !useSideways();
+  if (wide && !field) return <DeskColumnTitle {...props} />;
   // An open search spans the whole row, as Cashflow's does: no way back beside it, ✕ closes it.
   if (!back || field) return <SectionTitle {...props} />;
   return (
@@ -430,7 +433,14 @@ function SectionTitle({
  * The name is centred in the *screen*, not in whatever the buttons leave: the two outer columns are equal, so two
  * corner buttons move it no more than none does.
  */
-export function PushedTitle({
+export function PushedTitle(props: Parameters<typeof PhonePushedTitle>[0]) {
+  // A wide screen (the Mac) draws a pushed screen in the Mac look v1 (`DeskColumnTitle`); the phone keeps its own.
+  const wide = !usePhone() && !useSideways();
+  if (wide && !props.field) return <DeskColumnTitle {...props} />;
+  return <PhonePushedTitle {...props} />;
+}
+
+function PhonePushedTitle({
   title,
   back,
   onBack,
@@ -525,6 +535,66 @@ export function PushedTitle({
           </>
         )}
       </div>
+    </header>
+  );
+}
+
+/**
+ * A screen of the column on a wide screen, in the Mac look v1 (owner, 2026-11-23): a 58px title bar the white of the
+ * page — ‹ and the page it came from in blue, the screen's name in grey, its actions as round grey buttons on the
+ * right — then the large title and its grey line. The same title, way back and actions as the phone's, drawn for the
+ * Mac; the phone never draws this.
+ */
+function DeskColumnTitle({ title, back, onBack, backTo, backParams, backSearch, actions = [], max, subtitle }: Parameters<typeof SectionTitle>[0]) {
+  const plan = planCornerActions(actions, max);
+  const backClass = '-ml-[6px] flex shrink-0 items-center gap-[1px] rounded-full px-[6px] py-[3px] text-[14px] font-semibold text-[var(--mk-blue)] hover:bg-[var(--mk-pill)]';
+  const backWords = (
+    <>
+      <ChevronLeft size={16} aria-hidden />
+      <span className="max-w-[200px] truncate">{back}</span>
+    </>
+  );
+  return (
+    <header className="mb-[16px]" data-testid="desk-column-title">
+      <div className="desk-titlebar sticky top-0 z-10 -mx-[32px] flex h-[58px] items-center gap-[10px] bg-[var(--mk-page)] pr-[18px] pl-[24px]">
+        {back &&
+          (backTo ? (
+            <Link to={backTo} params={backParams} search={backSearch} aria-label={back} className={backClass}>
+              {backWords}
+            </Link>
+          ) : (
+            <button type="button" onClick={onBack} aria-label={back} className={backClass}>
+              {backWords}
+            </button>
+          ))}
+        <span className="min-w-0 shrink truncate text-[17px] font-semibold text-[var(--mk-ink-2)]">{title}</span>
+        <span className="flex-1" />
+        {plan.inline.map((action) =>
+          action.menu ? (
+            <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
+          ) : (
+            <CornerButton
+              key={action.key}
+              label={action.label}
+              to={action.to}
+              params={action.params}
+              search={action.search}
+              onClick={action.to ? undefined : () => action.run?.()}
+              destructive={action.destructive}
+              disabled={action.disabled}
+              pressed={action.pressed}
+              expanded={action.expanded}
+              testId={action.testId}
+              size={34}
+            >
+              {action.glyph}
+            </CornerButton>
+          ),
+        )}
+        {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
+      </div>
+      <h1 className="pt-[8px] text-[34px] leading-[41px] font-extrabold tracking-[-0.4px] break-words text-[var(--mk-ink)]">{title}</h1>
+      {subtitle && <p className="mt-[3px] text-[14px] leading-[19px] text-[var(--mk-ink-2)]">{subtitle}</p>}
     </header>
   );
 }

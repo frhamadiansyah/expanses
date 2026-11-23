@@ -6,7 +6,7 @@ import { cx } from '../ui';
 import { ToastHost } from '../ui/Toast';
 import { EventModeHost } from '../features/events/EventMode';
 import { useApp } from './context';
-import { AppNotices } from './DeskNotices';
+import { AppNotices, DeskNotices } from './DeskNotices';
 import { Sidebar } from './Sidebar';
 import { edgeToEdge, SETTINGS_TO } from './sidebar-model';
 import { TabBar } from './TabBar';
@@ -120,10 +120,13 @@ export function Layout() {
         <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
         {/* The Mac pages draw their own title bar and grey page edge to edge (`edgeToEdge`); every other page sits in the column. */}
         {/* `mk`: the Mac look v1 (tokens.css) on the wide screen's own pages; the phone and the column keep theirs. */}
-        <div className={ownBar ? cx('w-full', deskBar && 'mk') : 'desk-column mx-auto max-w-4xl p-4 md:p-8'}>
+        {/* The column on a wide screen is the Mac look v1 too (`mk`): a white page, grey cards, the screen's own title bar
+            (`LargeTitle` on a wide screen) and thin notices; the phone's column is its own. */}
+        <div className={ownBar ? cx('w-full', deskBar && 'mk') : phoneShell ? 'desk-column mx-auto max-w-4xl p-4 md:p-8' : 'desk-column mk mk-col w-full max-w-[1000px] pb-8'}>
           {/* A Mac page with its own title bar draws the notices under it; every other page has them here, above it. */}
-          {!deskBar && <AppNotices />}
-          <Outlet />
+          {!deskBar && (phoneShell ? <AppNotices /> : <DeskNotices column />)}
+          {/* The column's screens take back its padding to paint their own ground (`ph-screen`, -m-8), so it is kept as they expect. */}
+          {phoneShell ? <Outlet /> : <div className="mk-col-body">{<Outlet />}</div>}
         </div>
       </main>
       {phoneShell && !tableOnly && (
