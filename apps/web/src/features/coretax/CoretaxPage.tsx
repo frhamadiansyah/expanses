@@ -228,6 +228,8 @@ export function CoretaxPage() {
                 <InsetRow
                   title="Save taxpayer details"
                   action
+                  // Not pressable while the report is still being written: a press then did nothing, and said nothing.
+                  disabled={busy}
                   className={busy ? 'opacity-40' : undefined}
                   onClick={() => !busy && void saveWho({ npwp: npwp.trim(), taxpayerName: taxpayerName.trim() })}
                 />

@@ -663,30 +663,34 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           unitsMicro={unitsMicro}
           unitLabel={unitLabel}
           priceMicro={latestPrice?.priceMicro ?? null}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
-      {sheet?.kind === 'new-broker' && <NewBrokerSheet onSave={(name) => void stock.newBroker(name).then(() => setSheet(null))} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'new-broker' && <NewBrokerSheet onSave={(name) => void stock.newBroker(name).then(() => setSheet((open) => (open === sheet ? null : open)))} onClose={() => setSheet((open) => (open === sheet ? null : open))} />}
       {sheet?.kind === 'listed-trade' && idxShare && (
         <ListedTradeSheet
+          // A Sell pressed while Buy is still open (the Mac's page stays in use) is a sheet of its own, not Buy's typed figures.
+          key={sheet.trade}
           kind={sheet.trade}
           holding={holding}
           security={idxShare}
           lastPrice={latestPrice}
           position={position}
           brokerAccountId={brokerId}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
       {sheet?.kind === 'fund-trade' && fundHolding && (
         <FundTradeSheet
+          // A Sell pressed while Buy is still open (the Mac's page stays in use) is a sheet of its own, not Buy's typed figures.
+          key={sheet.trade}
           kind={sheet.trade}
           holding={holding}
           icon={<KindGlyph size={16} aria-hidden />}
           lastPrice={latestPrice}
           position={position}
           defaultCashId={brokerId}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
           byMoney={byMoney ? { valueMinor: value.valueMinor } : null}
         />
       )}
@@ -695,17 +699,19 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           fromAccountId={sheet.editing ? sheet.editing.out.accountId : accountId}
           icon={<KindGlyph size={16} aria-hidden />}
           editing={sheet.editing}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
       {sheet?.kind === 'gold-trade' && goldHolding && (
         <GoldTradeSheet
+          // A Sell pressed while Buy is still open (the Mac's page stays in use) is a sheet of its own, not Buy's typed figures.
+          key={sheet.trade}
           kind={sheet.trade}
           holding={holding}
           icon={<KindGlyph size={16} aria-hidden />}
           lastPrice={latestPrice}
           position={position}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
       {sheet?.kind === 'gold-chart' && (
@@ -715,22 +721,22 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           latest={latestPrice}
           costMinor={value.costMinor}
           unitsMicro={unitsMicro}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
-      {/* A save closes its own sheet only: on the Mac the page stays in use while it saves, and Buy pressed meanwhile stays open. */}
-      {sheet?.kind === 'value' && <ValueSheet accountId={accountId} currency={currency} onClose={() => setSheet((open) => (open?.kind === 'value' ? null : open))} />}
-      {sheet?.kind === 'edit-value' && <ValueSheet accountId={accountId} currency={currency} editing={sheet.valuation} onClose={() => setSheet((open) => (open?.kind === 'edit-value' ? null : open))} />}
+      {/* Each sheet closes only itself: on the Mac the page stays in use while a sheet saves, and a sheet opened meanwhile stays open. */}
+      {sheet?.kind === 'value' && <ValueSheet accountId={accountId} currency={currency} onClose={() => setSheet((open) => (open === sheet ? null : open))} />}
+      {sheet?.kind === 'edit-value' && <ValueSheet accountId={accountId} currency={currency} editing={sheet.valuation} onClose={() => setSheet((open) => (open === sheet ? null : open))} />}
       {sheet?.kind === 'estimate' && (
         <TradeActionsSheet
           title={`${BASIS_LABELS[sheet.valuation.basis] ?? sheet.valuation.basis} · ${dayLabel(sheet.valuation.asOf)}`}
           onEdit={() => setSheet({ kind: 'edit-value', valuation: sheet.valuation })}
           onDelete={() => void removeValuation(sheet.valuation)}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
       {sheet?.kind === 'trade' && (
-        <TradeSheet title={sheet.title} holding={{ ...holding, icon: <KindGlyph size={16} aria-hidden /> }} initial={sheet.initial} editing={sheet.editing} onClose={() => setSheet(null)} />
+        <TradeSheet title={sheet.title} holding={{ ...holding, icon: <KindGlyph size={16} aria-hidden /> }} initial={sheet.initial} editing={sheet.editing} onClose={() => setSheet((open) => (open === sheet ? null : open))} />
       )}
       {sheet?.kind === 'row' && (
         <TradeActionsSheet
@@ -755,7 +761,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
                 }
               : undefined
           }
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
       {sheet?.kind === 'goals' && (
@@ -766,7 +772,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             setSheet(null);
             setNotice(said);
           }}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
       {sheet?.kind === 'reinvested' && (
@@ -777,7 +783,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             setSheet(null);
             setNotice(said);
           }}
-          onClose={() => setSheet(null)}
+          onClose={() => setSheet((open) => (open === sheet ? null : open))}
         />
       )}
     </div>
