@@ -4,6 +4,10 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Check, RotateCcw } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone, useSideways } from '../../app/use-phone';
+import { useResolvedNeeds } from '../essential-split/queries';
+import { TakeHomeSheet } from './BudgetSheets';
+import { planGroups } from './budget-v1-model';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { type GroupChild, InsetGroup, LargeTitle, Panel, SCREEN } from '../../ui/native';
@@ -43,6 +47,9 @@ export function EditBudgetsPage() {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const fields = useRef(new Map<string, HTMLInputElement>());
+  const wide = !usePhone() && !useSideways();
+  const needs = useResolvedNeeds().data;
+  const [takeHomeOpen, setTakeHomeOpen] = useState(false);
   // This month's take-home, as the sheet reads it: what a % of take-home is of.
   const takeHome = sheet?.incomePlanMinor ?? 0;
 
@@ -118,6 +125,116 @@ export function EditBudgetsPage() {
   const goals = sheet?.savingsPlanMinor ?? 0;
   const unplanned = income - debt - goals - budgeted;
   const width = (minor: number) => (income > 0 ? `${Math.max(0, Math.min(100, (minor / income) * 100))}%` : '0%');
+
+  /*
+   * The Mac (option B, owner 2026-11-23): Edit plan, in the right-hand form panel over the Budget cards. The same rows,
+   * figures and save as Edit budgets, grouped Essential · Lifestyle · Debts & savings, one amount box a row (an amount
+   * or a %; empty reads "Set…"); Return moves to the next box, Cancel and Save at the panel's foot.
+   */
+  if (wide) {
+    const monthWords = new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    return (
+      <div className={SCREEN} data-testid="edit-budgets">
+        <LargeTitle
+          title="Edit plan"
+          back="Budget"
+          onBack={leave}
+          subtitle={
+            <>
+              {monthWords} · <span data-testid="edit-budgeted">{formatMinor(budgeted, currency)}</span> planned
+            </>
+          }
+          actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, run: () => void save(), disabled: !ready || busy || !initial }]}
+        />
+        <div className="mb-[12px] flex items-center justify-between gap-[10px] text-[12.5px] text-[var(--mk-ink-2)]">
+          <span data-testid="edit-unplanned" className="min-w-0 truncate">
+            {unplanned < 0 ? `Over by ${formatMinor(-unplanned, currency)}` : `Unplanned ${formatMinor(unplanned, currency)}`} of {formatMinor(income, currency)} take-home
+          </span>
+          <button type="button" onClick={() => setTakeHomeOpen(true)} className="shrink-0 font-semibold text-[var(--mk-blue)] hover:underline">
+            Take-home
+          </button>
+        </div>
+        <div className="mb-[6px] flex justify-end">
+          <button type="button" disabled={!canFill} onClick={() => setState(filled)} className="flex items-center gap-[5px] text-[12.5px] font-semibold text-[var(--mk-blue)] disabled:opacity-40">
+            <RotateCcw size={13} aria-hidden />
+            Fill empty from last month
+          </button>
+        </div>
+        <ErrorBox error={error} />
+        {initial &&
+          planGroups(rows, needs ?? {}).map((group) => (
+            <section key={group.need} aria-label={group.title} data-testid={`plan-group-${group.need}`} className="mb-[10px]">
+              <h3 className="border-b border-[var(--mk-line)] px-[2px] pt-[6px] pb-[6px] text-[11.5px] font-bold tracking-[0.06em] text-[var(--mk-ink-2)] uppercase">{group.title}</h3>
+              {group.rows.map((row) => {
+                const base = baseOf(row);
+                const value = rowStateOf(state, row.id);
+                const share = value.mode === 'share';
+                const mark = markOf(row.id);
+                return (
+                  <div key={row.id} data-testid={`edit-row-${row.label}`} className="flex min-h-[44px] items-center gap-[10px] border-b border-[var(--mk-line)] py-[6px] last:border-b-0" style={{ paddingLeft: row.depth * 14 }}>
+                    <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full" style={{ color: mark.colour, background: `color-mix(in srgb, ${mark.colour} 14%, var(--mk-panel))` }}>
+                      {mark.icon}
+                    </span>
+                    <label htmlFor={`cap-${row.id}`} className="min-w-0 flex-1 truncate text-[14px] text-[var(--mk-ink)]">
+                      {row.label}
+                    </label>
+                    <input
+                      id={`cap-${row.id}`}
+                      ref={(input) => {
+                        if (input) fields.current.set(row.id, input);
+                        else fields.current.delete(row.id);
+                      }}
+                      aria-label={row.label}
+                      value={share && value.amount !== '' ? `${value.amount}%` : value.amount}
+                      placeholder="Set…"
+                      inputMode="decimal"
+                      onFocus={(e) => {
+                        setFocused(row.id);
+                        e.currentTarget.select();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        const next = fields.current.get(order[order.indexOf(row.id) + 1] ?? '');
+                        if (next) next.focus();
+                        else e.currentTarget.blur();
+                      }}
+                      onChange={(e) => {
+                        const typed = e.target.value;
+                        // "15%" is a share of its parent (or of take-home); anything else an amount, in the row's own unit.
+                        if (typed.includes('%') && base.minor > 0) change(row.id, { mode: 'share', amount: typed.replace(/[^\d.,]/g, '') });
+                        else change(row.id, { mode: 'amount', amount: groupTypedAmount(typed.replace('%', ''), currency) });
+                      }}
+                      className={cx(
+                        'tabular h-[32px] w-[132px] shrink-0 rounded-[9px] border px-[10px] text-right text-[14px] text-[var(--mk-ink)] outline-none placeholder:font-semibold placeholder:text-[var(--mk-blue)] focus:border-[var(--mk-blue)] focus:ring-2 focus:ring-[var(--mk-blue)]/25',
+                        value.amount === '' ? 'border-dashed border-[var(--mk-ink-3)] bg-transparent' : 'border-[var(--mk-field-line)] bg-[var(--mk-field)]',
+                      )}
+                    />
+                    {/* The unit, as on the phone: a month by default, or a day, a week…, or a % of its parent. */}
+                    <select
+                      aria-label={`${row.label} every`}
+                      value={share ? 'share' : value.frequency}
+                      onChange={(e) => change(row.id, switchRow(value, e.target.value as 'share' | BudgetFrequency, base, currency))}
+                      className="h-[32px] w-[38px] shrink-0 appearance-none bg-transparent text-right text-[12px] text-[var(--mk-ink-2)] outline-none focus-visible:outline-2 focus-visible:outline-[var(--mk-blue)]"
+                    >
+                      {BUDGET_FREQUENCIES.map((key) => (
+                        <option key={key} value={key} aria-label={FREQUENCY_WORDS[key].every}>
+                          {UNIT_SHORT[key]}
+                        </option>
+                      ))}
+                      <option value="share" disabled={base.minor <= 0} aria-label={`a % of ${base.label}`}>
+                        %
+                      </option>
+                    </select>
+                  </div>
+                );
+              })}
+            </section>
+          ))}
+        {takeHomeOpen && sheet && <TakeHomeSheet sheet={sheet} month={month} currency={currency} ready={ready} onClose={() => setTakeHomeOpen(false)} />}
+      </div>
+    );
+  }
 
   return (
     <div className={SCREEN} data-testid="edit-budgets">

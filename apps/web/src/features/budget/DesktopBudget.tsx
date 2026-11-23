@@ -1,5 +1,6 @@
 import { DeskNotices } from '../../app/DeskNotices';
-import { addMonths, type BudgetLine, capsByNeed, isoDate, monthPeriod, needsPlan, periodMonthOf } from '@expanses/core';
+import { addMonths, type BudgetLine, capsByNeed, formatMinor, isoDate, monthPeriod, needsPlan, periodMonthOf } from '@expanses/core';
+import { leftWords as cardLeft, type NeedCard, needCards } from './budget-v1-model';
 import { BudgetError, type BudgetRow, saveBudgets } from '@expanses/db';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Heart, House, LayoutList, type LucideIcon, Plus, Shield } from 'lucide-react';
@@ -274,7 +275,8 @@ export function DesktopBudget() {
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="budget-page" data-desk="true">
       <DeskBar crumb="Budget" barRef={bar}>
-        <Seg label="Budget view" options={SEGMENTS} value={tab} onChange={setTab} />
+        {/* Spending / Plan and its typing table are v2's (option B, owner 2026-11-23): v1 plans in the Edit plan panel. */}
+        {macV2 && <Seg label="Budget view" options={SEGMENTS} value={tab} onChange={setTab} />}
         <DeskMonthPill label={monthLabel(month)} onStep={(by) => setMonth(addMonths(month, by))} testId="budget-month" />
         <button type="button" onClick={editBudgets} title="Edit budgets" className={PILL}>
           Edit plan
@@ -313,7 +315,8 @@ export function DesktopBudget() {
           </div>
         )}
         {/* v2 brings back the month's gauge, the split bar and Needs a look; Plan's own boxes are drawn either way. */}
-        {sheet && table && (tab === 'plan' || macV2) && (
+        {sheet && table && !macV2 && needs && <NeedCards cards={needCards(table.rows, needs)} currency={currency} accounts={accounts} onOpen={setPeekId} onPlan={editBudgets} />}
+        {sheet && table && macV2 && (
           <div className="grid grid-cols-1 items-stretch gap-[16px] @min-[478px]:grid-cols-2 @min-[478px]:[&>:first-child]:col-span-2 @min-[990px]:grid-cols-[1.45fr_1fr_0.95fr] @min-[990px]:[&>:first-child]:col-span-1">
             {tab === 'spending' ? (
               <>
@@ -331,7 +334,7 @@ export function DesktopBudget() {
           </div>
         )}
 
-        {sheet && table && (
+        {sheet && table && macV2 && (
           <section className={cx(CARD, 'overflow-hidden [contain:inline-size]')} aria-label="Categories">
             <h2 className={CARD_HEAD}>
               <LayoutList size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
@@ -487,6 +490,77 @@ export function DesktopBudget() {
     </div>
   );
 }
+
+/**
+ * Budget v1 (option B): a card for each of Essential, Lifestyle and Debts & savings, a row per budgeted category with
+ * what it spent of its budget and what is left or over. A row opens the category's peek; the budgets are typed in Edit
+ * plan, which a part with nothing budgeted points to.
+ */
+function NeedCards({
+  cards,
+  currency,
+  accounts,
+  onOpen,
+  onPlan,
+}: {
+  cards: NeedCard[];
+  currency: string;
+  accounts: Parameters<typeof CategoryIcon>[0]['accounts'];
+  onOpen: (categoryId: string) => void;
+  onPlan: () => void;
+}) {
+  const money = (minor: number) => formatMinor(minor, currency);
+  if (cards.length === 0) {
+    return (
+      <section className={cx(CARD, 'px-[20px] py-[18px] text-[14px] text-[var(--mk-ink-2)]')} data-testid="budget-cards-empty">
+        Nothing is budgeted this month.{' '}
+        <button type="button" onClick={onPlan} className="font-semibold text-[var(--mk-blue)] hover:underline">
+          Edit plan
+        </button>
+      </section>
+    );
+  }
+  return (
+    <div className="grid grid-cols-1 items-start gap-[16px] @min-[700px]:grid-cols-3" data-testid="budget-cards">
+      {cards.map((card) => (
+        <section key={card.need} className={cx(CARD, 'min-w-0 px-[20px] pt-[16px] pb-[10px]')} aria-label={card.title} data-testid={`budget-card-${card.need}`}>
+          <h2 className="mb-[6px] flex items-center gap-[9px] text-[15.5px] font-bold text-[var(--mk-ink-2)]">
+            <span aria-hidden className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: NEED_DOT[card.need] }} />
+            <span className="min-w-0 flex-1 truncate">{card.title}</span>
+            <span className="shrink-0 text-[12.5px] font-semibold">{card.rows.length === 1 ? '1 category' : `${card.rows.length} categories`}</span>
+          </h2>
+          {card.rows.map((row) => {
+            const left = cardLeft(row.leftMinor ?? 0, money);
+            return (
+              <button
+                key={row.key}
+                type="button"
+                onClick={() => onOpen(row.categoryId)}
+                data-testid={`budget-card-row-${row.label}`}
+                className="block w-full border-t border-[var(--mk-line)] py-[10px] text-left first-of-type:border-t-0"
+              >
+                <span className="mb-[8px] flex items-center gap-[10px]">
+                  <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="sm" />
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-[var(--mk-ink)]">{row.label}</span>
+                  <span data-testid="budget-card-left" className={cx('shrink-0 text-[13.5px] font-semibold tabular-nums', left.over ? 'text-[var(--mk-c-red)]' : 'text-[var(--mk-ink)]')}>
+                    {left.text}
+                  </span>
+                </span>
+                <Track share={row.share} colour={left.over ? 'var(--mk-c-red)' : NEED_DOT[card.need]} />
+                <span data-testid="budget-card-of" className="mt-[6px] block truncate text-[12px] text-[var(--mk-ink-2)] tabular-nums">
+                  {money(row.spentMinor)} of {money(row.budgetMinor ?? 0)}
+                  {row.percent ? ` · ${row.percent}` : ''}
+                </span>
+              </button>
+            );
+          })}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+const NEED_DOT: Record<NeedCard['need'], string> = { essential: 'var(--mk-c-blue)', lifestyle: 'var(--mk-c-pink)', debts_savings: 'var(--mk-c-green)' };
 
 /** One row of the Categories table: a group with its fold, or a category whose Budget cell is typed into in place. */
 function BudgetTableRow({
