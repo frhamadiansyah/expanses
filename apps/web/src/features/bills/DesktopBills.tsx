@@ -962,7 +962,11 @@ function FeeTableRow({ cols, fee, on, today, readCurrency, onOpen }: { cols: Col
           <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--mk-pill)] text-[var(--mk-ink-2)]">
             <CreditCard size={13} />
           </span>
-          <span className="truncate">Annual fee</span>
+          <span className="truncate">
+            Annual fee
+            {/* Without the Paid from column (a narrow window) the row still says whose fee it is. */}
+            {!cols.paidWith && <span className="text-[var(--mk-ink-2)]"> · {fee.name}</span>}
+          </span>
         </span>
       </td>
       {cols.category && <td className={cx(CELL, 'text-[var(--mk-ink-2)]')}>Card fee</td>}
