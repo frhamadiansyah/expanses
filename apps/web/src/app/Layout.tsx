@@ -36,18 +36,26 @@ export function Layout() {
   useCashflowRotation(pathname);
   const phoneShell = phone || sideways;
   /*
-   * A form on a wide screen floats in a panel over the page it was opened from (option C): that page is the last address
-   * that was not a form, or — the form opened from outside — the page the form belongs to.
+   * A form on a wide screen floats in a panel over the page it was opened from (option C): that page is the nearest
+   * page before the form in the history, or — the form opened from outside — the page the form belongs to. By the
+   * history's own index, so a page that sent the app straight on to a form (a card's ?pay=true opening Pay credit card,
+   * replaced by it) is not taken for the page under it.
+   *
+   * Read off the address the router has *resolved*, not the one it is going to: the Outlet still draws the old route
+   * until the new one is ready, and the panel opening or closing a moment before that would mount the old route again
+   * (an edit form, saved, reading its transaction back void and sending the app to its receipt).
    */
-  // Read off the address the router has *resolved*, not the one it is going to: the Outlet still draws the old route
-  // until the new one is ready, and the panel opening or closing a moment before that would mount the old route again
-  // (an edit form, saved, reading its transaction back void and sending the app to its receipt).
   const shown = useRouterState({ select: (s) => s.resolvedLocation ?? s.location });
-  const href = shown.href;
   const formBase = phoneShell ? null : panelBase(shown.pathname);
-  const lastPage = useRef<string | null>(null);
-  if (formBase === null) lastPage.current = href;
-  const baseHref = formBase === null ? null : (lastPage.current ?? formBase);
+  const pages = useRef(new Map<number, string>());
+  const at = (shown.state as { __TSR_index?: number } | undefined)?.__TSR_index ?? 0;
+  if (formBase === null) pages.current.set(at, shown.href);
+  else pages.current.delete(at);
+  let baseHref: string | null = null;
+  if (formBase !== null) {
+    for (let index = at - 1; index >= 0 && baseHref === null; index -= 1) baseHref = pages.current.get(index) ?? null;
+    baseHref ??= formBase;
+  }
   const tableOnly = sideways && rotationFor(pathname) === 'free';
   // A Mac page that draws its own title bar: the bar is the window's top edge, and the notices sit under it (`DeskNotices`).
   const basePath = baseHref ? (baseHref.split(/[?#]/)[0] ?? baseHref) : null;
