@@ -5,6 +5,7 @@ import { FormPanelContext } from '../ui/native/form-panel-context';
 import { DeskNotices } from './DeskNotices';
 import { createBaseRouter } from './router';
 import { edgeToEdge } from './sidebar-model';
+import { isPanelForm } from './form-panel-model';
 
 /*
  * A Mac form as a panel on the right (option C, owner 2026-11-23). The form keeps its own address and is drawn by the
@@ -27,7 +28,13 @@ function BasePage({ href }: { href: string }) {
         first = toLocation.href;
         return;
       }
-      if (toLocation.href !== first) void main.navigate({ href: toLocation.href });
+      if (toLocation.href === first) return;
+      // Only while the form is up: once the app has left it (a save, ✕), the page under it is on its way out, and what it
+      // does then (a peek letting go of the row a save just replaced) is not the person's doing.
+      if (!isPanelForm(main.state.location.pathname)) return;
+      void main.navigate({ href: toLocation.href });
+      // The page stays the page under the panel: a form it opens (its own Edit, say) is drawn in the panel, never under it.
+      void base.navigate({ href: first, replace: true });
     });
   }, [base, main]);
   return (

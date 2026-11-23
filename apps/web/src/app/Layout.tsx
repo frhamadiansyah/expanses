@@ -39,8 +39,12 @@ export function Layout() {
    * A form on a wide screen floats in a panel over the page it was opened from (option C): that page is the last address
    * that was not a form, or — the form opened from outside — the page the form belongs to.
    */
-  const href = useRouterState({ select: (s) => s.location.href });
-  const formBase = phoneShell ? null : panelBase(pathname);
+  // Read off the address the router has *resolved*, not the one it is going to: the Outlet still draws the old route
+  // until the new one is ready, and the panel opening or closing a moment before that would mount the old route again
+  // (an edit form, saved, reading its transaction back void and sending the app to its receipt).
+  const shown = useRouterState({ select: (s) => s.resolvedLocation ?? s.location });
+  const href = shown.href;
+  const formBase = phoneShell ? null : panelBase(shown.pathname);
   const lastPage = useRef<string | null>(null);
   if (formBase === null) lastPage.current = href;
   const baseHref = formBase === null ? null : (lastPage.current ?? formBase);
