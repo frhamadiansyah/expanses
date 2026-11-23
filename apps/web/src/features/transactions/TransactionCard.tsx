@@ -1557,20 +1557,20 @@ function CardBody({
       {headerSave ? (
         <ErrorBox error={error ?? receiptPicks.error} />
       ) : (
-      <div className="flex flex-col gap-2 pt-1 in-[[role=dialog]]:shadow-[0_40px_0_0_var(--ph-surface)] in-[[role=dialog]]:sticky in-[[role=dialog]]:bottom-0 in-[[role=dialog]]:-mx-4 in-[[role=dialog]]:border-t-[0.5px] in-[[role=dialog]]:border-[var(--ph-hair)] in-[[role=dialog]]:bg-[var(--ph-surface)] in-[[role=dialog]]:px-4 in-[[role=dialog]]:py-2">
+      <div className="flex flex-col gap-2 pt-1 in-[[role=dialog]]:shadow-[0_40px_0_0_var(--ph-surface)] in-[[role=dialog]]:sticky in-[[role=dialog]]:bottom-0 in-[[role=dialog]]:-mx-4 in-[[role=dialog]]:border-t-[0.5px] in-[[role=dialog]]:border-[var(--ph-hair)] in-[[role=dialog]]:bg-[var(--ph-surface)] in-[[role=dialog]]:px-4 in-[[role=dialog]]:py-2 in-[[data-testid=sheet-panel]]:static! in-[[data-testid=sheet-panel]]:mx-0! in-[[data-testid=sheet-panel]]:border-0! in-[[data-testid=sheet-panel]]:bg-transparent! in-[[data-testid=sheet-panel]]:px-0! in-[[data-testid=sheet-panel]]:shadow-none!">
         <ErrorBox error={error ?? receiptPicks.error} />
-        <div className={cx('flex items-center gap-2', title !== undefined && 'hidden')}>
+        <div className={cx('flex items-center gap-2 in-[[data-testid=sheet-panel]]:justify-end', title !== undefined && 'hidden')}>
           <button
             type="button"
             onClick={onDone}
-            className="ph-focus min-h-11 shrink-0 rounded-full px-4 text-[15px] text-[var(--ph-ink-2)] active:bg-[var(--ph-fill)]"
+            className="ph-focus min-h-11 shrink-0 rounded-full px-4 text-[15px] text-[var(--ph-ink-2)] active:bg-[var(--ph-fill)] in-[[data-testid=sheet-panel]]:min-h-[34px]! in-[[data-testid=sheet-panel]]:bg-[var(--mk-pill)] in-[[data-testid=sheet-panel]]:text-[13.5px]! in-[[data-testid=sheet-panel]]:font-semibold in-[[data-testid=sheet-panel]]:text-[var(--mk-ink)]!"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy || !setAside.ready || (fixedMode && draft.mode === 'trade' && (!kindPicked || purchase.accountId === ''))}
-            className="ph-focus min-h-11 flex-1 rounded-full bg-[var(--ph-ink)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50"
+            className="ph-focus min-h-11 flex-1 rounded-full bg-[var(--ph-ink)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50 in-[[data-testid=sheet-panel]]:min-h-[34px]! in-[[data-testid=sheet-panel]]:flex-none! in-[[data-testid=sheet-panel]]:bg-[var(--mk-blue)]! in-[[data-testid=sheet-panel]]:px-[18px] in-[[data-testid=sheet-panel]]:text-[13.5px]! in-[[data-testid=sheet-panel]]:text-white! in-[[data-testid=sheet-panel]]:disabled:opacity-35!"
           >
             Save
           </button>

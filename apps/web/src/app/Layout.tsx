@@ -9,6 +9,8 @@ import { useApp } from './context';
 import { AppNotices, DeskNotices } from './DeskNotices';
 import { Sidebar } from './Sidebar';
 import { edgeToEdge, SETTINGS_TO } from './sidebar-model';
+import { panelBase } from './form-panel-model';
+import { FormPanelHost } from './FormPanelHost';
 import { TabBar } from './TabBar';
 import { usePhone, useSideways } from './use-phone';
 import { rotationFor, useCashflowRotation } from '../native/orientation';
@@ -33,9 +35,19 @@ export function Layout() {
   const accountScoped = useRouterState({ select: (s) => typeof (s.location.search as { account?: unknown }).account === 'string' });
   useCashflowRotation(pathname);
   const phoneShell = phone || sideways;
+  /*
+   * A form on a wide screen floats in a panel over the page it was opened from (option C): that page is the last address
+   * that was not a form, or — the form opened from outside — the page the form belongs to.
+   */
+  const href = useRouterState({ select: (s) => s.location.href });
+  const formBase = phoneShell ? null : panelBase(pathname);
+  const lastPage = useRef<string | null>(null);
+  if (formBase === null) lastPage.current = href;
+  const baseHref = formBase === null ? null : (lastPage.current ?? formBase);
   const tableOnly = sideways && rotationFor(pathname) === 'free';
   // A Mac page that draws its own title bar: the bar is the window's top edge, and the notices sit under it (`DeskNotices`).
-  const ownBar = edgeToEdge(pathname, phoneShell, accountScoped);
+  const basePath = baseHref ? (baseHref.split(/[?#]/)[0] ?? baseHref) : null;
+  const ownBar = basePath ? edgeToEdge(basePath, false, /[?&]account=/.test(baseHref ?? '')) : edgeToEdge(pathname, phoneShell, accountScoped);
   const deskBar = ownBar && !phoneShell;
   // The Mac receipt a transaction opens on a wide screen, wherever it is opened from but Cashflow's own table.
   const receiptPeek = useReceiptPeekHost(!phoneShell);
@@ -122,12 +134,18 @@ export function Layout() {
         {/* `mk`: the Mac look v1 (tokens.css) on the wide screen's own pages; the phone and the column keep theirs. */}
         {/* The column on a wide screen is the Mac look v1 too (`mk`): a white page, grey cards, the screen's own title bar
             (`LargeTitle` on a wide screen) and thin notices; the phone's column is its own. */}
+        {baseHref ? (
+          <FormPanelHost baseHref={baseHref}>
+            <Outlet />
+          </FormPanelHost>
+        ) : (
         <div className={ownBar ? cx('w-full', deskBar && 'mk') : phoneShell ? 'desk-column mx-auto max-w-4xl p-4 md:p-8' : 'desk-column mk mk-col w-full max-w-[1000px] pb-8'}>
           {/* A Mac page with its own title bar draws the notices under it; every other page has them here, above it. */}
           {!deskBar && (phoneShell ? <AppNotices /> : <DeskNotices column />)}
           {/* The column's screens take back its padding to paint their own ground (`ph-screen`, -m-8), so it is kept as they expect. */}
           {phoneShell ? <Outlet /> : <div className="mk-col-body">{<Outlet />}</div>}
         </div>
+        )}
       </main>
       {phoneShell && !tableOnly && (
         <>

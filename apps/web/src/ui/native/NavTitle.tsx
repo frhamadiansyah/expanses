@@ -1,12 +1,13 @@
-import { Link, type LinkProps } from '@tanstack/react-router';
-import { Check, ChevronLeft, MoreHorizontal } from 'lucide-react';
-import { type ReactNode, useRef, useState } from 'react';
+import { Link, type LinkProps, useNavigate } from '@tanstack/react-router';
+import { Check, ChevronLeft, MoreHorizontal, X } from 'lucide-react';
+import { type ReactNode, useContext, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEscape } from '../../app/use-escape';
 import { usePhone, useSideways } from '../../app/use-phone';
 import { cx } from '../index';
 import { type CornerAction, planCornerActions, titleSteps } from './title';
 import { TAP } from './metrics';
+import { type FormPanel, FormPanelContext } from './form-panel-context';
 import { CompactBar, PinnedTitleBar, useScrolledPast } from './CompactBar';
 
 /**
@@ -545,7 +546,95 @@ function PhonePushedTitle({
  * right — then the large title and its grey line. The same title, way back and actions as the phone's, drawn for the
  * Mac; the phone never draws this.
  */
-function DeskColumnTitle({ title, back, onBack, backTo, backParams, backSearch, actions = [], max, subtitle }: Parameters<typeof SectionTitle>[0]) {
+function DeskColumnTitle(props: Parameters<typeof SectionTitle>[0]) {
+  const panel = useContext(FormPanelContext);
+  if (panel) return <PanelTitle {...props} panel={panel} />;
+  return <DeskPageTitle {...props} />;
+}
+
+/** The words of a form's one primary action: what the panel's blue button says. */
+const PRIMARY = /^(add|save|done|record|create|next|pay|link|move|set|update|use|confirm|start|finish)\b/i;
+
+/**
+ * A form's title in the Mac's floating panel (option C): its name large with ✕ beside it, the grey line under, and its
+ * primary action (Add, Save…) as the blue button at the panel's foot beside Cancel — pale until it can be pressed.
+ * Its other actions stay round buttons beside ✕. ✕ and Cancel take the form's own way back.
+ */
+function PanelTitle({ title, back, onBack, backTo, backParams, backSearch, actions = [], subtitle, panel }: Parameters<typeof SectionTitle>[0] & { panel: FormPanel }) {
+  const navigate = useNavigate();
+  const primaryIndex = actions.findLastIndex((action) => !action.menu && !action.destructive && PRIMARY.test(action.label));
+  const primary = primaryIndex >= 0 ? actions[primaryIndex]! : null;
+  const rest = actions.filter((_, index) => index !== primaryIndex);
+  const plan = planCornerActions(rest, 3);
+  const close = () => {
+    if (backTo) void navigate({ to: backTo, params: backParams as never, search: backSearch as never });
+    else if (onBack) onBack();
+    else panel.close();
+  };
+  const runPrimary = () => {
+    if (!primary || primary.disabled) return;
+    if (primary.to) void navigate({ to: primary.to, params: primary.params as never, search: primary.search as never });
+    else primary.run?.();
+  };
+  const foot = (
+    <>
+      <button type="button" data-panel-cancel onClick={close} className="inline-flex h-[34px] items-center rounded-full bg-[var(--mk-pill)] px-[16px] text-[13.5px] font-semibold text-[var(--mk-ink)] hover:bg-[var(--mk-pill-hover)]">
+        Cancel
+      </button>
+      {primary && (
+        <button
+          type="button"
+          data-panel-primary
+          data-testid={primary.testId}
+          aria-label={primary.label}
+          disabled={primary.disabled}
+          onClick={runPrimary}
+          className="inline-flex h-[34px] items-center rounded-full bg-[var(--mk-blue)] px-[18px] text-[13.5px] font-semibold text-white hover:bg-[var(--mk-blue-hover)] disabled:opacity-35"
+        >
+          {primary.label}
+        </button>
+      )}
+    </>
+  );
+  return (
+    <header className="mb-[14px]" data-testid="panel-title">
+      <div className="flex items-start gap-[10px]">
+        <h1 className="min-w-0 flex-1 pt-[2px] text-[22px] leading-[28px] font-extrabold tracking-[-0.2px] break-words text-[var(--mk-ink)]">{title}</h1>
+        {plan.inline.map((action) =>
+          action.menu ? (
+            <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
+          ) : (
+            <CornerButton
+              key={action.key}
+              label={action.label}
+              to={action.to}
+              params={action.params}
+              search={action.search}
+              onClick={action.to ? undefined : () => action.run?.()}
+              destructive={action.destructive}
+              disabled={action.disabled}
+              pressed={action.pressed}
+              expanded={action.expanded}
+              testId={action.testId}
+              size={30}
+            >
+              {action.glyph}
+            </CornerButton>
+          ),
+        )}
+        {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
+        <button type="button" data-panel-close aria-label={back ?? 'Close'} onClick={close} className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[var(--mk-pill)] text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill-hover)]">
+          <X size={15} aria-hidden />
+        </button>
+      </div>
+      {subtitle && <p className="mt-[2px] text-[13.5px] leading-[18px] text-[var(--mk-ink-2)]">{subtitle}</p>}
+      {/* A form whose own button saves (an Add row at its foot) keeps it; the panel's foot is then not drawn. */}
+      {panel.foot && primary && createPortal(foot, panel.foot)}
+    </header>
+  );
+}
+
+function DeskPageTitle({ title, back, onBack, backTo, backParams, backSearch, actions = [], max, subtitle }: Parameters<typeof SectionTitle>[0]) {
   const plan = planCornerActions(actions, max);
   const backClass = '-ml-[6px] flex shrink-0 items-center gap-[1px] rounded-full px-[6px] py-[3px] text-[14px] font-semibold text-[var(--mk-blue)] hover:bg-[var(--mk-pill)]';
   const backWords = (

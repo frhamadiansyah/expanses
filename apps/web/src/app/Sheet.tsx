@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { type PointerEvent, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useKeyboardInset } from '../ui/native/KeyboardStrip';
 import { type Detent, landing } from './sheet-detents';
-import { usePhone } from './use-phone';
+import { usePhone, useSideways } from './use-phone';
 import { useEscape } from './use-escape';
 
 /** How many sheets are open, so the last one out is the one that gives the page its scrolling back. */
@@ -96,6 +96,9 @@ export function Sheet({
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const phone = usePhone();
+  const sideways = useSideways();
+  // A wide screen (the Mac) draws every sheet as the v1 panel on the right (option C): the page stays in sight and in use.
+  const wide = !phone && !sideways;
   const detents = tall && phone;
   const [detent, setDetent] = useState<Detent>(expanded ? 'large' : 'medium');
   const [dragged, setDragged] = useState<number | null>(null);
@@ -236,7 +239,7 @@ export function Sheet({
     // The page behind must not scroll while a sheet is over it. Counted, so two sheets open at once
     // cannot leave the page locked when only one of them closes.
     open += 1;
-    document.body.style.overflow = 'hidden';
+    if (!wide) document.body.style.overflow = 'hidden';
     // The sheet takes the focus unless a field inside it already asked for it first (a cap typed straight away): this
     // effect runs after its children's autoFocus, and focusing the panel here would take the keyboard away again.
     if (!panel.current?.contains(document.activeElement)) panel.current?.focus();
@@ -249,6 +252,67 @@ export function Sheet({
     };
     // Once, for as long as this sheet is on screen: the count is of sheets, not of renders.
   }, []);
+
+  if (wide) {
+    return createPortal(
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="false"
+        aria-label={title}
+        tabIndex={-1}
+        data-testid="sheet-panel"
+        className="mk mk-panel fixed top-[var(--desk-bar)] right-[14px] bottom-[14px] z-30 flex w-[410px] max-w-[calc(100vw-28px)] flex-col overflow-hidden rounded-[22px] bg-[var(--mk-panel)] text-[var(--mk-ink)] shadow-[var(--mk-panel-shadow)] outline-none"
+      >
+        <div className="flex shrink-0 items-start gap-[8px] px-[22px] pt-[20px] pb-[10px]">
+          {back && (
+            <button
+              type="button"
+              onClick={back.run}
+              aria-label={back.label}
+              className="-ml-[6px] flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-[var(--mk-blue)] hover:bg-[var(--mk-pill)]"
+            >
+              <ChevronLeft size={20} aria-hidden />
+            </button>
+          )}
+          {heading && !confirm && !back && !closeOnly && !largeTitle ? (
+            <div className="min-w-0 flex-1">{heading}</div>
+          ) : (
+            <h2 className="min-w-0 flex-1 pt-[1px] text-[22px] leading-[28px] font-extrabold tracking-[-0.2px] break-words">{title}</h2>
+          )}
+          {!confirm && !back && !closeOnly && action}
+          {!closeHidden && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[var(--mk-pill)] text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill-hover)]"
+            >
+              <X size={15} aria-hidden />
+            </button>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pb-[16px]">{children}</div>
+        {confirm && (
+          <div className="flex shrink-0 items-center justify-end gap-[10px] px-[22px] pt-[10px] pb-[16px]">
+            <button type="button" onClick={onClose} className="inline-flex h-[34px] items-center rounded-full bg-[var(--mk-pill)] px-[16px] text-[13.5px] font-semibold hover:bg-[var(--mk-pill-hover)]">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirm.run}
+              disabled={confirm.disabled}
+              aria-label={confirm.label}
+              className="inline-flex h-[34px] items-center rounded-full bg-[var(--mk-blue)] px-[18px] text-[13.5px] font-semibold text-white hover:bg-[var(--mk-blue-hover)] disabled:opacity-35"
+            >
+              {confirm.label}
+            </button>
+          </div>
+        )}
+      </div>,
+      document.body,
+    );
+  }
 
   // Drawn into the body, not where the sheet is used: a page with a transformed ancestor (a card's page coming up, a
   // sliding column) would otherwise become the containing block of this fixed overlay, and the sheet would stop short
