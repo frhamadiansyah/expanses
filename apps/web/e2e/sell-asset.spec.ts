@@ -49,6 +49,8 @@ test('an archived asset is listed in the group and restored from its page', asyn
   await page.getByRole('button', { name: /^Value/ }).click();
   await page.getByLabel('Value', { exact: true }).fill('0');
   await page.getByRole('button', { name: 'Save value' }).click();
+  // On the Mac the page stays in use beside the sheet: Archive once the value is saved and its sheet gone.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('main').getByRole('button', { name: 'Archive', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
 

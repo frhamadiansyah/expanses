@@ -231,7 +231,8 @@ test('a row’s peek shows what was captured, steps with the arrows, and Return 
   await inject(page, [notice({ id: 'note-b', body: 'Pembayaran Rp52.000 berhasil. Merchant: BAKSO MALANG', capturedAt: '2026-09-30T10:00:00+07:00' })]);
   // A double-click opens the row's form, even when the peek its first click opened (a 1280 window making room for it)
   // moved the row from under the pointer.
-  await doubleClickInPlace(page, row(page, 'BAKSO MALANG'));
+  // On its name: the row's middle is its Category cell in the v1 Captured card, which opens the category's own sheet.
+  await doubleClickInPlace(page, row(page, 'BAKSO MALANG').getByText('BAKSO MALANG', { exact: true }));
   await expect(page.getByRole('form', { name: 'Review BAKSO MALANG' })).toBeVisible();
 });
 

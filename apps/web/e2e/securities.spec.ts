@@ -1,3 +1,4 @@
+import { formArea } from './form-panel';
 import { pastPurchase } from './add-asset';
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
@@ -193,13 +194,14 @@ test('every way in reaches Add a holding: the picker and its Investments family;
 
   // Through the Investments family, Back reopens that family.
   await page.getByPlaceholder('Search everything that can be owned').fill('');
-  await page.getByRole('button', { name: /^Investments/ }).click();
+  // The picker's family row, in the Mac form panel (the Assets page under it has an Investments drawer too).
+  await formArea(page).getByRole('button', { name: /^Investments/ }).click();
   // The picker's row, in the Mac form panel over Assets (whose drawer is named Listed shares too).
   await page.getByTestId('form-panel').getByRole('button', { name: 'Listed shares' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Listed shares' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Mutual fund' })).toBeVisible();
+  await expect(formArea(page).getByRole('button', { name: 'Listed shares' })).toBeVisible();
+  await expect(formArea(page).getByRole('button', { name: 'Mutual fund' })).toBeVisible();
 
   // Opened cold, Back returns to Assets.
   await page.goto('/net-worth/investments/new');

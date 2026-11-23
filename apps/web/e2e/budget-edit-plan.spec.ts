@@ -44,7 +44,7 @@ test('Edit plan opens in the panel over the cards, and a saved plan shows on its
   await restaurants.fill('450000');
   await expect(panel.getByTestId('edit-budgeted')).toHaveText(/^Rp\s850\.000$/);
 
-  await panel.page().getByTestId('form-panel-foot').getByRole('button', { name: 'Save', exact: true }).click();
+  await panel.page().getByTestId('form-panel-foot').getByRole('button', { name: 'Save budgets', exact: true }).click();
   await expect(page.getByTestId('form-panel')).toHaveCount(0);
   await expect(page).toHaveURL(/\/budget(\?|$)/);
 
