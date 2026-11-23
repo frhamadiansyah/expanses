@@ -217,7 +217,7 @@ export function DraftPeek({
         <pre
           data-testid="peek-captured"
           aria-label="What was captured"
-          className="mx-[14px] mb-[12px] rounded-[8px] bg-[var(--ov-ground)] px-[12px] py-[10px] font-mono text-[12px] leading-[1.45] break-words whitespace-pre-wrap text-[var(--ph-ink-2)]"
+          className="mx-[14px] mb-[12px] rounded-[14px] bg-[var(--mk-pill)] px-[14px] py-[10px] font-sans text-[13px] leading-[1.5] break-words whitespace-pre-wrap text-[var(--mk-ink)]"
         >
           {words}
         </pre>
@@ -261,7 +261,7 @@ export function DraftPeek({
             type="button"
             disabled={busy || !state.complete}
             onClick={onRecord}
-            className="rounded-[6px] bg-[var(--ph-ink)] px-3 py-[4px] text-[13px] font-medium text-[var(--ph-surface)] disabled:opacity-40"
+            className="rounded-full bg-[var(--mk-blue)] px-[13px] py-[5px] text-[13px] font-semibold text-white hover:bg-[var(--mk-blue-hover)] disabled:opacity-40"
           >
             Record
           </button>

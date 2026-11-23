@@ -1,16 +1,16 @@
 import { DeskNotices } from '../../app/DeskNotices';
-import { addMonths, type BudgetLine, isoDate, periodMonthOf } from '@expanses/core';
+import { addMonths, type BudgetLine, capsByNeed, isoDate, monthPeriod, needsPlan, periodMonthOf } from '@expanses/core';
 import { BudgetError, type BudgetRow, saveBudgets } from '@expanses/db';
-import { useNavigate, useSearch } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { Heart, House, LayoutList, type LucideIcon, Plus, Shield } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { useResolvedNeeds } from '../essential-split/queries';
+import { useEssentialSplit, useResolvedNeeds } from '../essential-split/queries';
+import { SPLIT_LABELS, type SplitKey } from '../essential-split/split-view';
 import { bareFigure } from '../networth/debt-rows';
-import { BOX, NOTE } from '../transactions/CashflowBoxes';
 import { countsAs as countsAsOf } from '../transactions/cashflow-desk-model';
 import { useBooks, useMonthStart, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
@@ -22,17 +22,36 @@ import { CapSheet } from './CapSheet';
 import { CategoryPeek, TONE_COLOUR } from './CategoryPeek';
 import { useBudgets, useBudgetSheet, useCommittedBills, useSpendingHistory } from './queries';
 import { dependantsOf, shareBaseOf } from './share-form';
-import { DeskBar, DeskTitle, PILL } from '../../ui/desk';
+import { macV2 } from '../../ui/mac-detail';
+import { DeskMonthPill } from '../bills/DeskMonthPill';
+import { budgetTiles } from './budget-tiles';
+import { CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, type IconColour, PILL, PILL_BLUE, Seg, StatTile, TileRow, tileMoney, Track } from '../../ui/desk';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
-const GBTN = PILL;
 const SEGMENTS: { value: DeskView; label: string }[] = [
   { value: 'spending', label: 'Spending' },
   { value: 'plan', label: 'Plan' },
 ];
+
+/** The three tiles' marks (v1): a blue house, a pink heart, a green shield, each tag in its own colour. */
+const TILE_LOOK: Record<SplitKey, { icon: LucideIcon; colour: IconColour; tag: 'blue' | 'pink' | 'green' }> = {
+  essential: { icon: House, colour: 'blue', tag: 'blue' },
+  lifestyle: { icon: Heart, colour: 'pink', tag: 'pink' },
+  debtsSavings: { icon: Shield, colour: 'green', tag: 'green' },
+};
+
+/** A tile's tag. The kit's `Tag` has no pink, so the Lifestyle tag is drawn here on v1's pink pastel. */
+function TileTag({ look, children }: { look: 'blue' | 'pink' | 'green' | 'red'; children: ReactNode }) {
+  const colours = look === 'pink' ? { background: 'var(--mk-p-pink)', color: 'var(--mk-c-pink)' } : { background: `var(--mk-t-${look}-bg)`, color: `var(--mk-t-${look})` };
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full px-[9px] py-[1px] text-[11.5px] leading-[17px] font-bold whitespace-nowrap tabular-nums" style={colours}>
+      {children}
+    </span>
+  );
+}
 
 /** Folded groups are this browser's own convenience, kept across visits; a store that cannot be read starts all open. */
 const FOLDS_KEY = 'budget-desk-folded';
@@ -65,8 +84,8 @@ function parentNameOf(lines: readonly BudgetLine[], id: string): string | null {
   return null;
 }
 
-/** "−1.200.000" for a figure below nought. */
-const signed = (minor: number, currency: string) => (minor < 0 ? `−${bareFigure(-minor, currency)}` : bareFigure(minor, currency));
+/** Left as v1 reads it: "1.200.000", or "110.000 over" once past the budget (red where it is drawn). */
+const leftWords = (minor: number, currency: string) => (minor < 0 ? `${bareFigure(-minor, currency)} over` : bareFigure(minor, currency));
 
 /**
  * Budget on a wide screen (Mac Budget, the list version, owner-picked 2026-11-17): a title bar with Spending · Plan, the
@@ -98,6 +117,10 @@ export function DesktopBudget() {
   const currency = sheet?.currency ?? planCurrency;
   const history = useSpendingHistory(month, currency);
   const needs = useResolvedNeeds().data;
+  // The three tiles: the phone's Essential · Lifestyle · Debts & savings box (`needsPlan`), over the budget's own month.
+  const split = useEssentialSplit(monthPeriod(month, monthStart)).data;
+  const splitCurrency = split?.currency ?? currency;
+  const tiles = sheet && split && needs ? budgetTiles(needsPlan(split.split, capsByNeed(sheet.lines, needs), sheet.incomePlanMinor), splitCurrency) : null;
 
   const table = sheet ? deskTable(sheet.lines, budgets ?? []) : null;
   const [folded, setFolded] = useState<Set<string>>(readFolds);
@@ -105,6 +128,11 @@ export function DesktopBudget() {
   const days = daysLeft(month, today, monthStart);
   const daysNote = days === null ? null : days === 1 ? '1 day left' : `${days} days left`;
   const thisMonth = month === periodMonthOf(today, monthStart);
+  // v1's line under the title: the month, the Total budgeted row's Spent of its Budget, and the days left.
+  const totals = table ? gaugeOf(table) : null;
+  const titleLine = [monthLabel(month), totals && totals.budgetedMinor > 0 ? `${tileMoney(totals.spentMinor, currency)} spent of ${tileMoney(totals.budgetedMinor, currency)} planned` : null, thisMonth ? daysNote : null]
+    .filter(Boolean)
+    .join(' · ');
   const storedOf = (id: string): BudgetRow | undefined => budgets?.find((row) => row.categoryAccountId === id);
 
   const toggleFold = (id: string) =>
@@ -246,52 +274,47 @@ export function DesktopBudget() {
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="budget-page" data-desk="true">
       <DeskBar crumb="Budget" barRef={bar}>
-        <div role="radiogroup" aria-label="Budget view" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
-          {SEGMENTS.map((segment) => (
-            <button
-              key={segment.value}
-              type="button"
-              role="radio"
-              aria-checked={tab === segment.value}
-              onClick={() => setTab(segment.value)}
-              className={cx(
-                'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
-                tab === segment.value ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
-              )}
-            >
-              {segment.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-[2px] text-[13px] text-[var(--ph-ink)]">
-          <button type="button" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))} className="flex h-[24px] w-[22px] items-center justify-center rounded text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]">
-            <ChevronLeft size={15} aria-hidden />
-          </button>
-          <span data-testid="budget-month" className="px-1 whitespace-nowrap tabular-nums">
-            {monthLabel(month)}
-          </span>
-          <button type="button" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))} className="flex h-[24px] w-[22px] items-center justify-center rounded text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]">
-            <ChevronRight size={15} aria-hidden />
-          </button>
-        </div>
-        <button type="button" onClick={editBudgets} className={PILL}>
-          Edit budgets
+        <Seg label="Budget view" options={SEGMENTS} value={tab} onChange={setTab} />
+        <DeskMonthPill label={monthLabel(month)} onStep={(by) => setMonth(addMonths(month, by))} testId="budget-month" />
+        <button type="button" onClick={editBudgets} title="Edit budgets" className={PILL}>
+          Edit plan
         </button>
+        <Link to="/transactions/new" aria-label="Add transaction" className={PILL_BLUE}>
+          <Plus size={13} strokeWidth={2.6} aria-hidden /> Add
+        </Link>
       </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
-      <DeskTitle title="Budget" />
+      <DeskTitle title="Budget" line={titleLine} />
 
       {/*
-       * While the peek is open the whole page makes room for it, boxes and table alike, so it covers no figure; the boxes
-       * go by the room they have (a container query, not the window's width), so they wrap rather than squeeze. Two
-       * across, the first box (the gauge and its figures) takes the whole row and the other two share the next.
+       * While the peek is open the whole page makes room for it, tiles and table alike, so it covers no figure; the boxes
+       * go by the room they have (a container query, not the window's width), so they wrap rather than squeeze.
        */}
       <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peekLine && 'mr-[322px]')}>
         <ErrorBox error={sheetQuery.error} />
         <Unconverted missing={sheet?.unconverted ?? []} currency={currency} />
-        {sheet && table && (
-          <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[478px]:grid-cols-2 @min-[478px]:[&>:first-child]:col-span-2 @min-[990px]:grid-cols-[1.45fr_1fr_0.95fr] @min-[990px]:[&>:first-child]:col-span-1">
+        {tiles && (
+          <div className="[&>div]:mb-0">
+            <TileRow count={3} testId="budget-tiles">
+              {tiles.map((tile) => (
+                <StatTile
+                  key={tile.key}
+                  testId={`tile-${tile.key}`}
+                  valueTestId={`tile-${tile.key}-used`}
+                  icon={TILE_LOOK[tile.key].icon}
+                  colour={TILE_LOOK[tile.key].colour}
+                  value={tileMoney(tile.usedMinor, splitCurrency)}
+                  label={tile.plannedMinor === null ? SPLIT_LABELS[tile.key] : `${SPLIT_LABELS[tile.key]} · of ${tileMoney(tile.plannedMinor, splitCurrency)}`}
+                  badge={tile.tag && <TileTag look={tile.tag.tone === 'over' ? 'red' : TILE_LOOK[tile.key].tag}>{tile.tag.text}</TileTag>}
+                />
+              ))}
+            </TileRow>
+          </div>
+        )}
+        {/* v2 brings back the month's gauge, the split bar and Needs a look; Plan's own boxes are drawn either way. */}
+        {sheet && table && (tab === 'plan' || macV2) && (
+          <div className="grid grid-cols-1 items-stretch gap-[16px] @min-[478px]:grid-cols-2 @min-[478px]:[&>:first-child]:col-span-2 @min-[990px]:grid-cols-[1.45fr_1fr_0.95fr] @min-[990px]:[&>:first-child]:col-span-1">
             {tab === 'spending' ? (
               <>
                 <MonthBudgetBox title={thisMonth ? 'This month’s budget' : `${monthLabel(month)} budget`} gauge={gaugeOf(table)} currency={currency} month={month} today={today} monthStart={monthStart} daysNote={daysNote} />
@@ -309,33 +332,36 @@ export function DesktopBudget() {
         )}
 
         {sheet && table && (
-          <section className={cx(BOX, 'overflow-hidden [contain:inline-size]')} aria-label="Categories">
-            <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
-              Categories
-              <span className={NOTE}>Type a budget into its cell (an amount, or a % of its parent) · Tab moves down · ▼ folds a group</span>
+          <section className={cx(CARD, 'overflow-hidden [contain:inline-size]')} aria-label="Categories">
+            <h2 className={CARD_HEAD}>
+              <LayoutList size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
+              <span className="shrink-0">Categories</span>
+              <span className={CARD_NOTE} title="Type a budget into its cell (an amount, or a % of its parent) · Tab moves down · ↑↓ step · ▼ folds a group">
+                Type a budget into its cell (an amount, or a % of its parent) · Tab moves down · ▼ folds a group
+              </span>
             </h2>
-            <div className="overflow-x-auto border-t border-[var(--ph-hair)]">
+            <div className="overflow-x-auto px-[10px] pb-[10px]">
               {/* With the peek open the table makes room for it: Counts as (the peek says it) and the bar step aside. */}
-              <table className={cx('w-full table-fixed border-collapse text-[13px]', compact ? 'min-w-[540px]' : 'min-w-[820px]')}>
+              <table className={cx('w-full table-fixed border-collapse text-[13.5px]', compact ? 'min-w-[540px]' : 'min-w-[820px]')}>
                 <colgroup>
                   <col />
                   {tab === 'plan' && <col className="w-[150px]" />}
                   {!compact && <col className="w-[120px]" />}
                   {tab === 'spending' && <col className="w-[150px]" />}
                   <col className="w-[120px]" />
-                  <col className="w-[120px]" />
+                  <col className="w-[140px]" />
                   {!compact && <col className="w-[170px]" />}
                 </colgroup>
                 <thead>
-                  <tr className="bg-[var(--mac-head)] text-[11px] font-semibold text-[var(--ph-ink-3)]">
-                    <th className="border-b border-[var(--ph-hair)] px-[10px] py-[7px] text-left font-semibold">Category</th>
-                    {tab === 'plan' && <th className="border-b border-[var(--ph-hair)] px-[10px] py-[7px] text-right font-semibold">Budget</th>}
-                    {!compact && <th className="border-b border-[var(--ph-hair)] px-[10px] py-[7px] text-left font-semibold">Counts as</th>}
-                    {tab === 'spending' && <th className="border-b border-[var(--ph-hair)] px-[10px] py-[7px] text-right font-semibold">Budget</th>}
-                    <th className="border-b border-[var(--ph-hair)] px-[10px] py-[7px] text-right font-semibold">Spent</th>
-                    <th className="border-b border-[var(--ph-hair)] px-[10px] py-[7px] text-right font-semibold">Left</th>
+                  <tr className="text-[12.5px] font-semibold text-[var(--mk-ink-2)]">
+                    <th className="border-b border-[var(--mk-head-line)] px-[10px] py-[8px] text-left font-semibold">Category</th>
+                    {tab === 'plan' && <th className="border-b border-[var(--mk-head-line)] px-[10px] py-[8px] text-right font-semibold">Budget</th>}
+                    {!compact && <th className="border-b border-[var(--mk-head-line)] px-[10px] py-[8px] text-left font-semibold">Counts as</th>}
+                    {tab === 'spending' && <th className="border-b border-[var(--mk-head-line)] px-[10px] py-[8px] text-right font-semibold">Budget</th>}
+                    <th className="border-b border-[var(--mk-head-line)] px-[10px] py-[8px] text-right font-semibold">Spent</th>
+                    <th className="border-b border-[var(--mk-head-line)] px-[10px] py-[8px] text-right font-semibold">Left</th>
                     {!compact && (
-                      <th className="border-b border-[var(--ph-hair)] px-[10px] py-[7px]">
+                      <th className="border-b border-[var(--mk-head-line)] px-[10px] py-[8px]">
                         <span className="sr-only">Used</span>
                       </th>
                     )}
@@ -344,7 +370,7 @@ export function DesktopBudget() {
                 <tbody>
                   {table.rows.length === 0 && (
                     <tr>
-                      <td colSpan={columns} className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
+                      <td colSpan={columns} className="px-3 py-6 text-center text-[13.5px] text-[var(--mk-ink-2)]">
                         Nothing budgeted and nothing spent in {monthLabel(month)}.{' '}
                         <button type="button" onClick={editBudgets} className="text-[var(--mac-accent)] hover:underline">
                           Edit budgets
@@ -358,7 +384,7 @@ export function DesktopBudget() {
                     return [
                       first ? (
                         <tr key="no-budget-head" id="budget-no-budget">
-                          <td colSpan={columns} className="bg-[var(--ph-surface)] px-[10px] pt-[12px] pb-[4px] text-[11px] font-semibold tracking-[0.04em] text-[var(--ph-ink-3)] uppercase">
+                          <td colSpan={columns} className="border-t border-[var(--mk-line)] px-[10px] pt-[14px] pb-[5px] text-[11.5px] font-bold tracking-[0.04em] text-[var(--mk-ink-2)] uppercase">
                             No budget yet
                           </td>
                         </tr>
@@ -368,7 +394,6 @@ export function DesktopBudget() {
                         row={row}
                         tab={tab}
                         compact={compact}
-                        striped={index % 2 === 1}
                         currency={currency}
                         accounts={accounts}
                         counts={counts(row.categoryId)}
@@ -403,14 +428,14 @@ export function DesktopBudget() {
                     ];
                   })}
                   {table.rows.some((row) => row.section === 'budgeted') && (
-                    <tr data-testid="budget-total" className="border-t border-[var(--ph-hair)] bg-[var(--ph-surface)] font-semibold text-[var(--ph-ink)]">
-                      <td className="px-[10px] py-[7px]">Total budgeted</td>
-                      {tab === 'plan' && <td data-testid="total-budget" className="px-[10px] py-[7px] text-right tabular-nums">{bareFigure(table.total.budgetMinor, currency)}</td>}
+                    <tr data-testid="budget-total" className="border-t border-[var(--mk-head-line)] font-bold text-[var(--mk-ink)]">
+                      <td className="px-[10px] py-[9px]">Total budgeted</td>
+                      {tab === 'plan' && <td data-testid="total-budget" className="px-[10px] py-[9px] text-right tabular-nums">{bareFigure(table.total.budgetMinor, currency)}</td>}
                       {!compact && <td />}
-                      {tab === 'spending' && <td data-testid="total-budget" className="px-[10px] py-[7px] text-right tabular-nums">{bareFigure(table.total.budgetMinor, currency)}</td>}
-                      <td data-testid="total-spent" className="px-[10px] py-[7px] text-right tabular-nums">{bareFigure(table.total.spentMinor, currency)}</td>
-                      <td data-testid="total-left" className={cx('px-[10px] py-[7px] text-right tabular-nums', table.total.leftMinor < 0 && 'text-[var(--ph-alarm)]')}>
-                        {signed(table.total.leftMinor, currency)}
+                      {tab === 'spending' && <td data-testid="total-budget" className="px-[10px] py-[9px] text-right tabular-nums">{bareFigure(table.total.budgetMinor, currency)}</td>}
+                      <td data-testid="total-spent" className="px-[10px] py-[9px] text-right tabular-nums">{bareFigure(table.total.spentMinor, currency)}</td>
+                      <td data-testid="total-left" className={cx('px-[10px] py-[9px] text-right tabular-nums', table.total.leftMinor < 0 && 'text-[var(--mk-t-red)]')}>
+                        {leftWords(table.total.leftMinor, currency)}
                       </td>
                       {!compact && <td />}
                     </tr>
@@ -468,7 +493,6 @@ function BudgetTableRow({
   row,
   tab,
   compact,
-  striped,
   currency,
   accounts,
   counts,
@@ -490,7 +514,6 @@ function BudgetTableRow({
   tab: DeskView;
   /** The peek is open: no Counts as, no bar. */
   compact: boolean;
-  striped: boolean;
   currency: string;
   accounts: Parameters<typeof CategoryIcon>[0]['accounts'];
   counts: string;
@@ -513,7 +536,7 @@ function BudgetTableRow({
   const strong = group ? 'font-semibold' : '';
   // A budgeted root reads as a heading of its own, as a group does; its figures stay plain.
   const named = group || (row.section === 'budgeted' && row.depth === 0) ? 'font-semibold' : '';
-  const cell = 'px-[10px] py-[5px] whitespace-nowrap';
+  const cell = 'border-t border-[var(--mk-line)] px-[10px] py-[7px] whitespace-nowrap';
   const budget: ReactNode =
     group ? (
       <span className="font-semibold">{bareFigure(row.budgetMinor ?? 0, currency)}</span>
@@ -542,10 +565,10 @@ function BudgetTableRow({
           }}
           placeholder="Amount or %"
           inputMode="decimal"
-          className="-my-px h-[20px] w-full rounded-[4px] bg-[var(--ph-surface)] px-[6px] text-right text-[13px] text-[var(--ph-ink)] tabular-nums outline-2 outline-[var(--mac-accent)] placeholder:text-[var(--ph-ink-3)]"
+          className="-my-[2px] h-[24px] w-full rounded-[7px] bg-[var(--mk-field)] px-[7px] text-right text-[13.5px] text-[var(--mk-ink)] tabular-nums outline-2 outline-[var(--mk-blue)] placeholder:text-[var(--mk-ink-3)]"
         />
         {error && (
-          <span role="alert" className="absolute right-[10px] z-10 mt-[3px] max-w-[260px] rounded-[6px] bg-[var(--ph-alarm)] px-[8px] py-[3px] text-left text-[11.5px] whitespace-normal text-white shadow">
+          <span role="alert" className="absolute right-[10px] z-10 mt-[3px] max-w-[260px] rounded-[8px] bg-[var(--mk-c-red)] px-[8px] py-[3px] text-left text-[11.5px] whitespace-normal text-white shadow">
             {error}
           </span>
         )}
@@ -564,16 +587,16 @@ function BudgetTableRow({
             onArrow(event.key === 'ArrowUp' ? -1 : 1);
           }
         }}
-        className="w-full rounded-[4px] text-right tabular-nums hover:bg-[var(--ph-fill)] focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]"
+        className="-my-[2px] w-full rounded-[7px] px-[4px] py-[2px] text-right tabular-nums hover:bg-[var(--mk-pill)] focus-visible:outline-2 focus-visible:outline-[var(--mk-blue)]"
       >
         {row.budgetMinor === null ? (
-          <span className="text-[var(--ph-chevron)]">Set…</span>
+          <span className="text-[var(--mk-ink-3)]">Set…</span>
         ) : (
           <>
             {(row.percent || row.frequency !== 'monthly' || row.overridden) && (
-              <span className="text-[11.5px] text-[var(--ph-ink-3)]">{row.overridden ? 'this month' : row.percent ?? row.frequency} · </span>
+              <span className="text-[12px] text-[var(--mk-ink-2)]">{row.overridden ? 'this month' : row.percent ?? row.frequency} · </span>
             )}
-            <span className="text-[var(--mac-accent)]">{bareFigure(row.budgetMinor, currency)}</span>
+            <span className="text-[var(--mk-blue)]">{bareFigure(row.budgetMinor, currency)}</span>
           </>
         )}
       </button>
@@ -588,7 +611,7 @@ function BudgetTableRow({
       data-testid={`budget-row-${row.label}`}
       data-category-id={row.categoryId}
       aria-current={peeked && !group ? 'true' : undefined}
-      className={cx('text-[var(--ph-ink)]', group ? 'bg-[var(--mac-head)]' : striped && 'bg-[var(--mac-zebra)]', peeked && !group && 'shadow-[inset_3px_0_0_var(--mac-accent)]')}
+      className={cx('text-[var(--mk-ink)]', peeked && !group && 'bg-[var(--mk-sel)]')}
     >
       <td className={cx(cell, 'overflow-hidden')} style={{ paddingLeft: 10 + row.depth * 24 }}>
         <span className="flex min-w-0 items-center gap-[6px]">
@@ -598,35 +621,31 @@ function BudgetTableRow({
               aria-expanded={!folded}
               aria-label={folded ? `Unfold ${row.label}` : `Fold ${row.label}`}
               onClick={onFold}
-              className="flex h-[16px] w-[16px] shrink-0 items-center justify-center text-[10px] text-[var(--ph-ink-3)] hover:text-[var(--ph-ink)]"
+              className="flex h-[16px] w-[16px] shrink-0 items-center justify-center text-[10px] text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]"
             >
               {folded ? '▶' : '▼'}
             </button>
           ) : (
             <span aria-hidden className="w-[16px] shrink-0" />
           )}
-          <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="xs" />
+          <CategoryIcon categoryId={row.categoryId} accounts={accounts} size="sm" />
           <button type="button" onClick={onPeek} title={`See ${row.name}’s transactions`} className={cx('min-w-0 truncate text-left hover:underline', named)}>
             {row.label}
           </button>
         </span>
       </td>
       {tab === 'plan' && budgetCell}
-      {!compact && <td className={cx(cell, 'text-[var(--ph-ink-3)]')}>{counts}</td>}
+      {!compact && <td className={cx(cell, 'text-[var(--mk-ink-2)]')}>{counts}</td>}
       {tab === 'spending' && budgetCell}
       <td data-testid="spent-cell" className={cx(cell, 'text-right tabular-nums', strong)}>
         {bareFigure(row.spentMinor, currency)}
       </td>
-      <td data-testid="left-cell" className={cx(cell, 'text-right tabular-nums', strong, row.leftMinor !== null && row.leftMinor < 0 && 'text-[var(--ph-alarm)]')}>
-        {row.leftMinor === null ? <span className="text-[var(--ph-ink-3)]">—</span> : signed(row.leftMinor, currency)}
+      <td data-testid="left-cell" className={cx(cell, 'text-right tabular-nums', strong, row.leftMinor !== null && row.leftMinor < 0 && 'font-semibold text-[var(--mk-t-red)]')}>
+        {row.leftMinor === null ? <span className="text-[var(--mk-ink-3)]">—</span> : leftWords(row.leftMinor, currency)}
       </td>
       {!compact && (
       <td className={cell}>
-        {row.tone && (
-          <div aria-hidden className="h-[6px] overflow-hidden rounded-full bg-[var(--ph-track)]">
-            <div className="h-full rounded-full" style={{ width: `${Math.min(1, row.share) * 100}%`, background: TONE_COLOUR[row.tone] }} />
-          </div>
-        )}
+        {row.tone && <Track share={Math.min(1, row.share)} colour={TONE_COLOUR[row.tone]} />}
       </td>
       )}
     </tr>

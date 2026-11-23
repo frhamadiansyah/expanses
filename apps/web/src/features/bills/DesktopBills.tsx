@@ -2,13 +2,12 @@ import { DeskNotices } from '../../app/DeskNotices';
 import { addMonths, BILL_DUE_SOON_DAYS, dayMonth, daysFrom, formatMinor, isoDate, monthName, ordinal, periodMonthOf } from '@expanses/core';
 import { type MonthlyBill, undoBillPayments } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { CalendarClock, Check, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react';
+import { CalendarCheck, CalendarClock, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, CreditCard, type LucideIcon, Plus } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { compactMoney } from '../../app/sidebar-model';
 import { useAccounts, useInvalidateAll, useIsBookShared, useMemberPayers } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { toneClass } from '../../ui/native';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { type ToastIcon, UndoToast } from '../../ui/UndoToast';
 import { feeDateText } from '../cards/fee-line';
@@ -18,7 +17,7 @@ import { GoalsThisMonth } from '../goals/GoalDues';
 import { useAllPlanInstalments, useInstallments } from '../loans/queries';
 import { bareFigure } from '../networth/debt-rows';
 import { usePurchasePayers } from '../sharing/queries';
-import { BOX, NOTE } from '../transactions/CashflowBoxes';
+import { BOX } from '../transactions/CashflowBoxes';
 import { useMonthStart } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { amountOf, billAccountName, billCurrencyOf, billsInReadCurrency, isPaused, isSettled, isToPay, paidText } from './bill-view';
@@ -46,12 +45,31 @@ import { MonthlyBuys } from './MonthlyBuys';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { useBillMoney, useBillsInMonths, useMonthlyBills, useSinkingFunds } from './queries';
 import { setAsideOf } from './set-aside';
-import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
+import { CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, type IconColour, PILL, PILL_BLUE, Seg, StatTile, Tag, TileRow, tileMoney, type Tone } from '../../ui/desk';
+import { macV2 } from '../../ui/mac-detail';
+import { billCount, type BillTileKey, billTiles, bucketOf } from './bill-tiles';
+import { DeskMonthPill } from './DeskMonthPill';
+import { Bang } from './desk-glyphs';
 
-const GBTN = PILL;
-const PBTN = PILL_BLUE;
-const STEP = 'flex h-[24px] w-[22px] items-center justify-center rounded text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]';
-const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]';
+const STEP = 'flex h-[26px] w-[26px] items-center justify-center rounded-full text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill)]';
+const H2 = cx(CARD_HEAD, 'justify-between');
+const NOTE = 'min-w-0 truncate text-[12.5px] font-semibold text-[var(--mk-ink-2)]';
+/** A table heading cell, v1: grey, on a hairline. */
+const TH = 'border-b border-[var(--mk-head-line)] px-[8px] py-[8px] font-semibold';
+
+type BillsView = 'list' | 'calendar';
+const VIEWS: { value: BillsView; label: string; testId: string }[] = [
+  { value: 'list', label: 'List', testId: 'bills-view-list' },
+  { value: 'calendar', label: 'Calendar', testId: 'bills-view-calendar' },
+];
+
+/** The four tiles (v1): a green ✓, a blue clock, an orange calendar, a red !, each count tag in its own colour. */
+const TILE_LOOK: Record<BillTileKey, { icon: LucideIcon; colour: IconColour; tag: Tone; label: string }> = {
+  paid: { icon: Check, colour: 'green', tag: 'green', label: 'Paid' },
+  dueSoon: { icon: Clock, colour: 'blue', tag: 'blue', label: 'Due soon' },
+  later: { icon: CalendarDays, colour: 'orange', tag: 'orange', label: 'Later this month' },
+  late: { icon: Bang, colour: 'red', tag: 'red', label: 'Late' },
+};
 
 /** The calendar's marks: orange for late or due soon, grey for later, a hollow ring for paid. */
 const MARK: Record<DayMark, string> = {
@@ -144,13 +162,15 @@ export function DesktopBills() {
   const groups = deskGroups(rows, month, isCurrent, today);
   // The table's columns go by the room its box has: Paid with first, then Category, step aside rather than squeeze.
   const [tableRef, tableWidth] = useWidth<HTMLElement>();
+  // Fixed columns take about 410px; the Bill keeps at least 200 before Category (150) and then Paid from (160) show.
   const cols: Columns = {
-    category: tableWidth === 0 || tableWidth >= 540,
-    paidWith: tableWidth === 0 || tableWidth >= 680,
+    category: tableWidth === 0 || tableWidth >= 780,
+    paidWith: tableWidth === 0 || tableWidth >= 940,
   };
-  const span = 5 + Number(cols.category) + Number(cols.paidWith);
+  const span = 6 + Number(cols.category) + Number(cols.paidWith);
   const tableIds = groups.flatMap((group) => group.rows.map((bill) => bill.id));
 
+  const [view, setView] = useState<BillsView>('list');
   const [day, setDay] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [payingSeveral, setPayingSeveral] = useState(false);
@@ -244,30 +264,39 @@ export function DesktopBills() {
     });
   const accountNameOf = (bill: MonthlyBill) => billAccountName(bill, accounts, bill.paymentId ? payerOf(bill.paymentId) : null, memberPayers);
 
+  // v1: the four status tiles, the line under the title, and (Calendar) the calendar and the bars beside the table.
+  const tiles = billTiles(readRows, today);
+  const titleLine = loaded
+    ? [monthLabel(month), billCount(box.count), `${box.approximate ? '≈ ' : ''}${tileMoney(box.leftMinor, readCurrency)} still to pay`].join(' · ')
+    : monthLabel(month);
+  // v2 keeps today's layout: the calendar and the bars always beside the list, with the month's box and Set aside.
+  const besides = macV2 || view === 'calendar';
+  const tableTitle = isCurrent ? 'This month' : monthLabel(month);
+
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="bills-page" data-desk="true" {...doubleClick}>
+    <div className="min-h-dvh bg-[var(--mk-page)]" data-testid="bills-page" data-desk="true" {...doubleClick}>
       <DeskBar crumb="Bills" barRef={bar}>
-        <div className="flex items-center gap-[2px] text-[13px] text-[var(--ph-ink)]">
-          <button type="button" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))} className={STEP}>
-            <ChevronLeft size={15} aria-hidden />
-          </button>
-          <span data-testid="bills-month" className="px-1 whitespace-nowrap tabular-nums">
-            {monthLabel(month)}
-          </span>
-          <button type="button" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))} className={STEP}>
-            <ChevronRight size={15} aria-hidden />
-          </button>
-        </div>
-        <button type="button" onClick={() => void navigate({ to: '/bills/yearly' })} className={GBTN}>
+        {!macV2 && <Seg
+            label="Bills view"
+            options={VIEWS}
+            value={view}
+            onChange={(next) => {
+              setView(next);
+              if (next === 'list') setDay(null);
+            }}
+            testId="bills-view"
+          />}
+        <DeskMonthPill label={monthLabel(month)} onStep={(by) => setMonth(addMonths(month, by))} testId="bills-month" />
+        <button type="button" onClick={() => void navigate({ to: '/bills/yearly' })} className={PILL}>
           Yearly bills
         </button>
-        <button type="button" onClick={() => void navigate({ to: '/bills/new' })} className={PBTN}>
-          ＋ New bill
+        <button type="button" onClick={() => void navigate({ to: '/bills/new' })} className={PILL_BLUE}>
+          <Plus size={13} strokeWidth={2.6} aria-hidden /> New bill
         </button>
       </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
-      <DeskTitle title="Bills" />
+      <DeskTitle title="Bills" line={titleLine} />
 
       {/*
        * The peek makes room on the whole page, so it covers no figure. The page goes by the room it has (a container
@@ -277,42 +306,73 @@ export function DesktopBills() {
       <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={error ?? live.error ?? read.error} />
         <Unconverted missing={unconverted} currency={readCurrency} />
-        <div className="grid grid-cols-1 items-start gap-[14px] @min-[900px]:grid-cols-[270px_minmax(0,1fr)]">
-          <div className="grid grid-cols-1 items-start gap-[14px] @min-[560px]:grid-cols-[270px_minmax(0,1fr)] @min-[900px]:grid-cols-1">
-            <CalendarBox month={month} today={today} rows={rows} day={day} onDay={setDay} onMonth={setMonth} currencyOf={currencyOf} />
-            <BarsBox bars={monthBars} currency={readCurrency} />
-          </div>
-          <div className="min-w-0 space-y-[14px]">
-            <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[560px]:grid-cols-2">
-              <MonthBoxView month={month} box={box} loaded={loaded} empty={rows.length === 0} monthStart={monthStart} currency={readCurrency} />
-              <SetAsideBox funds={funds} setAside={setAside} currency={readCurrency} onOpen={setPeekId} />
+        {loaded && (
+          <TileRow count={4} testId="bills-tiles">
+            {tiles.map((tile) => (
+              <StatTile
+                key={tile.key}
+                testId={`bills-tile-${tile.key}`}
+                valueTestId={`bills-tile-${tile.key}-total`}
+                icon={TILE_LOOK[tile.key].icon}
+                colour={TILE_LOOK[tile.key].colour}
+                value={`${tile.approximate ? '≈ ' : ''}${tileMoney(tile.minor, readCurrency)}`}
+                label={tile.key === 'later' ? (isCurrent ? 'Later this month' : `Later in ${monthName(month, 'long')}`) : TILE_LOOK[tile.key].label}
+                badge={<Tag tone={TILE_LOOK[tile.key].tag}>{billCount(tile.count)}</Tag>}
+              />
+            ))}
+          </TileRow>
+        )}
+        <div className={cx('grid grid-cols-1 items-start gap-[16px]', besides && '@min-[900px]:grid-cols-[270px_minmax(0,1fr)]')}>
+          {besides && (
+            <div className="grid grid-cols-1 items-start gap-[16px] @min-[560px]:grid-cols-[270px_minmax(0,1fr)] @min-[900px]:grid-cols-1">
+              <CalendarBox month={month} today={today} rows={rows} day={day} onDay={setDay} onMonth={setMonth} currencyOf={currencyOf} />
+              <BarsBox bars={monthBars} currency={readCurrency} />
             </div>
-            <section ref={tableRef} className={cx(BOX, 'overflow-clip')} aria-label="All bills" data-testid="all-bills">
-              <h2 className={H2}>
-                All bills
-                <span className={NOTE}>Click a day to find its bills · tick to pay several</span>
+          )}
+          <div className="min-w-0 space-y-[16px]">
+            {macV2 && (
+              <div className="grid grid-cols-1 items-stretch gap-[16px] @min-[560px]:grid-cols-2">
+                <MonthBoxView month={month} box={box} loaded={loaded} empty={rows.length === 0} monthStart={monthStart} currency={readCurrency} />
+                <SetAsideBox funds={funds} setAside={setAside} currency={readCurrency} onOpen={setPeekId} />
+              </div>
+            )}
+            <section ref={tableRef} className={cx(CARD, 'overflow-clip')} aria-label={tableTitle} data-testid="all-bills">
+              <h2 className={CARD_HEAD}>
+                <CalendarCheck size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
+                <span className="shrink-0">{tableTitle}</span>
+                <span className={CARD_NOTE} title={besides ? 'Click a day to find its bills · tick to pay several' : 'Tick to pay several · double-click opens a bill'}>
+                  {loaded && box.totalMinor > 0 && (
+                    <span className="tabular-nums">
+                      {box.approximate && '≈ '}
+                      {tileMoney(box.totalMinor, readCurrency)} in all
+                    </span>
+                  )}
+                </span>
               </h2>
-              <div className="border-t border-[var(--ph-hair)]">
-                <table className="w-full table-fixed border-collapse text-[13px]">
+              <div className="px-[10px] pb-[10px]">
+                <table className="w-full table-fixed border-collapse text-[13.5px]">
                   <thead>
-                    <tr className="bg-[var(--mac-head)] text-left text-[11px] font-semibold text-[var(--ph-ink-3)]">
-                      <th className="w-[34px] border-b border-[var(--ph-hair)] py-[7px]">
+                    <tr className="text-left text-[12.5px] font-semibold text-[var(--mk-ink-2)]">
+                      <th className={cx(TH, 'w-[30px] px-0')}>
                         <span className="sr-only">Tick</span>
                       </th>
-                      <th className="border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Bill</th>
-                      {cols.category && <th className="w-[132px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Category</th>}
-                      <th className="w-[62px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Due</th>
-                      <th className="w-[104px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] text-right font-semibold">Amount</th>
-                      {cols.paidWith && <th className="w-[120px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Payment method</th>}
-                      <th className="w-[140px] border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold">Status</th>
+                      <th className={cx(TH, 'w-[18px] px-0')}>
+                        <span className="sr-only">Where it stands</span>
+                      </th>
+                      <th className={cx(TH, 'w-[74px]')}>Due</th>
+                      <th className={TH}>Bill</th>
+                      {cols.category && <th className={cx(TH, 'w-[150px]')}>Category</th>}
+                      {cols.paidWith && <th className={cx(TH, 'w-[160px]')}>Paid from</th>}
+                      <th className={cx(TH, 'w-[118px] text-right')}>Amount</th>
+                      <th className={cx(TH, 'w-[150px] pl-[16px]')}>Status</th>
                     </tr>
                   </thead>
                   {loaded && rows.length === 0 && shownFees.length === 0 && instalments.length === 0 && (
                     <tbody>
                       <tr>
-                        <td colSpan={span} className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
+                        <td colSpan={span} className="px-3 py-6 text-center text-[13.5px] text-[var(--mk-ink-2)]">
                           No bills in {monthName(month, 'long')}.{' '}
-                          <button type="button" onClick={() => void navigate({ to: '/bills/new' })} className="text-[var(--mac-accent)] hover:underline">
+                          <button type="button" onClick={() => void navigate({ to: '/bills/new' })} className="text-[var(--mk-blue)] hover:underline">
                             New bill
                           </button>{' '}
                           sets one up.
@@ -320,63 +380,49 @@ export function DesktopBills() {
                       </tr>
                     </tbody>
                   )}
-                  {(() => {
-                    let index = 0;
-                    return groups.map((group) => (
-                      <tbody key={group.key} data-testid={`bills-${group.key === 'dueSoon' ? 'due-soon' : group.key}`}>
-                        <GroupHead title={group.title} span={span} />
-                        {group.rows.map((bill) => (
-                          <BillTableRow
-                            key={bill.id}
-                            cols={cols}
-                            bill={bill}
-                            today={today}
-                            striped={index++ % 2 === 1}
-                            accounts={accounts}
-                            accountName={accountNameOf(bill)}
-                            note={countedNote(bill, month)}
-                            currency={currencyOf(bill)}
-                            readCurrency={readCurrency}
-                            tickable={tickable(bill)}
-                            picked={picked.has(bill.id)}
-                            onDay={day !== null && dueOf(bill) === day}
-                            peeked={peekId === bill.id}
-                            onToggle={() => toggle(bill)}
-                            onPeek={() => setPeekId(bill.id)}
-                            onOpen={() => openBill(bill.id)}
-                          />
-                        ))}
-                      </tbody>
-                    ));
-                  })()}
+                  {groups.map((group) => (
+                    <tbody key={group.key} data-testid={`bills-${group.key === 'dueSoon' ? 'due-soon' : group.key}`}>
+                      <GroupHead title={group.title} span={span} />
+                      {group.rows.map((bill) => (
+                        <BillTableRow
+                          key={bill.id}
+                          cols={cols}
+                          bill={bill}
+                          today={today}
+                          accounts={accounts}
+                          accountName={accountNameOf(bill)}
+                          note={countedNote(bill, month)}
+                          currency={currencyOf(bill)}
+                          readCurrency={readCurrency}
+                          tickable={tickable(bill)}
+                          picked={picked.has(bill.id)}
+                          onDay={day !== null && dueOf(bill) === day}
+                          peeked={peekId === bill.id}
+                          onToggle={() => toggle(bill)}
+                          onPeek={() => setPeekId(bill.id)}
+                          onOpen={() => openBill(bill.id)}
+                        />
+                      ))}
+                    </tbody>
+                  ))}
                   {/* A card's annual fee: read-only and in no total, so never under Due soon — a group of its own. */}
                   {shownFees.length > 0 && (
                     <tbody data-testid="bills-card-fees">
                       <GroupHead title="Card fees" span={span} />
-                      {shownFees.map((fee, i) => (
-                        <FeeTableRow
-                          key={fee.card.cardId}
-                          cols={cols}
-                          fee={fee.card}
-                          on={fee.on}
-                          today={today}
-                          readCurrency={readCurrency}
-                          striped={i % 2 === 1}
-                          onOpen={() => openFee(fee.card)}
-                        />
+                      {shownFees.map((fee) => (
+                        <FeeTableRow key={fee.card.cardId} cols={cols} fee={fee.card} on={fee.on} today={today} readCurrency={readCurrency} onOpen={() => openFee(fee.card)} />
                       ))}
                     </tbody>
                   )}
                   {instalments.length > 0 && (
                     <tbody data-testid="monthly-instalments">
                       <GroupHead title="Instalments" span={span} />
-                      {instalments.map((line, i) => (
+                      {instalments.map((line) => (
                         <InstalmentTableRow
                           key={line.id}
                           cols={cols}
                           line={line}
                           readCurrency={readCurrency}
-                          striped={i % 2 === 1}
                           onOpen={() =>
                             void navigate({
                               to: '/cards/$cardId/settings/instalments',
@@ -394,18 +440,18 @@ export function DesktopBills() {
                   role="toolbar"
                   aria-label="Selected bills"
                   data-testid="select-bar"
-                  className="sticky bottom-0 z-[1] flex items-center gap-[10px] border-t border-[var(--ph-hair)] bg-[var(--ph-surface)] bg-[linear-gradient(var(--mac-accent-wash),var(--mac-accent-wash))] px-[14px] py-[8px] text-[13px]"
+                  className="sticky bottom-0 z-[1] flex items-center gap-[10px] border-t border-[var(--mk-line)] bg-[var(--mk-sel)] px-[20px] py-[10px] text-[13.5px]"
                 >
-                  <span className="font-semibold text-[var(--ph-ink)]">{picked.size} selected</span>
-                  <span className="text-[var(--ph-ink-3)] tabular-nums" data-testid="select-total">
+                  <span className="font-semibold text-[var(--mk-ink)]">{picked.size} selected</span>
+                  <span className="text-[var(--mk-ink-2)] tabular-nums" data-testid="select-total">
                     {chosen.approximate && '~'}
                     {formatMinor(chosen.minor, readCurrency)}
                   </span>
                   <span className="flex-1" />
-                  <button type="button" onClick={() => setPicked(new Set())} className={GBTN}>
+                  <button type="button" onClick={() => setPicked(new Set())} className={PILL}>
                     Clear
                   </button>
-                  <button type="button" onClick={() => setPayingSeveral(true)} className={PBTN}>
+                  <button type="button" onClick={() => setPayingSeveral(true)} className={PILL_BLUE}>
                     Pay {picked.size} {picked.size === 1 ? 'bill' : 'bills'}
                   </button>
                 </div>
@@ -461,7 +507,7 @@ export function DesktopBills() {
 function GroupHead({ title, span }: { title: string; span: number }) {
   return (
     <tr>
-      <td colSpan={span} className="bg-[var(--ph-surface)] px-[10px] pt-[12px] pb-[4px] text-[11px] font-semibold tracking-[0.04em] text-[var(--ph-ink-3)] uppercase">
+      <td colSpan={span} className="px-[8px] pt-[14px] pb-[5px] text-[11.5px] font-bold tracking-[0.04em] text-[var(--mk-ink-2)] uppercase">
         {title}
       </td>
     </tr>
@@ -748,14 +794,16 @@ function TickCircle({ picked }: { picked: boolean }) {
   return (
     <span
       aria-hidden
-      className={cx('flex h-[15px] w-[15px] items-center justify-center rounded-full', picked ? 'bg-[var(--mac-accent)] text-white' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset')}
+      className={cx('flex h-[17px] w-[17px] items-center justify-center rounded-full', picked ? 'bg-[var(--mk-blue)] text-white' : 'ring-[1.5px] ring-[var(--mk-ink-3)] ring-inset')}
     >
-      {picked && <Check size={10} strokeWidth={3} />}
+      {picked && <Check size={11} strokeWidth={3} />}
     </span>
   );
 }
 
-const CELL = 'px-[8px] py-[5px] whitespace-nowrap';
+const CELL = 'border-t border-[var(--mk-line)] px-[8px] py-[8px] whitespace-nowrap';
+/** The first cells of a row (tick, dot): the same line, no side room. */
+const EDGE = 'border-t border-[var(--mk-line)] py-[8px]';
 
 /** Which of the columns that step aside the table has room for. */
 interface Columns {
@@ -763,12 +811,25 @@ interface Columns {
   paidWith: boolean;
 }
 
-/** One bill in the table: a tick, the bill, its category, due day, amount, account and where it stands. */
+/**
+ * A bill's colour, v1: green paid, blue due soon, orange later, red late, grey skipped or paused — the same buckets as
+ * the tiles (`bucketOf`), so a row reads the colour of the tile that counts it.
+ */
+function billTone(bill: MonthlyBill, today: string): Tone {
+  const bucket = bucketOf(bill, today);
+  return bucket === 'paid' ? 'green' : bucket === 'late' ? 'red' : bucket === 'dueSoon' ? 'blue' : bucket === 'later' ? 'orange' : 'grey';
+}
+
+/** The round mark before a row: its tone's own colour. */
+function Dot({ tone }: { tone: Tone }) {
+  return <span aria-hidden className="block h-[8px] w-[8px] rounded-full" style={{ background: tone === 'grey' ? 'var(--mk-c-grey)' : `var(--mk-c-${tone})` }} />;
+}
+
+/** One bill in the table: a tick, its colour, due day, the bill with its category's icon, category, account, amount and where it stands. */
 function BillTableRow({
   cols,
   bill,
   today,
-  striped,
   accounts,
   accountName,
   note,
@@ -785,7 +846,6 @@ function BillTableRow({
   cols: Columns;
   bill: MonthlyBill;
   today: string;
-  striped: boolean;
   accounts: Parameters<typeof CategoryIcon>[0]['accounts'];
   accountName: string;
   /** "due 5 Dec · counted in Nov" on a bill due after the month it counts in. */
@@ -802,6 +862,9 @@ function BillTableRow({
   onOpen: () => void;
 }) {
   const status = deskStatus(bill, today);
+  const tone = billTone(bill, today);
+  // v1 reads a late bill "Late · 11 days"; every other status keeps its words.
+  const statusText = bill.state === 'overdue' ? `Late · ${bill.days} ${bill.days === 1 ? 'day' : 'days'}` : status.text;
   const done = isSettled(bill) || isPaused(bill);
   const category = accounts.find((a) => a.id === bill.categoryAccountId);
   return (
@@ -813,10 +876,10 @@ function BillTableRow({
       aria-current={peeked ? 'true' : undefined}
       onClick={onPeek}
       onDoubleClick={onOpen}
-      className={cx('cursor-default text-[var(--ph-ink)]', onDay || picked ? 'bg-[var(--mac-accent-wash)]' : striped && 'bg-[var(--mac-zebra)]', peeked && 'shadow-[inset_3px_0_0_var(--mac-accent)]')}
+      className={cx('cursor-default text-[var(--mk-ink)]', onDay || picked || peeked ? 'bg-[var(--mk-sel)]' : 'hover:bg-[var(--mk-hover)]')}
     >
-      <td className="py-[5px] pl-[10px]">
-        {tickable ? (
+      <td className={cx(EDGE, 'pl-[6px]')}>
+        {tickable && (
           <button
             type="button"
             role="checkbox"
@@ -827,141 +890,127 @@ function BillTableRow({
               onToggle();
             }}
             onDoubleClick={(event) => event.stopPropagation()}
-            className="flex h-[20px] w-[20px] items-center justify-center rounded-full"
+            className="flex h-[22px] w-[22px] items-center justify-center rounded-full"
           >
             <TickCircle picked={picked} />
           </button>
-        ) : (
-          <span className="flex h-[20px] w-[20px] items-center justify-center opacity-40">
-            <TickCircle picked={false} />
-          </span>
         )}
       </td>
-      <td className={cx(CELL, 'overflow-hidden', done && 'opacity-55')}>
-        <button type="button" onClick={(event) => (event.stopPropagation(), onPeek())} title={bill.name} className="block max-w-full truncate text-left hover:underline">
-          {bill.name}
-        </button>
+      <td className={EDGE}>
+        <Dot tone={tone} />
+      </td>
+      <td className={cx(CELL, 'text-[var(--mk-ink-2)] tabular-nums')}>{bill.state === 'paused' ? '—' : dayMonth(dueOf(bill))}</td>
+      <td className={cx(CELL, 'overflow-hidden', done && 'opacity-70')}>
+        <span className="flex min-w-0 items-center gap-[8px]">
+          <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="sm" />
+          <button type="button" onClick={(event) => (event.stopPropagation(), onPeek())} title={bill.name} className="block min-w-0 truncate text-left hover:underline">
+            {bill.name}
+          </button>
+        </span>
         {/* Under the name, wrapping rather than cut: why a bill due next month is counted in this one. */}
         {note && (
-          <span data-testid="bill-counted-note" className="block text-[11px] leading-[14px] whitespace-normal text-[var(--ph-ink-3)]">
+          <span data-testid="bill-counted-note" className="block pl-[32px] text-[11.5px] leading-[15px] whitespace-normal text-[var(--mk-ink-2)]">
             {note}
           </span>
         )}
       </td>
       {cols.category && (
-        <td className={cx(CELL, 'overflow-hidden text-[var(--ph-ink-3)]', done && 'opacity-55')}>
-          <span className="flex min-w-0 items-center gap-[6px]">
-            <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="xs" />
-            <span className="truncate" title={category?.name}>
-              {category?.name ?? ''}
-            </span>
-          </span>
+        <td className={cx(CELL, 'overflow-hidden text-ellipsis text-[var(--mk-ink-2)]', done && 'opacity-70')} title={category?.name}>
+          {category?.name ?? ''}
         </td>
       )}
-      <td className={cx(CELL, 'tabular-nums', done && 'opacity-55')}>{bill.state === 'paused' ? '—' : dayMonth(dueOf(bill))}</td>
-      <td className={cx(CELL, 'text-right tabular-nums', done && 'opacity-55')} data-testid="bill-amount">
+      {cols.paidWith && (
+        <td className={cx(CELL, 'overflow-hidden text-ellipsis', done && 'opacity-70')} title={accountName}>
+          {accountName}
+        </td>
+      )}
+      <td className={cx(CELL, 'text-right tabular-nums', done && 'opacity-70')} data-testid="bill-amount">
         {bill.state === 'paid' ? (
           figure(bill.paidMinor ?? 0, bill.paidCurrency ?? currency, readCurrency)
         ) : bill.amountMinor !== null ? (
           figure(bill.amountMinor, currency, readCurrency)
         ) : bill.estimateMinor !== null ? (
-          <span className="text-[var(--ph-ink-3)]" title="Amount varies">
+          <span className="text-[var(--mk-ink-2)]" title="Amount varies">
             ~{figure(bill.estimateMinor, currency, readCurrency)}
           </span>
         ) : (
-          <span className="text-[var(--ph-ink-3)]">Amount varies</span>
+          <span className="text-[var(--mk-ink-2)]">Amount varies</span>
         )}
       </td>
-      {cols.paidWith && (
-        <td className={cx(CELL, 'overflow-hidden text-ellipsis', done && 'opacity-55')} title={accountName}>
-          {accountName}
-        </td>
-      )}
-      <td className={cx(CELL, 'overflow-hidden text-ellipsis', toneClass(status.tone), done && 'opacity-70')} data-testid="bill-status" title={status.text}>
-        {status.text}
+      <td className={cx(CELL, 'overflow-hidden pl-[16px]')} title={statusText}>
+        <Tag tone={tone} testId="bill-status" className="max-w-full overflow-hidden text-ellipsis">
+          {statusText}
+        </Tag>
       </td>
     </tr>
   );
 }
 
 /** A card's annual fee within the phone's 30 days, under Card fees: read-only, in no total. */
-function FeeTableRow({
-  cols,
-  fee,
-  on,
-  today,
-  readCurrency,
-  striped,
-  onOpen,
-}: {
-  cols: Columns;
-  fee: DueFee;
-  on: string | null;
-  today: string;
-  readCurrency: string;
-  striped: boolean;
-  onOpen: () => void;
-}) {
+function FeeTableRow({ cols, fee, on, today, readCurrency, onOpen }: { cols: Columns; fee: DueFee; on: string | null; today: string; readCurrency: string; onOpen: () => void }) {
+  // Blue only within Due soon's few days, as a bill's Status reads; further off, quiet.
+  const tone: Tone = on && daysFrom(today, on) <= BILL_DUE_SOON_DAYS ? 'blue' : 'grey';
   return (
-    <tr data-testid="annual-fee-row" onClick={onOpen} className={cx('cursor-default text-[var(--ph-ink)]', striped && 'bg-[var(--mac-zebra)]')}>
-      <td />
-      <td className={cx(CELL, 'overflow-hidden text-ellipsis')}>Annual fee</td>
-      {cols.category && (
-        <td className={cx(CELL, 'text-[var(--ph-ink-3)]')}>
-          <span className="flex items-center gap-[6px]">
-            <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-2)]">
-              <CreditCard size={11} />
-            </span>
-            Card fee
-          </span>
-        </td>
-      )}
-      <td className={cx(CELL, 'tabular-nums')}>{on ? dayMonth(on) : '—'}</td>
-      <td className={cx(CELL, 'text-right tabular-nums')}>
-        {fee.annualFeeMinor !== null ? figure(fee.annualFeeMinor, fee.currency, readCurrency) : <span className="text-[var(--ph-ink-3)]">Not set</span>}
+    <tr data-testid="annual-fee-row" onClick={onOpen} className="cursor-default text-[var(--mk-ink)] hover:bg-[var(--mk-hover)]">
+      <td className={EDGE} />
+      <td className={EDGE}>
+        <Dot tone={tone} />
       </td>
+      <td className={cx(CELL, 'text-[var(--mk-ink-2)] tabular-nums')}>{on ? dayMonth(on) : '—'}</td>
+      <td className={cx(CELL, 'overflow-hidden')}>
+        <span className="flex min-w-0 items-center gap-[8px]">
+          <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--mk-pill)] text-[var(--mk-ink-2)]">
+            <CreditCard size={13} />
+          </span>
+          <span className="truncate">Annual fee</span>
+        </span>
+      </td>
+      {cols.category && <td className={cx(CELL, 'text-[var(--mk-ink-2)]')}>Card fee</td>}
       {cols.paidWith && (
         <td className={cx(CELL, 'overflow-hidden text-ellipsis')} title={fee.name}>
           {fee.name}
         </td>
       )}
-      {/* Orange only within Due soon's few days, as a bill's Status reads; further off, quiet. */}
-      <td className={cx(CELL, 'overflow-hidden text-ellipsis', toneClass(on && daysFrom(today, on) <= BILL_DUE_SOON_DAYS ? 'warn' : 'ink-3'))} title={on ? feeDateText(on) : undefined}>
-        {on ? feeStatus(on, today) : ''}
+      <td className={cx(CELL, 'text-right tabular-nums')}>
+        {fee.annualFeeMinor !== null ? figure(fee.annualFeeMinor, fee.currency, readCurrency) : <span className="text-[var(--mk-ink-2)]">Not set</span>}
+      </td>
+      <td className={cx(CELL, 'overflow-hidden pl-[16px]')} title={on ? feeDateText(on) : undefined}>
+        {on && <Tag tone={tone}>{feeStatus(on, today)}</Tag>}
       </td>
     </tr>
   );
 }
 
 /** A card instalment plan still running, as the phone's Instalments group: on the card's statement, in no total. */
-function InstalmentTableRow({ cols, line, readCurrency, striped, onOpen }: { cols: Columns; line: InstalmentLine; readCurrency: string; striped: boolean; onOpen: () => void }) {
+function InstalmentTableRow({ cols, line, readCurrency, onOpen }: { cols: Columns; line: InstalmentLine; readCurrency: string; onOpen: () => void }) {
   // "3 of 12 paid · on the statement": how far through goes with the plan's name, where it is paid in Status.
   const progress = line.detail.split(' · ')[0];
   return (
-    <tr data-testid="instalment-line" onClick={onOpen} className={cx('cursor-default text-[var(--ph-ink)]', striped && 'bg-[var(--mac-zebra)]')}>
-      <td />
-      <td className={cx(CELL, 'overflow-hidden text-ellipsis')} title={line.title}>
-        {line.description} · {progress}
+    <tr data-testid="instalment-line" onClick={onOpen} className="cursor-default text-[var(--mk-ink)] hover:bg-[var(--mk-hover)]">
+      <td className={EDGE} />
+      <td className={EDGE}>
+        <Dot tone="grey" />
       </td>
-      {cols.category && (
-        <td className={cx(CELL, 'text-[var(--ph-ink-3)]')}>
-          <span className="flex items-center gap-[6px]">
-            <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-2)]">
-              <CalendarClock size={11} />
-            </span>
-            Card instalment
+      <td className={cx(CELL, 'text-[var(--mk-ink-2)]')}>—</td>
+      <td className={cx(CELL, 'overflow-hidden')} title={line.title}>
+        <span className="flex min-w-0 items-center gap-[8px]">
+          <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--mk-pill)] text-[var(--mk-ink-2)]">
+            <CalendarClock size={13} />
           </span>
-        </td>
-      )}
-      <td className={cx(CELL, 'text-[var(--ph-ink-3)]')}>—</td>
-      <td className={cx(CELL, 'text-right tabular-nums')}>{figure(line.monthlyMinor, line.currency, readCurrency)}</td>
+          <span className="truncate">
+            {line.description} · {progress}
+          </span>
+        </span>
+      </td>
+      {cols.category && <td className={cx(CELL, 'text-[var(--mk-ink-2)]')}>Card instalment</td>}
       {cols.paidWith && (
         <td className={cx(CELL, 'overflow-hidden text-ellipsis')} title={line.cardName}>
           {line.cardName}
         </td>
       )}
-      <td className={cx(CELL, 'overflow-hidden text-ellipsis text-[var(--ph-ink-3)]')} title={line.detail}>
-        On the statement
+      <td className={cx(CELL, 'text-right tabular-nums')}>{figure(line.monthlyMinor, line.currency, readCurrency)}</td>
+      <td className={cx(CELL, 'overflow-hidden pl-[16px]')} title={line.detail}>
+        <Tag tone="grey">On the statement</Tag>
       </td>
     </tr>
   );

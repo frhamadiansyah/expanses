@@ -1,9 +1,9 @@
 import { DeskNotices } from '../../app/DeskNotices';
 import { formatMinor } from '@expanses/core';
 import type { AccountRow, CaptureSource, CardRow, DraftEdit, DraftRow } from '@expanses/db';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useOpenReceipt } from '../transactions/ReceiptPeekHost';
-import { Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Inbox, Plus } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { canPayWith, canReceiveInto, canTransferBetween, canTransferWith } from '../../lib/account-types';
 import { moneyHolders } from '../../lib/queries';
@@ -12,14 +12,14 @@ import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useEvents } from '../events/queries';
 import { bareFigure } from '../networth/debt-rows';
-import { BOX, NOTE } from '../transactions/CashflowBoxes';
+import { BOX } from '../transactions/CashflowBoxes';
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { PaymentSheet } from '../transactions/PaymentSheet';
 import type { CellColumn } from '../transactions/cell-range';
 import { PICKED_CELL } from '../transactions/QuickRowEditor';
 import { paymentOptions } from '../transactions/quick-row';
 import { pendingPaidLabel, pendingPaidOf, readMarks } from '../transactions/paste-categories';
-import { CAPTURE_TYPES, type CaptureType, captureTypeOf } from './capture-type';
+import { type CaptureType, captureTypeOf } from './capture-type';
 import { captureRowView, effectiveCategory } from './capture-view';
 import type { Correction } from './draft-form';
 import { DraftPeek, type PeekPick } from './DraftPeek';
@@ -39,38 +39,30 @@ import {
 } from './review-desk-model';
 import { useReviewCells } from './review-cells';
 import { SkippedList } from './SkippedList';
-import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
+import { CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, PILL, PILL_BLACK, PILL_BLUE, PILL_SMALL, Seg, StatTile, Tag, TileRow, tileMoney } from '../../ui/desk';
+import { macV2 } from '../../ui/mac-detail';
+import { Bang, Question } from '../bills/desk-glyphs';
+import { type MissingKey, missingTile, readyTotal } from './review-tiles';
 
 /** What the Recorded and Discarded lists show at most: the latest, newest first. */
 const RESOLVED_SHOWN = 200;
 
-const GBTN = PILL;
-const PBTN = PILL_BLUE;
-const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]';
-const TH = 'border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold';
-const CELL = 'px-[8px] py-[5px] whitespace-nowrap';
-const WARN = 'text-[var(--ph-warn)]';
+const TH = 'border-b border-[var(--mk-head-line)] px-[8px] py-[8px] font-semibold';
+const CELL = 'border-t border-[var(--mk-line)] px-[8px] py-[9px] whitespace-nowrap';
+const WARN = 'text-[var(--mk-t-orange)]';
 /** A cell's button that opens a picker in place: plain until hovered, as a Mac table's pop-up cell. */
-const CELL_PICK = 'flex w-full min-w-0 items-center gap-[6px] rounded-[5px] px-[4px] py-[1px] text-left hover:bg-[var(--ph-fill)]';
-const ROW_BTN = 'inline-flex h-[22px] items-center rounded-[6px] px-[9px] text-[12px] whitespace-nowrap';
-
-/** Each capture kind's tag colour: SMS green, notification blue, email purple, screenshot orange (the mockup's). */
-const TAG_TONE: Record<CaptureType, string> = {
-  sms: 'var(--ph-up)',
-  whatsapp: 'var(--ph-up)',
-  notification: 'var(--mac-accent)',
-  email: 'var(--ph-trip)',
-  screenshot: 'var(--ph-warn)',
-  photo: 'var(--ph-warn)',
-  nfc: 'var(--mac-accent)',
-};
+const CELL_PICK = 'flex w-full min-w-0 items-center gap-[8px] rounded-[7px] px-[4px] py-[2px] text-left hover:bg-[var(--mk-pill)]';
 
 type Tab = 'pending' | 'confirmed' | 'dismissed';
 const SEGMENTS: { value: Tab; label: string }[] = [
-  { value: 'pending', label: 'To review' },
+  { value: 'pending', label: 'Waiting' },
   { value: 'confirmed', label: 'Recorded' },
   { value: 'dismissed', label: 'Discarded' },
 ];
+
+/** Missing something's tag: "1 account · 2 category", each count under the old counts strip's test id. */
+const MISSING_WORD: Record<MissingKey, string> = { account: 'account', category: 'category', amount: 'amount' };
+const MISSING_TEST_ID: Record<MissingKey, string> = { account: 'review-need-account-count', category: 'review-need-category-count', amount: 'review-check-amount-count' };
 
 /** What the page does to a capture: every one of them is Review's own path (`ReviewPage`), handed in. */
 export interface ReviewDeskActions {
@@ -261,70 +253,110 @@ export function DesktopReview({
   const cols = deskColumns(tableWidth);
   const eventNameOf = (draft: DraftRow) => (draft.eventId ? (events.find((event) => event.id === draft.eventId)?.name ?? null) : null);
 
+  // v1: three tiles over the queue — Waiting, Ready to record (with what they add up to) and Missing something.
+  const missing = missingTile([...states.values()]);
+  const readySum = readyTotal(ready);
+  const titleLine = loaded ? `${counts.toReview} captured · ${counts.ready} ready to record` : undefined;
+  const tableTitle = tab === 'pending' ? 'Captured' : SEGMENTS.find((s) => s.value === tab)!.label;
+
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="review-page" data-desk="true" {...doubleClick}>
+    <div className="min-h-dvh bg-[var(--mk-page)]" data-testid="review-page" data-desk="true" {...doubleClick}>
       <DeskBar crumb="Review" barRef={bar}>
-        <div role="radiogroup" aria-label="Review view" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
-          {SEGMENTS.map((segment) => (
-            <button
-              key={segment.value}
-              type="button"
-              role="radio"
-              aria-checked={tab === segment.value}
-              onClick={() => changeTab(segment.value)}
-              className={cx(
-                'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
-                tab === segment.value ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
-              )}
-            >
-              {segment.label}
-            </button>
-          ))}
-        </div>
-        <button type="button" disabled={scan.busy} onClick={scan.scan} className={GBTN}>
+        <Seg label="Review view" options={SEGMENTS} value={tab} onChange={changeTab} />
+        <button type="button" onClick={() => void navigate({ to: '/settings/capture' })} className={PILL}>
+          Capture settings
+        </button>
+        <button type="button" disabled={scan.busy} onClick={scan.scan} className={PILL}>
           {scan.busy ? 'Reading the receipt…' : 'Scan a receipt'}
         </button>
-        {tab === 'pending' && ready.length > 0 && (
-          <button type="button" disabled={busy !== null} onClick={() => actions.onRecordReady(ready)} className={PBTN}>
-            Record {ready.length} ready
-          </button>
-        )}
+        <Link to="/transactions/new" aria-label="Add transaction" className={PILL_BLUE}>
+          <Plus size={13} strokeWidth={2.6} aria-hidden /> Add
+        </Link>
       </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
-      <DeskTitle title="Review" />
+      <DeskTitle title="Review" line={titleLine} />
 
-      <div className={cx('space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={error} />
-        <CountsBox counts={counts} loaded={loaded} />
+        {/* v2 keeps the five-count strip; the tiles then leave its test ids to it. */}
+        {macV2 && <CountsBox counts={counts} loaded={loaded} />}
+        <div className="[&>div]:mb-0">
+          <TileRow count={3} testId="review-tiles">
+            <StatTile
+              icon={Bang}
+              colour="orange"
+              value={loaded ? counts.toReview : '–'}
+              label="Waiting"
+              testId="review-tile-waiting"
+              valueTestId={macV2 ? undefined : 'review-to-review-count'}
+            />
+            <StatTile
+              icon={Check}
+              colour="blue"
+              value={loaded ? counts.ready : '–'}
+              label="Ready to record"
+              testId="review-tile-ready"
+              valueTestId={macV2 ? undefined : 'review-ready-count'}
+              badge={readySum && readySum.minor > 0 ? <Tag tone="blue">{tileMoney(readySum.minor, readySum.currency)}</Tag> : undefined}
+            />
+            <StatTile
+              icon={Question}
+              colour="grey"
+              value={loaded ? missing.count : '–'}
+              label="Missing something"
+              testId="review-tile-missing"
+              badge={
+                missing.parts.length > 0 ? (
+                  <Tag tone="orange" testId="review-missing">
+                    {/* One run of text: the tag is a flex box, which would drop the spaces between separate pieces. */}
+                    <span>
+                      {missing.parts.map((part, at) => (
+                        <span key={part.key}>
+                          {at > 0 && '\u00a0· '}
+                          <span data-testid={macV2 ? undefined : MISSING_TEST_ID[part.key]}>{part.count}</span> {MISSING_WORD[part.key]}
+                        </span>
+                      ))}
+                    </span>
+                  </Tag>
+                ) : undefined
+              }
+            />
+          </TileRow>
+        </div>
 
-        <section ref={tableRef} className={cx(BOX, 'overflow-clip')} aria-label={SEGMENTS.find((s) => s.value === tab)!.label} data-testid="review-table">
-          <h2 className={H2}>
-            {SEGMENTS.find((s) => s.value === tab)!.label}
-            <span className={NOTE} data-testid="table-note">
+        <section ref={tableRef} className={cx(CARD, 'overflow-clip')} aria-label={tableTitle} data-testid="review-table">
+          <h2 className={CARD_HEAD}>
+            <Inbox size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
+            <span className="shrink-0">{tableTitle}</span>
+            <span className={CARD_NOTE} data-testid="table-note">
               {cells.hint ??
                 (tab === 'pending'
-                ? 'Fill the orange cells in place · Return records · ⌫ discards · click a row to see what was captured'
-                : resolvedAll.length > resolved.length
-                  ? `latest ${resolved.length} of ${resolvedAll.length}`
-                  : 'kept so the same capture is not offered again')}
+                  ? 'Fill the orange cells in place · Return records · ⌫ discards · click a row to see what was captured'
+                  : resolvedAll.length > resolved.length
+                    ? `latest ${resolved.length} of ${resolvedAll.length}`
+                    : 'kept so the same capture is not offered again')}
             </span>
+            {tab === 'pending' && ready.length > 0 && (
+              <button type="button" disabled={busy !== null} onClick={() => actions.onRecordReady(ready)} title="Records every ready row" className={PILL_BLACK}>
+                Record {ready.length}
+              </button>
+            )}
           </h2>
           {cells.line}
-          <div className="border-t border-[var(--ph-hair)]">
-            <table className="w-full table-fixed border-collapse text-[13px]">
+          <div className="px-[10px]">
+            <table className="w-full table-fixed border-collapse text-[13.5px]">
               <thead>
-                <tr className="bg-[var(--mac-head)] text-left text-[11px] font-semibold text-[var(--ph-ink-3)]">
-                  <th className="w-[30px] border-b border-[var(--ph-hair)] py-[7px]">
+                <tr className="text-left text-[12.5px] font-semibold text-[var(--mk-ink-2)]">
+                  <th className={cx(TH, 'w-[34px] px-0')}>
                     <span className="sr-only">Ready</span>
                   </th>
-                  {cols.when && <th className={cx(TH, 'w-[110px]')}>When</th>}
-                  {cols.from && <th className={cx(TH, 'w-[100px]')}>From</th>}
-                  <th className={TH}>Description</th>
-                  <th className={cx(TH, 'w-[100px] text-right')}>Amount</th>
-                  <th className={cx(TH, 'w-[150px]')}>Category</th>
-                  {cols.paidWith && <th className={cx(TH, 'w-[150px]')}>Payment method</th>}
-                  <th className={cx(TH, cols.discard ? 'w-[146px]' : 'w-[76px]')}>
+                  {cols.when && <th className={cx(TH, 'w-[96px]')}>When</th>}
+                  <th className={TH}>Note</th>
+                  <th className={cx(TH, 'w-[156px]')}>Category</th>
+                  {cols.paidWith && <th className={cx(TH, 'w-[156px]')}>Paid with</th>}
+                  <th className={cx(TH, 'w-[104px] text-right')}>Amount</th>
+                  <th className={cx(TH, cols.discard ? 'w-[150px]' : 'w-[80px]')}>
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -332,7 +364,7 @@ export function DesktopReview({
               <tbody {...cells.containerProps}>
                 {loaded && rows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
+                    <td colSpan={5 + Number(cols.when) + Number(cols.paidWith)} className="px-3 py-6 text-center text-[13.5px] text-[var(--mk-ink-2)]">
                       {tab === 'pending'
                         ? 'Nothing waiting. Captured spending appears here before it reaches the accounts.'
                         : tab === 'confirmed'
@@ -341,7 +373,7 @@ export function DesktopReview({
                     </td>
                   </tr>
                 )}
-                {rows.map((draft, index) => (
+                {rows.map((draft) => (
                   <DraftTableRow
                     key={draft.id}
                     draft={draft}
@@ -351,7 +383,6 @@ export function DesktopReview({
                     accounts={accounts}
                     cards={cards}
                     cols={cols}
-                    striped={index % 2 === 1}
                     peeked={peekId === draft.id}
                     pickedCell={cells.pickedColumn(draft.id)}
                     pendingPaid={pendingPaidLabel(pendingPaidOf(pasteMarks[draft.id], { accountId: draft.accountId ?? '' }) ?? undefined)}
@@ -366,7 +397,18 @@ export function DesktopReview({
               </tbody>
             </table>
           </div>
+          {tab === 'pending' && rows.length > 0 && (
+            <p className="flex items-center gap-[18px] px-[20px] pt-[10px] pb-[12px] text-[12.5px] text-[var(--mk-ink-2)]" data-testid="review-legend">
+              <span className="inline-flex items-center gap-[6px]">
+                <TickCircle ready label={false} /> Ready
+              </span>
+              <span className="inline-flex items-center gap-[6px]">
+                <TickCircle ready={false} label={false} /> Missing something
+              </span>
+            </p>
+          )}
           {tab === 'pending' && <SkippedFold />}
+          {tab !== 'pending' && <div className="h-[10px]" />}
         </section>
       </div>
 
@@ -475,12 +517,12 @@ function SkippedFold() {
   const [open, setOpen] = useState(false);
   if (skipped.length === 0) return null;
   return (
-    <div className="border-t border-[var(--ph-hair)]">
+    <div className="border-t border-[var(--mk-line)]">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((was) => !was)}
-        className="w-full px-[14px] pt-[10px] pb-[8px] text-left text-[11px] font-semibold tracking-[0.04em] text-[var(--ph-ink-3)] uppercase hover:text-[var(--ph-ink)]"
+        className="w-full px-[20px] pt-[10px] pb-[10px] text-left text-[11.5px] font-bold tracking-[0.04em] text-[var(--mk-ink-2)] uppercase hover:text-[var(--mk-ink)]"
       >
         Skipped · {skipped.length}
         <span className="ml-[8px] inline-flex items-center gap-[2px] font-normal tracking-normal normal-case">
@@ -497,35 +539,31 @@ function SkippedFold() {
   );
 }
 
-function TickCircle({ ready }: { ready: boolean }) {
+/** Filled blue: ready to record. A dashed ring: something is missing first. */
+function TickCircle({ ready, label = true }: { ready: boolean; label?: boolean }) {
   return (
     <span
-      role="img"
-      aria-label={ready ? 'Ready to record' : 'Not ready'}
-      className={cx('flex h-[15px] w-[15px] items-center justify-center rounded-full', ready ? 'bg-[var(--mac-accent)] text-white' : 'ring-[1.5px] ring-[var(--ph-chevron)] ring-inset')}
+      role={label ? 'img' : undefined}
+      aria-label={label ? (ready ? 'Ready to record' : 'Not ready') : undefined}
+      aria-hidden={label ? undefined : true}
+      className={cx(
+        'flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-full',
+        ready ? 'bg-[var(--mk-blue)] text-white' : 'border-[1.5px] border-dashed border-[var(--mk-ink-3)]',
+      )}
     >
-      {ready && <Check size={10} strokeWidth={3} aria-hidden />}
+      {ready && <Check size={11} strokeWidth={3} aria-hidden />}
     </span>
   );
 }
 
-function FromTag({ draft, type }: { draft: DraftRow; type: CaptureType | null }) {
-  const tag = fromTag(draft, type);
-  const tone = type ? TAG_TONE[type] : 'var(--ph-ink-3)';
-  const Icon = type ? CAPTURE_TYPES[type].Icon : null;
-  return (
-    <span
-      data-testid="review-from"
-      className="inline-flex items-center gap-[4px] rounded-[4px] px-[6px] py-[1px] text-[10.5px] font-semibold"
-      style={{ color: tone, background: `color-mix(in srgb, ${tone} 12%, transparent)` }}
-    >
-      {Icon && <Icon size={10} aria-hidden />}
-      {tag.word}
-    </span>
-  );
+/** What a capture still lacks before it can be recorded, in the note's grey line (a blank category holds nothing back). */
+function lacking(state: DeskDraftState | null, draft: DraftRow): string | null {
+  if (!state) return null;
+  const words = [state.needsAccount ? 'no account' : null, state.checkAmount ? (draft.amountMinor === 0 ? 'no amount' : 'amount to check') : null].filter(Boolean);
+  return words.length > 0 ? words.join(' · ') : null;
 }
 
-/** One capture in the table: ready or not, when, from, description, amount, category, paid with, Record and Discard. */
+/** One capture in the table: ready or not, when, the note with where it came from, category, paid with, amount, Record and Discard. */
 function DraftTableRow({
   draft,
   state,
@@ -534,7 +572,6 @@ function DraftTableRow({
   accounts,
   cards,
   cols,
-  striped,
   peeked,
   pickedCell,
   pendingPaid,
@@ -557,7 +594,6 @@ function DraftTableRow({
   accounts: readonly AccountRow[];
   cards: readonly CardRow[];
   cols: DeskColumns;
-  striped: boolean;
   peeked: boolean;
   busy: string | null;
   onPeek: () => void;
@@ -572,6 +608,12 @@ function DraftTableRow({
   const paid = paidWithOf(draft.accountId, draft.cardId, accounts, cards);
   const to = paidWithOf(draft.toAccountId, null, accounts, cards);
   const merged = captureRowView(draft, null).merged;
+  const from = fromTag(draft, type);
+  const lacks = lacking(state, draft);
+  // "Today 08:14" in two lines, v1's When: the day, then the time when there is one.
+  const when = whenText(draft, type !== null);
+  const time = /\s(\d{1,2}:\d{2})$/.exec(when)?.[1] ?? null;
+  const day = time ? when.slice(0, -time.length).trim() : when;
   const stop = (run: () => void) => (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
     run();
@@ -585,7 +627,7 @@ function DraftTableRow({
         {face}
       </button>
     ) : (
-      <span className="flex min-w-0 items-center gap-[6px] px-[4px]">{face}</span>
+      <span className="flex min-w-0 items-center gap-[8px] px-[4px]">{face}</span>
     );
 
   return (
@@ -597,37 +639,22 @@ function DraftTableRow({
       aria-current={peeked ? 'true' : undefined}
       onClick={onPeek}
       onDoubleClick={onOpen}
-      className={cx(
-        'cursor-default text-[var(--ph-ink)]',
-        peeked ? 'bg-[var(--mac-accent-wash)]' : striped && 'bg-[var(--mac-zebra)]',
-        busy === draft.id && 'opacity-50',
-        peeked && 'shadow-[inset_3px_0_0_var(--mac-accent)]',
-      )}
+      className={cx('cursor-default text-[var(--mk-ink)]', peeked ? 'bg-[var(--mk-sel)]' : 'hover:bg-[var(--mk-hover)]', busy === draft.id && 'opacity-50')}
     >
-      <td className="py-[5px] pl-[10px]">{open ? <TickCircle ready={state.ready} /> : null}</td>
+      <td className="border-t border-[var(--mk-line)] py-[9px] pl-[9px]">{open ? <TickCircle ready={state.ready} /> : null}</td>
       {cols.when && (
-        <td {...cell('date')} className={cx(CELL, 'text-[var(--ph-ink-3)] tabular-nums', blue('date'))}>
-          {whenText(draft, type !== null)}
+        <td {...cell('date')} className={cx(CELL, 'leading-[17px] tabular-nums', blue('date'))}>
+          <span className="block font-semibold">{day}</span>
+          {time && <span className="block text-[12px] text-[var(--mk-ink-2)]">{time}</span>}
         </td>
       )}
-      {cols.from && (
-        <td className={cx(CELL, 'overflow-hidden')}>
-          <FromTag draft={draft} type={type} />
-        </td>
-      )}
-      <td {...cell('description')} className={cx(CELL, 'overflow-hidden text-ellipsis', blue('description'))} title={merged ? `${draft.description} · ${merged}` : draft.description}>
-        {draft.description}
-        {/* Several sightings of one payment folded into this row, as the phone's row says. */}
-        {merged && <span className="ml-[6px] text-[11.5px] text-[var(--ph-ink-3)]">{merged}</span>}
-      </td>
-      <td {...cell('amount')} className={cx(CELL, 'text-right tabular-nums', blue('amount'))} data-testid="draft-amount">
-        {draft.amountMinor === 0 ? (
-          <span className={WARN}>No amount</span>
-        ) : (
-          <span className={cx(state?.checkAmount && WARN, draft.kind === 'income' && !state?.checkAmount && 'text-[var(--ph-up)]')} title={state?.checkAmount ? 'Check the amount against what was captured' : undefined}>
-            {draft.currency === 'IDR' ? bareFigure(Math.abs(draft.amountMinor), draft.currency) : formatMinor(Math.abs(draft.amountMinor), draft.currency)}
-          </span>
-        )}
+      <td {...cell('description')} className={cx(CELL, 'overflow-hidden leading-[17px]', blue('description'))} title={merged ? `${draft.description} · ${merged}` : draft.description}>
+        <span className="block truncate font-semibold">{draft.description}</span>
+        <span className={cx('block truncate text-[12px]', lacks ? WARN : 'text-[var(--mk-ink-2)]')}>
+          <span data-testid="review-from">{from.word}</span>
+          {merged && ` · ${merged}`}
+          {lacks && ` · ${lacks}`}
+        </span>
       </td>
       <td {...cell('category')} className={cx(CELL, 'overflow-hidden', blue('category'))}>
         {transfer
@@ -637,12 +664,12 @@ function DraftTableRow({
               'category',
               category ? (
                 <>
-                  <CategoryIcon categoryId={category.id} accounts={accounts} size="xs" />
+                  <CategoryIcon categoryId={category.id} accounts={accounts} size="sm" />
                   <span className="truncate">{category.name}</span>
                 </>
               ) : (
                 // Blank, as Cashflow's blank cell: no category holds Record back (filed under Uncategorised).
-                <span className="h-[18px]" aria-hidden />
+                <span className="h-[24px]" aria-hidden />
               ),
             )}
       </td>
@@ -654,19 +681,28 @@ function DraftTableRow({
             paid ? (
               <span className="truncate">
                 {paid.name}
-                {paid.last4 && <span className="ml-1 text-[11px] text-[var(--ph-ink-3)] tabular-nums">{paid.last4}</span>}
+                {paid.last4 && <span className="ml-1 text-[12px] text-[var(--mk-ink-2)] tabular-nums">{paid.last4}</span>}
               </span>
             ) : pendingPaid ? (
               // Kept as pasted, with Cashflow's dashed line: not in cicis yet.
-              <span className="truncate text-[var(--ph-ink-2)]" title="Not in cicis yet" data-testid="paid-pending">
-                <span className="border-b border-dashed border-[var(--ph-ink-3)]">{pendingPaid}</span>
+              <span className="truncate text-[var(--mk-ink-2)]" title="Not in cicis yet" data-testid="paid-pending">
+                <span className="border-b border-dashed border-[var(--mk-ink-3)]">{pendingPaid}</span>
               </span>
             ) : (
-              <span className={WARN}>Which account?</span>
+              <span className={cx(WARN, 'border-b border-dashed border-current')}>Which account?</span>
             ),
           )}
         </td>
       )}
+      <td {...cell('amount')} className={cx(CELL, 'text-right tabular-nums', blue('amount'))} data-testid="draft-amount">
+        {draft.amountMinor === 0 ? (
+          <span className={WARN}>No amount</span>
+        ) : (
+          <span className={cx(state?.checkAmount && WARN, draft.kind === 'income' && !state?.checkAmount && 'text-[var(--mk-t-green)]')} title={state?.checkAmount ? 'Check the amount against what was captured' : undefined}>
+            {draft.currency === 'IDR' ? bareFigure(Math.abs(draft.amountMinor), draft.currency) : formatMinor(Math.abs(draft.amountMinor), draft.currency)}
+          </span>
+        )}
+      </td>
       <td className={cx(CELL, 'text-right')}>
         {open && (
           <span className="inline-flex items-center gap-[6px]">
@@ -676,7 +712,7 @@ function DraftTableRow({
               disabled={busy !== null || !state.ready}
               onClick={stop(onRecord)}
               onDoubleClick={(event) => event.stopPropagation()}
-              className={cx(ROW_BTN, state.ready ? 'bg-[var(--ph-ink)] font-medium text-[var(--ph-surface)]' : 'border border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-[var(--ph-ink-3)]', 'disabled:cursor-default')}
+              className={PILL_SMALL}
             >
               Record
             </button>
@@ -687,7 +723,7 @@ function DraftTableRow({
                 disabled={busy !== null}
                 onClick={stop(onDiscard)}
                 onDoubleClick={(event) => event.stopPropagation()}
-                className={cx(ROW_BTN, 'border border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)] disabled:opacity-40')}
+                className={PILL_SMALL}
               >
                 Discard
               </button>
