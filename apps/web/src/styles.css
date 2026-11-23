@@ -94,7 +94,7 @@ html[data-desk] {
 }
 html[data-desk='bar'],
 html[data-desk='bar'] body {
-  background: var(--ov-ground);
+  background: var(--mk-page);
 }
 
 .tabular {

@@ -22,12 +22,13 @@ import { CapSheet } from './CapSheet';
 import { CategoryPeek, TONE_COLOUR } from './CategoryPeek';
 import { useBudgets, useBudgetSheet, useCommittedBills, useSpendingHistory } from './queries';
 import { dependantsOf, shareBaseOf } from './share-form';
+import { DeskBar, DeskTitle, PILL } from '../../ui/desk';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
-const GBTN = 'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
+const GBTN = PILL;
 const SEGMENTS: { value: DeskView; label: string }[] = [
   { value: 'spending', label: 'Spending' },
   { value: 'plan', label: 'Plan' },
@@ -244,10 +245,8 @@ export function DesktopBudget() {
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="budget-page" data-desk="true">
-      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Budget</h1>
-        <span className="flex-1" />
-        <div role="radiogroup" aria-label="Budget view" className="flex rounded-[7px] bg-[var(--ph-fill)] p-[2px] text-[12px]">
+      <DeskBar crumb="Budget" barRef={bar}>
+        <div role="radiogroup" aria-label="Budget view" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
           {SEGMENTS.map((segment) => (
             <button
               key={segment.value}
@@ -256,8 +255,8 @@ export function DesktopBudget() {
               aria-checked={tab === segment.value}
               onClick={() => setTab(segment.value)}
               className={cx(
-                'rounded-[5px] px-[11px] py-[3px] whitespace-nowrap',
-                tab === segment.value ? 'bg-[var(--ph-selected)] font-medium text-[var(--ph-ink)] shadow-[0_0.5px_1.5px_rgba(0,0,0,0.18)]' : 'text-[var(--ph-ink-2)]',
+                'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
+                tab === segment.value ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
               )}
             >
               {segment.label}
@@ -275,19 +274,20 @@ export function DesktopBudget() {
             <ChevronRight size={15} aria-hidden />
           </button>
         </div>
-        <button type="button" onClick={editBudgets} className="flex h-[26px] items-center rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)]">
+        <button type="button" onClick={editBudgets} className={PILL}>
           Edit budgets
         </button>
-      </header>
+      </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
+      <DeskTitle title="Budget" />
 
       {/*
        * While the peek is open the whole page makes room for it, boxes and table alike, so it covers no figure; the boxes
        * go by the room they have (a container query, not the window's width), so they wrap rather than squeeze. Two
        * across, the first box (the gauge and its figures) takes the whole row and the other two share the next.
        */}
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peekLine && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peekLine && 'mr-[322px]')}>
         <ErrorBox error={sheetQuery.error} />
         <Unconverted missing={sheet?.unconverted ?? []} currency={currency} />
         {sheet && table && (
@@ -310,7 +310,7 @@ export function DesktopBudget() {
 
         {sheet && table && (
           <section className={cx(BOX, 'overflow-hidden [contain:inline-size]')} aria-label="Categories">
-            <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
+            <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
               Categories
               <span className={NOTE}>Type a budget into its cell (an amount, or a % of its parent) · Tab moves down · ▼ folds a group</span>
             </h2>

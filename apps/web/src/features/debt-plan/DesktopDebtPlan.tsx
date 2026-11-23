@@ -23,11 +23,10 @@ import { type DebtPlanModel, useDebtPlan, useDebtPlanSettings, useLoanPlanFacts,
 import type { ReportPeriod } from './report-view';
 import { ShowSheet } from './SchedulePage';
 import type { MonthInput } from './schedule-view';
+import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
 
-export const GBTN =
-  'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
-export const PBTN =
-  'inline-flex h-[26px] min-w-0 items-center gap-[3px] rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)]';
+export const GBTN = PILL;
+export const PBTN = PILL_BLUE;
 export const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-left text-[11px] font-semibold whitespace-nowrap text-[var(--ph-ink-3)]';
 export const TD = 'px-[10px] py-[6px] align-middle';
 
@@ -42,7 +41,7 @@ const VIEWS: { key: DeskView; label: string; to: string }[] = [
 /** A switch in the title bar: words on a grey track, the chosen one raised. */
 export function Segments<T extends string>({ label, value, onChange, options, fill = false }: { label: string; value: T; onChange: (next: T) => void; options: readonly { key: T; label: string }[]; /** Each the same width, across the whole box. */ fill?: boolean }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex rounded-[7px] bg-[var(--ph-fill)] p-[2px] text-[12px]">
+    <div role="radiogroup" aria-label={label} className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
       {options.map((option) => (
         <button
           key={option.key}
@@ -51,9 +50,9 @@ export function Segments<T extends string>({ label, value, onChange, options, fi
           aria-checked={value === option.key}
           onClick={() => onChange(option.key)}
           className={cx(
-            'rounded-[5px] px-[11px] py-[3px] whitespace-nowrap',
+            'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
             fill && 'min-w-0 flex-1',
-            value === option.key ? 'bg-[var(--ph-selected)] font-medium text-[var(--ph-ink)] shadow-[0_0.5px_1.5px_rgba(0,0,0,0.18)]' : 'text-[var(--ph-ink-2)]',
+            value === option.key ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
           )}
         >
           {option.label}
@@ -84,9 +83,7 @@ export function DesktopDebtPlan({ view, month, period, debt }: { view: DeskView;
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="debt-plan-page" data-desk="true">
-      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="shrink-0 text-[15px] font-semibold text-[var(--ph-ink)]">Debt-free plan</h1>
-        <span className="flex-1" />
+      <DeskBar crumb="Debt-free plan" barRef={bar}>
         {!none && <Segments label="View" value={view} onChange={(next) => void navigate({ to: VIEWS.find((v) => v.key === next)!.to })} options={VIEWS} />}
         {view === 'schedule' && !none && (
           <button type="button" className={GBTN} aria-label="Show" aria-expanded={choosing} title="Which kinds the Schedule shows" onClick={() => setChoosing(true)}>
@@ -102,11 +99,12 @@ export function DesktopDebtPlan({ view, month, period, debt }: { view: DeskView;
             <span className="truncate">Pay next · {payNext.debt.name}</span>
           </PayLink>
         )}
-      </header>
+      </DeskBar>
       <DeskNotices />
+      <DeskTitle title="Debt-free plan" />
       <ErrorBox error={error ?? facts.error} />
       {none && (
-        <div className="px-[20px] py-[16px]">
+        <div className="px-[32px] pt-[2px] pb-[32px]">
           <section className={cx(BOX, 'px-[14px] py-[16px] text-[13px] text-[var(--ph-ink-3)]')}>
             Nothing owed. Debts added on{' '}
             <Link to="/net-worth/loans" className="text-[var(--mac-accent)] hover:underline">
@@ -260,7 +258,7 @@ function PlanView({ model, ctx, bar }: { model: DebtPlanModel; ctx: DeskContext;
 
   return (
     <div {...doubleClick}>
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={saveError} />
         <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[560px]:grid-cols-2 @min-[960px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)]">
           <LeftBox model={model} currency={ctx.baseCurrency} />

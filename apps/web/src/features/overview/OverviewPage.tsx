@@ -34,16 +34,17 @@ import {
   targetMonths,
   worthALook,
 } from './overview-model';
+import { DeskBar, DeskTitle, PILL_BLUE } from '../../ui/desk';
 
-const BOX = 'rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)]';
-const NOTE = 'text-[11.5px] font-normal text-[var(--ph-ink-3)]';
+const BOX = 'rounded-[18px] bg-[var(--mk-card)] shadow-[var(--mk-card-shadow)]';
+const NOTE = 'text-[12.5px] font-normal text-[var(--mk-ink-2)]';
 const SPENT = '#248a3d';
 const HIGHEST = '#b25000';
 
 /** A box's header: its title opens its page; the note sits on the right. */
 function BoxHead({ title, to, note }: { title: string; to: string; note?: ReactNode }) {
   return (
-    <h2 className="flex items-baseline justify-between px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
+    <h2 className="flex items-baseline justify-between px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
       <Link to={to} className="hover:underline">
         {title}
       </Link>
@@ -232,9 +233,7 @@ export function DesktopOverviewPage() {
   const figure = onHandMinor === null ? '–' : formatMinor(onHandMinor, ws.baseCurrency);
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]">
-      <header className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Overview</h1>
-        <span className="flex-1" />
+      <DeskBar crumb="Overview">
         <div className="flex items-center gap-[2px] text-[13px] text-[var(--ph-ink)]">
           <button type="button" aria-label="Earlier months" onClick={() => setShift(shift - 1)} className="flex h-[24px] w-[22px] items-center justify-center rounded text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]">
             <ChevronLeft size={15} aria-hidden />
@@ -249,15 +248,16 @@ export function DesktopOverviewPage() {
         <button
           type="button"
           onClick={() => void navigate({ to: '/transactions/new' })}
-          className="flex items-center gap-1 rounded-[6px] bg-[var(--ph-ink)] px-[11px] py-[4px] text-[12.5px] font-medium text-[var(--ph-surface)]"
+          className={PILL_BLUE}
         >
           <Plus size={13} aria-hidden /> Add
         </button>
-      </header>
+      </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
+      <DeskTitle title="Overview" />
 
-      <div className="grid grid-cols-1 gap-[14px] px-[22px] py-[18px] lg:grid-cols-[2fr_1fr]">
+      <div className="grid grid-cols-1 gap-[16px] px-[32px] pt-[2px] pb-[32px] lg:grid-cols-[2fr_1fr]">
         <section className={BOX} aria-label="Money on hand">
           <BoxHead title="Money on hand" to="/wallet" note="as on Wallet" />
           <p className="px-[14px] text-[24px] font-semibold text-[var(--ph-ink)] tabular-nums" data-testid="overview-on-hand">

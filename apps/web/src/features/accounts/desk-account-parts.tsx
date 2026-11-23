@@ -5,6 +5,7 @@ import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 're
 import { cx } from '../../ui';
 import { CARD_W, cardHeightFor, type WalletCard, WalletFace } from '../../ui/native';
 import { BOX, NOTE } from '../transactions/CashflowBoxes';
+import { DeskBar, DeskTitle, PILL, PILL_BLUE, PILL_ROUND } from '../../ui/desk';
 
 /*
  * The parts the Mac account pages share (a bank, cash or e-wallet account's, and a credit card's): the title bar's
@@ -12,13 +13,11 @@ import { BOX, NOTE } from '../transactions/CashflowBoxes';
  */
 
 /** A plain button of the title bar, as Mac Wallet's. */
-export const GBTN =
-  'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)] disabled:opacity-40';
+export const GBTN = PILL;
 /** The title bar's one black button. */
-export const PBTN =
-  'inline-flex h-[26px] items-center gap-[3px] rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)] disabled:opacity-40';
-const GEAR = 'inline-flex h-[26px] w-[28px] items-center justify-center rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]';
-const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[11px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]';
+export const PBTN = PILL_BLUE;
+const GEAR = PILL_ROUND;
+const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]';
 
 /** The page's own title bar (`desk-titlebar`, so the Mac app's title strip never covers it): the name and its line, then the controls. */
 export function DeskTitleBar({
@@ -36,33 +35,15 @@ export function DeskTitleBar({
   children: ReactNode;
 }) {
   return (
-    <header
-      ref={barRef}
-      className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]"
-    >
-      {back && (
-        <Link
-          to={back.to}
-          params={back.params}
-          aria-label={back.label}
-          className="flex shrink-0 items-center gap-[2px] rounded-[5px] px-[4px] py-[2px] text-[12.5px] text-[var(--mac-accent)] hover:bg-[var(--ph-fill)]"
-        >
-          <ChevronLeft size={14} aria-hidden />
-          <span className="max-w-[180px] truncate">{back.label}</span>
-        </Link>
-      )}
-      <span className="flex min-w-0 shrink items-baseline gap-[8px]">
-        <h1 className="truncate text-[15px] font-semibold text-[var(--ph-ink)]">{title}</h1>
-        {line && (
-          <span data-testid="desk-title-line" className="truncate text-[12px] text-[var(--ph-ink-3)]">
-            {line}
-          </span>
-        )}
-      </span>
-      <span className="flex-1" />
+    <DeskBar crumb={title} back={back} barRef={barRef}>
       {children}
-    </header>
+    </DeskBar>
   );
+}
+
+/** The account's or card's large title, with its line ("Credit card · ···· 4417") under it, below the notices. */
+export function DeskPageTitle({ title, line }: { title: string; line?: string }) {
+  return <DeskTitle title={title} line={line} />;
 }
 
 /**
@@ -77,14 +58,14 @@ export function GearLink({ to, params, onPeek, pressed }: { to: LinkProps['to'];
       aria-label="Settings"
       title="Settings"
       aria-expanded={onPeek ? pressed : undefined}
-      className={cx(GEAR, pressed && 'bg-[var(--ph-fill)]')}
+      className={cx(GEAR, pressed && 'bg-[var(--mk-pill-hover)]')}
       onClick={(event: MouseEvent) => {
         if (!onPeek || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
         event.preventDefault();
         onPeek();
       }}
     >
-      <Settings size={14} aria-hidden />
+      <Settings size={15} aria-hidden />
     </Link>
   );
 }

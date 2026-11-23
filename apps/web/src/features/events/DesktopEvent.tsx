@@ -151,7 +151,7 @@ export function DesktopLocalEvent() {
   if (events.isSuccess && !event) {
     return (
       <EventDesk testId="event-page">
-        <p className="px-[20px] py-[16px] text-[13px] text-[var(--ph-ink-3)]">That event is no longer here.</p>
+        <p className="px-[32px] py-[16px] text-[13px] text-[var(--ph-ink-3)]">That event is no longer here.</p>
       </EventDesk>
     );
   }
@@ -192,7 +192,7 @@ export function DesktopLocalEvent() {
         settings={{ to: '/events/$eventId/settings' }}
         add={{ label: 'Add spending', run: () => void navigate(addSpendingTarget(eventId)) }}
       />
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={error ?? events.error ?? plan.error} />
         {workspaceTabs}
         {event && data && totals && (

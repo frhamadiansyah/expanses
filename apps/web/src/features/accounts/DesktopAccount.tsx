@@ -28,7 +28,7 @@ import { ADJUST_FORM, actionsFor, CurrencyFlag, ForeignLine, MONEY_IN_FORM, type
 import { WithdrawalsLeft } from './WithdrawalsLeft';
 import { AdjustBalanceForm } from './AdjustBalanceForm';
 import { adjustTitle } from './adjust-model';
-import { DeskBox, DeskFace, DeskTitleBar, FigureRow, GBTN, BOX_GRID, FIRST_BOX, GearLink, MonthsLine, PBTN, PEEK_ROOM, signedMoney } from './desk-account-parts';
+import { DeskBox, DeskFace, DeskTitleBar, DeskPageTitle, FigureRow, GBTN, BOX_GRID, FIRST_BOX, GearLink, MonthsLine, PBTN, PEEK_ROOM, signedMoney } from './desk-account-parts';
 import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
 import { spendsFrom } from './pockets';
 import { useHeldRates, useOpenings } from './queries';
@@ -215,8 +215,9 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
         </span>
       </DeskTitleBar>
       <DeskNotices />
+      <DeskPageTitle title={title} line={kind} />
 
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && PEEK_ROOM)}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={balances.error ?? history.error ?? accounts.error} />
         <div className={BOX_GRID}>
           <DeskBox title="Balance" note="today" testId="balance-card" className={FIRST_BOX}>

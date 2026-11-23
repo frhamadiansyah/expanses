@@ -288,7 +288,7 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
   const payingLoans = paying ? loansOf(paying.items) : [];
 
   return (
-    <div className="@container space-y-[14px] px-[20px] py-[16px]" data-testid="schedule-panel">
+    <div className="@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]" data-testid="schedule-panel">
       <ErrorBox error={error ?? after.error ?? barsError ?? payError} />
       {debt && (
         <div className="flex items-center gap-[8px] text-[13px]" data-testid="schedule-only">
@@ -304,7 +304,7 @@ export function DeskSchedule({ model, ctx, month, show, debtKey }: { model: Debt
       )}
       <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[700px]:grid-cols-2">
         <section className={BOX} aria-label="This month" data-testid="schedule-month-box">
-          <h2 className="flex items-center gap-[6px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
+          <h2 className="flex items-center gap-[6px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
             <button type="button" aria-label="Previous month" className={STEP} onClick={() => setMonth(addMonths(month, -1))}>
               <ChevronLeft size={15} aria-hidden />
             </button>

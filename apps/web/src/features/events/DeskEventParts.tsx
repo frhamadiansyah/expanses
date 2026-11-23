@@ -12,6 +12,7 @@ import { useNewEvent } from './NewEventFlow';
 import { quantityWords } from './plan-view';
 import { useEvents } from './queries';
 import { isoDate } from '@expanses/core';
+import { DeskBar, PILL_ROUND } from '../../ui/desk';
 
 /*
  * The parts of a Mac event page (option A, owner 2026-11-18) a private event and a shared trip both draw: the title bar
@@ -21,8 +22,7 @@ import { isoDate } from '@expanses/core';
 
 export const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-left text-[11px] font-semibold whitespace-nowrap text-[var(--ph-ink-3)]';
 export const TD = 'px-[10px] py-[6px] align-middle';
-const GBTN =
-  'inline-flex h-[26px] items-center justify-center rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[8px] text-[12.5px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
+
 
 /** The event page's grey ground, edge to edge, with the bar on top. */
 export function EventDesk({ testId, children }: { testId: string; children: ReactNode }) {
@@ -61,23 +61,15 @@ export function EventTitleBar({
 }) {
   return (
     <>
-      <header ref={barRef} className="desk-titlebar sticky top-0 z-20 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[14px]">
-        <Link to="/events" className="shrink-0 text-[13px] text-[var(--ph-ink-3)] hover:text-[var(--ph-ink)]" aria-label="Events">
-          <span aria-hidden>‹ </span>Events
-        </Link>
-        <EventMenu eventId={eventId} name={name} />
-        <span data-testid="event-dates" className="min-w-0 shrink truncate text-[12.5px] text-[var(--ph-ink-3)]">
-          {dates}
-        </span>
+      <DeskBar crumb={name} back={{ label: 'Events', to: '/events' }} barRef={barRef}>
         {chip && (
-          <span data-testid="event-shared-chip" className="shrink-0 rounded-[5px] bg-[var(--ph-fill)] px-[6px] py-[1px] text-[11px] whitespace-nowrap text-[var(--ph-ink-2)]">
+          <span data-testid="event-shared-chip" className="shrink-0 rounded-full bg-[var(--mk-t-grey-bg)] px-[9px] py-[2px] text-[11.5px] font-bold whitespace-nowrap text-[var(--mk-t-grey)]">
             {chip}
           </span>
         )}
-        <span className="flex-1" />
         {mode && <DeskEventModeSwitch event={mode} />}
-        <Link to={settings.to} params={{ eventId }} aria-label="Settings" title="Settings" className={GBTN}>
-          <Settings size={14} aria-hidden />
+        <Link to={settings.to} params={{ eventId }} aria-label="Settings" title="Settings" className={PILL_ROUND}>
+          <Settings size={15} aria-hidden />
         </Link>
         {add && (
           <button type="button" className={PBTN} onClick={add.run} disabled={add.disabled}>
@@ -85,8 +77,14 @@ export function EventTitleBar({
             {add.label}
           </button>
         )}
-      </header>
+      </DeskBar>
       <DeskNotices />
+      <div className="px-[32px] pt-[8px] pb-[18px]">
+        <EventMenu eventId={eventId} name={name} />
+        <p data-testid="event-dates" className="mt-[3px] truncate text-[14px] text-[var(--mk-ink-2)]">
+          {dates}
+        </p>
+      </div>
     </>
   );
 }
@@ -120,7 +118,7 @@ function EventMenu({ eventId, name }: { eventId: string; name: string }) {
   }, [open]);
   const item = 'flex w-full items-center gap-[8px] rounded-[5px] px-[10px] py-[4px] text-left text-[13px]';
   return (
-    <div ref={box} className="relative min-w-0 shrink">
+    <div ref={box} className="relative min-w-0 shrink -ml-[8px]">
       <h1 className="min-w-0">
         <button
           type="button"
@@ -128,14 +126,14 @@ function EventMenu({ eventId, name }: { eventId: string; name: string }) {
           aria-expanded={open}
           data-testid="event-title-menu"
           onClick={() => setOpen(!open)}
-          className={cx('flex max-w-[340px] items-center gap-[4px] rounded-[6px] px-[8px] py-[2px] text-[15px] font-semibold text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]', open && 'bg-[var(--ph-fill)]')}
+          className={cx('flex max-w-full items-center gap-[6px] rounded-[12px] px-[8px] py-[0px] text-[34px] leading-[41px] font-extrabold tracking-[-0.4px] text-[var(--mk-ink)] hover:bg-[var(--mk-pill)]', open && 'bg-[var(--mk-pill)]')}
         >
           <span className="truncate">{name}</span>
-          <ChevronDown size={13} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+          <ChevronDown size={22} aria-hidden className="shrink-0 text-[var(--mk-ink-2)]" />
         </button>
       </h1>
       {open && (
-        <div role="menu" aria-label="Events" className="absolute top-[34px] left-0 z-30 w-[300px] rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[5px] shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
+        <div role="menu" aria-label="Events" className="absolute top-[46px] left-0 z-30 w-[300px] rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[5px] shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
           {sections.map((section) => (
             <div key={section.title} role="group" aria-label={section.title}>
               <div className="px-[10px] pt-[6px] pb-[3px] text-[10.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{section.title}</div>
@@ -458,7 +456,7 @@ const STATUS_TONE = { 'To buy': 'text-[var(--ph-ink-3)]', Paying: 'text-[var(--m
 /** The table box's tabs: Transactions · N and Plan · N costs, as a pill switch in the box's header. */
 export function TableTabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (next: T) => void; tabs: readonly { key: T; label: string }[] }) {
   return (
-    <div role="tablist" aria-label="Event table" className="flex rounded-[7px] bg-[var(--ph-fill)] p-[2px] text-[12px]">
+    <div role="tablist" aria-label="Event table" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
       {tabs.map((tab) => (
         <button
           key={tab.key}
@@ -467,7 +465,7 @@ export function TableTabs<T extends string>({ value, onChange, tabs }: { value: 
           aria-selected={value === tab.key}
           onClick={() => onChange(tab.key)}
           className={cx(
-            'rounded-[5px] px-[11px] py-[3px] whitespace-nowrap',
+            'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
             value === tab.key ? 'bg-[var(--ph-selected)] font-semibold text-[var(--ph-ink)] shadow-[0_0.5px_1.5px_rgba(0,0,0,0.18)]' : 'font-medium text-[var(--ph-ink-2)]',
           )}
         >

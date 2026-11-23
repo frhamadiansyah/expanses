@@ -59,8 +59,8 @@ export function Notice({
   );
   if (strip) {
     return (
-      <div role={look.role} data-testid={testId} data-kind={kind} className={cx('border-b border-[var(--ph-hair)] bg-[var(--ph-surface)]', className)}>
-        <div className="flex h-[34px] items-center gap-[6px] pr-[10px] pl-[18px] text-[12.5px]">
+      <div role={look.role} data-testid={testId} data-kind={kind} className={cx('mx-[32px] mb-[6px] rounded-[12px] bg-[var(--mk-card)]', className)}>
+        <div className="flex h-[34px] items-center gap-[6px] pr-[8px] pl-[12px] text-[12.5px]">
           <button type="button" aria-haspopup="dialog" onClick={() => setOpen(true)} className="flex h-full min-w-0 flex-1 items-center gap-[8px] text-left">
             <span
               aria-hidden

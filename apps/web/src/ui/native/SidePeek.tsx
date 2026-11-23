@@ -4,7 +4,7 @@ import { cx } from '../index';
 
 /** A plain button along the foot of a peek: Edit, Split. */
 export const PEEK_BUTTON =
-  'rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-3 py-[4px] text-[13px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)] disabled:opacity-40';
+  'rounded-full bg-[var(--mk-pill)] px-[13px] py-[5px] text-[13px] font-semibold text-[var(--mk-ink)] hover:bg-[var(--mk-pill-hover)] disabled:opacity-40';
 
 const STEP = 'flex h-[22px] w-[22px] items-center justify-center rounded-[5px] text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)] hover:text-[var(--ph-ink)] disabled:opacity-30';
 
@@ -53,7 +53,7 @@ export function SidePeek({
       aria-label={label}
       data-testid={testId}
       style={{ top }}
-      className="ph-peek fixed right-0 bottom-0 z-20 flex w-[330px] max-w-full flex-col overflow-y-auto border-l border-[var(--ph-chevron)] bg-[var(--ph-surface)] pt-[6px] shadow-[-12px_0_30px_rgba(0,0,0,0.12)]"
+      className="ph-peek mk-peek fixed right-[10px] bottom-[10px] z-20 flex w-[330px] max-w-full flex-col overflow-y-auto rounded-[22px] bg-[var(--mk-panel)] pt-[8px] shadow-[var(--mk-panel-shadow)]"
     >
       {back && (
         <button
@@ -66,7 +66,7 @@ export function SidePeek({
           <span className="truncate">{back.label}</span>
         </button>
       )}
-      <h2 className="flex items-start justify-between gap-2 px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
+      <h2 className="flex items-start justify-between gap-2 px-[14px] pt-[10px] pb-[8px] text-[17px] leading-[22px] font-bold text-[var(--mk-ink)]">
         <span className="min-w-0 break-words" data-testid={titleTestId}>
           {title}
         </span>

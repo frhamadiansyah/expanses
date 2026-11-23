@@ -11,20 +11,20 @@ import { cx } from '../../ui';
 
 /** A Mac push button, as the desk pages draw theirs. */
 export const DESK_BTN =
-  'inline-flex h-[24px] shrink-0 items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)] disabled:pointer-events-none disabled:opacity-40';
+  'inline-flex h-[28px] shrink-0 items-center gap-1 rounded-full bg-[var(--mk-pill)] px-[12px] text-[13px] font-semibold whitespace-nowrap text-[var(--mk-ink)] hover:bg-[var(--mk-pill-hover)] disabled:pointer-events-none disabled:opacity-40';
 /** The one red button, for the second press of a restore. */
 export const DESK_BTN_DANGER =
-  'inline-flex h-[24px] shrink-0 items-center rounded-[6px] bg-[var(--ph-alarm)] px-[10px] text-[12.5px] font-medium whitespace-nowrap text-white disabled:opacity-40';
+  'inline-flex h-[28px] shrink-0 items-center rounded-full bg-[var(--mk-c-red)] px-[12px] text-[13px] font-semibold whitespace-nowrap text-white disabled:opacity-40';
 
 /** The section's own title at the top of the pane. */
 export function PaneTitle({ children }: { children: ReactNode }) {
-  return <h2 className="mb-[14px] text-[20px] leading-[26px] font-semibold text-[var(--ph-ink)]">{children}</h2>;
+  return <h2 className="mb-[16px] text-[26px] leading-[32px] font-extrabold tracking-[-0.3px] text-[var(--mk-ink)]">{children}</h2>;
 }
 
 /** A coloured square with a white glyph: a section's mark, and a row's where the row has one. */
 export function DeskIcon({ icon: Icon, tint, size = 24 }: { icon: LucideIcon; tint: string; size?: number }) {
   return (
-    <span aria-hidden className="flex shrink-0 items-center justify-center rounded-[6px] text-white" style={{ width: size, height: size, background: tint }}>
+    <span aria-hidden className="flex shrink-0 items-center justify-center rounded-full text-white" style={{ width: size, height: size, background: tint }}>
       <Icon size={Math.round(size * 0.58)} strokeWidth={2} />
     </span>
   );
@@ -32,10 +32,10 @@ export function DeskIcon({ icon: Icon, tint, size = 24 }: { icon: LucideIcon; ti
 
 export function DeskGroup({ title, footer, children, testId }: { title?: string; footer?: ReactNode; children: ReactNode; testId?: string }) {
   return (
-    <section className="mb-[20px]" data-testid={testId}>
-      {title && <h3 className="mb-[6px] px-[2px] text-[13px] leading-[17px] font-semibold text-[var(--ph-ink)]">{title}</h3>}
-      <div className="overflow-hidden rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] [&>*+*]:border-t [&>*+*]:border-[var(--ph-hair)]">{children}</div>
-      {footer && <div className="mt-[6px] px-[2px] text-[11.5px] leading-[15px] text-[var(--ph-ink-3)]">{footer}</div>}
+    <section className="mb-[22px]" data-testid={testId}>
+      {title && <h3 className="mb-[8px] px-[4px] text-[15px] leading-[19px] font-bold text-[var(--mk-ink-2)]">{title}</h3>}
+      <div className="overflow-hidden rounded-[18px] bg-[var(--mk-card)] px-[4px] shadow-[var(--mk-card-shadow)] [&>*+*]:border-t [&>*+*]:border-[var(--mk-line)]">{children}</div>
+      {footer && <div className="mt-[7px] px-[4px] text-[12px] leading-[16px] text-[var(--mk-ink-2)]">{footer}</div>}
     </section>
   );
 }
@@ -69,8 +69,8 @@ export function DeskRow({ lead, title, subtitle, right, to, params, search, onCl
     <>
       {lead}
       <span className="min-w-0 flex-1">
-        <span className={cx('block truncate text-[13px] leading-[17px]', quiet ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>{title}</span>
-        {subtitle && <span className="mt-[1px] block truncate text-[11.5px] leading-[15px] text-[var(--ph-ink-3)]">{subtitle}</span>}
+        <span className={cx('block truncate text-[14px] leading-[18px] font-semibold', quiet ? 'text-[var(--mk-ink-2)]' : 'text-[var(--mk-ink)]')}>{title}</span>
+        {subtitle && <span className="mt-[1px] block truncate text-[12.5px] leading-[16px] text-[var(--mk-ink-2)]">{subtitle}</span>}
       </span>
       {to && !right && (
         <span aria-hidden className="shrink-0 text-[15px] leading-none text-[var(--ph-chevron)]">
@@ -93,9 +93,9 @@ export function DeskRow({ lead, title, subtitle, right, to, params, search, onCl
     </div>
   );
   return (
-    <div className="flex min-h-[44px] items-center gap-[10px] px-[14px] py-[7px]" data-testid={testId}>
+    <div className="flex min-h-[50px] items-center gap-[12px] px-[14px] py-[8px]" data-testid={testId}>
       {body}
-      {right !== undefined && right !== null && <div className="flex shrink-0 items-center gap-[8px] text-[12.5px] text-[var(--ph-ink-3)]">{right}</div>}
+      {right !== undefined && right !== null && <div className="flex shrink-0 items-center gap-[8px] text-[13px] text-[var(--mk-ink-2)]">{right}</div>}
     </div>
   );
 }

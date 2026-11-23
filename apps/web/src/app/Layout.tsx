@@ -119,7 +119,8 @@ export function Layout() {
         {/* Out of view the moment anything has scrolled under the status bar; watched, not listened to. */}
         <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
         {/* The Mac pages draw their own title bar and grey page edge to edge (`edgeToEdge`); every other page sits in the column. */}
-        <div className={ownBar ? 'w-full' : 'desk-column mx-auto max-w-4xl p-4 md:p-8'}>
+        {/* `mk`: the Mac look v1 (tokens.css) on the wide screen's own pages; the phone and the column keep theirs. */}
+        <div className={ownBar ? cx('w-full', deskBar && 'mk') : 'desk-column mx-auto max-w-4xl p-4 md:p-8'}>
           {/* A Mac page with its own title bar draws the notices under it; every other page has them here, above it. */}
           {!deskBar && <AppNotices />}
           <Outlet />

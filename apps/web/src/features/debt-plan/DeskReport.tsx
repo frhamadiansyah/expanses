@@ -64,7 +64,7 @@ export function DeskReport({ period }: { period: ReportPeriod }) {
     </section>
   );
   return (
-    <div className="@container space-y-[14px] px-[20px] py-[16px]" data-testid="report-panel">
+    <div className="@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]" data-testid="report-panel">
       <div className="max-w-[420px]">
         <Segments fill label="Period" value={period} onChange={(next) => void navigate({ to: '/net-worth/plan/report', search: { period: next }, replace: true })} options={PERIODS} />
       </div>

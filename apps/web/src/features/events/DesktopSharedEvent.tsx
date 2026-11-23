@@ -97,7 +97,7 @@ export function DesktopSharedEvent({ view }: { view: SharedEventView }) {
         settings={{ to: '/events/$eventId/shared-settings' }}
         add={readOnly ? null : { label: 'Add spending', run: () => void navigate(addSpendingTarget(view.eventId)), disabled: locked }}
       />
-      <div className="@container space-y-[14px] px-[20px] py-[16px]">
+      <div className="@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]">
         <ErrorBox error={plan.error} />
         {locked ? null : <FinishSharing view={view} />}
         {readOnly && (

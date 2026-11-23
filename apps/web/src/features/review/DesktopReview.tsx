@@ -39,14 +39,14 @@ import {
 } from './review-desk-model';
 import { useReviewCells } from './review-cells';
 import { SkippedList } from './SkippedList';
+import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
 
 /** What the Recorded and Discarded lists show at most: the latest, newest first. */
 const RESOLVED_SHOWN = 200;
 
-const GBTN =
-  'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)] disabled:opacity-50';
-const PBTN = 'inline-flex h-[26px] items-center rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)] disabled:opacity-40';
-const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]';
+const GBTN = PILL;
+const PBTN = PILL_BLUE;
+const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]';
 const TH = 'border-b border-[var(--ph-hair)] px-[8px] py-[7px] font-semibold';
 const CELL = 'px-[8px] py-[5px] whitespace-nowrap';
 const WARN = 'text-[var(--ph-warn)]';
@@ -263,10 +263,8 @@ export function DesktopReview({
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="review-page" data-desk="true" {...doubleClick}>
-      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Review</h1>
-        <span className="flex-1" />
-        <div role="radiogroup" aria-label="Review view" className="flex rounded-[7px] bg-[var(--ph-fill)] p-[2px] text-[12px]">
+      <DeskBar crumb="Review" barRef={bar}>
+        <div role="radiogroup" aria-label="Review view" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
           {SEGMENTS.map((segment) => (
             <button
               key={segment.value}
@@ -275,8 +273,8 @@ export function DesktopReview({
               aria-checked={tab === segment.value}
               onClick={() => changeTab(segment.value)}
               className={cx(
-                'rounded-[5px] px-[11px] py-[3px] whitespace-nowrap',
-                tab === segment.value ? 'bg-[var(--ph-selected)] font-medium text-[var(--ph-ink)] shadow-[0_0.5px_1.5px_rgba(0,0,0,0.18)]' : 'text-[var(--ph-ink-2)]',
+                'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
+                tab === segment.value ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
               )}
             >
               {segment.label}
@@ -291,11 +289,12 @@ export function DesktopReview({
             Record {ready.length} ready
           </button>
         )}
-      </header>
+      </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
+      <DeskTitle title="Review" />
 
-      <div className={cx('space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
+      <div className={cx('space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={error} />
         <CountsBox counts={counts} loaded={loaded} />
 

@@ -72,6 +72,21 @@ export const SIDEBAR_GROUPS: readonly SidebarGroup[] = [
   },
 ];
 
+/** Each page's own colour (tokens.css `--nav-*`), filled behind its row while it is open (Mac v1). */
+export const NAV_COLOUR: Readonly<Record<string, string>> = {
+  '/overview': 'var(--nav-overview)',
+  '/transactions': 'var(--nav-cashflow)',
+  '/budget': 'var(--nav-budget)',
+  '/bills': 'var(--nav-bills)',
+  '/review': 'var(--nav-review)',
+  '/wallet': 'var(--nav-wallet)',
+  '/net-worth': 'var(--nav-networth)',
+  '/cards/points': 'var(--nav-points)',
+  '/goals': 'var(--nav-goals)',
+  '/events': 'var(--nav-events)',
+  '/net-worth/plan': 'var(--nav-plan)',
+};
+
 /** Tools ›: the Tools page (Mac Settings and Tools, B), a tile for each tool — Statement check among them. */
 export { TOOLS_TO } from '../features/tools/tools-model';
 

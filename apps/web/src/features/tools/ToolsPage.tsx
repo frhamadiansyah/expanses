@@ -8,6 +8,7 @@ import { useEscape } from '../../app/use-escape';
 import { usePhone, useSideways } from '../../app/use-phone';
 import { cx } from '../../ui';
 import { findTools, STATEMENT_CHECK, type ToolGroup, type ToolTile } from './tools-model';
+import { DeskBar, DeskTitle } from '../../ui/desk';
 
 const TILE =
   'flex h-full w-full flex-col items-start rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-[14px] text-left hover:border-[var(--ph-chevron)] focus-visible:outline-2 focus-visible:outline-[var(--mac-accent)]';
@@ -108,9 +109,7 @@ export function ToolsPage() {
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="tools-page" data-desk="true">
-      <header className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Tools</h1>
-        <span className="flex-1" />
+      <DeskBar crumb="Tools">
         <label className="relative flex h-[26px] w-[180px] shrink-0 items-center rounded-[7px] bg-[var(--ph-fill)] text-[12px]">
           <Search size={13} aria-hidden className="pointer-events-none absolute left-[8px] text-[var(--ph-ink-3)]" />
           <input
@@ -129,10 +128,11 @@ export function ToolsPage() {
             className="h-full w-full rounded-[7px] bg-transparent pr-2 pl-[26px] text-[12px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-2 focus:outline-[var(--mac-accent)]"
           />
         </label>
-      </header>
+      </DeskBar>
       <DeskNotices />
+      <DeskTitle title="Tools" />
 
-      <div className="space-y-[22px] px-[20px] py-[18px]">
+      <div className="space-y-[22px] px-[32px] pt-[2px] pb-[32px]">
         {calculators && <Group group={calculators} accounts={accounts} columns={5} />}
         {rest.length > 0 && (
           <div className="grid gap-[16px]" style={{ gridTemplateColumns: spans }}>

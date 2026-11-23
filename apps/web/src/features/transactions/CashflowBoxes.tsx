@@ -10,13 +10,13 @@ import { dayBarsShape, type LegendItem, type MonthFigures, ringArcs } from './ca
  * same thing — so they hold no queries of their own and are tested as markup.
  */
 
-export const BOX = 'rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)]';
-export const NOTE = 'text-[11.5px] font-normal text-[var(--ph-ink-3)]';
+export const BOX = 'rounded-[18px] bg-[var(--mk-card)] shadow-[var(--mk-card-shadow)]';
+export const NOTE = 'text-[12.5px] font-normal text-[var(--mk-ink-2)]';
 
 /** A box's header: its title, and a grey note on the right. */
 export function BoxHead({ title, note }: { title: ReactNode; note?: ReactNode }) {
   return (
-    <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
+    <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
       <span className="min-w-0 truncate">{title}</span>
       {note && <span className={cx(NOTE, 'shrink-0')}>{note}</span>}
     </h2>

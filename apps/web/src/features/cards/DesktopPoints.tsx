@@ -25,11 +25,10 @@ import { type DeskProgramme, ProgrammeFace, SMALL_FACE } from './programme-face'
 import { balanceText, earnersLine, expiryNote } from './programme-text';
 import { AddProgrammeSheet } from './ProgrammeSheets';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
+import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
 
-const GBTN =
-  'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
-const PBTN =
-  'inline-flex h-[26px] items-center gap-[3px] rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)]';
+const GBTN = PILL;
+const PBTN = PILL_BLUE;
 const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-left text-[11px] font-semibold whitespace-nowrap text-[var(--ph-ink-3)]';
 const ROW = 'flex items-baseline gap-3 border-t border-[var(--ph-hair)] px-[14px] py-[7px] text-[13px]';
 
@@ -176,20 +175,19 @@ export function DesktopPoints() {
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="points-page" data-desk="true" {...doubleClick}>
-      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Points</h1>
-        <span className="flex-1" />
+      <DeskBar crumb="Points" barRef={bar}>
         <Link to="/recommend" className={GBTN}>
           Which card?
         </Link>
         <button type="button" className={PBTN} onClick={() => setAdding(true)}>
           <span aria-hidden>＋</span>Add programme
         </button>
-      </header>
+      </DeskBar>
       <DeskNotices />
+      <DeskTitle title="Points" />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={data.error} />
         {rows.length > 0 && (
           <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[560px]:grid-cols-2 @min-[900px]:grid-cols-3">

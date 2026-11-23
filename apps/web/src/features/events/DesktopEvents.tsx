@@ -16,9 +16,9 @@ import { useNewEvent } from './NewEventFlow';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 import { useSharedEventSummaries, useSharedEventView } from './shared-queries';
+import { DeskBar, DeskTitle, PILL_BLUE } from '../../ui/desk';
 
-export const PBTN =
-  'inline-flex h-[26px] items-center gap-[3px] rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)] disabled:opacity-40';
+export const PBTN = PILL_BLUE;
 const SECTION_TITLE = 'pb-[8px] text-[11px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase';
 // Four cards a row in a 1280 window, more in a wider one; a card never stretches past its share of the row.
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-[12px]';
@@ -64,15 +64,14 @@ export function DesktopEvents() {
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="events-page" data-desk="true">
-      <header className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Events</h1>
-        <span className="flex-1" />
+      <DeskBar crumb="Events">
         <button type="button" className={PBTN} onClick={create.start}>
           <span aria-hidden>＋</span>New event
         </button>
-      </header>
+      </DeskBar>
       <DeskNotices />
-      <div className="space-y-[18px] px-[20px] py-[16px]">
+      <DeskTitle title="Events" />
+      <div className="space-y-[18px] px-[32px] pt-[2px] pb-[32px]">
         <ErrorBox error={create.error ?? events.error} />
         {events.isSuccess && all.length === 0 && (
           <p className="text-[13px] text-[var(--ph-ink-3)]">No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</p>

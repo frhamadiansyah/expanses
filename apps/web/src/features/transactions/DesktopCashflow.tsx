@@ -29,6 +29,7 @@ import { ReceiptPeek } from './ReceiptPeek';
 import { useSpendingTrend } from './SpendingTrend';
 import { NOT_MONTHLY_LABEL, notMonthlyWord } from './not-monthly';
 import { EditableRow, type TableHandlers, TypingRow } from './TransactionsTable';
+import { DeskBar, DeskTitle, PILL, PILL_BLACK, PILL_BLUE } from '../../ui/desk';
 
 type Filters = Omit<ListFilters, 'month'>;
 
@@ -70,7 +71,7 @@ const SEGMENTS: { value: Filters['type']; label: string }[] = [
   { value: 'income', label: 'Income' },
 ];
 
-const GBTN = 'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
+const GBTN = PILL;
 
 /** One list of the Filter menu: a choice per line, the picked one ticked. */
 function MenuList({ title, options, value, onPick }: { title: string; options: readonly ChipOption[]; value: string; onPick: (value: string) => void }) {
@@ -636,9 +637,7 @@ export function DesktopCashflow({
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="desktop-cashflow" {...doubleClick}>
-      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Cashflow</h1>
-        {chips.map((chip) => (
+      <DeskBar crumb="Cashflow" barRef={bar}>{chips.map((chip) => (
           <span key={chip.key} className="inline-flex h-[22px] max-w-[220px] items-center gap-1 rounded-full bg-[var(--ph-fill)] pr-[2px] pl-[9px] text-[12px] text-[var(--ph-ink)]">
             <span className="min-w-0 truncate">{chip.label}</span>
             <button type="button" aria-label={chip.clearLabel} onClick={chip.onClear} className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[var(--ph-ink-3)] hover:bg-[var(--ph-hair)]">
@@ -647,7 +646,7 @@ export function DesktopCashflow({
           </span>
         ))}
         <span className="flex-1" />
-        <div role="group" aria-label="Show" className="flex rounded-[7px] bg-[var(--ph-fill)] p-[2px] text-[12px]">
+        <div role="group" aria-label="Show" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
           {SEGMENTS.map((segment) => (
             <button
               key={segment.value}
@@ -655,8 +654,8 @@ export function DesktopCashflow({
               aria-pressed={filters.type === segment.value}
               onClick={() => setFilter('type', segment.value)}
               className={cx(
-                'rounded-[5px] px-[11px] py-[3px] whitespace-nowrap',
-                filters.type === segment.value ? 'bg-[var(--ph-selected)] font-medium text-[var(--ph-ink)] shadow-[0_0.5px_1.5px_rgba(0,0,0,0.18)]' : 'text-[var(--ph-ink-2)]',
+                'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
+                filters.type === segment.value ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
               )}
             >
               {segment.label}
@@ -718,14 +717,15 @@ export function DesktopCashflow({
             aria-label="Add transaction"
             title="New transaction (⌘N)"
             onClick={onAdd}
-            className="flex h-[26px] items-center gap-1 rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)]"
+            className={PILL_BLUE}
           >
             <Plus size={13} aria-hidden /> Add
           </button>
         )}
-      </header>
+      </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
+      <DeskTitle title="Cashflow" />
       {picking && <PeriodPicker value={month} years={yearsSince(first.data ?? null)} onPick={onMonth} onClose={() => setPicking(false)} />}
 
       {/*
@@ -734,7 +734,7 @@ export function DesktopCashflow({
        * across, the ring's box takes the whole row and the bars and This month share the next. Three across from 960:
        * a 1280 window's page (990, or a little less beside a scroll bar) keeps the row it always had.
        */}
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         {notices}
         <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[478px]:grid-cols-2 @min-[478px]:[&>:first-child]:col-span-2 @min-[960px]:grid-cols-[1.25fr_1fr_0.85fr] @min-[960px]:[&>:first-child]:col-span-1">
           <RingBox
@@ -776,7 +776,7 @@ export function DesktopCashflow({
           style={{ '--desk-cols': peeking ? DESK_COLUMNS.peek : DESK_COLUMNS.wide } as CSSProperties}
           aria-label="Transactions"
         >
-          <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]">
+          <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
             Transactions
             <span className="flex items-baseline gap-[10px]">
               {/* Notion links of the waiting rows not known yet: a count, no colour (option E). */}
@@ -796,7 +796,7 @@ export function DesktopCashflow({
                   disabled={recordingMany || ticked.length === 0}
                   title={ticked.length > 0 ? 'Record the rows ticked' : allWaiting.ready.length > 0 ? 'Tick a row to record it' : 'Each waiting row still needs a date, amount or payment method'}
                   onClick={() => void recordMany({ ready: ticked, skipped: 0 })}
-                  className="self-center rounded-[6px] bg-[var(--ph-ink)] px-[11px] py-[3px] text-[12px] font-medium whitespace-nowrap text-[var(--ph-surface)] disabled:bg-[var(--ph-chevron)] disabled:text-white"
+                  className={cx(PILL_BLACK, 'self-center disabled:pointer-events-auto')}
                 >
                   {recordTickedLabel(ticked.length)}
                 </button>

@@ -46,12 +46,12 @@ import { MonthlyBuys } from './MonthlyBuys';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { useBillMoney, useBillsInMonths, useMonthlyBills, useSinkingFunds } from './queries';
 import { setAsideOf } from './set-aside';
+import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
 
-const GBTN =
-  'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
-const PBTN = 'inline-flex h-[26px] items-center rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)]';
+const GBTN = PILL;
+const PBTN = PILL_BLUE;
 const STEP = 'flex h-[24px] w-[22px] items-center justify-center rounded text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]';
-const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]';
+const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]';
 
 /** The calendar's marks: orange for late or due soon, grey for later, a hollow ring for paid. */
 const MARK: Record<DayMark, string> = {
@@ -246,9 +246,7 @@ export function DesktopBills() {
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="bills-page" data-desk="true" {...doubleClick}>
-      <header ref={bar} className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]">
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Bills</h1>
-        <span className="flex-1" />
+      <DeskBar crumb="Bills" barRef={bar}>
         <div className="flex items-center gap-[2px] text-[13px] text-[var(--ph-ink)]">
           <button type="button" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))} className={STEP}>
             <ChevronLeft size={15} aria-hidden />
@@ -266,16 +264,17 @@ export function DesktopBills() {
         <button type="button" onClick={() => void navigate({ to: '/bills/new' })} className={PBTN}>
           ＋ New bill
         </button>
-      </header>
+      </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
+      <DeskTitle title="Bills" />
 
       {/*
        * The peek makes room on the whole page, so it covers no figure. The page goes by the room it has (a container
        * query): wide, the calendar and the bars in a column on the left; narrower (the peek open on a smaller window),
        * the two side by side on top and everything else under them.
        */}
-      <div className={cx('@container px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={error ?? live.error ?? read.error} />
         <Unconverted missing={unconverted} currency={readCurrency} />
         <div className="grid grid-cols-1 items-start gap-[14px] @min-[900px]:grid-cols-[270px_minmax(0,1fr)]">

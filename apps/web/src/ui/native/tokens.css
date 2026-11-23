@@ -450,10 +450,10 @@ body:has([role='dialog']) .ph-under-dialog {
  * `--desk-bar` is how far down a title bar ends, for whatever hangs from it.
  */
 :root {
-  --desk-bar: 52px;
+  --desk-bar: 58px;
 }
 .mac-app {
-  --desk-bar: calc(52px + env(safe-area-inset-top, 0px));
+  --desk-bar: calc(58px + env(safe-area-inset-top, 0px));
 }
 .mac-app .desk-titlebar {
   padding-top: env(safe-area-inset-top, 0px);
@@ -463,4 +463,194 @@ body:has([role='dialog']) .ph-under-dialog {
   .mac-app .desk-column {
     padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
   }
+}
+
+/*
+ * The Mac look, v1 (owner approved 2026-11-23; docs/mockups/2026-11-21-mac-redesign-sidebar.html): a white page, soft
+ * grey cards without a border, pill buttons, a light sidebar whose open page is filled in its own colour. Only the
+ * wide screen's own parts read these (`ui/desk.tsx`, the sidebar, the Mac pages); the phone never does, so its look is
+ * untouched. The dark block redefines the same names, as screens 6, 13 and 14 draw them.
+ */
+:root {
+  --mk-page: #ffffff;
+  --mk-card: #f6f6f7;
+  --mk-card-shadow: 0 1px 2px rgb(0 0 0 / 0.03), 0 10px 28px rgb(0 0 0 / 0.035);
+  /* A hairline between rows inside a card, and under a table's header. */
+  --mk-line: #e9e9ec;
+  --mk-head-line: #e3e3e7;
+  --mk-ink: #1d1d1f;
+  --mk-ink-2: #6e6e73;
+  --mk-ink-3: #a1a1a6;
+  /* A grey pill button, and the track of a pill switch with its white chosen segment. */
+  --mk-pill: #f0f0f2;
+  --mk-pill-hover: #e5e5e8;
+  --mk-seg: #ececef;
+  --mk-seg-on: #ffffff;
+  --mk-seg-on-ink: #1d1d1f;
+  --mk-seg-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+  /* The one blue button of a bar (＋ Add), and the black pill inside a card (Record 2). */
+  --mk-blue: #0a84ff;
+  --mk-blue-hover: #0077ed;
+  --mk-black: #1d1d1f;
+  --mk-black-ink: #ffffff;
+  /* A progress bar's empty track; a picked row. */
+  --mk-track: #e6e6ea;
+  --mk-sel: #e9f2fe;
+  --mk-hover: rgb(0 0 0 / 0.035);
+  /* A field inside a card: white, rounded. */
+  --mk-field: #ffffff;
+  --mk-field-line: #e3e3e7;
+  /* A floating panel over the page (the side peek, a form): white, rounded, lifted. */
+  --mk-panel: #ffffff;
+  --mk-panel-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 18px 50px rgb(0 0 0 / 0.16);
+  /* The sidebar. */
+  --mk-side: #fbfbfc;
+  --mk-side-line: #efeff1;
+  --mk-side-hover: rgb(0 0 0 / 0.045);
+  --mk-avatar: #1d1d1f;
+  --mk-avatar-ink: #ffffff;
+  /* Colours of a stat tile's round icon and of a bar. */
+  --mk-c-blue: #0a84ff;
+  --mk-c-green: #28b44b;
+  --mk-c-red: #ff3b30;
+  --mk-c-orange: #ff9500;
+  --mk-c-purple: #bf5af2;
+  --mk-c-teal: #30c0c8;
+  --mk-c-pink: #d63fbf;
+  --mk-c-indigo: #5e5ce6;
+  --mk-c-grey: #8e8e93;
+  --mk-c-gold: #c48a12;
+  /* Tags and badges: a pale ground with its own ink. */
+  --mk-t-blue-bg: #e3f0ff;
+  --mk-t-blue: #0a6fd6;
+  --mk-t-green-bg: #e5f7ea;
+  --mk-t-green: #1f8a3a;
+  --mk-t-red-bg: #ffe5e3;
+  --mk-t-red: #d70015;
+  --mk-t-orange-bg: #fff2db;
+  --mk-t-orange: #b56a00;
+  --mk-t-grey-bg: #ececef;
+  --mk-t-grey: #6e6e73;
+  --mk-t-purple-bg: #f3e6fb;
+  --mk-t-purple: #9a3fc9;
+  /* Pastel tiles and round category grounds. */
+  --mk-p-green: #e3f6e8;
+  --mk-p-orange: #fde8dc;
+  --mk-p-blue: #e3ecfb;
+  --mk-p-pink: #fbe3f2;
+  --mk-p-purple: #efe6fb;
+  --mk-p-yellow: #fff3d6;
+  --mk-p-grey: #ececef;
+  /* Each sidebar page's own colour, filled behind its row while it is open (white words on it). */
+  --nav-overview: #0a84ff;
+  --nav-cashflow: #30c0c8;
+  --nav-budget: #ff9500;
+  --nav-bills: #28b44b;
+  --nav-review: #d63fbf;
+  --nav-wallet: #5e5ce6;
+  --nav-networth: #bf5af2;
+  --nav-points: #c48a12;
+  --nav-goals: #ff2d55;
+  --nav-events: #a2845e;
+  --nav-plan: #1f8a8a;
+  --nav-tools: #636366;
+  --nav-settings: #8e8e93;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --mk-page: #1f1f21;
+    --mk-card: #2a2a2d;
+    --mk-card-shadow: none;
+    --mk-line: #353538;
+    --mk-head-line: #3a3a3d;
+    --mk-ink: #f2f2f7;
+    --mk-ink-2: #98989f;
+    --mk-ink-3: #636366;
+    --mk-pill: #38383b;
+    --mk-pill-hover: #444448;
+    --mk-seg: #38383b;
+    --mk-seg-on: #5a5a5e;
+    --mk-seg-on-ink: #ffffff;
+    --mk-seg-shadow: none;
+    --mk-blue: #0a84ff;
+    --mk-blue-hover: #2b95ff;
+    --mk-black: #f2f2f7;
+    --mk-black-ink: #1f1f21;
+    --mk-track: #3a3a3d;
+    --mk-sel: #16304f;
+    --mk-hover: rgb(255 255 255 / 0.04);
+    --mk-field: #1f1f21;
+    --mk-field-line: #3a3a3d;
+    --mk-panel: #2c2c2f;
+    --mk-panel-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.1), 0 18px 50px rgb(0 0 0 / 0.55);
+    --mk-side: #232326;
+    --mk-side-line: #2f2f32;
+    --mk-side-hover: rgb(255 255 255 / 0.05);
+    --mk-avatar: #f2f2f7;
+    --mk-avatar-ink: #1f1f21;
+    --mk-c-blue: #0a84ff;
+    --mk-c-green: #30d158;
+    --mk-c-red: #ff453a;
+    --mk-c-orange: #ff9f0a;
+    --mk-c-purple: #bf5af2;
+    --mk-c-teal: #40c8e0;
+    --mk-c-pink: #e055c8;
+    --mk-c-indigo: #5e5ce6;
+    --mk-c-grey: #8e8e93;
+    --mk-c-gold: #d69a1e;
+    --mk-t-blue-bg: #0d2f55;
+    --mk-t-blue: #64b0ff;
+    --mk-t-green-bg: #123a20;
+    --mk-t-green: #5fdc7c;
+    --mk-t-red-bg: #45161a;
+    --mk-t-red: #ff6961;
+    --mk-t-orange-bg: #3d2c0c;
+    --mk-t-orange: #ffb340;
+    --mk-t-grey-bg: #38383b;
+    --mk-t-grey: #aeaeb2;
+    --mk-t-purple-bg: #36204a;
+    --mk-t-purple: #d48cf7;
+    --mk-p-green: #1f3526;
+    --mk-p-orange: #3b2a22;
+    --mk-p-blue: #1c2a40;
+    --mk-p-pink: #3a1f33;
+    --mk-p-purple: #2e2340;
+    --mk-p-yellow: #3a3020;
+    --mk-p-grey: #38383b;
+    --nav-cashflow: #2aa9b0;
+    --nav-review: #c03aab;
+    --nav-wallet: #5e5ce6;
+    --nav-networth: #a54fd6;
+    --nav-points: #b07c12;
+    --nav-goals: #e8284d;
+    --nav-events: #8f7352;
+    --nav-plan: #1f8080;
+    --nav-tools: #5a5a5e;
+    --nav-settings: #6e6e73;
+  }
+}
+
+/*
+ * A Mac page in the v1 look (`.mk`, set by Layout on the wide screen's own pages and on the sidebar): the kit's names
+ * read v1's values inside it, so every table, row, chip and figure the Mac pages already draw takes the new page at
+ * once — a white page, grey cards, faint hairlines, no zebra stripe, no grey table header. Nothing outside `.mk`
+ * (the phone, a sheet portalled to the body) changes.
+ */
+.mk {
+  --ph-ink: var(--mk-ink);
+  --ph-ink-3: var(--mk-ink-2);
+  --ph-hair: var(--mk-line);
+  --ph-surface: var(--mk-card);
+  --ph-fill: var(--mk-seg);
+  --ph-selected: var(--mk-seg-on);
+  --ov-ground: var(--mk-page);
+  --mac-head: transparent;
+  --mac-zebra: transparent;
+  color: var(--mk-ink);
+}
+
+/* Inside a floating panel the kit's surface is the panel's own white, not a card's grey. */
+.mk .mk-peek {
+  --ph-surface: var(--mk-panel);
 }

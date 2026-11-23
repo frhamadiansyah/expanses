@@ -10,7 +10,7 @@ import { DeskNotices } from '../../app/DeskNotices';
 import { useBalances } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
-import { DeskBox, DeskFace, DeskTitleBar, FigureRow, BOX_GRID, FIRST_BOX, GBTN, GearLink, PBTN, PEEK_ROOM } from '../accounts/desk-account-parts';
+import { DeskBox, DeskFace, DeskTitleBar, DeskPageTitle, FigureRow, BOX_GRID, FIRST_BOX, GBTN, GearLink, PBTN, PEEK_ROOM } from '../accounts/desk-account-parts';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { InstallmentList } from '../loans/InstallmentList';
 import { useInstallments } from '../loans/queries';
@@ -218,7 +218,7 @@ export function DesktopCard({ page }: { page: CardPage }) {
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="card-desk" data-desk="true" {...doubleClick}>
       <DeskTitleBar title={card.name} line={titleLine} barRef={(node) => (bar.current = node)}>
         {statementDay !== null && (
-          <div role="radiogroup" aria-label="Statement" className="flex rounded-[7px] bg-[var(--ph-fill)] p-[2px] text-[12px]">
+          <div role="radiogroup" aria-label="Statement" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
             {CHOICES.map((one) => (
               <button
                 key={one.value}
@@ -228,7 +228,7 @@ export function DesktopCard({ page }: { page: CardPage }) {
                 onClick={() => setChoice(one.value)}
                 className={cx(
                   'rounded-[5px] px-[10px] py-[3px] whitespace-nowrap',
-                  choice === one.value ? 'bg-[var(--ph-selected)] font-medium text-[var(--ph-ink)] shadow-[0_0.5px_1.5px_rgba(0,0,0,0.18)]' : 'text-[var(--ph-ink-2)]',
+                  choice === one.value ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
                 )}
               >
                 {one.label}
@@ -255,8 +255,9 @@ export function DesktopCard({ page }: { page: CardPage }) {
         </span>
       </DeskTitleBar>
       <DeskNotices />
+      <DeskPageTitle title={card.name} line={titleLine} />
 
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && PEEK_ROOM)}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={balances.error ?? last.error ?? statement.error ?? everything.error ?? txs.error} />
         <div className={BOX_GRID}>
           {/* The phone's card back is these two boxes: what is outstanding, and the bill. */}

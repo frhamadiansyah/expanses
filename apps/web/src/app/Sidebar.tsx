@@ -3,7 +3,7 @@ import { type AccountRow, pocketParentIds } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { ChevronDown, ChevronRight, ChevronsUpDown, Settings, Wrench } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 import { getLastBackupAt } from '../features/backup/backupState';
 import { useMonthlyBills } from '../features/bills/queries';
 import { dueNowMinor, laterByCard } from '../features/cards/limit-usage';
@@ -18,6 +18,8 @@ import { useHeldRates } from '../features/accounts/queries';
 import { readJointOrder, walletKeys } from '../features/wallet/wallet-joint';
 import { walletCredit, walletMoney } from '../features/wallet/wallet-model';
 import { useOpenBook } from '../features/workspaces/queries';
+import { useWalletCards } from '../features/wallet/useWalletCards';
+import { CARD_W, cardHeightFor, type WalletCard, WalletFace } from '../ui/native';
 import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
 import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
 import { useAccounts, useBalances, useIsBookShared } from '../lib/queries';
@@ -25,6 +27,7 @@ import { cx } from '../ui';
 import { useApp } from './context';
 import {
   ACCOUNT_ICONS,
+  NAV_COLOUR,
   activeTo,
   billsDueCount,
   compactMoney,
@@ -39,12 +42,14 @@ import {
   writeAccountsFolded,
 } from './sidebar-model';
 
-const ROW = 'flex h-[26px] items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--ph-ink)] hover:bg-[var(--ph-side-hover)]';
-const ROW_ON = 'bg-[var(--ph-side-on)] hover:bg-[var(--ph-side-on)]';
-const ICON = 'h-[15px] w-[15px] shrink-0 text-[var(--ph-dot)]';
-const HEADER = 'px-2 pt-3 pb-1 text-[11px] font-semibold text-[var(--ph-ink-3)]';
-const GREY = 'ml-auto shrink-0 whitespace-nowrap pl-2 text-[12px] text-[var(--ph-ink-3)] tabular-nums';
-const PILL = 'ml-auto shrink-0 whitespace-nowrap rounded-full bg-[var(--ph-alarm)] px-[6px] text-[10.5px] leading-4 font-semibold text-white tabular-nums';
+const ROW = 'flex h-[33px] items-center gap-[11px] rounded-[12px] px-[12px] text-[14px] text-[var(--mk-ink)] hover:bg-[var(--mk-side-hover)]';
+const ROW_ON = 'font-semibold text-white hover:bg-[var(--nav-on)]';
+const ICON = 'h-[18px] w-[18px] shrink-0 text-[var(--mk-ink-2)]';
+const HEADER = 'px-[12px] pt-[14px] pb-[5px] text-[11.5px] font-bold tracking-[0.06em] text-[var(--mk-ink-3)] uppercase';
+const GREY = 'ml-auto shrink-0 whitespace-nowrap pl-2 text-[12px] text-[var(--mk-ink-2)] tabular-nums';
+/** A count on the open page's coloured row: white on a paler white. */
+const ON_COUNT = 'bg-white/25 text-white';
+const PILL = 'ml-auto shrink-0 whitespace-nowrap rounded-full bg-[var(--mk-c-red)] px-[7px] text-[11.5px] leading-[18px] font-bold text-white tabular-nums';
 
 /**
  * The money accounts and cards of the open workspace, with Wallet's figure for each, in Wallet's order. The figures
@@ -83,29 +88,46 @@ export function useSidebarAccounts(withFigures: boolean): SidebarAccount[] {
   });
 }
 
-function Badge({ kind }: { kind: SidebarItem['badge'] }) {
+function Badge({ kind, on }: { kind: SidebarItem['badge']; on?: boolean }) {
   const review = usePendingDraftCount().data ?? 0;
   const late = useLateDebtCount();
   const bills = useMonthlyBills(isoDate()).data ?? [];
-  if (kind === 'review') return review > 0 ? <span className={PILL}>{review}</span> : null;
+  if (kind === 'review') return review > 0 ? <span className={cx(PILL, on && ON_COUNT)}>{review}</span> : null;
   if (kind === 'late') {
     const note = lateNote(late);
-    return note ? <span className={PILL}>{note}</span> : null;
+    return note ? <span className={cx(PILL, on && ON_COUNT)}>{note}</span> : null;
   }
   if (kind === 'bills') {
     const due = billsDueCount(bills, isoDate());
-    return due > 0 ? <span className={GREY}>{due}</span> : null;
+    return due > 0 ? <span className={cx(GREY, on && cx(ON_COUNT, 'rounded-full px-[7px] font-bold'))}>{due}</span> : null;
   }
   return null;
 }
 
-function NavRow({ to, params, label, icon, on, right, name }: { to: string; params?: Record<string, string>; label: string; icon: ReactNode; on: boolean; right?: ReactNode; name?: string }) {
+function NavRow({ to, params, label, icon, on, right, name, colour }: { to: string; params?: Record<string, string>; label: string; icon: ReactNode; on: boolean; right?: ReactNode; name?: string; colour?: string }) {
   return (
-    <Link to={to} params={params} className={cx(ROW, on && ROW_ON)} aria-current={on ? 'page' : undefined} aria-label={name}>
+    <Link
+      to={to}
+      params={params}
+      className={cx(ROW, 'sidebar-row', on && ROW_ON)}
+      style={on ? ({ background: colour ?? 'var(--nav-wallet)', '--nav-on': colour ?? 'var(--nav-wallet)' } as CSSProperties) : undefined}
+      aria-current={on ? 'page' : undefined}
+      aria-label={name}
+    >
       {icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {right}
     </Link>
+  );
+}
+
+/** A card's own face, a few pixels wide, in place of an icon (v1's account rows). */
+function MiniFace({ card }: { card: WalletCard }) {
+  const width = 22;
+  return (
+    <span aria-hidden className="relative -mx-[2px] block shrink-0 overflow-hidden rounded-[3.5px]" style={{ width, height: cardHeightFor(width) }}>
+      <WalletFace card={card} band={false} scale={width / CARD_W} figure={false} />
+    </span>
   );
 }
 
@@ -123,7 +145,7 @@ function Footer() {
   const status = footerStatus({ shared, running: live.running, failing: live.failing, lastSyncedAt: live.lastSyncedAt, lastBackupAt: lastBackup.data, now });
   const dot = status.tone === 'ok' ? 'var(--ph-up)' : status.tone === 'warn' ? 'var(--ph-warn)' : 'var(--ph-alarm)';
   return (
-    <p data-testid="sidebar-status" className="flex items-center gap-[6px] border-t border-[var(--ph-hair)] px-2 pt-2 pb-[2px] text-[11px] text-[var(--ph-ink-3)]">
+    <p data-testid="sidebar-status" className="flex items-center gap-[6px] border-t border-[var(--mk-side-line)] px-[12px] pt-[8px] pb-[2px] text-[11.5px] text-[var(--mk-ink-2)]">
       <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: dot }} />
       <span className="min-w-0 truncate">{status.text}</span>
     </p>
@@ -147,30 +169,36 @@ export function Sidebar() {
    */
   const [folded, setFolded] = useState(() => readAccountsFolded(globalThis.localStorage, import.meta.env.VITE_E2E === '1'));
   const accounts = useSidebarAccounts(!folded);
+  const faces = useWalletCards().cards;
   const destinations = [...SIDEBAR_GROUPS.flatMap((group) => group.items.map((item) => item.to)), ...accounts.map((account) => (account.to === '/cards/$cardId' ? `/cards/${account.id}` : `/accounts/${account.id}`))];
   const on = activeTo(pathname, destinations);
+  // The open row stays in sight: a card's page lights its row far down the Accounts list.
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    list.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [pathname, folded, accounts.length]);
   const fold = () => {
     setFolded(!folded);
     writeAccountsFolded(!folded);
   };
 
   return (
-    <aside className="ph-sidebar sticky top-0 hidden h-dvh w-[250px] shrink-0 flex-col border-r border-[var(--ph-hair)] bg-[var(--ph-side)] px-[10px] pb-[10px] md:flex">
-      <div className="min-h-0 flex-1 overflow-y-auto pt-[var(--ph-side-top)]">
+    <aside className="ph-sidebar mk sticky top-0 hidden h-dvh w-[240px] shrink-0 flex-col border-r border-[var(--mk-side-line)] bg-[var(--mk-side)] px-[12px] pb-[12px] md:flex">
+      <div ref={list} className="min-h-0 flex-1 overflow-y-auto pt-[var(--ph-side-top)]">
         <button
           type="button"
           aria-label="Workspace"
           onClick={() => setChoosing(true)}
-          className="mb-2 flex w-full items-center gap-2 rounded-[7px] px-2 py-[5px] text-left hover:bg-[var(--ph-side-hover)]"
+          className="mb-[6px] flex w-full items-center gap-[10px] rounded-[12px] px-[10px] py-[7px] text-left hover:bg-[var(--mk-side-hover)]"
         >
-          <WorkspaceDot book={openBook} size={22} />
+          <WorkspaceDot book={openBook} size={30} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] leading-4 font-semibold text-[var(--ph-ink)]">{openBook?.name ?? workspaceName}</span>
-            <span className="block truncate text-[11px] leading-[14px] text-[var(--ph-ink-3)]">
+            <span className="block truncate text-[14px] leading-[18px] font-bold text-[var(--mk-ink)]">{openBook?.name ?? workspaceName}</span>
+            <span className="block truncate text-[12px] leading-[16px] text-[var(--mk-ink-2)]">
               {openBook?.baseCurrency ?? ws.baseCurrency} · {shared ? 'shared' : 'on this device'}
             </span>
           </span>
-          <ChevronsUpDown size={13} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+          <ChevronsUpDown size={13} aria-hidden className="shrink-0 text-[var(--mk-ink-3)]" />
         </button>
         {choosing && <WorkspaceSheet onClose={() => setChoosing(false)} />}
 
@@ -179,19 +207,31 @@ export function Sidebar() {
             <div key={group.title ?? 'first'}>
               {group.title && <p className={HEADER}>{group.title}</p>}
               {group.items.map((item) => (
-                <NavRow key={item.to} to={item.to} label={item.label} icon={<item.icon className={ICON} strokeWidth={1.7} aria-hidden />} on={on === item.to} right={item.badge ? <Badge kind={item.badge} /> : undefined} />
+                <NavRow
+                  key={item.to}
+                  to={item.to}
+                  label={item.label}
+                  colour={NAV_COLOUR[item.to]}
+                  icon={<item.icon className={cx(ICON, on === item.to && 'text-white')} strokeWidth={1.8} aria-hidden />}
+                  on={on === item.to}
+                  right={item.badge ? <Badge kind={item.badge} on={on === item.to} /> : undefined}
+                />
               ))}
             </div>
           ))}
           {accounts.length > 0 && (
             <div>
-              <button type="button" onClick={fold} aria-expanded={!folded} aria-label={folded ? 'Show accounts' : 'Hide accounts'} className={cx(HEADER, 'flex w-full items-center justify-between')}>
-                Accounts
-                <ChevronDown size={12} aria-hidden className={cx('transition-transform', folded && '-rotate-90')} />
+              <button type="button" onClick={fold} aria-expanded={!folded} aria-label={folded ? 'Show accounts' : 'Hide accounts'} className={cx(HEADER, 'flex w-full items-center')}>
+                <span className="flex items-center gap-[3px]">
+                  Accounts
+                  <ChevronDown size={12} strokeWidth={2.4} aria-hidden className={cx('transition-transform', folded && '-rotate-90')} />
+                </span>
               </button>
               {!folded &&
                 accounts.map((account) => {
                   const Icon = ACCOUNT_ICONS[account.kind];
+                  const face = account.kind === 'card' ? faces.find((one) => one.key === account.id) : undefined;
+                  const lit = on === `${account.to === '/cards/$cardId' ? '/cards/' : '/accounts/'}${account.id}`;
                   const href = account.to === '/cards/$cardId' ? `/cards/${account.id}` : `/accounts/${account.id}`;
                   return (
                     <NavRow
@@ -199,9 +239,9 @@ export function Sidebar() {
                       to={account.to}
                       params={account.to === '/cards/$cardId' ? { cardId: account.id } : { accountId: account.id }}
                       label={account.name}
-                      icon={<Icon className={ICON} strokeWidth={1.7} aria-hidden />}
+                      icon={face ? <MiniFace card={face} /> : <Icon className={cx(ICON, lit && 'text-white')} strokeWidth={1.8} aria-hidden />}
                       on={on === href}
-                      right={account.minor === null ? undefined : <span className={GREY}>{compactMoney(account.minor, account.currency)}</span>}
+                      right={account.minor === null ? undefined : <span className={cx(GREY, lit && 'text-white/85')}>{compactMoney(account.minor, account.currency)}</span>}
                     />
                   );
                 })}
@@ -215,11 +255,19 @@ export function Sidebar() {
         <NavRow
           to={TOOLS_TO}
           label="Tools"
-          icon={<Wrench className="h-[15px] w-[15px] shrink-0 text-[var(--ph-ink-2)]" strokeWidth={1.7} aria-hidden />}
+          colour="var(--nav-tools)"
+          icon={<Wrench className={cx(ICON, on === TOOLS_TO && 'text-white')} strokeWidth={1.8} aria-hidden />}
           on={on === TOOLS_TO}
-          right={<ChevronRight size={13} aria-hidden className="ml-auto shrink-0 text-[var(--ph-ink-3)]" />}
+          right={<ChevronRight size={13} aria-hidden className={cx('ml-auto shrink-0', on === TOOLS_TO ? 'text-white/80' : 'text-[var(--mk-ink-3)]')} />}
         />
-        <NavRow to={SETTINGS_TO} label="Settings" name="App settings" icon={<Settings className="h-[15px] w-[15px] shrink-0 text-[var(--ph-ink-2)]" strokeWidth={1.7} aria-hidden />} on={on === SETTINGS_TO} />
+        <NavRow
+          to={SETTINGS_TO}
+          label="Settings"
+          name="App settings"
+          colour="var(--nav-settings)"
+          icon={<Settings className={cx(ICON, on === SETTINGS_TO && 'text-white')} strokeWidth={1.8} aria-hidden />}
+          on={on === SETTINGS_TO}
+        />
         <div className="mt-1">
           <Footer />
         </div>

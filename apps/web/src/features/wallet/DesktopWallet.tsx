@@ -37,6 +37,7 @@ import {
 } from './wallet-desk-model';
 import { isJointKey, type JointCard, writeJointOrder } from './wallet-joint';
 import { type PeekSubject, WalletPeek } from './WalletPeek';
+import { DeskBar, DeskTitle, PILL, PILL_BLUE } from '../../ui/desk';
 
 /** How many days the Balance's line is drawn over: the phone's. */
 const SPARK_DAYS = 30;
@@ -44,11 +45,9 @@ const SPARK_DAYS = 30;
 const FACE_MIN = 176;
 const GAP = 16;
 
-const GBTN =
-  'inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-[var(--ph-chevron)] bg-[var(--ph-surface)] px-[10px] text-[12.5px] whitespace-nowrap text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
-const PBTN =
-  'inline-flex h-[26px] items-center gap-[3px] rounded-[6px] bg-[var(--ph-ink)] px-[11px] text-[12.5px] font-medium whitespace-nowrap text-[var(--ph-surface)]';
-const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[10px] pb-[6px] text-[13px] font-semibold text-[var(--ph-ink)]';
+const GBTN = PILL;
+const PBTN = PILL_BLUE;
+const H2 = 'flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]';
 const GROUP_HEAD = 'flex items-baseline justify-between gap-3 text-[11px] font-semibold text-[var(--ph-ink-3)]';
 /** A group's name is in capitals; its total keeps the currency's own letters ("Rp", not "RP"). */
 const GROUP_TITLE = 'tracking-[0.04em] uppercase';
@@ -373,13 +372,8 @@ export function DesktopWallet() {
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="wallet-page" data-desk="true" {...doubleClick}>
-      <header
-        ref={bar}
-        className="desk-titlebar sticky top-0 z-10 flex h-[52px] items-center gap-[10px] border-b border-[var(--ph-hair)] bg-[var(--ph-surface)] pr-[14px] pl-[18px]"
-      >
-        <h1 className="text-[15px] font-semibold text-[var(--ph-ink)]">Wallet</h1>
-        <span className="flex-1" />
-        <div role="radiogroup" aria-label="Wallet view" className="flex rounded-[7px] bg-[var(--ph-fill)] p-[2px] text-[12px]">
+      <DeskBar crumb="Wallet" barRef={bar}>
+        <div role="radiogroup" aria-label="Wallet view" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
           {(['cards', 'list'] as const).map((value) => (
             <button
               key={value}
@@ -388,8 +382,8 @@ export function DesktopWallet() {
               aria-checked={view === value}
               onClick={() => setView(value)}
               className={cx(
-                'rounded-[5px] px-[11px] py-[3px] whitespace-nowrap',
-                view === value ? 'bg-[var(--ph-selected)] font-medium text-[var(--ph-ink)] shadow-[0_0.5px_1.5px_rgba(0,0,0,0.18)]' : 'text-[var(--ph-ink-2)]',
+                'rounded-full px-[13px] py-[4px] font-semibold whitespace-nowrap',
+                view === value ? 'bg-[var(--mk-seg-on)] text-[var(--mk-seg-on-ink)] shadow-[var(--mk-seg-shadow)]' : 'text-[var(--mk-ink-2)] hover:text-[var(--mk-ink)]',
               )}
             >
               {value === 'cards' ? 'Cards' : 'List'}
@@ -405,12 +399,13 @@ export function DesktopWallet() {
         <Link to="/accounts/add" className={PBTN}>
           <span aria-hidden>＋</span>Add account
         </Link>
-      </header>
+      </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
+      <DeskTitle title="Wallet" />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
-      <div className={cx('@container space-y-[14px] px-[20px] py-[16px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
         <ErrorBox error={orderError ?? accounts.error} />
         {onHand.ready && box.accounts > 0 && (
           <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[720px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
