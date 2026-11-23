@@ -1,4 +1,6 @@
 import { addMonths, monthYear } from '@expanses/core';
+import type { MonthlyBill } from '@expanses/db';
+import { isDueSoon } from '../bills/bill-view';
 
 /*
  * The wide screen's Overview, option A of the Mac Overview mockup (2026-11-17). Every figure here is one the app already
@@ -177,4 +179,71 @@ export function nextFortnight<T extends { key: string; dueOn: string; status: 'p
     .filter((item) => (seen.has(item.key) ? false : (seen.add(item.key), true)))
     .sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.title.localeCompare(b.title))
     .map((item) => ({ key: item.key, dueOn: item.dueOn, title: item.title, minor: item.minor, currency: item.currency, incoming: false }));
+}
+
+/*
+ * Overview v1 (owner approved 2026-11-23, docs/mockups/2026-11-21-mac-redesign-sidebar.html): the greeting, the four
+ * tiles' badges and the bills' four lines. Each figure is one another page already works out; these only say it.
+ */
+
+/** "Good morning" before noon, "Good afternoon" until six, "Good evening" after. */
+export function greeting(hour: number): string {
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/**
+ * What is left of what came in, in whole per cent: Cashflow's Left over its Received. Null with nothing received (or a
+ * figure not read yet), so the tile draws no badge rather than a share of nothing. Below nought when more went out.
+ */
+export function leftShare(leftMinor: number | null, receivedMinor: number | null): number | null {
+  if (leftMinor === null || receivedMinor === null || receivedMinor <= 0) return null;
+  return Math.round((leftMinor / receivedMinor) * 100);
+}
+
+/**
+ * How net worth moved since the end of last month, in per cent to one decimal: today's figure against last month-end's,
+ * measured on last month-end's size (a debt-heavy month-end below nought still reads up as up). Null when either is
+ * unknown or last month-end was nought — a change from nothing has no percentage.
+ */
+export function netWorthChange(nowMinor: number | null, monthEndMinor: number | null): number | null {
+  if (nowMinor === null || monthEndMinor === null || monthEndMinor === 0) return null;
+  return Math.round(((nowMinor - monthEndMinor) / Math.abs(monthEndMinor)) * 1000) / 10;
+}
+
+/** "+2,1%", "−0,4%", "0%": the change written as the badge shows it. */
+export function changeText(percent: number): string {
+  const sign = percent > 0 ? '+' : percent < 0 ? '−' : '';
+  return `${sign}${Math.abs(percent).toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`;
+}
+
+export interface BillLine {
+  key: 'paid' | 'week' | 'later' | 'late';
+  label: string;
+  count: number;
+  /** 0..1 of the month's bills counted here, for the thin bar. */
+  share: number;
+}
+
+/**
+ * The month's bills in four lines, each bill in exactly one: Late (overdue), Due this week (due soon by Bills' own rule,
+ * `isDueSoon`, and not late), Later this month (still to pay otherwise) and Paid. A skipped or paused bill is in none,
+ * and the shares are of the four lines together.
+ */
+export function billLines(bills: readonly Pick<MonthlyBill, 'state' | 'window'>[], today: string): BillLine[] {
+  let paid = 0;
+  let week = 0;
+  let later = 0;
+  let late = 0;
+  for (const bill of bills) {
+    if (bill.state === 'paid') paid += 1;
+    else if (bill.state === 'overdue') late += 1;
+    else if (bill.state === 'skipped' || bill.state === 'paused') continue;
+    else if (isDueSoon(bill, today)) week += 1;
+    else later += 1;
+  }
+  const total = paid + week + later + late;
+  const line = (key: BillLine['key'], label: string, count: number): BillLine => ({ key, label, count, share: total > 0 ? count / total : 0 });
+  return [line('paid', 'Paid', paid), line('week', 'Due this week', week), line('later', 'Later this month', later), line('late', 'Late', late)];
 }

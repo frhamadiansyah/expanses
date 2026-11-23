@@ -3,7 +3,7 @@ import { categoryTree, formatMinor, isUncategorisedKey, monthName, parseLooseDat
 import { type AccountRow, categoryTotalsIn, type DraftRow, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Repeat, Search, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChartColumn, ChevronLeft, ChevronRight, Equal, FileText, Inbox, PieChart, Plus, Repeat, Search, X } from 'lucide-react';
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
@@ -11,8 +11,8 @@ import { cx } from '../../ui';
 import { CategoryIcon, useCategoryMarkColour } from '../categories/CategoryIcon';
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
-import { BOX, DailyBox, MonthBox, NOTE, RingBox } from './CashflowBoxes';
-import { clickAction, deskAmount, discardedLine, monthFigures, orderNote, pageShortcut, peekKey, recordable, recordedToast, recordTickedLabel, ringLegend, type Selection, type SelectionAction, skippedLine, tickClick, waitingOrder, waitingSpan } from './cashflow-desk-model';
+import { BOX, DailyBox, MonthBox, RingBox } from './CashflowBoxes';
+import { cashflowLine, clickAction, deskAmount, discardedLine, monthFigures, orderNote, recordedCount, pageShortcut, peekKey, recordable, recordedToast, recordTickedLabel, ringLegend, type Selection, type SelectionAction, skippedLine, tickClick, waitingOrder, waitingSpan } from './cashflow-desk-model';
 import { type BulkActions, type RecordMany, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
@@ -29,7 +29,8 @@ import { ReceiptPeek } from './ReceiptPeek';
 import { useSpendingTrend } from './SpendingTrend';
 import { NOT_MONTHLY_LABEL, notMonthlyWord } from './not-monthly';
 import { EditableRow, type TableHandlers, TypingRow } from './TransactionsTable';
-import { DeskBar, DeskTitle, PILL, PILL_BLACK, PILL_BLUE } from '../../ui/desk';
+import { CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, PILL, PILL_BLACK, PILL_BLUE, PILL_ROUND, StatTile, Tag, TileRow, tileMoney } from '../../ui/desk';
+import { macV2 } from '../../ui/mac-detail';
 
 type Filters = Omit<ListFilters, 'month'>;
 
@@ -63,6 +64,25 @@ function useRing(kind: 'expense' | 'income', month: string, paidAccountId: strin
   const setsMinor = sets.reduce((sum, set) => sum + categoryTree(ofKind.filter((a) => membership[a.id] === set.id), amounts).reduce((s, node) => s + node.totalMinor, 0), 0);
   const totalMinor = tree.reduce((sum, node) => sum + node.totalMinor, 0) + setsMinor;
   return { tree, setsMinor, totalMinor, currency: totals.data?.currency ?? ws.baseCurrency, ready: totals.isSuccess, eventsInCaps };
+}
+
+/**
+ * What Cashflow's tiles add up (and Overview's, which shows the same month): the period's spending and income read
+ * exactly as the ring reads them — not-monthly bills left out under a year while Not monthly is Hidden — and what is left.
+ */
+export function useCashflowTotals(month: string, paidAccountId: string | undefined, leaveOutNotMonthly: boolean, toReview: number) {
+  const spent = useRing('expense', month, paidAccountId, leaveOutNotMonthly);
+  const received = useRing('income', month, paidAccountId, leaveOutNotMonthly);
+  return { figures: monthFigures(spent.ready ? spent.totalMinor : null, received.ready ? received.totalMinor : null, toReview), currency: spent.currency };
+}
+
+/*
+ * Overview's Paste rows (owner, 2026-11-23): Cashflow opens with its typing row's Note cell taking the typing, ready for
+ * ⌘V. Asked for once, by whoever opens the page next; the flag is the page's own, so no address carries it.
+ */
+let pasteNext = false;
+export function openCashflowForPaste() {
+  pasteNext = true;
 }
 
 const SEGMENTS: { value: Filters['type']; label: string }[] = [
@@ -169,12 +189,14 @@ function FilterMenu({
   const check = 'flex items-center gap-2 rounded-[6px] px-2 py-[4px] text-[12.5px] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
   return (
     <div ref={box} className="relative">
-      <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)} className={cx(GBTN, on > 0 && 'border-[var(--ph-ink)]')}>
-        Filter{on > 0 ? ` · ${on}` : ''}
-        <ChevronDown size={13} aria-hidden className="text-[var(--ph-ink-3)]" />
+      {/* v1's Filter pill: a blue dot while anything is on; how many is said (and read by the journeys), not drawn. */}
+      <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)} className={GBTN}>
+        Filter
+        {on > 0 && <span className="sr-only"> · {on}</span>}
+        {on > 0 && <i aria-hidden data-testid="filter-dot" className="block h-[7px] w-[7px] rounded-full bg-[var(--mk-blue)]" />}
       </button>
       {open && (
-        <div role="dialog" aria-label="Filter" className="absolute right-0 z-30 mt-1 w-[300px] rounded-[10px] border border-[var(--ph-hair)] bg-[var(--ph-surface)] p-1 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+        <div role="dialog" aria-label="Filter" className="mk-peek absolute right-0 z-30 mt-[6px] w-[300px] rounded-[12px] bg-[var(--mk-panel)] p-1 shadow-[var(--mk-panel-shadow)]">
           <input
             autoFocus
             value={query}
@@ -353,17 +375,34 @@ export function DesktopCashflow({
   const colourFor = useCategoryMarkColour();
   // Under a year the ring, Spent / Received / Left and the day bars leave not-monthly bills out, as the phone's do.
   const ring = useRing(kind, month, paidAccountId, notMonthly.out);
-  const spent = useRing('expense', month, paidAccountId, notMonthly.out);
-  const received = useRing('income', month, paidAccountId, notMonthly.out);
+  const totals = useCashflowTotals(month, paidAccountId, notMonthly.out, pendingCount);
   const trend = useSpendingTrend(month, kind, !ring.eventsInCaps, notMonthly.out);
   const legend = ringLegend(ring.tree, colourFor, ring.setsMinor);
-  const figures = monthFigures(spent.ready ? spent.totalMinor : null, received.ready ? received.totalMinor : null, pendingCount);
+  const figures = totals.figures;
   const monthStart = useMonthStart();
   const period = parsePeriod(month, monthStart);
   const [picking, setPicking] = useState(false);
   const first = useQuery({ queryKey: ['first-transaction', ws.workspaceId], queryFn: () => firstTransactionDate(database, ws), enabled: picking });
   const [filtering, setFiltering] = useState(false);
   const search = useRef<HTMLInputElement>(null);
+  // v1's round search button opens the field in place; it stays open while it holds words.
+  const [searching, setSearching] = useState(false);
+  const searchOpen = searching || filters.q !== '';
+  // Opened from Overview's Paste rows: the typing row's Note cell takes the typing, and the table's note says ⌘V.
+  const [pasteReady, setPasteReady] = useState(false);
+  useEffect(() => {
+    if (!pasteNext) return;
+    pasteNext = false;
+    if (readOnly) return;
+    window.setTimeout(() => {
+      const note = document.querySelector<HTMLInputElement>('[data-testid="typing-row"] input[aria-label="Row description"]');
+      if (!note) return;
+      note.scrollIntoView({ block: 'center' });
+      note.focus();
+      setPasteReady(true);
+      note.addEventListener('blur', () => setPasteReady(false), { once: true });
+    }, 0);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // The peek hangs from the title bar's foot, wherever a notice above the page has pushed it, and follows a scroll.
   const bar = useRef<HTMLElement>(null);
   const [peekTop, setPeekTop] = useState(52);
@@ -438,6 +477,8 @@ export function DesktopCashflow({
     }
     if (shortcut === 'search') {
       event.preventDefault();
+      // Closed, the field opens and takes the focus as it mounts; open, its words are selected.
+      if (!search.current) setSearching(true);
       search.current?.focus();
       search.current?.select();
       return;
@@ -637,15 +678,15 @@ export function DesktopCashflow({
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="desktop-cashflow" {...doubleClick}>
-      <DeskBar crumb="Cashflow" barRef={bar}>{chips.map((chip) => (
-          <span key={chip.key} className="inline-flex h-[22px] max-w-[220px] items-center gap-1 rounded-full bg-[var(--ph-fill)] pr-[2px] pl-[9px] text-[12px] text-[var(--ph-ink)]">
+      <DeskBar crumb="Cashflow" barRef={bar}>
+        {chips.map((chip) => (
+          <span key={chip.key} className="inline-flex h-[28px] max-w-[220px] items-center gap-1 rounded-full bg-[var(--mk-pill)] pr-[3px] pl-[11px] text-[12.5px] font-semibold text-[var(--mk-ink)]">
             <span className="min-w-0 truncate">{chip.label}</span>
-            <button type="button" aria-label={chip.clearLabel} onClick={chip.onClear} className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[var(--ph-ink-3)] hover:bg-[var(--ph-hair)]">
-              <X size={11} aria-hidden />
+            <button type="button" aria-label={chip.clearLabel} onClick={chip.onClear} className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill-hover)]">
+              <X size={12} aria-hidden />
             </button>
           </span>
         ))}
-        <span className="flex-1" />
         <div role="group" aria-label="Show" className="flex shrink-0 rounded-full bg-[var(--mk-seg)] p-[3px] text-[13px]">
           {SEGMENTS.map((segment) => (
             <button
@@ -662,6 +703,18 @@ export function DesktopCashflow({
             </button>
           ))}
         </div>
+        {/* The month pill (v1): ‹ the period › — the period's name opens today's period picker. */}
+        <div className="flex h-[34px] shrink-0 items-center rounded-full bg-[var(--mk-pill)] px-[4px] text-[13.5px] font-semibold text-[var(--mk-ink)]">
+          <button type="button" aria-label="Earlier period" disabled={!stepPeriod(month, -1)} onClick={() => onMonth(stepPeriod(month, -1)!)} className="flex h-[26px] w-[24px] items-center justify-center rounded-full hover:bg-[var(--mk-pill-hover)] disabled:opacity-30">
+            <ChevronLeft size={15} strokeWidth={2.4} aria-hidden />
+          </button>
+          <button type="button" data-testid="chart-month" aria-label={`${periodLabel(month)}, choose a period`} onClick={() => setPicking(true)} className="h-[26px] rounded-full px-[4px] whitespace-nowrap tabular-nums hover:bg-[var(--mk-pill-hover)]">
+            {periodLabel(month)}
+          </button>
+          <button type="button" aria-label="Later period" disabled={!stepPeriod(month, 1)} onClick={() => onMonth(stepPeriod(month, 1)!)} className="flex h-[26px] w-[24px] items-center justify-center rounded-full hover:bg-[var(--mk-pill-hover)] disabled:opacity-30">
+            <ChevronRight size={15} strokeWidth={2.4} aria-hidden />
+          </button>
+        </div>
         <FilterMenu
           filters={filters}
           setFilter={setFilter}
@@ -675,118 +728,148 @@ export function DesktopCashflow({
           open={filtering}
           setOpen={setFiltering}
         />
-        <div className="flex items-center gap-[2px] text-[13px] text-[var(--ph-ink)]">
-          <button type="button" aria-label="Earlier period" disabled={!stepPeriod(month, -1)} onClick={() => onMonth(stepPeriod(month, -1)!)} className="flex h-[24px] w-[22px] items-center justify-center rounded text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)] disabled:opacity-30">
-            <ChevronLeft size={15} aria-hidden />
+        {/* Search (v1): a round button that opens the field in place; ⌘F opens it too. Left empty, it closes again. */}
+        {searchOpen ? (
+          <label className="relative flex h-[34px] w-[200px] shrink-0 items-center rounded-full bg-[var(--mk-pill)] text-[13px]">
+            <Search size={14} aria-hidden className="pointer-events-none absolute left-[12px] text-[var(--mk-ink-2)]" />
+            <input
+              ref={search}
+              autoFocus={searching && filters.q === ''}
+              type="search"
+              value={filters.q}
+              onChange={(event) => setFilter('q', event.target.value)}
+              onBlur={() => setSearching(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  if (filters.q) setFilter('q', '');
+                  else event.currentTarget.blur();
+                }
+              }}
+              placeholder="Search"
+              aria-label="Search transactions"
+              title="Description, category, card digits or amount (⌘F)"
+              autoComplete="off"
+              className="h-full w-full rounded-full bg-transparent pr-3 pl-[32px] text-[13px] text-[var(--mk-ink)] placeholder:text-[var(--mk-ink-2)] focus:outline-2 focus:outline-[var(--mk-blue)]"
+            />
+          </label>
+        ) : (
+          <button type="button" aria-label="Search" title="Search (⌘F)" data-testid="search-open" onClick={() => setSearching(true)} className={PILL_ROUND}>
+            <Search size={16} strokeWidth={2.2} aria-hidden />
           </button>
-          <button type="button" data-testid="chart-month" aria-label={`${periodLabel(month)}, choose a period`} onClick={() => setPicking(true)} className="rounded px-1 whitespace-nowrap tabular-nums hover:bg-[var(--ph-fill)]">
-            {periodLabel(month)}
-          </button>
-          <button type="button" aria-label="Later period" disabled={!stepPeriod(month, 1)} onClick={() => onMonth(stepPeriod(month, 1)!)} className="flex h-[24px] w-[22px] items-center justify-center rounded text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)] disabled:opacity-30">
-            <ChevronRight size={15} aria-hidden />
-          </button>
-        </div>
-        <label className="relative flex h-[26px] w-[150px] shrink-0 items-center rounded-[7px] bg-[var(--ph-fill)] text-[12px]">
-          <Search size={13} aria-hidden className="pointer-events-none absolute left-[8px] text-[var(--ph-ink-3)]" />
-          <input
-            ref={search}
-            type="search"
-            value={filters.q}
-            onChange={(event) => setFilter('q', event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && filters.q) {
-                event.preventDefault();
-                setFilter('q', '');
-              }
-            }}
-            placeholder="Search"
-            aria-label="Search transactions"
-            title="Description, category, card digits or amount (⌘F)"
-            autoComplete="off"
-            className="h-full w-full rounded-[7px] bg-transparent pr-2 pl-[26px] text-[12px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-2 focus:outline-[var(--mac-accent)]"
-          />
-        </label>
+        )}
         {!readOnly && (
-          <button type="button" disabled={scan.busy} onClick={() => scan.scan()} className={cx(GBTN, 'disabled:opacity-50')}>
+          <button type="button" disabled={scan.busy} onClick={() => scan.scan()} className={GBTN}>
             {scan.busy ? 'Reading the receipt…' : 'Scan receipt'}
           </button>
         )}
         {!readOnly && (
-          <button
-            type="button"
-            aria-label="Add transaction"
-            title="New transaction (⌘N)"
-            onClick={onAdd}
-            className={PILL_BLUE}
-          >
-            <Plus size={13} aria-hidden /> Add
+          <button type="button" aria-label="Add transaction" title="New transaction (⌘N)" onClick={onAdd} className={PILL_BLUE}>
+            <Plus size={14} strokeWidth={2.6} aria-hidden /> Add
           </button>
         )}
       </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
-      <DeskTitle title="Cashflow" />
+      <DeskTitle title="Cashflow" line={cashflowLine(periodLabel(month), recordedCount(rows), tickable.length)} />
       {picking && <PeriodPicker value={month} years={yearsSince(first.data ?? null)} onPick={onMonth} onClose={() => setPicking(false)} />}
 
       {/*
-       * While the peek is open the whole page makes room for it, boxes and table alike, so it covers no figure; the boxes
-       * go by the room they have (a container query, not the window's width), so they wrap rather than squeeze. Two
-       * across, the ring's box takes the whole row and the bars and This month share the next. Three across from 960:
-       * a 1280 window's page (990, or a little less beside a scroll bar) keeps the row it always had.
+       * While the peek is open the whole page makes room for it, tiles and table alike, so it covers no figure. The tiles
+       * and (v2) the boxes go by the room they have (a container query, not the window's width), so they wrap rather
+       * than squeeze.
        */}
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
-        {notices}
-        <div className="grid grid-cols-1 items-stretch gap-[14px] @min-[478px]:grid-cols-2 @min-[478px]:[&>:first-child]:col-span-2 @min-[960px]:grid-cols-[1.25fr_1fr_0.85fr] @min-[960px]:[&>:first-child]:col-span-1">
-          <RingBox
-            kind={kind}
-            items={legend.items}
-            totalMinor={ring.totalMinor}
-            currency={ring.currency}
-            picked={filters.cat}
-            onPick={(id) => setFilter('cat', filters.cat === id ? '' : id)}
-            icon={icon}
-            ready={ring.ready}
-            period={periodLabel(month)}
-            footnote={kind === 'expense' ? notMonthly.note : null}
+      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+        {notices && <div className="mb-[16px] space-y-[8px] empty:hidden">{notices}</div>}
+        {/* v1's four tiles: the period's Spent, Received and Left, read as the ring reads them, and Review's queue. */}
+        <TileRow testId="cashflow-tiles">
+          <StatTile icon={ArrowUpRight} colour="red" value={figures.spentMinor === null ? '–' : tileMoney(figures.spentMinor, totals.currency)} label="Spent" testId="tile-spent" />
+          <StatTile icon={ArrowDownLeft} colour="green" value={figures.receivedMinor === null ? '–' : tileMoney(figures.receivedMinor, totals.currency)} label="Received" testId="tile-received" />
+          <StatTile icon={Equal} colour="blue" value={figures.leftMinor === null ? '–' : tileMoney(figures.leftMinor, totals.currency)} label="Left" testId="tile-left" />
+          <StatTile
+            icon={Inbox}
+            colour="orange"
+            value={figures.toReview}
+            // v2 keeps the This month box, whose To review row is the journeys' `month-review`; v1 has only this tile.
+            valueTestId={macV2 ? undefined : 'month-review'}
+            label="To review"
+            badge={tickable.length > 0 ? <Tag tone="orange">{tickable.length} not recorded</Tag> : undefined}
+            to="/review"
+            search={{ from: 'cashflow' }}
+            testId="tile-review"
           />
-          <DailyBox kind={kind} bars={trend?.bars ?? null} unit={trend?.unit ?? 'day'} currency={trend?.currency ?? ring.currency} today={today} note={periodNote} />
-          <MonthBox
-            title={month === thisMonth ? 'This month' : periodLabel(month)}
-            figures={figures}
-            currency={spent.currency}
-            review={(count) =>
-              count > 0 ? (
-                <Link to="/review" search={{ from: 'cashflow' }} className="text-[var(--mac-accent)] hover:underline">
-                  {count}
-                </Link>
-              ) : (
-                count
-              )
-            }
-          />
-        </div>
+        </TileRow>
+        {/* What the ring adds up to, read aloud and by the journeys; v2's ring box says it itself. */}
+        {!macV2 && (
+          <div data-testid="period-total" className="sr-only">
+            {formatMinor(ring.totalMinor, ring.currency)}
+          </div>
+        )}
+
+        {/* v2: the ring (a category's slice filters the table), the bars of each day and This month's four lines. */}
+        {macV2 && (
+          <div className="mb-[16px] grid grid-cols-1 items-stretch gap-[16px] @min-[478px]:grid-cols-2 @min-[478px]:[&>:first-child]:col-span-2 @min-[960px]:grid-cols-[1.25fr_1fr_0.85fr] @min-[960px]:[&>:first-child]:col-span-1">
+            <RingBox
+              kind={kind}
+              items={legend.items}
+              totalMinor={ring.totalMinor}
+              currency={ring.currency}
+              picked={filters.cat}
+              onPick={(id) => setFilter('cat', filters.cat === id ? '' : id)}
+              icon={icon}
+              ready={ring.ready}
+              period={periodLabel(month)}
+              footnote={kind === 'expense' ? notMonthly.note : null}
+              headIcon={PieChart}
+            />
+            <DailyBox icon={ChartColumn} kind={kind} bars={trend?.bars ?? null} unit={trend?.unit ?? 'day'} currency={trend?.currency ?? ring.currency} today={today} note={periodNote} />
+            <MonthBox
+              title={month === thisMonth ? 'This month' : periodLabel(month)}
+              icon={FileText}
+              figures={figures}
+              currency={totals.currency}
+              review={(count) =>
+                count > 0 ? (
+                  <Link to="/review" search={{ from: 'cashflow' }} className="text-[var(--mk-blue)] hover:underline">
+                    {count}
+                  </Link>
+                ) : (
+                  count
+                )
+              }
+            />
+          </div>
+        )}
+        {/* v1 has no ring: the not-monthly bills it leaves out are said under the tiles instead. */}
+        {!macV2 && kind === 'expense' && notMonthly.note && (
+          <p data-testid="not-monthly-note" className="-mt-[6px] mb-[10px] px-[4px] text-right text-[12px] text-[var(--mk-ink-2)]">
+            {notMonthly.note}
+          </p>
+        )}
 
         {/*
          * While the peek is open (the page making room for it) the table's columns narrow (`DESK_COLUMNS.peek`): Note and
          * Category keep the room, and no column — the amount least of all — is under the peek.
-         * Contained inline, so the table's own minimum width scrolls inside the box rather than widening the page.
+         * Contained inline, so the table's own minimum width scrolls inside the card rather than widening the page.
+         * v1's rows: 40px, a hairline under each, no zebra; the rows typed in keep their cells, drawn to the same height.
          */}
         <section
           className={cx(BOX, 'overflow-hidden [contain:inline-size]')}
           style={{ '--desk-cols': peeking ? DESK_COLUMNS.peek : DESK_COLUMNS.wide } as CSSProperties}
           aria-label="Transactions"
         >
-          <h2 className="flex items-baseline justify-between gap-[10px] px-[14px] pt-[14px] pb-[8px] text-[15px] font-bold text-[var(--mk-ink-2)]">
-            Transactions
-            <span className="flex items-baseline gap-[10px]">
+          <h2 className={cx(CARD_HEAD, 'min-h-[54px] pb-[8px]')}>
+            <ArrowLeftRight size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
+            <span className="shrink-0">Transactions</span>
+            <span className="ml-auto flex min-w-0 items-center gap-[12px]">
               {/* Notion links of the waiting rows not known yet: a count, no colour (option E). */}
               {unknown > 0 && !cells.hint && (
-                <span className={NOTE} data-testid="links-to-pick">
+                <span className={cx(CARD_NOTE, 'ml-0 font-normal')} data-testid="links-to-pick">
                   {unknownLinksLine(unknown)}
                 </span>
               )}
-              <span className={NOTE} data-testid="table-note">
-                {cells.hint ?? limitNote ?? orderNote(sort)}
+              <span className={cx(CARD_NOTE, 'ml-0 font-normal')} data-testid="table-note">
+                {pasteReady ? 'Ready for a paste: ⌘V' : (cells.hint ?? limitNote ?? orderNote(sort))}
               </span>
               {/* Record N (waiting rows option A, owner 2026-11-21): the rows ticked, one toast for them all; grey at none. */}
               {tickable.length > 0 && !readOnly && (
@@ -796,7 +879,7 @@ export function DesktopCashflow({
                   disabled={recordingMany || ticked.length === 0}
                   title={ticked.length > 0 ? 'Record the rows ticked' : allWaiting.ready.length > 0 ? 'Tick a row to record it' : 'Each waiting row still needs a date, amount or payment method'}
                   onClick={() => void recordMany({ ready: ticked, skipped: 0 })}
-                  className={cx(PILL_BLACK, 'self-center disabled:pointer-events-auto')}
+                  className={cx(PILL_BLACK, 'disabled:pointer-events-auto')}
                 >
                   {recordTickedLabel(ticked.length)}
                 </button>
@@ -804,28 +887,36 @@ export function DesktopCashflow({
             </span>
           </h2>
           {cells.line}
-          <div className="overflow-x-auto border-t border-[var(--ph-hair)]">
-            <div className={cx('text-[13px]', peeking ? 'min-w-[560px]' : 'min-w-[700px]')}>
-              <div className={cx(DESK_GRID, 'sticky top-0 border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-0.5 text-[11px] font-semibold text-[var(--ph-ink-3)]')}>
+          <div className="overflow-x-auto px-[10px] pb-[6px]">
+            <div
+              className={cx(
+                'text-[13.5px]',
+                peeking ? 'min-w-[560px]' : 'min-w-[700px]',
+                // The rows typed in (waiting, and the typing row) stand as tall as a recorded row, a hairline under each.
+                '[&_[data-testid=not-recorded-row]]:border-b [&_[data-testid=not-recorded-row]]:border-[var(--mk-line)] [&_[data-testid=not-recorded-row]]:py-[5px]',
+                '[&_[data-testid=typing-row]]:border-t-0 [&_[data-testid=typing-row]_[data-quick-row]]:py-[4px]',
+              )}
+            >
+              <div className={cx(DESK_GRID, 'border-b border-[var(--mk-line)] px-0.5 text-[12.5px] font-semibold text-[var(--mk-ink-2)]')}>
                 <span />
-                <button type="button" aria-sort={ariaSort('date')} onClick={() => sortBy('date')} className="px-2 py-[7px] text-left hover:text-[var(--ph-ink)]">
+                <button type="button" aria-sort={ariaSort('date')} onClick={() => sortBy('date')} className="truncate px-2 py-[9px] text-left whitespace-nowrap hover:text-[var(--mk-ink)]">
                   Date{sortMark('date')}
                 </button>
-                <span className="px-2 py-[7px]">Note</span>
-                <span className="px-2 py-[7px]">Category</span>
-                <span className="px-2 py-[7px]">Payment method</span>
-                <button type="button" aria-sort={ariaSort('amount')} onClick={() => sortBy('amount')} className="px-2 py-[7px] text-right hover:text-[var(--ph-ink)]">
+                <span className="truncate px-2 py-[9px] whitespace-nowrap">Note</span>
+                <span className="truncate px-2 py-[9px] whitespace-nowrap">Category</span>
+                <span className="truncate px-2 py-[9px] whitespace-nowrap">Payment method</span>
+                <button type="button" aria-sort={ariaSort('amount')} onClick={() => sortBy('amount')} className="truncate px-2 py-[9px] text-right whitespace-nowrap hover:text-[var(--mk-ink)]">
                   Amount{sortMark('amount')}
                 </button>
                 <span />
               </div>
               {rows.length === 0 && (
-                <div className="px-3 py-6 text-center text-[13px] text-[var(--ph-ink-3)]">
+                <div className="border-b border-[var(--mk-line)] px-3 py-6 text-center text-[13px] text-[var(--mk-ink-2)]">
                   {emptyText}
                   {narrowed && (
                     <>
                       {' '}
-                      <button type="button" onClick={onClearAll} className="text-[var(--mac-accent)] hover:underline">
+                      <button type="button" onClick={onClearAll} className="text-[var(--mk-blue)] hover:underline">
                         Clear search and filters
                       </button>
                     </>
@@ -835,16 +926,15 @@ export function DesktopCashflow({
               {/* The month's rows as a list, each an item: a draft is finished in its own cells, the rest open the peek;
                   then the waiting rows (option E), oldest first by when they came in, just above the typing row. */}
               <ul aria-label="Transactions" {...cells.containerProps}>
-                {rows.map((row, index) =>
+                {rows.map((row) =>
                   row.kind === 'draft' ? (
                     <li key={`d:${row.id}`} className="list-none">
-                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: index % 2 === 1, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.pickedColumn(row.id)} />
+                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: false, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.pickedColumn(row.id)} />
                     </li>
                   ) : (
                     <DeskRow
                       key={`t:${row.id}`}
                       row={row}
-                      striped={index % 2 === 1}
                       selected={picked.has(row.id)}
                       pickedCell={cells.pickedColumn(row.id)}
                       today={today}
@@ -855,7 +945,7 @@ export function DesktopCashflow({
                     />
                   ),
                 )}
-                {waiting.map((row, index) => (
+                {waiting.map((row) => (
                   <li key={`w:${row.id}`} className="list-none" data-testid="waiting-row">
                     <EditableRow
                       row={row}
@@ -865,7 +955,7 @@ export function DesktopCashflow({
                       baseCurrency={baseCurrency}
                       handlers={deskHandlers}
                       desk={{
-                        striped: (rows.length + index) % 2 === 1,
+                        striped: false,
                         selected: picked.has(row.id),
                         // ⌘-click adds the row or takes it out; ⇧-click picks every row from the last one clicked.
                         onPick: (keys) => dispatch(clickAction(row.id, keys, ids)),
@@ -964,7 +1054,6 @@ export function DesktopCashflow({
 /** A row of the table, read only: a click selects it and opens the peek, a double-click or Return the edit screen. */
 function DeskRow({
   row,
-  striped,
   selected,
   pickedCell,
   today,
@@ -974,7 +1063,6 @@ function DeskRow({
   onEdit,
 }: {
   row: ListRow;
-  striped: boolean;
   selected: boolean;
   /** The column of its cell in a range of blue cells (`useCellRange`), if one is. */
   pickedCell: CellColumn | null;
@@ -1041,7 +1129,9 @@ function DeskRow({
       className={cx(
         DESK_GRID,
         'cursor-default px-0.5 select-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--mac-accent)]',
-        selected ? 'bg-[var(--mac-accent)] text-white' : cx('text-[var(--ph-ink)]', striped && 'bg-[var(--mac-zebra)]'),
+        // v1's row: 40px, a hairline under it, no zebra.
+        'min-h-[40px] border-b border-[var(--mk-line)]',
+        selected ? 'bg-[var(--mac-accent)] text-white' : 'text-[var(--ph-ink)]',
         row.deleted && 'opacity-50',
       )}
     >

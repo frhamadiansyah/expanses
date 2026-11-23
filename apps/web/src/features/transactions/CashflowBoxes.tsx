@@ -1,4 +1,5 @@
 import { formatMinor, type TrendBar, type TrendUnit } from '@expanses/core';
+import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { compactMoney } from '../../app/sidebar-model';
 import { cx } from '../../ui';
@@ -23,6 +24,20 @@ export function BoxHead({ title, note }: { title: ReactNode; note?: ReactNode })
   );
 }
 
+/**
+ * The ring's, the bars' and This month's own header in the Mac v1 kit (`CARD_HEAD`'s look: 20px sides, an icon before
+ * the title). `BoxHead` above stays as it is for the other desk pages that still use it.
+ */
+function KitHead({ title, note, icon: Icon }: { title: ReactNode; note?: ReactNode; icon?: LucideIcon }) {
+  return (
+    <h2 className="flex items-center gap-[9px] px-[20px] pt-[16px] pb-[10px] text-[15.5px] font-bold text-[var(--mk-ink-2)]">
+      {Icon && <Icon size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />}
+      <span className="min-w-0 truncate">{title}</span>
+      {note && <span className={cx(NOTE, 'ml-auto shrink-0')}>{note}</span>}
+    </h2>
+  );
+}
+
 const R = 52;
 const CIRCUMFERENCE = 2 * Math.PI * R;
 
@@ -43,7 +58,10 @@ export function RingBox({
   footnote,
   title,
   testId = 'cashflow-ring',
+  headIcon,
 }: {
+  /** The header's icon (the kit's card look). */
+  headIcon?: LucideIcon;
   /** The box's own title, when it is not Cashflow's ("Spent by category" on an event). */
   title?: string;
   testId?: string;
@@ -68,12 +86,12 @@ export function RingBox({
   const named = title ?? (kind === 'expense' ? 'Spending by category' : 'Income by category');
   return (
     <section className={BOX} aria-label={named} data-testid={testId}>
-      <BoxHead title={named} note={items.some((item) => item.categoryId) ? 'click to filter' : undefined} />
+      <KitHead title={named} icon={headIcon} note={items.some((item) => item.categoryId) ? 'click to filter' : undefined} />
       {/* What the ring adds up to, read aloud and by the journeys, as the phone's chart keeps it. */}
       <div data-testid="period-total" className="sr-only">
         {formatMinor(totalMinor, currency)}
       </div>
-      <div className="flex items-center gap-4 px-[14px] pt-[2px] pb-3">
+      <div className="flex items-center gap-4 px-[20px] pt-[2px] pb-[16px]">
         <svg width="118" height="118" viewBox="0 0 140 140" className="shrink-0" role="img" aria-label={`${word} ${formatMinor(totalMinor, currency)}`}>
           <circle r={R} cx="70" cy="70" fill="none" stroke="var(--ph-track)" strokeWidth="16" />
           {arcs.map((arc) => (
@@ -134,7 +152,7 @@ export function RingBox({
         </div>
       </div>
       {footnote && (
-        <p data-testid="not-monthly-note" className="-mt-[6px] px-[14px] pb-[10px] text-right text-[11.5px] text-[var(--ph-ink-3)]">
+        <p data-testid="not-monthly-note" className="-mt-[6px] px-[20px] pb-[12px] text-right text-[11.5px] text-[var(--ph-ink-3)]">
           {footnote}
         </p>
       )}
@@ -155,7 +173,9 @@ export function DailyBox({
   currency,
   today,
   note,
+  icon,
 }: {
+  icon?: LucideIcon;
   kind: 'expense' | 'income';
   bars: readonly TrendBar[] | null;
   unit: TrendUnit;
@@ -173,8 +193,8 @@ export function DailyBox({
   const last = bars?.[bars.length - 1];
   return (
     <section className={BOX} aria-label={title} data-testid="cashflow-days">
-      <BoxHead title={title} note={note} />
-      <div className="px-[14px] pt-[6px] pb-3">
+      <KitHead title={title} note={note} icon={icon} />
+      <div className="px-[20px] pt-[6px] pb-[16px]">
         <div className="relative h-[110px] border-b border-[var(--ph-hair)]">
           <div className="absolute inset-0 flex items-end gap-[2px]">
             {(bars ?? []).map((bar) => {
@@ -214,10 +234,10 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const dayMonthOf = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`;
 
 /** The month's four figures, the phone's own: what went out, what came in, what is left, and what waits for review. */
-export function MonthBox({ title, figures, currency, review }: { title: string; figures: MonthFigures; currency: string; review: (count: number) => ReactNode }) {
+export function MonthBox({ title, figures, currency, review, icon }: { title: string; figures: MonthFigures; currency: string; review: (count: number) => ReactNode; icon?: LucideIcon }) {
   const money = (minor: number | null) => (minor === null ? '–' : formatMinor(minor, currency));
   const line = (label: string, value: ReactNode, tone?: string, testId?: string) => (
-    <div className="flex items-center border-t border-[var(--ph-hair)] px-[14px] py-[8px] text-[13px] first-of-type:border-t-0">
+    <div className="mx-[20px] flex items-center border-t border-[var(--ph-hair)] py-[9px] text-[13.5px] first-of-type:border-t-0">
       <span className="flex-1 text-[var(--ph-ink)]">{label}</span>
       <span data-testid={testId} className={cx('tabular-nums', tone ?? 'text-[var(--ph-ink)]')}>
         {value}
@@ -226,8 +246,8 @@ export function MonthBox({ title, figures, currency, review }: { title: string; 
   );
   return (
     <section className={BOX} aria-label={title} data-testid="cashflow-month">
-      <BoxHead title={title} />
-      <div>
+      <KitHead title={title} icon={icon} />
+      <div className="pb-[8px]">
         {line('Spent', money(figures.spentMinor), undefined, 'month-spent')}
         {line('Received', money(figures.receivedMinor), 'text-[var(--ph-up)]', 'month-received')}
         {line('Left', money(figures.leftMinor), figures.leftMinor !== null && figures.leftMinor < 0 ? 'text-[var(--ph-alarm)]' : undefined, 'month-left')}

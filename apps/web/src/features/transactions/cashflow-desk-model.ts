@@ -337,3 +337,17 @@ export function deskAmount(row: ListRow): { minor: number; sign: '+' | ''; tone:
     extra: row.tx ? amountExtraParts(row.tx, undefined, row) : [],
   };
 }
+
+/*
+ * Cashflow v1 (owner approved 2026-11-23): the grey line under the title and the To review tile's badge.
+ */
+
+/** The recorded rows the table lists (a deleted one shown by the filter is not counted). */
+export function recordedCount(rows: readonly Pick<ListRow, 'kind' | 'deleted'>[]): number {
+  return rows.filter((row) => row.kind === 'tx' && !row.deleted).length;
+}
+
+/** "November 2026 · 42 recorded · 3 not recorded yet": the period, what the table lists, what still waits in it. */
+export function cashflowLine(period: string, recorded: number, notRecorded: number): string {
+  return [period, `${recorded} recorded`, notRecorded > 0 ? `${notRecorded} not recorded yet` : null].filter(Boolean).join(' · ');
+}
