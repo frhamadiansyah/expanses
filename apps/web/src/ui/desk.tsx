@@ -1,6 +1,7 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { ChevronLeft, type LucideIcon } from 'lucide-react';
 import type { ReactNode, Ref } from 'react';
+import { currencyInfo, currencyText } from '@expanses/core';
 import { cx } from './index';
 
 /*
@@ -266,4 +267,20 @@ export function Track({ share, colour, className }: { share: number; colour: str
       <span className="block h-full rounded-[3px]" style={{ width, background: colour }} />
     </span>
   );
+}
+
+/**
+ * A figure short enough for a stat tile (v1: "Rp 13,98 jt", "Rp 1,87 M"): rupiah in millions and billions with two
+ * decimals, anything below a million and every other currency in whole units with its symbol. Rounded, so a tile is a
+ * glance; the exact figure is on the page the tile opens.
+ */
+export function tileMoney(minor: number, currency: string): string {
+  const major = minor / 10 ** currencyInfo(currency).exponent;
+  const abs = Math.abs(major);
+  const sign = major < 0 ? '−' : '';
+  const two = (n: number) => n.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  if (currency === 'IDR' && abs >= 1e9) return `${sign}Rp ${two(abs / 1e9)} M`;
+  if (currency === 'IDR' && abs >= 1e6) return `${sign}Rp ${two(abs / 1e6)} jt`;
+  const whole = currencyText(new Intl.NumberFormat('id-ID', { style: 'currency', currency, maximumFractionDigits: 0, minimumFractionDigits: 0 }), abs);
+  return `${sign}${whole}`;
 }
