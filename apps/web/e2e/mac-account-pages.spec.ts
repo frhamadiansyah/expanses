@@ -126,12 +126,15 @@ test('a credit card’s page: Outstanding as Wallet prints it, the bill, the sta
   await expect(page.getByTestId('receipt-peek').getByTestId('peek-title')).toHaveText('Kopi Tuku');
   await page.keyboard.press('Escape');
 
-  // All: every statement's lines.
-  await page.getByRole('radio', { name: 'All' }).click();
+  // All: every statement's lines (a pressed button in the bar's Statement group).
+  const statement = page.getByRole('group', { name: 'Statement' });
+  await statement.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(statement.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(rows).toHaveCount(4);
 
-  // Last: the bill's purchases. ⌘-click two, and Pay pays just those.
-  await page.getByRole('radio', { name: 'Last' }).click();
+  // Last: the bill's purchases, a step back from this statement. ⌘-click two, and Pay pays just those.
+  await statement.getByRole('button', { name: 'All', exact: true }).click();
+  await statement.getByRole('button', { name: 'Earlier statement' }).click();
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText('•8802');
   await rows.nth(0).click({ modifiers: ['ControlOrMeta'] });
@@ -181,7 +184,7 @@ test('a credit card with one card alone (•4417) has no Card column: every row 
 test('the card’s Pay with nothing picked opens Pay credit card for the bill', async ({ page }) => {
   await cardStatements(page);
   await openCardPage(page);
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay credit card', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Pay credit card', exact: true })).toBeVisible();
   await expect(addForm(page).getByLabel('Amount', { exact: true })).toHaveValue(/^1\.?562\.?000$/);
 });

@@ -68,7 +68,8 @@ test('Cashflow is the old Transactions; Tools and Settings reach the rest', asyn
 
   await side.getByRole('link', { name: 'App settings', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Settings', exact: true })).toBeVisible();
+  // Mac Settings names itself in its bar (the grey crumb); its sections are the page.
+  await expect(page.getByTestId('desk-crumb')).toHaveText('Settings');
   // What left the sidebar is one step into Settings: a section of its own (Mac Settings A).
   const sections = page.getByRole('navigation', { name: 'Settings sections' });
   for (const name of ['Categories', 'Backup', 'Activity']) await expect(sections.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();

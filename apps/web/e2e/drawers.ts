@@ -18,6 +18,8 @@ import { expect, type Locator, type Page } from '@playwright/test';
  */
 export async function openDrawers(page: Page): Promise<void> {
   const drawers = page.locator('[data-testid^="type-drawer-"]');
+  // A Mac form floats over the page it came from, which may have drawers of its own: the page the save lands on is the one.
+  await expect(page.getByTestId('form-panel')).toHaveCount(0);
   await expect(drawers.first()).toBeVisible();
   await expect(async () => {
     for (let index = 0; index < (await drawers.count()); index += 1) await open(drawers.nth(index));

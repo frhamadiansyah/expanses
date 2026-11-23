@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { fillDay, pastPurchase } from './add-asset';
-import { expectWalletFigure, openSettings, walletCard } from './accounts';
+import { expectWalletFigure, openSettings, walletCard, addDebtButton } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openAssets, openDrawers } from './drawers';
 
@@ -146,7 +146,7 @@ test('a mortgage, a wallet and a deposit reach the tax report under the right ko
   await page.getByLabel('Lender').fill('Bank BTN');
   await page.getByLabel('Interest rate').fill('9');
   await page.getByLabel('Months left').fill('168');
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  await addDebtButton(page).click();
   await expect(page.getByRole('heading', { name: 'Liabilities', exact: true })).toBeVisible();
 
   await page.goto('/tax-report');

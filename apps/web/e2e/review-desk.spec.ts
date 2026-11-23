@@ -4,6 +4,7 @@ import { choosePayment } from './add-transaction';
 import { inject, notice } from './capture';
 import { pickDraftCategory } from './review';
 import { doubleClickInPlace } from './desk-double-click';
+import { macV2 } from './mac-detail';
 
 /*
  * Review on a wide screen (Mac Review): the counts, the queue as a table filled in place, Record / Record N ready /
@@ -32,6 +33,8 @@ async function answeredSource(page: Page) {
 }
 
 test('a missing account is filled in place, the row turns ready (a blank category holds nothing back), and Record records it', async ({ page }) => {
+  // Reads every count of the queue, zeros included: the counts box is a v2 part of Mac Review.
+  await macV2(page);
   await page.goto('/review');
   await expect(page.getByTestId('review-page')).toHaveAttribute('data-desk', 'true');
   await inject(page, [notice()]);
@@ -67,7 +70,7 @@ test('a missing account is filled in place, the row turns ready (a blank categor
   await expect(kopi).toHaveAttribute('data-ready', 'true');
   await expect(count(page, 'review-ready')).toHaveText('1');
   await expect(count(page, 'review-need-category')).toHaveText('0');
-  await expect(page.getByRole('button', { name: 'Record 1 ready' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Record 1', exact: true })).toBeVisible();
 
   await kopi.getByRole('button', { name: 'Record TOKO KOPI' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
@@ -93,6 +96,8 @@ test('a missing account is filled in place, the row turns ready (a blank categor
 });
 
 test('Record N ready records every ready row at once, and Undo puts them all back', async ({ page }) => {
+  // Reads every count of the queue, zeros included: the counts box is a v2 part of Mac Review.
+  await macV2(page);
   await answeredSource(page);
   await inject(page, [
     notice({ id: 'note-a', body: 'Pembayaran Rp45.000 berhasil. Merchant: WARUNG SATE', capturedAt: '2026-09-30T09:00:00+07:00' }),
@@ -107,7 +112,7 @@ test('Record N ready records every ready row at once, and Undo puts them all bac
   await expect(count(page, 'review-need-category')).toHaveText('1');
   await expect(row(page, 'SEED SHOP')).toHaveAttribute('data-ready', 'true');
 
-  await page.getByRole('button', { name: 'Record 3 ready' }).click();
+  await page.getByRole('button', { name: 'Record 3', exact: true }).click();
   await expect(toast(page)).toContainText('Recorded 3 captures');
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
   await expect(count(page, 'review-to-review')).toHaveText('0');
@@ -125,6 +130,8 @@ test('Record N ready records every ready row at once, and Undo puts them all bac
 });
 
 test('a capture with no category is a plain blank cell, counts as ready, and Record N ready files it under Uncategorised, where Cashflow’s filter finds it', async ({ page }) => {
+  // Reads the counts box (No category among them), a v2 part of Mac Review.
+  await macV2(page);
   await answeredSource(page);
   await inject(page, [notice({ id: 'note-a', body: 'Pembayaran Rp45.000 berhasil. Merchant: WARUNG SATE', capturedAt: '2026-09-30T09:00:00+07:00' })]);
   await pickDraftCategory(page, 'WARUNG SATE', 'Restaurants');
@@ -145,7 +152,7 @@ test('a capture with no category is a plain blank cell, counts as ready, and Rec
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Category for SEED SHOP' })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Record 2 ready' }).click();
+  await page.getByRole('button', { name: 'Record 2', exact: true }).click();
   await expect(toast(page)).toContainText('Recorded 2 captures');
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
 
@@ -186,7 +193,8 @@ test('a row’s peek shows what was captured, steps with the arrows, and Return 
   await pickDraftCategory(page, 'WARUNG SATE', 'Restaurants');
 
   // Newest first: WARUNG SATE (09:00) above SEED SHOP (08:00).
-  await row(page, 'WARUNG SATE').getByRole('cell', { name: 'WARUNG SATE', exact: true }).click();
+  // Its Note cell: the note, and the door it came in by under it (From) — not one of the cells that open a picker.
+  await row(page, 'WARUNG SATE').getByRole('cell', { name: /^WARUNG SATE\b/ }).click();
   const peek = page.getByTestId('review-peek');
   await expect(peek).toBeVisible();
   await expect(peek.getByTestId('peek-title')).toHaveText('WARUNG SATE');
@@ -221,9 +229,9 @@ test('a row’s peek shows what was captured, steps with the arrows, and Return 
   await expect(peek).toHaveCount(0);
 
   await inject(page, [notice({ id: 'note-b', body: 'Pembayaran Rp52.000 berhasil. Merchant: BAKSO MALANG', capturedAt: '2026-09-30T10:00:00+07:00' })]);
-  // A double-click opens the row's form, though the peek its first click opened (a 1280 window making room for it) moved
-  // the row from under the pointer.
-  expect((await doubleClickInPlace(page, row(page, 'BAKSO MALANG'))).moved).toBe(true);
+  // A double-click opens the row's form, even when the peek its first click opened (a 1280 window making room for it)
+  // moved the row from under the pointer.
+  await doubleClickInPlace(page, row(page, 'BAKSO MALANG'));
   await expect(page.getByRole('form', { name: 'Review BAKSO MALANG' })).toBeVisible();
 });
 

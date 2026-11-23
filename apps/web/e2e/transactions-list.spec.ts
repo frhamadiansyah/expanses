@@ -54,6 +54,8 @@ test('deleting from the row’s peek asks twice, in place', async ({ page }) => 
 test('search finds a purchase by its amount, and a filter can be cleared', async ({ page }) => {
   await setUp(page);
 
+  // The Mac bar keeps search behind its round ⌕ until it is asked for.
+  await page.getByTestId('search-open').click();
   await page.getByLabel('Search transactions').fill('500.000');
   await expect(page.getByText('Superindo')).toBeVisible();
   await page.getByLabel('Search transactions').fill('nothing like it');

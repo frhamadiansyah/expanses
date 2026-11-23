@@ -182,7 +182,8 @@ test('pasted rows wait in Cashflow and in Review alike: counted by both, recorde
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
   // Its From says the door it came in by; the peek has no captured words to show.
   await expect(toko('Toko C').getByTestId('review-from')).toHaveText('Cashflow');
-  await toko('Toko C').click();
+  // Clicked on its date: the middle of the row is its Category cell, which opens its own picker.
+  await toko('Toko C').getByRole('cell', { name: '16 Oct' }).click();
   await expect(page.getByTestId('peek-when')).toContainText('typed or pasted in Cashflow');
   await expect(page.getByTestId('peek-captured')).toHaveCount(0);
   await page.keyboard.press('Escape');

@@ -1,5 +1,12 @@
+import { macV2 } from './mac-detail';
 import { expect, type Page, test } from '@playwright/test';
 import { budgetCells, budgetTab, capField, openCapOf, openEditBudgets } from './budget';
+
+// Mac Budget's Categories typing table (and its gauge and split box) is v2's since option B (owner 2026-11-23): this
+// file reads them, so the wide screen draws them. The phone is not affected.
+test.beforeEach(async ({ page }) => {
+  await macV2(page);
+});
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -26,6 +33,7 @@ test('a budget set as 30% of take-home follows the take-home when it changes', a
   await expect(screen.getByTestId('edit-budgeted')).toContainText('3.000.000');
   await expect(screen.getByTestId('edit-share')).toContainText('30% of take-home');
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   // Its own budget, under its group: the % as typed, and what it comes to.
   await expect(budgetCells(page, 'All Food and beverage').budget).toHaveText('30% · 3.000.000');
 
@@ -39,6 +47,7 @@ test('the sheet turns a figure into its % and back, and keeps the budget a % aft
   const screen = await openEditBudgets(page);
   await (await capField(screen, 'Household')).field.fill('1860000');
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
 
   const sheet = await openCapOf(page, 'Household');
   await sheet.getByRole('radio', { name: '%' }).click();
@@ -62,6 +71,7 @@ test('a % of a parent: removing the parent asks first, and the child keeps its f
   await child.field.fill('40');
   await expect(screen.getByTestId('edit-row-Groceries')).toContainText('of Household');
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
 
   page.removeAllListeners('dialog');
   let asked = '';
@@ -86,6 +96,7 @@ test('Edit budgets shows a cleared parent’s %-child at the amount it keeps, an
   await screen.getByLabel(`${child.label} every`).selectOption('share');
   await child.field.fill('40');
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   await expect(page.getByTestId('budget-page')).toBeVisible();
 
   const again = await openEditBudgets(page);
@@ -99,6 +110,7 @@ test('Edit budgets shows a cleared parent’s %-child at the amount it keeps, an
   });
   await page.getByRole('button', { name: 'Save budgets' }).click();
   await expect.poll(() => asked).toMatch(/^Groceries keeps Rp\s800\.000 a month\. Remove this budget\?$/);
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   await expect(page.getByTestId('budget-page')).toBeVisible();
 
   const groceries = await openCapOf(page, 'Groceries');

@@ -3,6 +3,7 @@ import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 import { peekBill, peekButton } from './bills-desk';
+import { macV2 } from './mac-detail';
 
 /*
  * The wide screen's Overview (Mac Overview A, 2026-11-17): the first page on a wide screen, first in the sidebar, its
@@ -13,12 +14,16 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('opens first on a wide screen and shows money on hand, the accounts and the boxes', async ({ page }) => {
+  // Money on hand, Accounts, How long it lasts, Worth a look, Next 14 days and the range are v2 parts of Mac Overview.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'Bank Satu', balance: '90000000' });
   await openAccount(page, { subtype: 'cash', name: 'Dompet', balance: '10000000' });
 
   await page.goto('/');
   await expect(page).toHaveURL(/\/overview$/, { timeout: 30_000 });
-  await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+  // The bar names the page; its large title is the day's greeting.
+  await expect(page.getByTestId('desk-crumb')).toHaveText('Overview');
+  await expect(page.getByTestId('overview-title')).toHaveText(/^Good (morning|afternoon|evening)/);
   await expect(page.locator('aside nav').getByRole('link').first()).toHaveText('Overview');
   await expect(page.locator('aside nav').getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
 
@@ -53,6 +58,8 @@ test('opens first on a wide screen and shows money on hand, the accounts and the
 });
 
 test('a month’s figures follow Cashflow’s not-monthly rule: a bill every 6 months makes no spike, and Budget still counts it', async ({ page }) => {
+  // Reads Cashflow's This month box and Overview's Money on hand chart and How long it lasts, v2 parts.
+  await macV2(page);
   page.on('dialog', (dialog) => void dialog.accept());
   await page.clock.setSystemTime(new Date('2027-03-05T12:00:00'));
   await openAccount(page, { subtype: 'bank', name: 'Contoh Tabungan', balance: '50000000' });

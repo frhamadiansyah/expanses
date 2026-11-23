@@ -2,6 +2,8 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 import { paySeveral, peekBill, peekButton } from './bills-desk';
+import { formArea } from './form-panel';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -75,13 +77,13 @@ test('a bill keeps its pay-by day through an edit', async ({ page }) => {
   await openBill(page, 'Biznet Home');
   await action(page, 'Edit').click();
   await expect(page.getByRole('heading', { name: 'Edit bill' })).toBeVisible();
-  await expect(page.getByLabel('Bill date')).toHaveValue('28');
-  await expect(page.getByLabel('Due by')).toHaveValue('5');
-  await page.getByLabel('Due by').selectOption('');
+  await expect(formArea(page).getByLabel('Bill date')).toHaveValue('28');
+  await expect(formArea(page).getByLabel('Due by')).toHaveValue('5');
+  await formArea(page).getByLabel('Due by').selectOption('');
   await page.getByRole('button', { name: 'Save' }).click();
   // Save on an edit returns to the bill's own page, not the list — Edit bill is reached from there directly.
   await action(page, 'Edit').click();
-  await expect(page.getByLabel('Due by')).toHaveValue('');
+  await expect(formArea(page).getByLabel('Due by')).toHaveValue('');
 });
 
 test('a bill’s page pays its month and stays, with the payment and an undo', async ({ page }) => {
@@ -120,7 +122,7 @@ test('from a bill’s page: skip its month, edit it, and stop it', async ({ page
   await expect(page.getByTestId('bill-hero')).toContainText('Skipped');
 
   await action(page, 'Edit').click();
-  await page.getByLabel('Due by').selectOption('5');
+  await formArea(page).getByLabel('Due by').selectOption('5');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(detail(page, 'Due by')).toContainText('The 5th');
 
@@ -147,6 +149,8 @@ test('a skipped row still opens the bill: its peek, and its page on a double-cli
 });
 
 test('a bill that is out is paid from its row, and the month is settled', async ({ page }) => {
+  // Reads the month's box (bills-total, bills-month-total), a v2 part of Mac Bills.
+  await macV2(page);
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
 
@@ -198,6 +202,8 @@ test('undo takes a payment back', async ({ page }) => {
 });
 
 test('a bill that varies asks what it came to', async ({ page }) => {
+  // Reads the month's box (bills-summary), a v2 part of Mac Bills.
+  await macV2(page);
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Electricity' });
   await expect(row(page, 'Electricity')).toContainText('Amount varies');
@@ -319,7 +325,7 @@ test('last month’s overdue bill paid from its page says so, can be undone, and
   await page.goto('/bills');
   // Late, it is with Due soon at the top of the table.
   await expect(page.getByTestId('bills-due-soon')).toContainText('Biznet Home');
-  await expect(row(page, 'Biznet Home').getByTestId('bill-status')).toHaveText(/^\d+ days? late$/);
+  await expect(row(page, 'Biznet Home').getByTestId('bill-status')).toHaveText(/^Late · \d+ days?$/);
   await openBill(page, 'Biznet Home');
   await expect(page.getByTestId('bill-hero')).toContainText(`${lastMonth} bill`);
   // The standing is in the line under the amount, not a pill: the late words, then the due date.

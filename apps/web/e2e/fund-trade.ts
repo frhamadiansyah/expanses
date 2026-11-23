@@ -26,4 +26,5 @@ export async function fundByMoney(page: Page) {
   await page.getByLabel('Value', { exact: true }).fill('1052000');
   await page.getByRole('button', { name: 'Save value' }).click();
   await expect(page.getByTestId('asset-card')).toContainText('1.052.000');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 }

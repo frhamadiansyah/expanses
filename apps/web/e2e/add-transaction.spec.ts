@@ -12,6 +12,7 @@ import { todayIn } from './today';
 import { currencyRow, setCurrency } from './currency-field';
 import { addPart, fillPart, removePart, openSplit, pickPartCategory, setChannel, splitRow } from './split-row';
 import { chooseMccCode, closeMccSheet, mccSheet, openMccSheet, rememberWord } from './mcc-sheet';
+import { macV2 } from './mac-detail';
 
 /** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
 const PHOTO_DIRECTORY = 'expanses-photos';
@@ -678,6 +679,8 @@ async function catalogueCard(page: Page, name: string, search: string, entryName
 }
 
 test('every extra survives the save, and leaving it out of the report leaves only the chart and the budgets', async ({ page }) => {
+  // Reads the Cashflow ring, a v2 part of Mac Cashflow.
+  await macV2(page);
   await addAccount(page, 'BCA KF Signature', 'credit_card', async () => {
     await page.getByLabel('Current balance').fill('0');
   });
@@ -822,6 +825,8 @@ test('a split is read in the paying account’s own currency, exponent and all',
  * rather than reading like a rounding.
  */
 test('a split by category posts one line per category, each with its own figure', async ({ page }) => {
+  // Reads the ring's category rows (report-row), a v2 part of Mac Cashflow.
+  await macV2(page);
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
     await page.getByLabel('Current balance', { exact: true }).fill('50000000');
   });
@@ -972,6 +977,8 @@ test('a missing rate is asked for under Add more details, and the save then goes
  * summary card promised before Save: 400.000 divided four ways, 100.000 each, 300.000 owed back.
  */
 test('a bill split equally between three people leaves each of them owing their share', async ({ page }) => {
+  // Reads the Cashflow ring, a v2 part of Mac Cashflow.
+  await macV2(page);
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
     await page.getByLabel('Current balance').fill('0');
   });

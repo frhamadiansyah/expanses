@@ -5,7 +5,9 @@ import { addForm, choosePayment, fillAmount, openAmount, saveButton } from './ad
  * A card on the wallet, by name. The Cards page also lists the points programmes, and a programme's row carries the
  * name of the card earning into it, so a card is looked for on the wallet itself.
  */
-export const walletCard = (page: Page, name: string | RegExp) => page.getByRole('region', { name: 'Cards' }).getByRole('link', { name });
+export const walletCard = (page: Page, name: string | RegExp) =>
+  // Mac Wallet's Cards region holds its Points card too, whose rows name the cards earning into them: a face is a card's.
+  ((page.viewportSize()?.width ?? 0) >= 768 ? page.getByRole('region', { name: 'Cards' }).getByTestId('wallet-card') : page.getByRole('region', { name: 'Cards' })).getByRole('link', { name });
 
 /**
  * The card's back holds Outstanding (or Credit), the limit and the nearest bonus or the points: a tap on the raised card turns it
@@ -136,7 +138,8 @@ export async function pickChargedOn(page: Page, isoDate: string) {
  * "Pay credit card", no tabs, To fixed on the card, the bill filled in, From left to be chosen. Returns the form.
  */
 export async function openCardPay(page: Page): Promise<Locator> {
-  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Pay', exact: true }).click();
+  // The phone's round button says Pay; the Mac card page's says Pay credit card.
+  await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: /^Pay( credit card)?$/ }).click();
   await expect(page.getByRole('heading', { name: 'Pay credit card', exact: true })).toBeVisible();
   const form = addForm(page);
   await expect(form.getByTestId('pay-card-to')).toBeVisible();

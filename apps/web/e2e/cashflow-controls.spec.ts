@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
+import { macV2 } from './mac-detail';
 
 /*
  * Cashflow's title bar on a wide screen (Mac Cashflow D, 2026-11-17): Show (All · Spending · Income), Filter ⌄ — the
@@ -9,6 +10,8 @@ import { addTransaction } from './add-transaction';
  * account's own history keeps it on a wide screen too.
  */
 test('Show, Filter and the Amount header narrow and sort the table, and Clear puts it back', async ({ page }) => {
+  // Show's ring (Income/Spending by category) is a v2 part of Mac Cashflow.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await openAccount(page, { subtype: 'bank', name: 'Jago', balance: '5000000' });
   await page.goto('/transactions');

@@ -5,11 +5,15 @@ import { expect, type Locator, type Page } from '@playwright/test';
  * Both carry the same name, so a journey written once runs at either width.
  */
 /**
- * Save, wherever the form keeps it: the dock at the foot of a sheet on a wide screen, the ✓ in the bar on a phone's
- * add screen. Only one of them is ever drawn, so the pair still names one button.
+ * Save, wherever the form keeps it: the dock at the foot of a sheet on a wide screen, the foot of the Mac's form panel,
+ * the ✓ in the bar on a phone's add screen. Only one of them is ever drawn, so the three still name one button.
  */
 export const saveButton = (form: Locator): Locator =>
-  form.getByRole('button', { name: 'Save', exact: true }).or(form.page().locator('header').getByRole('button', { name: 'Save', exact: true }));
+  form
+    .getByRole('button', { name: 'Save', exact: true })
+    .or(form.page().locator('header').getByRole('button', { name: 'Save', exact: true }))
+    // A Mac form in its panel keeps Save at the panel's foot, beside Cancel.
+    .or(form.page().getByTestId('form-panel-foot').getByRole('button', { name: 'Save', exact: true }));
 
 /**
  * A transfer's To, chosen as a person does: the row, then the account in its list. Takes the name as the old select

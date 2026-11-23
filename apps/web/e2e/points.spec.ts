@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard, openFace } from './accounts';
+import { openCard, openFace, walletCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 
@@ -12,7 +12,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await addCard(page, 'BCA Visa');
 
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'CIMB Octo' }));
+  await openFace(walletCard(page, 'CIMB Octo'));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -41,7 +41,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
 
   // What a point fetches is the programme's, set on its page.
   await page.goto('/wallet');
-  await openFace(page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: /^CIMB Octo(,|$)/ }));
+  await openFace(walletCard(page, 'CIMB Octo'));
   await cardPage(page, 'Points');
   await page.getByTestId('statement-points-programme').click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('button', { name: 'Settings' }).click();
@@ -61,8 +61,8 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   // As the balance of the programme the card earns into.
   // Points are a page of their own, from Wallet's corner, not a list under the cards.
   await expect(page.getByTestId('points-programmes')).toHaveCount(0);
-  // The page's own Points link; the sidebar has one too (Mac sidebar A).
-  await page.getByRole('main').getByRole('link', { name: 'Points', exact: true }).click();
+  // The page's own way to Points, its Points card's See all (the sidebar has a Points link too, Mac sidebar A).
+  await page.getByTestId('wallet-points').getByTestId('points-link').click();
   await expect(page).toHaveURL(/\/cards\/points$/);
   // On a wide screen the programmes are one table (Mac Points), each row with its small card; ＋ Add programme is in the
   // title bar. The phone's pile is phone-programme-page.spec.ts's.

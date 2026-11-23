@@ -11,6 +11,7 @@ import { cardPage, chooseCatalogueCard, saveCardTerms } from './card-section';
 import { openDrawers } from './drawers';
 import { openWithPockets } from './pockets';
 import { pickView } from './wallet';
+import { macV2 } from './mac-detail';
 import { openMemberPage, openSharePage, openWorkspacePage, openWorkspaceSharePage, putOffShareList, renameWorkspace, shareWorkspace } from './workspace-page';
 
 /*
@@ -692,7 +693,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await openAccount(page, { subtype: 'bank', name: 'Fandri Bank', balance: '10000000' });
   await openCard(page, { name: 'Fandri Card' });
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'Fandri Card' }));
+  await openFace(walletCard(page, 'Fandri Card'));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('31');
   await page.getByLabel('Due date').fill('15');
@@ -809,7 +810,7 @@ test('two people share their net worth: one tax ID, pay with the other’s card,
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'Fandri Card' }));
+  await openFace(walletCard(page, 'Fandri Card'));
   await cardPage(page, 'Statement');
   await eventually(page, () => expect(page.getByTestId('statement-line').filter({ hasText: 'Dewi dinner' })).toContainText('200.000', { timeout: 1_000 }));
   await shot(page, info, '17-card-statement');
@@ -1140,6 +1141,8 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
   test.setTimeout(900_000);
   page.on('dialog', (dialog) => void dialog.accept());
   const andi = await secondDevice(browser, info);
+  // Andi's Wallet is read by its faces, Balance box and filters: on a wide screen those are v2 parts of Mac Wallet.
+  await macV2(andi);
   await openAccount(page, { subtype: 'savings', name: 'Joint savings', balance: '8000000' });
   await openAccount(page, { subtype: 'cash', name: 'Rina Cash', balance: '100000' });
   await openCard(page, { name: 'Rina Card', last4: '5678', owed: '850000' });
@@ -1191,7 +1194,8 @@ test('the partner’s joint account and joint card are cards in Wallet, counted 
 
   // The grid prints whose each is after its type, in the card's own type line, and the Balance counts both.
   await pickView(andi, 'Grid');
-  const grid = andi.getByRole('region', { name: 'Cards' });
+  // Mac Wallet's v2 parts draw the faces in its Accounts box.
+  const grid = andi.getByRole('region', { name: wideScreen(andi) ? 'Accounts' : 'Cards' });
   const faces = grid.getByTestId('card-face');
   await expect(faces).toHaveCount(3);
   await expect(faces.nth(0)).toHaveAttribute('aria-label', /^Andi Payroll/);

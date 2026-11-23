@@ -4,6 +4,7 @@ import { addTransaction } from './add-transaction';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 import { peekBill, peekButton } from './bills-desk';
 import { doubleClickInPlace } from './desk-double-click';
+import { macV2 } from './mac-detail';
 
 /*
  * The wide screen's Cashflow (Mac Cashflow D, 2026-11-17): three boxes, the typing table across the full width, and a
@@ -29,6 +30,8 @@ async function typeRow(page: Page, description: string, amount: string, category
 }
 
 test('a row typed in the last row is saved with Return, counted in the boxes, and its peek opens, steps and closes', async ({ page }) => {
+  // Reads the ring and This month's box, v2 parts of Mac Cashflow.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');
   await expect(page.getByRole('heading', { name: 'Cashflow', level: 1 })).toBeVisible();
@@ -204,6 +207,8 @@ async function clearOfPanel(page: Page, panel: Locator) {
 }
 
 test('at a 1280 window the boxes sit three across, and with the peek or N selected open the whole page makes room: no box under the panel', async ({ page }) => {
+  // The three boxes (ring, days, month) are v2 parts of Mac Cashflow.
+  await macV2(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');
@@ -227,6 +232,8 @@ test('at a 1280 window the boxes sit three across, and with the peek or N select
 });
 
 test('a not-monthly bill is listed with a ↻ and a grey amount, left out of a month’s ring, boxes and bars; Filter’s Not monthly Shown counts it, and a year does', async ({ page }) => {
+  // Reads the ring's note, This month's box and the day bars, v2 parts of Mac Cashflow.
+  await macV2(page);
   page.on('dialog', (dialog) => void dialog.accept());
   await page.clock.setSystemTime(new Date('2027-03-05T12:00:00'));
   await openAccount(page, { subtype: 'bank', name: 'Contoh Tabungan', balance: '50000000' });

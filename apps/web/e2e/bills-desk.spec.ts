@@ -4,6 +4,7 @@ import { pickBillCategory, pickBillPaidFrom, showRepeating } from './bill-form';
 import { addFarYearlyBill, addMonthlyBill } from './recurring-slider';
 import { deskRow, paySeveral, peekBill, peekButton, toPayRow } from './bills-desk';
 import { doubleClickInPlace } from './desk-double-click';
+import { macV2 } from './mac-detail';
 
 /*
  * Bills on a wide screen (Mac Bills, list + calendar together): the month's box, the calendar, the All bills table with
@@ -36,6 +37,8 @@ const thisMonth = () => {
 const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
 
 test('two bills ticked are paid together, and the month’s box, the groups and the bar follow', async ({ page }) => {
+  // The month's box (bills-total, bills-month-total) and its bars are v2 parts of Mac Bills.
+  await macV2(page);
   await addBill(page, { name: 'Phone', amount: '150000' });
   await addBill(page, { name: 'Internet', amount: '395000' });
   await addBill(page, { name: 'Gym', amount: '250000' });
@@ -72,6 +75,8 @@ test('two bills ticked are paid together, and the month’s box, the groups and 
 });
 
 test('Due soon is what is late or due within 3 days, out yet or not; the calendar, the sidebar and the rest agree', async ({ page }) => {
+  // Reads the month's box and its trend line, v2 parts of Mac Bills (the calendar is v2's beside the list).
+  await macV2(page);
   const at = (days: number) => {
     const day = new Date();
     day.setDate(day.getDate() + days);
@@ -104,6 +109,8 @@ test('Due soon is what is late or due within 3 days, out yet or not; the calenda
 test('a day picked on the calendar lists its bills and lights their rows', async ({ page }) => {
   await addBill(page, { name: 'Phone', amount: '150000', out: 1 });
   await addBill(page, { name: 'Rent', amount: '5000000', out: 28 });
+  // v1 draws the calendar beside the table once Calendar is picked.
+  await page.getByTestId('bills-view-calendar').click();
   const day = page.getByTestId('bills-calendar').locator(`[data-date="${thisMonth()}-28"]`);
   // Each day a bill is due carries a mark.
   await expect(day).toHaveAttribute('data-mark', /^(soon|later)$/);
@@ -183,6 +190,8 @@ test('a row opens its bill in the side peek: arrows step, Esc closes, Pay and Sk
 });
 
 test('the title bar’s month: next month’s bills are listed to come, with nothing to tick', async ({ page }) => {
+  // Reads the month's box and its bars, v2 parts of Mac Bills.
+  await macV2(page);
   // Out on the 10th, so next month's is never within the 3 days of Due soon, whatever today is.
   await addBill(page, { name: 'Phone', amount: '150000', out: 10 });
   const month = page.getByTestId('bills-month');
@@ -202,6 +211,8 @@ test('the title bar’s month: next month’s bills are listed to come, with not
 });
 
 test('Pause in the peek moves a bill to Paused and out of the box; Resume brings it back', async ({ page }) => {
+  // Reads the month's box, a v2 part of Mac Bills.
+  await macV2(page);
   await addBill(page, { name: 'Gym', amount: '350000' });
   await addBill(page, { name: 'Phone', amount: '150000' });
   await expect(page.getByTestId('bills-total')).toHaveText(/^Rp\s500\.000$/);
@@ -225,6 +236,8 @@ test('Pause in the peek moves a bill to Paused and out of the box; Resume brings
 });
 
 test('Yearly bills in the title bar lists the repeating bills all year; one far off is not in the month’s table', async ({ page }) => {
+  // Reads Set aside, a v2 part of Mac Bills.
+  await macV2(page);
   await addFarYearlyBill(page, 'Domain');
   await addMonthlyBill(page, 'Water');
   await expect(deskRow(page, 'Water')).toBeVisible();

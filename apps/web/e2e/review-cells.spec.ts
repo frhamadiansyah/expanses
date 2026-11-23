@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { inject, notice } from './capture';
+import { macV2 } from './mac-detail';
 
 /*
  * Mac Review's blue cells (owner 2026-11-18): a range down a column of the queue takes one category for them all, a
@@ -50,6 +51,8 @@ async function threeCaptures(page: Page) {
 }
 
 test('a range of category cells takes one choice for all three, and one Undo puts them back', async ({ page }) => {
+  // Reads No category's count at zero: the counts box is a v2 part of Mac Review.
+  await macV2(page);
   await threeCaptures(page);
   // Newest first: TIGA, DUA, SATU.
   await dragCells(page, cellOf(row(page, 'WARUNG TIGA'), 'category'), cellOf(row(page, 'WARUNG SATU'), 'category'));

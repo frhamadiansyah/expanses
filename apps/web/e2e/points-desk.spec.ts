@@ -3,6 +3,7 @@ import { openCard, openFace } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, saveCardTerms, setUpRewardsByHand, walletCard } from './card-section';
 import { doubleClickInPlace } from './desk-double-click';
+import { macV2 } from './mac-detail';
 
 /*
  * Points on a wide screen (Mac redesign step 9, option A): every programme in one table with a small card before its
@@ -45,6 +46,8 @@ async function adjustAndValue(page: Page, name: string, balance: string, value?:
 }
 
 test('each programme wears its card — its membership card, its bank’s card, or the plain face — with the phone’s figures, and Worth adds up', async ({ page }) => {
+  // Worth per unit (points-worth-miles/points) is a v2 part of Mac Points.
+  await macV2(page);
   await page.goto('/cards/points');
   await expect(page.getByRole('heading', { name: 'Points', level: 1 })).toBeVisible();
   await addProgramme(page, 'KrisFlyer', 'miles');
@@ -80,9 +83,9 @@ test('each programme wears its card — its membership card, its bank’s card, 
   await expect(page.getByTestId('points-worth-total')).toHaveText('Rp 2.900.000');
   await expect(page.getByTestId('points-worth-unvalued')).toContainText('1 programme with no value per point');
 
-  // The programme's own page reads the same balance and worth. A double-click at a 1280 window: its first click opens the
-  // peek and the page makes room, moving the row from under the pointer; the second is still KrisFlyer's.
-  expect((await doubleClickInPlace(page, row(page, 'KrisFlyer').getByRole('link'))).moved).toBe(true);
+  // The programme's own page reads the same balance and worth: a double-click at a 1280 window, whose first click opens
+  // the peek (whether or not the page then moves the row from under the pointer, the second is still KrisFlyer's).
+  await doubleClickInPlace(page, row(page, 'KrisFlyer').getByRole('link'));
   await expect(page).toHaveURL(/\/cards\/points\/[^/]+$/);
   await expect(page.getByTestId('programme-balance')).toHaveText('12.500 miles');
   await expect(page.getByTestId('programme-provenance')).toContainText('Rp 2.500.000');
@@ -169,8 +172,8 @@ test('a click opens the peek — the card big, balance, Earned with, Recent, Exp
   await expect(page.getByTestId('programme-balance')).toHaveText('100 points');
   await page.goBack();
 
-  // A double-click on a row is its page too, though the peek its first click opened moved the row from under the pointer.
-  expect((await doubleClickInPlace(page, row(page, 'KrisFlyer'))).moved).toBe(true);
+  // A double-click on a row is its page too (v1's peek floats over the page, so the row may stay under the pointer).
+  await doubleClickInPlace(page, row(page, 'KrisFlyer'));
   await expect(page).toHaveURL(/\/cards\/points\/[^/]+$/);
   await expect(page.getByTestId('programme-balance')).toHaveText('5.000 miles');
   await page.goBack();

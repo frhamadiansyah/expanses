@@ -1,12 +1,17 @@
 import { expect, test } from '@playwright/test';
 import { openAccount, walletCard, openFace } from './accounts';
 import { balanceRows, forSpendingOff } from './wallet';
+import { macV2 } from './mac-detail';
 
 test('an account switched off For spending leaves Wallet and Paid with, and stays on Assets and in a transfer’s To', async ({ page }) => {
+  // Reads Wallet's Balance box, a v2 part of Mac Wallet.
+  await macV2(page);
   await forSpendingOff(page);
 });
 
 test('Spending money and Outstanding on cards filter the cards, and Bills still to pay comes off the Balance and opens its sheet', async ({ page }) => {
+  // The Balance box and its filters are v2 parts of Mac Wallet.
+  await macV2(page);
   await balanceRows(page);
 });
 

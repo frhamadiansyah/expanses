@@ -3,6 +3,13 @@ import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { budgetCells, budgetRow, budgetTab, capField, monthSoFar, openCapOf, openEditBudgets, setBudget } from './budget';
 import { openGoalForm } from './goals';
+import { macV2 } from './mac-detail';
+
+// Mac Budget's Categories typing table (and its gauge and split box) is v2's since option B (owner 2026-11-23): this
+// file reads them, so the wide screen draws them. The phone is not affected.
+test.beforeEach(async ({ page }) => {
+  await macV2(page);
+});
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -17,6 +24,8 @@ async function spendOnDinner(page: Page, amount: string) {
 }
 
 test('a cap on a parent counts what its children spent, and an over cap is listed as over', async ({ page }) => {
+  // Reads Needs a look and the gauge, v2 parts of Mac Budget.
+  await macV2(page);
   await spendOnDinner(page, '500000');
 
   await page.goto('/budget');
@@ -27,7 +36,8 @@ test('a cap on a parent counts what its children spent, and an over cap is liste
   const group = budgetCells(page, 'Food and beverage');
   await expect(group.budget).toHaveText('300.000');
   await expect(group.spent).toHaveText('500.000');
-  await expect(group.left).toHaveText('−200.000');
+  // Over reads in words on the Mac: "200.000 over".
+  await expect(group.left).toHaveText('200.000 over');
   await expect(budgetCells(page, 'All Food and beverage').spent).toHaveText('0');
   await expect(budgetCells(page, 'All Food and beverage').left).toHaveText('300.000');
   // Needs a look names it, and the gauge says the month is over, and by how much.
@@ -48,6 +58,7 @@ test('every spending category can be budgeted on Edit budgets, capped or not', a
   await expect(field).toHaveValue('');
   await field.fill('400000');
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   await expect(budgetCells(page, 'Personal care').budget).toHaveText('400.000');
   await expect(budgetCells(page, 'Personal care').left).toHaveText('400.000');
 });

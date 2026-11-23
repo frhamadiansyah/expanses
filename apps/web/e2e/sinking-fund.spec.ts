@@ -3,12 +3,15 @@ import { expectWalletFigure, openAccount } from './accounts';
 import { pickBillCategory, pickBillPaidFrom, showRepeating } from './bill-form';
 import { deskWindow, phoneBills } from './bills-desk';
 import { localIsoDate, todayIn } from './today';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
 test('a yearly bill saves up in a savings account, and is paid by card from the fund', async ({ page }) => {
+  // Reads Set aside (bills-set-aside), a v2 part of Mac Bills.
+  await macV2(page);
   await openAccount(page, { subtype: 'savings', name: 'BCA Savings', balance: '20000000' });
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await openAccount(page, { subtype: 'credit_card', name: 'Visa Gold' });

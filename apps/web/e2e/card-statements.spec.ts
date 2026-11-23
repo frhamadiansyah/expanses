@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addPlastic, openAccount, openAccountHistory, openCard, openFace } from './accounts';
+import { addPlastic, openAccount, openAccountHistory, openCard, openFace, walletCard } from './accounts';
 import { addForm, addTransaction, choosePayment, fillAmount, saveButton } from './add-transaction';
 import { cardPage, chooseCardPayFrom, closePaidBubble, openCardPay, openPaidBubble, openPaidSheet, openStatementPay, payCard, payStatementPurchases, saveCardTerms, showCardBack } from './card-section';
 
@@ -17,7 +17,7 @@ async function setUp(page: Page) {
   await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
+  await openFace(walletCard(page, 'BCA Visa'));
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').fill('31');
@@ -36,7 +36,7 @@ async function buy(page: Page, description: string, amount: string, on: string) 
 
 async function openCardPage(page: Page) {
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
+  await openFace(walletCard(page, 'BCA Visa'));
 }
 
 /** The card's statement, a page of its own opened from its round Statement button. */
@@ -200,7 +200,7 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile).toContainText('2.000.000');
   // The wide screen's bill box names the statement and the day it is due, and how long is left.
-  await expect(page.getByTestId('card-bill')).toContainText(/due \d+ \w+/);
+  await expect(page.getByTestId('card-bill')).toContainText(/due \d+ \w+/i);
   await expect(page.getByTestId('bill-to-pay')).toContainText('2.000.000');
   // Pay opens the Add screen locked to paying the card, the bill filled in; From is chosen, then Save.
   const form = await openCardPay(page);

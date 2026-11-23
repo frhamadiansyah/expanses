@@ -1,3 +1,4 @@
+import { macV2 } from './mac-detail';
 import { expect, test } from '@playwright/test';
 // The wallet, the spending and the event are shared with the plan specs, which drive the same three screens.
 import { addEvent, addWallet, fillItem, planFor, recordIntoEvent, spend, showPlanCard, showPlan } from './event-plan';
@@ -41,6 +42,8 @@ test('an event is planned as a list of things to pay, and suggests what to tag',
 test('tagged spending leaves the monthly caps but is still taken off what is left', async ({ page }) => {
   // Budget's own cells are a wide screen's; the event is read there too, on the Mac page's ring.
   await page.setViewportSize({ width: 1280, height: 720 });
+  // Those cells are the Categories table, v2's since Mac Budget option B (owner 2026-11-23).
+  await macV2(page);
   await addWallet(page);
   await spend(page, 'Hampers', '4200000');
 

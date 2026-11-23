@@ -71,7 +71,8 @@ test('9: a free user’s search for AAPL finds nothing on IDX and offers Name it
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: 'Add asset' }).click();
   await page.getByPlaceholder('Search everything that can be owned').pressSequentially('Listed shares');
-  await page.getByRole('button', { name: 'Listed shares' }).click();
+  // The picker's row, in the Mac form panel over Assets (whose drawer is named Listed shares too).
+  await page.getByTestId('form-panel').getByRole('button', { name: 'Listed shares' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   await page.getByRole('button', { name: /^Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('AAPL');
@@ -180,7 +181,8 @@ test('every way in reaches Add a holding: the picker and its Investments family;
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: 'Add asset' }).click();
   await page.getByPlaceholder('Search everything that can be owned').pressSequentially('Listed shares');
-  await page.getByRole('button', { name: 'Listed shares' }).click();
+  // The picker's row, in the Mac form panel over Assets (whose drawer is named Listed shares too).
+  await page.getByTestId('form-panel').getByRole('button', { name: 'Listed shares' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   // The form opens first, as every other asset does: its first row is the ticker.
   await expect(page.getByRole('button', { name: /^Ticker/ })).toBeVisible();
@@ -192,7 +194,8 @@ test('every way in reaches Add a holding: the picker and its Investments family;
   // Through the Investments family, Back reopens that family.
   await page.getByPlaceholder('Search everything that can be owned').fill('');
   await page.getByRole('button', { name: /^Investments/ }).click();
-  await page.getByRole('button', { name: 'Listed shares' }).click();
+  // The picker's row, in the Mac form panel over Assets (whose drawer is named Listed shares too).
+  await page.getByTestId('form-panel').getByRole('button', { name: 'Listed shares' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Listed shares' })).toBeVisible();

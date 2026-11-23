@@ -2,12 +2,21 @@ import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { budgetCells, budgetRow, capField, openCapOf, openEditBudgets, typeBudget } from './budget';
+import { macV2 } from './mac-detail';
+
+// Mac Budget's Categories typing table (and its gauge and split box) is v2's since option B (owner 2026-11-23): this
+// file reads them, so the wide screen draws them. The phone is not affected.
+test.beforeEach(async ({ page }) => {
+  await macV2(page);
+});
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
 test('a category that spent is a Set… away from its budget, typed in its own cell, and its sheet opens ready to type', async ({ page }) => {
+  // Reads Needs a look, a v2 part of Mac Budget.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'Bank Sample', balance: '20000000' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Corner shop', paidWith: 'Bank Sample', category: 'Personal care', amount: '85000' });
@@ -43,6 +52,7 @@ test('Edit budgets sets several caps at once, counts a yearly one as its month, 
   await expect(screen.getByTestId('edit-budgeted')).toContainText('400.000');
 
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   await expect(page.getByTestId('budget-page')).toBeVisible();
   await expect(budgetCells(page, 'Personal care').left).toHaveText('300.000');
   // A yearly budget reads as its month, its unit beside it.

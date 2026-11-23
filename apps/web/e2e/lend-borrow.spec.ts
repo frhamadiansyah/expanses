@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
 import { openAccount } from './accounts';
 import { closeDetails, shareWith, choosePayment } from './add-transaction';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -30,10 +31,14 @@ async function lend(page: Page, person: string, amount: string, from: string) {
   await page.getByLabel(/^Money (lent|borrowed)/).fill(amount);
   await page.getByLabel('Paid from').selectOption({ label: from });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // Saved once the form is gone: the Mac's panel floats over this list, which shows the row before the save is done.
+  await expect(page.getByTestId('form-panel')).toHaveCount(0);
   await expect(personRow(page, person)).toBeVisible();
 }
 
 test('lending on a credit card raises the card, earns points, and is never spending', async ({ page }) => {
+  // A Net worth row's kind beside its name is a v2 part of Mac Net worth.
+  await macV2(page);
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '0');
 
@@ -271,11 +276,12 @@ test('+ asks which side, each opens on a screen of its own, and back and Save bo
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\/new-payable/);
   await expect(page.getByRole('heading', { name: 'New payable' })).toBeVisible();
   await expect(page.getByRole('radio', { name: /I (lent|borrowed) money/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+  // No Cancel of its own (the Mac's form panel keeps one at its foot, the panel's way out).
+  await expect(page.getByRole('button', { name: 'Cancel' }).and(page.locator(':not([data-panel-cancel])'))).toHaveCount(0);
   await expect(page.getByLabel('Received into')).toBeVisible();
 
-  // Back goes to Lend & borrow and records nothing.
-  await page.getByRole('link', { name: /Lend & borrow/ }).first().click();
+  // Back (the Mac form panel's ✕, named for where it goes) goes to Lend & borrow and records nothing.
+  await page.getByTestId('panel-title').getByRole('button', { name: 'Lend & borrow', exact: true }).click();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow(\?|$)/);
   await expect(page.getByText('Nothing lent or borrowed yet.', { exact: false })).toBeVisible();
 

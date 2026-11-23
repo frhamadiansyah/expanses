@@ -5,8 +5,8 @@ test('a merchant added from + shows in Custom, both lists stay tables on a deskt
   page.on('pageerror', (e) => crashes.push(String(e)));
   await page.goto('/cards/merchants');
   await expect(page.getByRole('heading', { name: 'Merchants', exact: true })).toBeVisible();
-  // The way back is the round ‹, named for where it goes and wearing no word of its own.
-  const back = page.getByRole('main').getByRole('link', { name: 'Wallet', exact: true }).filter({ hasNotText: /\w/ });
+  // The way back is the Mac title bar's ‹, named for where it goes (‹ Wallet).
+  const back = page.getByTestId('desk-column-title').getByRole('link', { name: 'Wallet', exact: true });
   await expect(back).toBeVisible();
 
   // + opens the New merchant sheet; ✓ saves.

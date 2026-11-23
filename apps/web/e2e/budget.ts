@@ -43,9 +43,9 @@ export async function monthSoFar(page: Page) {
 /** A category as the old picker named it ("— Groceries") or as the screens do ("Groceries"). */
 const plain = (option: string) => option.replace(/^— /, '');
 
-/** Opens Edit budgets from the Budget page's ✎ corner. */
+/** Opens Edit budgets from the Budget page's ✎ corner (the Mac's bar says Edit plan). */
 export async function openEditBudgets(page: Page): Promise<Locator> {
-  await page.getByRole('button', { name: 'Edit budgets', exact: true }).first().click();
+  await page.getByRole('button', { name: /^Edit (budgets|plan)$/ }).first().click();
   const screen = page.getByTestId('edit-budgets');
   await expect(screen).toBeVisible();
   return screen;
@@ -104,6 +104,7 @@ export async function addCap(page: Page, input: CapInput) {
     await field.pressSequentially(input.amount, { delay: 30 });
   } else await field.fill(input.amount);
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   await expect(page.getByTestId('budget-page')).toBeVisible();
 }
 

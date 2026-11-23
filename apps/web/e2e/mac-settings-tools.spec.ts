@@ -22,7 +22,8 @@ test('the sidebar’s Settings opens Settings, and each section shows its own ro
   await openAccount(page, { subtype: 'bank', name: 'Bank Satu', balance: '2500000' });
   await page.locator('aside').getByRole('link', { name: 'App settings', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Settings', exact: true })).toBeVisible();
+  // Mac Settings names itself in its bar (the grey crumb); its sections are the page.
+  await expect(page.getByTestId('desk-crumb')).toHaveText('Settings');
   await expect(sections(page).getByRole('button')).toHaveText(['Workspaces & sharing', 'Devices', 'Backup', 'Defaults', 'Categories', 'Activity', 'About']);
   // The places the sidebar holds are not repeated in Settings.
   for (const place of ['Budget', 'Recurring', 'Events', 'Goals', 'Debt-free plan', 'Review', 'Calculators', 'Tax report', 'Import', 'Which card?']) {

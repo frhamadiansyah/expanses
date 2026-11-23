@@ -3,6 +3,7 @@ import { doubleClickInPlace } from './desk-double-click';
 import { goalMenu } from './goals';
 import { GOALS, goalsHousehold } from './goals-desk';
 import { goalCard, goalRow } from './set-aside';
+import { macV2 } from './mac-detail';
 
 /*
  * Goals on a wide screen (Mac redesign step 10): Saved for goals, Each month and a chart box of two pages — where saving
@@ -21,6 +22,8 @@ const chart = (page: Page) => page.getByTestId('goals-chart');
 const names = (page: Page, section: 'compulsory' | 'additional') => page.getByTestId(`goals-${section}`).getByTestId('goal-row-name');
 
 test('the boxes and the table read the phone’s figures, Wallet’s set-aside line agrees, and the chart box turns by swipe, dots and arrows and keeps its page', async ({ page }) => {
+  // Reads Wallet's Balance box and its groups' totals, v2 parts of Mac Wallet.
+  await macV2(page);
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   await goalsHousehold(page);

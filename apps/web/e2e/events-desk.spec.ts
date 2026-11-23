@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { EVENTS, eventsHousehold, planTab } from './events-desk';
+import { macV2 } from './mac-detail';
 
 /*
  * Events on a wide screen (Mac redesign step 11, option A): the cards page — Now and next, then Past — and an event full
@@ -18,6 +19,8 @@ const section = (page: Page, title: string) => page.locator('section').filter({ 
 const planRow = (page: Page, name: string) => page.getByTestId('plan-row').filter({ hasText: name });
 
 test('cards, an event and its title menu, Before it starts with a goal, the Plan typed in place, the receipt peek — and the phone reads the same', async ({ page }) => {
+  // Reads the event's Plan box (event-plan-box), a v2 part of a Mac event.
+  await macV2(page);
   test.setTimeout(300_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   const urls = await eventsHousehold(page);

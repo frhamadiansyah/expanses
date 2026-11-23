@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { formArea } from './form-panel';
 
 /**
  * The Assets page's `+` opens the add-asset page now, not a form unrolled over the list: the picker asks what the
@@ -27,7 +28,7 @@ export async function pickNewAsset(page: Page, pick: string) {
   // The picker matches word prefixes and drops punctuation when it splits a label into words, so a pick that
   // carries brackets is typed without them — the click still names the entry's own label, punctuation and all.
   await search.pressSequentially(pick.replace(/[^\p{L}\p{N}\s-]+/gu, ' ').replace(/\s+/g, ' ').trim());
-  await page.getByRole('button', { name: pick }).click();
+  await formArea(page).getByRole('button', { name: pick }).click();
 }
 
 /**

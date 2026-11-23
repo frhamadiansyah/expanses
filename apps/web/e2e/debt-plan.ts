@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openAccount, openCard, openLoan } from './accounts';
+import { openAccount, openCard, openLoan, addDebtButton } from './accounts';
 import { addTransaction } from './add-transaction';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 
@@ -25,7 +25,7 @@ export async function owedTo(page: Page, who: string, amount: string) {
   await page.getByRole('button', { name: /^Affiliate debt/ }).click();
   await page.getByLabel('Owed now').fill(amount);
   await page.getByLabel('Who').fill(who);
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  await addDebtButton(page).click();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
 }
 
@@ -48,7 +48,7 @@ export async function openPaylater(page: Page, o: { name: string; owed: string; 
   await page.getByLabel('Lender').fill(o.name);
   await page.getByLabel('Interest a month').fill(o.perMonth);
   await page.getByLabel('Months left').fill(o.months);
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  await addDebtButton(page).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
 }
 

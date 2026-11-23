@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { addPlastic, openCard, openFace, wideScreen } from './accounts';
+import { addPlastic, openCard, openFace, wideScreen, walletCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, pickChargedOn, saveCardTerms, showCardBack } from './card-section';
 
@@ -25,7 +25,7 @@ export async function buy(page: Page, card: string, amount: string) {
 
 export async function openWalletCard(page: Page, name: string) {
   await page.goto('/wallet');
-  await openFace(page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }));
+  await openFace(walletCard(page, name));
   await expect(page).toHaveURL(/\/cards\/[^/]+$/);
 }
 
@@ -68,8 +68,8 @@ export async function flipHero(page: Page, name: string) {
  */
 async function deskHero(page: Page) {
   await expect(page.getByTestId('card-desk').getByTestId('desk-face')).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Pay']);
-  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link')).toHaveText(['Spend', 'Statement', '']);
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText(['Pay credit card']);
+  await expect(page.getByRole('group', { name: 'Actions' }).getByRole('link')).toHaveText(['Statement', '', '＋New expense']);
   const back = page.getByTestId('tile-left-to-pay');
   await expect(back).toContainText('Outstanding');
   await expect(back.getByTestId('tile-unpaid-balance')).toContainText('412.000');

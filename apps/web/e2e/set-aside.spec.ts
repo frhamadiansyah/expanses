@@ -3,6 +3,7 @@ import { pickView } from './wallet';
 import { expect, test } from '@playwright/test';
 import { editGoal, expectArchiveNote } from './goals';
 import { addGoal, addMoneyAccount, addSetAsideRow, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, openGoalHistory, setAside, setAsideBar, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -24,6 +25,8 @@ test('an expense within what is free says nothing; one rupiah more asks', async 
 });
 
 test('the laptop: pick a goal, say it is borrowing, and the goal and the account both say so', async ({ page }) => {
+  // Reads Wallet's Balance box, a v2 part of Mac Wallet.
+  await macV2(page);
   await jeniusWithTwoGoals(page);
   const form = await openExpense(page, 'Jenius');
   await typeAmount(page, form, '6800000');

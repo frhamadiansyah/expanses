@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { openAccount, openCard, openFace } from './accounts';
+import { openAccount, openCard, openFace, addDebtButton, walletCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardPage, saveCardTerms } from './card-section';
 
@@ -34,14 +34,14 @@ export async function oneOfEach(page: Page) {
   await type(page, 'Lender', 'BCA');
   await type(page, 'Interest rate', '9');
   await type(page, 'Months left', '180');
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  await addDebtButton(page).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
 
   await openAccount(page, { subtype: 'loan', name: 'Dollar car loan', currency: 'USD', balance: '1000.00', rate: '16250' });
 
   await openCard(page, { name: 'BCA Visa' });
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
+  await openFace(walletCard(page, 'BCA Visa'));
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await type(page, 'Billing date', '31');
@@ -59,7 +59,7 @@ export async function oneOfEach(page: Page) {
   await page.getByRole('button', { name: /^Affiliate debt/ }).click();
   await type(page, 'Owed now', '750000');
   await type(page, 'Who', 'Dewi');
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  await addDebtButton(page).click();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
 }
 

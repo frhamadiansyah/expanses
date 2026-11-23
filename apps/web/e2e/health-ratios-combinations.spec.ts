@@ -6,6 +6,13 @@ import { addCap, budgetCells, budgetTab, capField, openCapOf, openDrawer, openEd
 import { editGoal, openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { countsAs, expectNeed, markNeed, openCategory } from './categories';
+import { macV2 } from './mac-detail';
+
+// Mac Budget's Categories typing table (and its gauge and split box) is v2's since option B (owner 2026-11-23): this
+// file reads them, so the wide screen draws them. The phone is not affected.
+test.beforeEach(async ({ page }) => {
+  await macV2(page);
+});
 
 /**
  * The health-ratio combinations (spec §15, Part 1 rows), one test a row, at desktop width.
@@ -208,6 +215,7 @@ test('row 9 — a workspace that reads in dollars types and converts in cents', 
   // 1.000 cents × 52 ÷ 12 = 4.333,3 → 4.333 cents.
   await expect(screen.getByTestId('edit-budgeted')).toContainText('43,33');
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   await expect(page.getByTestId('budget-page')).toBeVisible();
   await budgetTab(page, 'Plan');
   await expect(page.getByTestId('caps-total')).toContainText('43,33');
@@ -216,6 +224,8 @@ test('row 9 — a workspace that reads in dollars types and converts in cents', 
   await expect(again.getByLabel('Every')).toHaveValue('weekly');
 });
 test('row 10 — the month split into essential and lifestyle on the Budget page', async ({ page }) => {
+  // The month's split box (essential-spent…) is a v2 part of Mac Budget.
+  await macV2(page);
   await setUp(page);
   await markFoodLifestyle(page);
   await page.goto('/budget');
@@ -228,6 +238,8 @@ test('row 10 — the month split into essential and lifestyle on the Budget page
 });
 
 test('row 1b — built-in marks: Restaurants is lifestyle, Life insurance counts with the essentials', async ({ page }) => {
+  // The month's split box (essential-spent…) is a v2 part of Mac Budget.
+  await macV2(page);
   await setUp(page);
   await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '1000000', keyByKey: true });
   await addTransaction(page, { description: 'Premi jiwa', paidWith: 'BCA Tahapan', category: 'Life insurance', amount: '2000000', keyByKey: true });

@@ -3,6 +3,7 @@ import { openAccount, openLoan } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { forgetRates } from './pockets';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -349,6 +350,8 @@ test.describe('on a phone', () => {
 });
 
 test('says it does not know the cash-flow ratios until there are transactions', async ({ page }) => {
+  // Financial health's box (its link to the ratios) is a v2 part of Mac Net worth.
+  await macV2(page);
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
 
   // The ratios are a screen of their own, one tap from Net worth's top corner.

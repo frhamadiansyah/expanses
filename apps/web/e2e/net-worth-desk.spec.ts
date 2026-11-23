@@ -4,6 +4,7 @@ import { addTransaction } from './add-transaction';
 import { addPriced } from './asset-page';
 import { receiptPeek } from './receipt-peek';
 import { doubleClickInPlace } from './desk-double-click';
+import { macV2 } from './mac-detail';
 
 /*
  * Net worth on a wide screen (Mac redesign step 8): the figure and its months beside Financial health, then Assets and
@@ -21,6 +22,8 @@ const amount = async (page: Page, testId: string) => Number((await page.getByTes
 const row = (page: Page, name: string) => page.locator('[data-testid^="sheet-row-"]').filter({ hasText: name });
 
 test('the figure is Total assets − Total debts, each kind is its rows added up, and the treemaps’ shares add up to 100', async ({ page }) => {
+  // The treemaps, the cards note and Financial health are v2 parts of Mac Net worth.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'Bank Seroja', balance: '84500000' });
   await openAccount(page, { subtype: 'savings', name: 'Bank Kenanga', balance: '15500000' });
   await openCard(page, { name: 'Kartu Teratai', owed: '6250000', last4: '4242' });
@@ -70,6 +73,8 @@ test('the figure is Total assets − Total debts, each kind is its rows added up
 });
 
 test('a click opens a row’s side peek, ⌃ ⌄ step, Esc closes; a box opens its kind; a double-click opens the page; a recent row opens the Mac receipt', async ({ page }) => {
+  // A treemap box opening its kind is a v2 part of Mac Net worth.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'Bank Seroja', balance: '5000000' });
   await openAccount(page, { subtype: 'cash', name: 'Dompet', balance: '250000' });
   await page.goto('/transactions');
@@ -123,16 +128,18 @@ test('a click opens a row’s side peek, ⌃ ⌄ step, Esc closes; a box opens i
   await expect(page).toHaveURL(new RegExp(`${dompet}$`));
 });
 
-test('Prices, Trade and ＋ Add open their screens; Trade waits for something to trade', async ({ page }) => {
+test('Prices, Trade and ＋ Add asset open their screens; Trade waits for something to trade', async ({ page }) => {
+  // Reads the Investments box (absent here), a v2 part of Mac Net worth.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'Bank Seroja', balance: '50000000' });
   await page.goto('/net-worth');
   await expect(page.getByRole('button', { name: 'Trade', exact: true })).toBeDisabled();
 
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Add asset', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Debt…' }).click();
   await expect(page).toHaveURL(/\/debts\/new$/);
   await page.goto('/net-worth');
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Add asset', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Asset…' }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets\/new$/);
 
@@ -151,6 +158,8 @@ test('Prices, Trade and ＋ Add open their screens; Trade waits for something to
 });
 
 test('the Investments box is the Investments kind: its value as the table reads it, and the way to holdings, trades and dividends', async ({ page }) => {
+  // The Investments box is a v2 part of Mac Net worth.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'Bank Seroja', balance: '50000000' });
   await addPriced(page, 'Government bonds', 'ORI026', [['2026-01-15', '15000000', '15000000']]);
 

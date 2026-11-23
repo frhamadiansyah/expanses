@@ -70,7 +70,7 @@ async function buyOnCard(page: Page, note: string, amount: string, on: string) {
 
 async function openCardPage(page: Page) {
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
+  await openFace(walletCard(page, 'BCA Visa'));
 }
 
 test('paying the card bill from Jenius asks, and the Emergency fund lends the 1.800.000', async ({ page }) => {

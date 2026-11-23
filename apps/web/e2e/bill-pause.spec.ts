@@ -1,12 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { household, MONTHS, pauseFor } from './bill-pause';
 import { openCapOf, setBudget } from './budget';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
 test('pausing a bill for two months takes it out of Still to pay, shows the months, and Resume brings it back', async ({ page }) => {
+  // Still to pay's exact figure (`bills-total`) is a v2 part of Mac Bills; v1's tiles round it.
+  await macV2(page);
   await household(page);
   await expect(page.getByTestId('bills-total')).toContainText('500.000');
 

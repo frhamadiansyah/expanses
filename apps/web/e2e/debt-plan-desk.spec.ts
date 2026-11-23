@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { planRows } from './debt-plan';
 import { DESK, seedDesk, tableNames } from './debt-plan-desk';
+import { macV2 } from './mac-detail';
 import { doubleClickInPlace } from './desk-double-click';
 
 /*
@@ -40,6 +41,8 @@ test('Plan: the debts in the phone’s pay order, late first; the late count is 
   const debtFree = (await page.getByTestId('plan-debt-free').innerText()).trim();
   expect(left).toBe('Rp 637.064.300');
 
+  // Overview's Worth a look, which names the late debts, is a v2 part of Mac Overview.
+  await macV2(page);
   await page.goto('/overview');
   await expect(page.getByText('3 debts late')).toBeVisible();
 

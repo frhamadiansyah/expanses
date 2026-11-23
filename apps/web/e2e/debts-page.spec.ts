@@ -1,7 +1,7 @@
 import { payCard, showCardBack } from './card-section';
 import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
-import { openAccount, openCard } from './accounts';
+import { openAccount, openCard, addDebtButton } from './accounts';
 import { addTransaction } from './add-transaction';
 import { openDrawers } from './drawers';
 import { digits, moneyIn, oneOfEach } from './debts-page';
@@ -192,7 +192,7 @@ test('an asset whose rate is missing does not hide the due split, which is made 
   await page.getByLabel('Lender').fill('BCA');
   await page.getByLabel('Interest rate').fill('9');
   await page.getByLabel('Months left').fill('180');
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  await addDebtButton(page).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
 
   // A funded dollar holding, and then no rate anywhere on the device: the balance sheet names USD as missing, and it
@@ -218,7 +218,7 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
   await page.getByLabel('Lender').pressSequentially('Kredivo');
   await page.getByLabel('Interest rate').pressSequentially('0');
   await page.getByLabel('Months left').pressSequentially('6');
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  await addDebtButton(page).click();
   await expect(page.getByTestId('debts-total')).toContainText('Rp 3.000.000');
 
   await openDrawers(page);

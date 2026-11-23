@@ -20,7 +20,8 @@ test('a mortgage opens a loan account at what is still owed, with the terms that
   await page.getByLabel('Lender').fill('Bank BTN');
   await page.getByLabel('Interest rate').fill('9');
   await page.getByLabel('Months left').fill('168');
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  // The form floats in the Mac panel over the Debt-free plan, whose own bar says Add debt too.
+  await page.getByTestId('form-panel').getByRole('button', { name: 'Add debt' }).click();
 
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
   // The row, and the terms line under it, sit inside the kind's own drawer, which the list opens shut.
@@ -39,7 +40,8 @@ test('money borrowed from family lands under Lend & borrow', async ({ page }) =>
 
   await page.getByLabel('Owed now').fill('10000000');
   await page.getByLabel('Who').fill('Ibu');
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  // The form floats in the Mac panel over the Debt-free plan, whose own bar says Add debt too.
+  await page.getByTestId('form-panel').getByRole('button', { name: 'Add debt' }).click();
 
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
   await expect(page.getByText('Payables', { exact: true })).toBeVisible();
@@ -63,7 +65,7 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
 
   await expect(page).toHaveURL(/\/cards\//);
   // Saved as its bank and its own name: the issuer is BCA, the name UnionPay.
-  await expect(page.getByRole('heading', { name: 'UnionPay' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'UnionPay' })).toBeVisible();
 
   // The catalogue's own terms: the bank's published annual fee, and the earn rules that came with it.
   await cardPage(page, 'Settings');
@@ -76,7 +78,7 @@ test('a catalogue card opens without its dates, and the fee is saved once they a
   await pickCatalogueCard(page, 'unionpay', 'BCA UnionPay');
   await page.getByRole('button', { name: 'Add card' }).click();
   // Saved as its bank and its own name: the issuer is BCA, the name UnionPay.
-  await expect(page.getByRole('heading', { name: 'UnionPay' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'UnionPay' })).toBeVisible();
 
   // Its rules are in already, so the dates are not step 1 of anything, and the card's page has no row asking: they are in Settings.
   await expect(page.getByTestId('card-setup')).toHaveCount(0);

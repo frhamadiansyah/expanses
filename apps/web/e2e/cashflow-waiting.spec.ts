@@ -121,8 +121,8 @@ test('rows pasted from two months back wait just above the typing row, are fille
     };
   });
   for (const pair of [colours.date, colours.note, colours.paid, colours.amount]) expect(pair[1]).toBe(pair[0]);
-  // The header's Record N is black while a row is ticked; the blank typing row's Record grey.
-  expect(colours.header).toBe('rgb(28, 28, 30)');
+  // The header's Record N is black (the Mac look's #1d1d1f) while a row is ticked; the blank typing row's Record grey.
+  expect(colours.header).toBe('rgb(29, 29, 31)');
   expect(colours.blank).not.toBe(colours.header);
   await expect(draftRow(page, 'Kedai Contoh').getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?60\.700$/);
   // No amber row or orange box, and no blue cell at rest.

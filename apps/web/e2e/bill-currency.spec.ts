@@ -3,6 +3,7 @@ import { openAccount } from './accounts';
 import { pickBillCategory, pickBillPaidFrom } from './bill-form';
 import { paySeveral, peekBill, peekButton } from './bills-desk';
 import { mockRates } from './pockets';
+import { formArea } from './form-panel';
 import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -119,13 +120,16 @@ test('an SGD bill keeps its currency through an edit, and a bill with none follo
   await lifeCover(page);
   await row(page, 'Life cover').dblclick();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
-  await expect(page.getByRole('button', { name: /^Currency\s*SGD/ })).toBeVisible();
-  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue(/^120([.,]00)?$/);
-  await page.getByLabel('Amount', { exact: true }).fill('125');
+  // Edit bill floats in the Mac's panel over the bill's page, which names its currency and amount too.
+  const form = formArea(page);
+  await expect(form.getByRole('button', { name: /^Currency\s*SGD/ })).toBeVisible();
+  await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^120([.,]00)?$/);
+  await form.getByLabel('Amount', { exact: true }).fill('125');
   await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('form-panel')).toHaveCount(0);
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
-  await expect(page.getByRole('button', { name: /^Currency\s*SGD/ })).toBeVisible();
-  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue(/^125([.,]00)?$/);
+  await expect(form.getByRole('button', { name: /^Currency\s*SGD/ })).toBeVisible();
+  await expect(form.getByLabel('Amount', { exact: true })).toHaveValue(/^125([.,]00)?$/);
 
   // A new bill with a payer chosen reads in that payer's currency until another is picked.
   await page.goto('/bills/new');

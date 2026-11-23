@@ -2,6 +2,13 @@ import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { budgetCells, budgetRow, capField, openEditBudgets, typeBudget } from './budget';
+import { macV2 } from './mac-detail';
+
+// Mac Budget's Categories typing table (and its gauge and split box) is v2's since option B (owner 2026-11-23): this
+// file reads them, so the wide screen draws them. The phone is not affected.
+test.beforeEach(async ({ page }) => {
+  await macV2(page);
+});
 
 /*
  * Budget on a wide screen (Mac Budget, the list version): budgets typed straight into the Categories table, saved as
@@ -18,6 +25,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('a budget typed into its cell saves at once, and Left, the total and the gauge follow', async ({ page }) => {
+  // Reads the gauge (left-to-spend), a v2 part of Mac Budget.
+  await macV2(page);
   const groceries = budgetCells(page, 'Groceries');
   // Spent with no budget: under No budget yet, a Set… where the budget goes.
   await expect(groceries.budget).toHaveText('Set…');
@@ -41,6 +50,7 @@ test('a budget typed into its cell saves at once, and Left, the total and the ga
   const screen = await openEditBudgets(page);
   await (await capField(screen, 'Household')).field.fill('1000000');
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   await expect(page.getByTestId('budget-page')).toBeVisible();
   const own = budgetCells(page, 'All Household');
   await expect(own.budget).toHaveText('1.000.000');
@@ -85,6 +95,8 @@ test('a budget typed into its cell saves at once, and Left, the total and the ga
 });
 
 test('the gauge reads the Total budgeted row: a group’s whole Spent, its Budget, Left = Budget − Spent; Not budgeted is the rest', async ({ page }) => {
+  // Reads the gauge and Needs a look, v2 parts of Mac Budget.
+  await macV2(page);
   // Supplies spends with no budget of its own inside Household, whose Groceries has one: the group's Spent is all of it.
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Toko Sabun', paidWith: 'Bank Sample', category: 'Supplies', amount: '120000' });
@@ -93,7 +105,8 @@ test('the gauge reads the Total budgeted row: a group’s whole Spent, its Budge
   await expect(budgetCells(page, 'Household').spent).toHaveText('460.000');
   await expect(page.getByTestId('total-budget')).toHaveText('400.000');
   await expect(page.getByTestId('total-spent')).toHaveText('460.000');
-  await expect(page.getByTestId('total-left')).toHaveText('−60.000');
+  // Over reads in words on the Mac: "60.000 over".
+  await expect(page.getByTestId('total-left')).toHaveText('60.000 over');
   // The gauge and its lines say the Total row's figures, and over by the same 60.000.
   const box = page.getByTestId('left-to-spend');
   await expect(box.getByTestId('spent-of-budget')).toHaveText(/^Rp\s460\.000$/);
@@ -112,19 +125,20 @@ test('Edit budgets still sets any budget, and the table shows it', async ({ page
   const screen = await openEditBudgets(page);
   await (await capField(screen, 'Restaurants')).field.fill('700000');
   await page.getByRole('button', { name: 'Save budgets' }).click();
+  await expect(page.getByTestId('edit-budgets')).toHaveCount(0);
   await expect(page.getByTestId('budget-page')).toBeVisible();
   await expect(budgetCells(page, 'Restaurants').budget).toHaveText('700.000');
   await expect(budgetCells(page, 'Restaurants').left).toHaveText('200.000');
   await expect(budgetCells(page, 'Food and beverage').budget).toHaveText('700.000');
   await expect(budgetCells(page, 'Food and beverage').left).toHaveText('200.000');
 
-  // Over its budget, a sub-category's Left is below nought, in red, and takes its group's Left down with it.
+  // Over its budget, a sub-category's Left is "… over", in red, and takes its group's Left down with it.
   await typeBudget(page, 'Restaurants', '300000');
   const restaurants = budgetCells(page, 'Restaurants');
-  await expect(restaurants.left).toHaveText('−200.000');
-  await expect(restaurants.left).toHaveClass(/ph-alarm/);
-  await expect(budgetCells(page, 'Food and beverage').left).toHaveText('−200.000');
-  await expect(page.getByTestId('total-left')).toHaveText('−200.000');
+  await expect(restaurants.left).toHaveText('200.000 over');
+  await expect(restaurants.left).toHaveClass(/mk-t-red/);
+  await expect(budgetCells(page, 'Food and beverage').left).toHaveText('200.000 over');
+  await expect(page.getByTestId('total-left')).toHaveText('200.000 over');
 });
 
 test('a category’s name opens its side peek: the month’s figures and transactions, stepped with ↓ and closed with Esc', async ({ page }) => {

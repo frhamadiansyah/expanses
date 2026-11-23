@@ -296,7 +296,7 @@ async function addCard(page: Page) {
   await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
+  await openFace(walletCard(page, 'BCA Visa'));
   await cardPage(page, 'Settings');
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
   await page.getByLabel('Billing date').fill('31');
@@ -325,7 +325,7 @@ test('a card’s statement holds every workspace, and each row says which', asyn
   await buyOnCard(page, 'Client lunch', '320000');
 
   await page.goto('/wallet');
-  await openFace(page.getByRole('link', { name: 'BCA Visa' }));
+  await openFace(walletCard(page, 'BCA Visa'));
   await cardPage(page, 'Statement');
   const lines = page.getByTestId('statement-line');
   await expect(lines).toHaveCount(2);
@@ -346,7 +346,8 @@ test('the switcher only lists workspaces, and the Account page holds New', async
   await page.getByRole('link', { name: 'App settings', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { level: 1, name: 'Settings', exact: true })).toBeVisible();
+  // Mac Settings names itself in its bar (the grey crumb); its sections are the page.
+  await expect(page.getByTestId('desk-crumb')).toHaveText('Settings');
   await expect(page.getByTestId('account-workspace')).toHaveCount(1);
   await expect(page.getByTestId('add-workspace')).toBeVisible();
   // The old address still arrives.
@@ -484,7 +485,8 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await page.getByTestId('open-plan').click();
   await page.getByRole('link', { name: 'Add a cost' }).first().click();
   await chooseCategory(page, 'Restaurants · Personal');
-  await page.getByRole('link', { name: 'Cancel' }).click();
+  // The cost form floats in the Mac's panel: its way out is the panel's (✕ and Cancel both name it).
+  await page.getByTestId('form-panel').getByRole('button', { name: 'Cancel', exact: true }).first().click();
   await page.getByRole('link', { name: 'Back to the event' }).click();
 
   // All: the whole trip, both workspaces added up.

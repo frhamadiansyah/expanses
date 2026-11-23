@@ -81,7 +81,8 @@ export async function tokenColour(page: Page, name: string): Promise<string> {
   return page.evaluate((property) => {
     const probe = document.createElement('span');
     probe.style.color = `var(${property})`;
-    document.body.appendChild(probe);
+    // Read where the page reads it: a Mac page (`.mk`) maps the --ph-* tokens onto its own colours.
+    (document.querySelector('main .mk') ?? document.body).appendChild(probe);
     const value = getComputedStyle(probe).color;
     probe.remove();
     return value;

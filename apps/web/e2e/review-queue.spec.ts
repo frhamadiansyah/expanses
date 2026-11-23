@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { pickDraftCategory } from './review';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -105,6 +106,8 @@ test('a capture is finished and recorded from the transactions list itself', asy
 });
 
 test('the queue row is the way in to Review, and leaves with the last draft', async ({ page }) => {
+  // The To review count as a link only while drafts wait is This month's box, a v2 part of Mac Cashflow (v1's tile is always a link).
+  await macV2(page);
   await addAccount(page);
   await loadCsv(page);
   await page.getByRole('button', { name: /Send \d+ to review/ }).click();

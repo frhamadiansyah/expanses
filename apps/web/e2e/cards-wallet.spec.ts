@@ -1,12 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard, openFace } from './accounts';
+import { openCard, openFace, walletCard } from './accounts';
 import { cardPage, saveCardTerms, setUpRewardsByHand } from './card-section';
 
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
   await openCard(page, { name });
   await page.goto('/wallet');
-  await openFace(page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }));
+  await openFace(walletCard(page, name));
   await cardPage(page, 'Settings');
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
@@ -36,7 +36,8 @@ test('a wide screen draws the cards as faces side by side, and a double-click op
   expect(second.x).toBeGreaterThan(first.x + first.width);
   expect(Math.round(first.width)).toBe(Math.round(second.width));
   await expect(cards.nth(0).getByTestId('card-face')).toContainText('Alpha Card');
-  await expect(cards.nth(0).getByTestId('face-figure')).toBeVisible();
+  // v1 prints a credit card's figure under its face, not on it.
+  await expect(cards.nth(0).getByTestId('wallet-card-owed')).toBeVisible();
 
   // A double-click opens THAT card's own page: its face, what it owes, its points and its statement.
   await openFace(wall.getByRole('link', { name: /^Alpha Card, / }));
@@ -59,6 +60,7 @@ test('a wide screen draws the cards as faces side by side, and a double-click op
   // Back: Mac Wallet again, in its order.
   await page.goBack();
   await expect(page).toHaveURL(/\/wallet$/);
-  await expect(wall.getByRole('link')).toHaveCount(2);
+  // The two faces (the region also holds the Points card's links).
+  await expect(cards.getByRole('link')).toHaveCount(2);
   await expect(cards.nth(1).getByRole('link')).toHaveAccessibleName(/^Beta Card, /);
 });

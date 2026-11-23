@@ -79,8 +79,13 @@ export interface NewAccount {
  * A money account's or a credit card's card on Wallet, by name. A card's accessible name is its name and the figure
  * on its band ("Everyday, Rp 3.000.000"), so the name is anchored rather than exact.
  */
-export const walletCard = (page: Page, name: string) =>
-  page.getByRole('region', { name: 'Cards' }).getByRole('link', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(,|$)`) });
+export const walletCard = (page: Page, name: string) => {
+  const link = { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(,|$)`) };
+  if (!wideScreen(page)) return page.getByRole('region', { name: 'Cards' }).getByRole('link', link);
+  // Mac Wallet's Cards region (Accounts with the v2 parts on) holds the Points card too, whose programme rows can carry a
+  // card's name: a face is a card's.
+  return page.getByRole('region', { name: /^(Cards|Accounts)$/ }).getByTestId('wallet-card').getByRole('link', link);
+};
 
 /**
  * What a card on Wallet reads — a balance, or what a credit card owes — read off the card's own name, which carries
@@ -92,6 +97,12 @@ export async function expectWalletFigure(page: Page, name: string, figure: strin
 
 /** Whether a journey runs on a wide screen, where Wallet is Mac Wallet: a click opens a card's side peek, a double-click its page. */
 export const wideScreen = (page: Page) => (page.viewportSize()?.width ?? 0) >= 768;
+
+/**
+ * The debt form's own Add debt. On a wide screen the form floats in the Mac's panel over the Debt-free plan, whose bar
+ * says Add debt too, so the panel's is the one; a phone has only the form's.
+ */
+export const addDebtButton = (page: Page) => (wideScreen(page) ? page.getByTestId('form-panel') : page).getByRole('button', { name: 'Add debt' });
 
 /**
  * Opens a Wallet card's own page, as a person does: a tap on a phone, where the page is the card raised over it; on a
@@ -314,7 +325,7 @@ export async function openLoan(page: Page, o: NewLoan) {
   if (o.lender) await page.getByLabel('Lender').fill(o.lender);
   if (o.interestRate) await page.getByLabel('Interest rate').fill(o.interestRate);
   if (o.months) await page.getByLabel('Months left').fill(o.months);
-  await page.getByRole('button', { name: 'Add debt' }).click();
+  await addDebtButton(page).click();
   // The Debts list folds its rows by kind — a mortgage with the mortgages — so the drawer comes first.
   await openDrawers(page);
   // Read as text, not as a link: the desk names the debt in its row, while the phone's list makes the whole

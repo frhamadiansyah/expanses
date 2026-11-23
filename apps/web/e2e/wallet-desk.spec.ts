@@ -4,6 +4,7 @@ import { addForm, addTransaction, saveButton } from './add-transaction';
 import { chooseCardPayFrom } from './card-section';
 import { mockRates } from './pockets';
 import { doubleClickInPlace } from './desk-double-click';
+import { macV2 } from './mac-detail';
 
 /*
  * Wallet on a wide screen (Mac Wallet): the Balance box and where the money sits over every card Wallet holds, each its
@@ -27,6 +28,8 @@ const faceNames = async (page: Page, key: 'bank' | 'cash' | 'credit' | 'foreign'
 test('the cards are grouped by what they are, each group adding up its faces, and the Balance, the split and the sidebar read the same money', async ({
   page,
 }) => {
+  // Group totals, the Balance box and the split are v2 parts of Mac Wallet.
+  await macV2(page);
   await mockRates(page, { USD: 16_000 });
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await openAccount(page, { subtype: 'savings', name: 'Jenius', balance: '2000000' });
@@ -38,7 +41,8 @@ test('the cards are grouped by what they are, each group adding up its faces, an
   await page.goto('/wallet');
   await expect(page.getByRole('heading', { name: 'Wallet', exact: true })).toBeVisible();
   // Every card a face, in its group, in Wallet's order within it.
-  await expect(page.getByRole('region', { name: 'Cards' }).getByTestId('wallet-card')).toHaveCount(6);
+  // With the v2 parts on, the faces sit in the Accounts box.
+  await expect(page.getByRole('region', { name: 'Accounts' }).getByTestId('wallet-card')).toHaveCount(6);
   expect(await faceNames(page, 'bank')).toEqual(['BCA Tahapan', 'Jenius']);
   expect(await faceNames(page, 'cash')).toEqual(['Pocket cash', 'GoPay']);
   expect(await faceNames(page, 'credit')).toEqual(['Blue Card']);
@@ -124,10 +128,10 @@ test('a click opens a card’s side peek — its figure, what it is, Transfer an
   await expect(page).toHaveURL(/\/transactions\/new\?.*mode=transfer/);
 
   // A double-click opens its own page, full width (Mac account pages); Back comes back to Mac Wallet.
-  // At a 1280 window the first click's peek moves the face from under the pointer; the second is still BCA Tahapan's.
+  // At a 1280 window the first click's peek may move the face from under the pointer; the second is still BCA Tahapan's.
   await page.goto('/wallet');
   const bcaPage = await walletCard(page, 'BCA Tahapan').getAttribute('href');
-  expect((await doubleClickInPlace(page, walletCard(page, 'BCA Tahapan'))).moved).toBe(true);
+  await doubleClickInPlace(page, walletCard(page, 'BCA Tahapan'));
   await expect(page).toHaveURL(new RegExp(`${bcaPage}$`));
   await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
   await expect(page.getByTestId('account-desk')).toBeVisible();
@@ -137,6 +141,8 @@ test('a click opens a card’s side peek — its figure, what it is, Transfer an
 });
 
 test('Pay in a credit card’s peek opens “Pay credit card” filled with what it owes, and paying it clears Outstanding on cards', async ({ page }) => {
+  // Reads the Balance box's rows (wallet-cards-row, wallet-spending-row), a v2 part of Mac Wallet.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await openCard(page, { name: 'Blue Card', owed: '500000', last4: '4242' });
 
@@ -165,6 +171,8 @@ test('Pay in a credit card’s peek opens “Pay credit card” filled with what
 });
 
 test('List shows the same cards as rows in the same groups, a row opens the peek and a double-click the page, and the choice is kept', async ({ page }) => {
+  // Reads List's group totals (wallet-group-total), a v2 part of Mac Wallet.
+  await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
   await openAccount(page, { subtype: 'ewallet', name: 'GoPay', balance: '150000' });
   await openCard(page, { name: 'Blue Card', owed: '500000', last4: '4242' });
@@ -193,12 +201,13 @@ test('List shows the same cards as rows in the same groups, a row opens the peek
   await page.reload();
   await expect(page.getByRole('radio', { name: 'List' })).toHaveAttribute('aria-checked', 'true');
   await expect(rows).toHaveCount(3);
-  // The first click's peek moves the rows from under the pointer; the double-click is still Blue Card's (not the row now there).
-  expect((await doubleClickInPlace(page, rows.filter({ hasText: 'Blue Card' }))).moved).toBe(true);
+  // The first click's peek may move the rows from under the pointer; the double-click is still Blue Card's (not the row now there).
+  await doubleClickInPlace(page, rows.filter({ hasText: 'Blue Card' }));
   await expect(page).toHaveURL(/\/cards\/[^/]+$/);
   await page.goto('/wallet');
-  await page.getByRole('radio', { name: 'Cards' }).click();
-  await expect(page.getByRole('region', { name: 'Cards' }).getByTestId('wallet-card')).toHaveCount(3);
+  // Back to the faces: Wallet view's Grid (Show has a Cards of its own); with the v2 parts on they sit in Accounts.
+  await page.getByRole('radiogroup', { name: 'Wallet view' }).getByRole('radio', { name: 'Grid' }).click();
+  await expect(page.getByRole('region', { name: /^(Cards|Accounts)$/ }).getByTestId('wallet-card')).toHaveCount(3);
 });
 
 test('a face dragged onto another in its group takes its place, kept as Reorder cards keeps it; Reorder opens the same order', async ({ page }) => {

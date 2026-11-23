@@ -7,6 +7,7 @@ import { ageRates, forgetRates, mockRates, openWithPockets, pickPocket } from '.
 import { choosePayment, chooseTo } from './add-transaction';
 import { currencyRow, pickInSheet, setCurrency } from './currency-field';
 import { pickView } from './wallet';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -244,6 +245,8 @@ test('a pocket’s ≈ line marks a rate held for an earlier day as last known (
 });
 
 test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
+  // Wallet's Balance box and its groups' totals are v2 parts of Mac Wallet.
+  await macV2(page);
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   // The Balance tile is the grid's (the pile shows none).
@@ -429,6 +432,8 @@ test('the parent archives only after its pockets, and renaming it renames them',
 });
 
 test('an empty foreign pocket needs no rate: the Money tile still adds up', async ({ page }) => {
+  // Wallet's Balance box and its groups' totals are v2 parts of Mac Wallet.
+  await macV2(page);
   // Offline, and USD opened with nothing in it, so no USD rate is ever typed or fetched — and none is needed for 0.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '' }] });
@@ -442,6 +447,8 @@ test('an empty foreign pocket needs no rate: the Money tile still adds up', asyn
 });
 
 test('the tile names the rate it lacks instead of adding up the rest', async ({ page }, testInfo) => {
+  // Wallet's Balance box is a v2 part of Mac Wallet.
+  await macV2(page);
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '2400', rate: '16250' }] });
   // $2.400 held, and then no USD rate anywhere on the device.

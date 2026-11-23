@@ -3,6 +3,8 @@ import { openAccount } from './accounts';
 import { pickBillCategory, pickBillPaidFrom, showMonthly, showRepeating } from './bill-form';
 import { peekBill, peekButton } from './bills-desk';
 import { localIsoDate, todayIn } from './today';
+import { formArea } from './form-panel';
+import { macV2 } from './mac-detail';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -33,6 +35,8 @@ async function addYearlyBill(page: Page, name: string, at: { month: number; day:
 }
 
 test('a yearly bill 20 days ahead is listed to come, and paying it takes it off the list', async ({ page }) => {
+  // Reads Still to pay's exact figure (bills-total), a v2 part of Mac Bills.
+  await macV2(page);
   const at = await daysAhead(page, 20);
   await addYearlyBill(page, 'Car tax', at);
 
@@ -60,6 +64,8 @@ test('a yearly bill 20 days ahead is listed to come, and paying it takes it off 
 });
 
 test('a yearly bill far from its date is not on Recurring, but is under Repeating bills', async ({ page }) => {
+  // Reads Still to pay (bills-total), a v2 part of Mac Bills.
+  await macV2(page);
   const at = await daysAhead(page, 180);
   await addYearlyBill(page, 'Domain', at);
 
@@ -90,9 +96,9 @@ test('a bill switches between monthly and yearly in Edit', async ({ page }) => {
   await pickBillCategory(page);
   await pickBillPaidFrom(page, 'BCA Tahapan');
   // A monthly bill has no Month row.
-  await expect(page.getByLabel('Repeats')).toHaveValue('monthly');
-  await expect(page.getByLabel('Month', { exact: true })).toHaveCount(0);
-  await page.getByLabel('Bill date').selectOption('1');
+  await expect(formArea(page).getByLabel('Repeats')).toHaveValue('monthly');
+  await expect(formArea(page).getByLabel('Month', { exact: true })).toHaveCount(0);
+  await formArea(page).getByLabel('Bill date').selectOption('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(row(page, 'Gym')).toBeVisible();
 
@@ -100,13 +106,13 @@ test('a bill switches between monthly and yearly in Edit', async ({ page }) => {
   const far = await daysAhead(page, 180);
   await row(page, 'Gym').dblclick();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
-  await page.getByLabel('Repeats').selectOption('yearly');
+  await formArea(page).getByLabel('Repeats').selectOption('yearly');
   // A yearly bill has the one date: Due by, with no Bill date beside it.
-  await expect(page.getByLabel('Bill date')).toHaveCount(0);
-  await expect(page.getByLabel('Due by')).toHaveValue('1');
+  await expect(formArea(page).getByLabel('Bill date')).toHaveCount(0);
+  await expect(formArea(page).getByLabel('Due by')).toHaveValue('1');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Choose the month')).toBeVisible();
-  await page.getByLabel('Month', { exact: true }).selectOption(String(far.month));
+  await formArea(page).getByLabel('Month', { exact: true }).selectOption(String(far.month));
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills\/[^/]+$/);
   await expect(page.getByText('Every year ·')).toBeVisible();
@@ -117,9 +123,9 @@ test('a bill switches between monthly and yearly in Edit', async ({ page }) => {
   await showRepeating(page);
   await page.getByTestId('yearly-bill-row').click();
   await page.getByRole('group', { name: 'Actions' }).getByRole('link', { name: 'Edit' }).click();
-  await expect(page.getByLabel('Repeats')).toHaveValue('yearly');
-  await expect(page.getByLabel('Month', { exact: true })).toHaveValue(String(far.month));
-  await page.getByLabel('Repeats').selectOption('monthly');
+  await expect(formArea(page).getByLabel('Repeats')).toHaveValue('yearly');
+  await expect(formArea(page).getByLabel('Month', { exact: true })).toHaveValue(String(far.month));
+  await formArea(page).getByLabel('Repeats').selectOption('monthly');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/bills\/[^/]+$/);
   await expect(page.getByText('Every month')).toBeVisible();
