@@ -233,7 +233,10 @@ export function CornerMenu({
 export function LargeTitle(props: Parameters<typeof SectionTitle>[0]) {
   const { title, back, onBack, backTo, backParams, backSearch, actions, max, field, subtitle } = props;
   // A wide screen (the Mac) draws the screen in the Mac look v1: its own title bar and a large title (`DeskColumnTitle`).
-  const wide = !usePhone() && !useSideways();
+  // Both asked every render (not `&&`): a window crossing the phone's width must not change how many hooks run.
+  const phone = usePhone();
+  const sideways = useSideways();
+  const wide = !phone && !sideways;
   if (wide && !field) return <DeskColumnTitle {...props} />;
   // An open search spans the whole row, as Cashflow's does: no way back beside it, ✕ closes it.
   if (!back || field) return <SectionTitle {...props} />;
@@ -436,7 +439,10 @@ function SectionTitle({
  */
 export function PushedTitle(props: Parameters<typeof PhonePushedTitle>[0]) {
   // A wide screen (the Mac) draws a pushed screen in the Mac look v1 (`DeskColumnTitle`); the phone keeps its own.
-  const wide = !usePhone() && !useSideways();
+  // Both asked every render (not `&&`): a window crossing the phone's width must not change how many hooks run.
+  const phone = usePhone();
+  const sideways = useSideways();
+  const wide = !phone && !sideways;
   if (wide && !props.field) return <DeskColumnTitle {...props} />;
   return <PhonePushedTitle {...props} />;
 }
