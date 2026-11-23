@@ -2,7 +2,7 @@ import { addMonths, formatMinor, isFxLotAccount, isoDate, monthName, monthPeriod
 import { type AccountRow, listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, LineChart, List } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { DeskNotices } from '../../app/DeskNotices';
@@ -28,7 +28,27 @@ import { ADJUST_FORM, actionsFor, CurrencyFlag, ForeignLine, MONEY_IN_FORM, type
 import { WithdrawalsLeft } from './WithdrawalsLeft';
 import { AdjustBalanceForm } from './AdjustBalanceForm';
 import { adjustTitle } from './adjust-model';
-import { DeskBox, DeskFace, DeskTitleBar, DeskPageTitle, FigureRow, GBTN, BOX_GRID, FIRST_BOX, GearLink, MonthsLine, PBTN, PEEK_ROOM, signedMoney } from './desk-account-parts';
+import {
+  DeskBox,
+  DeskFace,
+  DeskTitleBar,
+  DeskPageTitle,
+  FigureRow,
+  FIGURES_ALONE,
+  FIGURES_UNDER_FACE,
+  GBTN,
+  GearLink,
+  MonthsLine,
+  PBTN,
+  PEEK_ROOM,
+  rowClass,
+  signedMoney,
+  StepPill,
+  TD,
+  TH,
+  THIRD_CARD,
+  TOP_GRID,
+} from './desk-account-parts';
 import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
 import { spendsFrom } from './pockets';
 import { useHeldRates, useOpenings } from './queries';
@@ -37,9 +57,6 @@ import { useHeldRates, useOpenings } from './queries';
 const LINE_MONTHS = 6;
 /** Rows read for the line and the table: more than any account moves in six months. */
 const READ_LIMIT = 20_000;
-
-const TH = 'border-b border-[var(--ph-hair)] bg-[var(--mac-head)] px-[10px] py-[6px] text-left text-[11px] font-semibold whitespace-nowrap text-[var(--ph-ink-3)]';
-const TD = 'px-[10px] py-[5px] whitespace-nowrap';
 
 const shortDay = (iso: string) => `${Number(iso.slice(8, 10))} ${monthName(iso.slice(0, 7), 'short')}`;
 
@@ -52,11 +69,12 @@ interface DeskRow {
 
 /**
  * A bank, cash or e-wallet account on a wide screen (Mac account pages, owner 2026-11-20): `/accounts/$accountId` full
- * width, like the other Mac pages. The title bar holds the name and kind, the month ‹ ›, the account's own actions
- * (Transfer, Withdraw or Top up, Adjust, Statement — today's, each opening what the phone's round button opens), the ⚙
- * that opens its settings in the side peek, and the black ＋ Record (the Add screen paid with it).
+ * width, like the other Mac pages, in the v1 look (owner 2026-11-23; the card page's kit). The title bar holds the
+ * name, the month pill "‹ November 2026 ›", the account's own actions (Transfer, Withdraw or Top up, Adjust, Statement —
+ * today's, each opening what the phone's round button opens), the ⚙ that opens its settings in the side peek, and the
+ * blue ＋ Record (the Add screen paid with it).
  *
- * Boxes: Balance — the face Wallet draws, today's figure (Wallet's, the sidebar's and the phone's own), and what goals
+ * Top row: the face Wallet draws with the balance under it — today's figure (Wallet's, the sidebar's and the phone's own), and what goals
  * and bills have set aside of it; This month — in, out, transfers and the change they add up to; Balance over time —
  * each of the last six months' closing balance. Then every row of the month, newest first, with the balance after it, as
  * a bank statement prints it. A click opens the Mac receipt in the side peek, a double-click today's edit screen. The
@@ -89,7 +107,12 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
   // the balance; future-dated rows included, since the balance counts them.
   const history = useQuery({
     queryKey: ['account-desk', ws.workspaceId, account.id, from],
-    queryFn: () => listTransactions(database, ownerScope(ws), { accountIds: [account.id], from, limit: READ_LIMIT }),
+    queryFn: () =>
+      listTransactions(database, ownerScope(ws), {
+        accountIds: [account.id],
+        from,
+        limit: READ_LIMIT,
+      }),
   });
   const ids = new Set([account.id]);
   const rows = buildRows(history.data ?? [], [], everything, []).filter((row) => row.tx);
@@ -105,7 +128,11 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
   // it, so it stays out of the table as it stays out of the list (the box names it).
   const shown: DeskRow[] = rows
     .filter((row) => row.date >= period.from && row.date <= period.to && row.type !== 'opening' && minorOf.has(row.id))
-    .map((row) => ({ row, minor: minorOf.get(row.id)!, after: after.get(row.id)! }));
+    .map((row) => ({
+      row,
+      minor: minorOf.get(row.id)!,
+      after: after.get(row.id)!,
+    }));
 
   // ── The peek: one row's receipt, or the account's settings ─────────────────────────────────────────────────────────
   const [peekId, setPeekId] = useState<string | null>(null);
@@ -153,7 +180,11 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
   // Today's edit screen; a row that cannot be changed here (another workspace's, a trade) keeps its receipt, which says why.
   const edit = (id: string) => {
     const tx = shown.find((one) => one.row.id === id)?.row.tx;
-    if (tx && isEditable(tx)) void navigate({ to: '/transactions/$transactionId/edit', params: { transactionId: id } });
+    if (tx && isEditable(tx))
+      void navigate({
+        to: '/transactions/$transactionId/edit',
+        params: { transactionId: id },
+      });
   };
   const doubleClick = usePeekDoubleClick((id) => edit(id));
 
@@ -162,9 +193,20 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
   const [movingIn, setMovingIn] = useState<MoneyInMode | null>(null);
   const [sheetReady, setSheetReady] = useState(false);
   const newTx = (draft: NewTxDraft) =>
-    void navigate({ to: '/transactions/new', search: { mode: draft.mode, ...(draft.account ? { account: draft.account } : {}), ...(draft.to ? { to: draft.to } : {}) } });
-  const actions = actionsFor(account, null, ws.baseCurrency, { newTx, moneyIn: setMovingIn, adjust: () => setAdjusting(true) });
-  // Spend and Receive are one Record here (the Add screen, Expense, Income and Transfer as its tabs), the black button.
+    void navigate({
+      to: '/transactions/new',
+      search: {
+        mode: draft.mode,
+        ...(draft.account ? { account: draft.account } : {}),
+        ...(draft.to ? { to: draft.to } : {}),
+      },
+    });
+  const actions = actionsFor(account, null, ws.baseCurrency, {
+    newTx,
+    moneyIn: setMovingIn,
+    adjust: () => setAdjusting(true),
+  });
+  // Spend and Receive are one Record here (the Add screen, Expense, Income and Transfer as its tabs), the blue button.
   const records = actions.some((action) => ['add', 'spend', 'receive'].includes(action.key));
   const others = actions.filter((action) => !['add', 'spend', 'receive'].includes(action.key));
 
@@ -175,24 +217,30 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
   const setAsideFor = setAside && setAside.state !== 'none' ? (setAside.goals.length > 0 && setAside.funds.length > 0 ? 'goals and bills' : setAside.funds.length > 0 ? 'bills' : 'goals') : null;
 
   return (
-    <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="account-desk" data-desk="true" {...doubleClick}>
-      <DeskTitleBar title={title} line={kind} barRef={(node) => (bar.current = node)} back={parent ? { label: parent.name, to: '/accounts/$accountId', params: { accountId: parent.id } } : undefined}>
-        <span className="flex items-center gap-[2px] text-[12.5px] text-[var(--ph-ink)]" role="group" aria-label="Month">
-          <button type="button" aria-label="Earlier month" onClick={() => setMonth((was) => addMonths(was, -1))} className="rounded-[5px] p-[3px] text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]">
-            <ChevronLeft size={15} aria-hidden />
-          </button>
-          <span data-testid="account-month" className="min-w-[104px] text-center whitespace-nowrap tabular-nums">
-            {monthName(month, 'long')} {month.slice(0, 4)}
-          </span>
-          <button
-            type="button"
-            aria-label="Later month"
-            disabled={month >= thisMonth}
-            onClick={() => setMonth((was) => addMonths(was, 1))}
-            className="rounded-[5px] p-[3px] text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)] disabled:opacity-30"
-          >
-            <ChevronRight size={15} aria-hidden />
-          </button>
+    <div className="min-h-dvh bg-[var(--mk-page)]" data-testid="account-desk" data-desk="true" {...doubleClick}>
+      <DeskTitleBar
+        title={title}
+        line={kind}
+        barRef={(node) => (bar.current = node)}
+        back={
+          parent
+            ? {
+                label: parent.name,
+                to: '/accounts/$accountId',
+                params: { accountId: parent.id },
+              }
+            : undefined
+        }
+      >
+        <span role="group" aria-label="Month" className="flex">
+          <StepPill
+            label={`${monthName(month, 'long')} ${month.slice(0, 4)}`}
+            earlier="Earlier month"
+            later="Later month"
+            laterOff={month >= thisMonth}
+            onStep={(by) => setMonth((was) => addMonths(was, by))}
+            testId="account-month"
+          />
         </span>
         <span role="group" aria-label="Actions" className="flex items-center gap-[8px]">
           {others.map((action) => (
@@ -219,74 +267,84 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
 
       <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={balances.error ?? history.error ?? accounts.error} />
-        <div className={BOX_GRID}>
-          <DeskBox title="Balance" note="today" testId="balance-card" className={FIRST_BOX}>
-            <div className="flex flex-wrap items-start gap-x-[16px] gap-y-[8px] px-[14px] pt-[4px] pb-[14px]">
-              {face && <DeskFace card={face} />}
-              <div className="min-w-0 pt-[4px]">
-                <div className="flex items-center gap-[10px]">
-                  <p data-testid="account-balance" className="text-[22px] leading-[28px] font-semibold whitespace-nowrap text-[var(--ph-ink)] tabular-nums">
-                    {formatMinor(todayMinor, currency)}
-                  </p>
-                  <CurrencyFlag currency={currency} ring={ownRing} />
-                </div>
-                {/* Money in another currency: what it comes to here at the rate held, and the rate it was opened at (the phone's Details). */}
-                {foreign && (
-                  <p className="text-[12px] text-[var(--ph-ink-3)] tabular-nums">
-                    <ForeignLine currency={currency} minor={todayMinor} rates={rates.data} />
-                  </p>
-                )}
-                {foreign && opened && <p className="text-[12px] text-[var(--ph-ink-3)] tabular-nums">
-                    Opened at <span>{rateLine(opened.fxRateToBase, currency, ws.baseCurrency)}</span>
-                  </p>}
-                <p className="mt-[2px] text-[12px] text-[var(--ph-ink-3)]">{counted ? 'counts toward spending' : 'kept as savings, off Wallet’s spending money'}</p>
-                {setAside && setAsideFor && (
-                  <p data-testid="account-setaside" className={cx('mt-[8px] text-[12px] tabular-nums', setAside.state === 'short' ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-ink-3)]')}>
-                    {formatMinor(setAside.setAsideMinor, currency)} set aside for {setAsideFor} · {formatMinor(setAside.freeMinor, currency)} free
-                  </p>
-                )}
+        <div className={TOP_GRID}>
+          {/* The face, with the balance printed under it: Wallet's figure, the sidebar's and the phone's own. */}
+          <section data-testid="balance-card" aria-label="Balance" className="min-w-0">
+            {face && <DeskFace card={face} />}
+            {/* Without a face (a pocket, an account Wallet draws no card for) the figures sit in a soft card of their own. */}
+            <div className={face ? FIGURES_UNDER_FACE : FIGURES_ALONE}>
+              <p className="text-[12.5px] font-semibold text-[var(--mk-ink-2)]">Balance</p>
+              <div className="flex items-center gap-[10px]">
+                <p data-testid="account-balance" className="text-[27px] leading-[33px] font-extrabold tracking-[-0.3px] whitespace-nowrap text-[var(--mk-ink)] tabular-nums">
+                  {formatMinor(todayMinor, currency)}
+                </p>
+                <CurrencyFlag currency={currency} ring={ownRing} />
               </div>
+              {/* Money in another currency: what it comes to here at the rate held, and the rate it was opened at (the phone's Details). */}
+              {foreign && (
+                <p className="text-[12.5px] text-[var(--mk-ink-2)] tabular-nums">
+                  <ForeignLine currency={currency} minor={todayMinor} rates={rates.data} />
+                </p>
+              )}
+              {foreign && opened && (
+                <p className="text-[12.5px] text-[var(--mk-ink-2)] tabular-nums">
+                  Opened at <span>{rateLine(opened.fxRateToBase, currency, ws.baseCurrency)}</span>
+                </p>
+              )}
+              <p className="mt-[2px] text-[12.5px] text-[var(--mk-ink-2)]">{counted ? 'Counts toward spending' : 'Kept as savings, off Wallet’s spending money'}</p>
+              {setAside && setAsideFor && (
+                <p
+                  data-testid="account-setaside"
+                  className={cx('mt-[6px] text-[12.5px] tabular-nums', setAside.state === 'short' ? 'font-semibold text-[var(--mk-t-orange)]' : 'text-[var(--mk-ink-2)]')}
+                >
+                  {formatMinor(setAside.setAsideMinor, currency)} set aside for {setAsideFor} · {formatMinor(setAside.freeMinor, currency)} free
+                </p>
+              )}
             </div>
-          </DeskBox>
-          <DeskBox title="This month" note={monthName(month, 'long')} testId="account-month-box">
+          </section>
+          <DeskBox title="This month" icon={CalendarDays} note={monthName(month, 'long')} testId="account-month-box">
             <FigureRow label="Money in" value={formatMinor(figures.inMinor, currency)} tone={figures.inMinor > 0 ? 'up' : undefined} testId="month-in" />
             <FigureRow label="Money out" value={formatMinor(figures.outMinor, currency)} testId="month-out" />
             {figures.transferInMinor > 0 && <FigureRow label="Transfers in" value={formatMinor(figures.transferInMinor, currency)} tone="grey" testId="month-transfers-in" />}
             <FigureRow label="Transfers out" value={formatMinor(figures.transferOutMinor, currency)} tone="grey" testId="month-transfers-out" />
             {figures.adjustedMinor !== 0 && <FigureRow label="Adjusted" value={signedMoney(figures.adjustedMinor, currency)} tone="grey" testId="month-adjusted" />}
             {figures.openingMinor !== 0 && <FigureRow label="Opening balance" value={formatMinor(figures.openingMinor, currency)} tone="grey" testId="month-opening" />}
-            <FigureRow label="Change" value={signedMoney(figures.changeMinor, currency)} tone={figures.changeMinor > 0 ? 'up' : undefined} testId="month-change" />
+            <FigureRow label="Change" value={signedMoney(figures.changeMinor, currency)} tone={figures.changeMinor > 0 ? 'up' : undefined} strong testId="month-change" />
           </DeskBox>
-          <DeskBox title="Balance over time" note={`${LINE_MONTHS} months`} testId="account-line">
-            {history.isSuccess && balances.isSuccess && <MonthsLine points={line} currency={currency} />}
+          <DeskBox title="Balance over time" icon={LineChart} note={`${LINE_MONTHS} months`} testId="account-line" className={THIRD_CARD}>
+            <div className="px-[6px]">{history.isSuccess && balances.isSuccess && <MonthsLine points={line} currency={currency} plot={150} />}</div>
           </DeskBox>
         </div>
 
         <DeskBox
           title="Transactions"
+          icon={List}
           testId="account-table"
+          className="px-[10px] pb-[4px] [&>h2]:px-[10px]"
           note={
-            <span className="flex items-baseline gap-[12px]">
-              <span>click a row to see it · double-click to edit</span>
-              <Link to="/transactions" search={{ account: account.id }} className="text-[12px] text-[var(--mac-accent)] hover:underline">
+            <span className="flex items-baseline gap-[12px]" title="Click a row to see it · double-click to edit">
+              <span>
+                {shown.length} {shown.length === 1 ? 'row' : 'rows'}
+              </span>
+              <Link to="/transactions" search={{ account: account.id }} className="font-semibold text-[var(--mk-blue)] hover:underline">
                 See all
               </Link>
             </span>
           }
         >
-          <table className="w-full table-fixed border-collapse text-[13px]" aria-label={`${title} transactions`}>
+          <table className="w-full table-fixed border-separate border-spacing-0" aria-label={`${title} transactions`}>
             {/* The figures keep their width whatever the page has; the words share what is left, and truncate. */}
             <colgroup>
-              <col className="w-[66px]" />
+              <col className="w-[76px]" />
               <col />
-              <col className="w-[19%]" />
-              <col className="w-[14%]" />
-              <col className="w-[134px]" />
-              <col className="w-[138px]" />
+              <col className="w-[20%]" />
+              <col className="w-[15%]" />
+              <col className="w-[136px]" />
+              <col className="w-[144px]" />
             </colgroup>
             <thead>
               <tr>
-                <th className={TH}>Date ↓</th>
+                <th className={cx(TH, 'pl-[12px]')}>Date</th>
                 <th className={TH}>Note</th>
                 <th className={TH}>Category</th>
                 <th className={TH}>From / to</th>
@@ -295,14 +353,13 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
               </tr>
             </thead>
             <tbody>
-              {shown.map((one, index) => (
+              {shown.map((one) => (
                 <AccountRowView
                   key={one.row.id}
                   one={one}
                   accountId={account.id}
                   accounts={everything}
                   currency={currency}
-                  striped={index % 2 === 1}
                   selected={peekId === one.row.id}
                   onOpen={() => {
                     setSettings(false);
@@ -313,7 +370,7 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
               ))}
             </tbody>
           </table>
-          {history.isSuccess && shown.length === 0 && <p className="border-t border-[var(--ph-hair)] px-[14px] py-[12px] text-[13px] text-[var(--ph-ink-3)]">Nothing moved in {monthName(month, 'long')}.</p>}
+          {history.isSuccess && shown.length === 0 && <p className="px-[10px] py-[12px] text-[13.5px] text-[var(--mk-ink-2)]">Nothing moved in {monthName(month, 'long')}.</p>}
         </DeskBox>
         {/* What is promised out of the account, what is free, and which goals and bills claim it — as on the phone's page. */}
         {setAsideFor && (
@@ -375,7 +432,11 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
           tall
           title={adjustTitle}
           onClose={() => setAdjusting(false)}
-          confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(ADJUST_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+          confirm={{
+            label: 'Save',
+            disabled: !sheetReady,
+            run: () => (document.getElementById(ADJUST_FORM) as HTMLFormElement | null)?.requestSubmit(),
+          }}
         >
           <AdjustBalanceForm account={account} formId={ADJUST_FORM} onCanSave={setSheetReady} onDone={() => setAdjusting(false)} />
         </Sheet>
@@ -386,7 +447,11 @@ export function DesktopAccount({ account, parent }: { account: AccountRow; paren
           tall
           title={MONEY_IN[movingIn].title}
           onClose={() => setMovingIn(null)}
-          confirm={{ label: 'Save', disabled: !sheetReady, run: () => (document.getElementById(MONEY_IN_FORM) as HTMLFormElement | null)?.requestSubmit() }}
+          confirm={{
+            label: 'Save',
+            disabled: !sheetReady,
+            run: () => (document.getElementById(MONEY_IN_FORM) as HTMLFormElement | null)?.requestSubmit(),
+          }}
         >
           <MoneyInForm into={account} mode={movingIn} formId={MONEY_IN_FORM} onCanSave={setSheetReady} onDone={() => setMovingIn(null)} />
         </Sheet>
@@ -423,7 +488,9 @@ function categoryOf(row: ListRow): { name: string; transfer: boolean } {
 /** Where the money went to or came from, for a move between two accounts: "→ GoPay", "← BCA Tahapan". */
 function otherSide(row: ListRow, accountId: string, minor: number): string {
   if (row.type !== 'transfer' || !row.tx) return '';
-  const other = row.tx.entries.find((entry) => entry.accountId !== accountId && (entry.accountKind === 'asset' || entry.accountKind === 'liability') && Math.sign(entry.amountMinor) === -Math.sign(minor));
+  const other = row.tx.entries.find(
+    (entry) => entry.accountId !== accountId && (entry.accountKind === 'asset' || entry.accountKind === 'liability') && Math.sign(entry.amountMinor) === -Math.sign(minor),
+  );
   return other ? `${minor < 0 ? '→' : '←'} ${other.accountName}` : '';
 }
 
@@ -432,7 +499,6 @@ function AccountRowView({
   accountId,
   accounts,
   currency,
-  striped,
   selected,
   onOpen,
   onEdit,
@@ -441,14 +507,12 @@ function AccountRowView({
   accountId: string;
   accounts: readonly AccountRow[];
   currency: string;
-  striped: boolean;
   selected: boolean;
   onOpen: () => void;
   onEdit: () => void;
 }) {
   const { row, minor, after } = one;
   const category = categoryOf(row);
-  const grey = selected ? 'text-white/80' : 'text-[var(--ph-ink-3)]';
   const note = row.description || row.transferName || row.categoryName || category.name;
   return (
     <tr
@@ -469,22 +533,21 @@ function AccountRowView({
           onOpen();
         }
       }}
-      className={cx(
-        'cursor-default select-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--mac-accent)]',
-        selected ? 'bg-[var(--mac-accent)] text-white' : cx('text-[var(--ph-ink)]', striped && 'bg-[var(--mac-zebra)]'),
-      )}
+      className={rowClass(selected)}
     >
-      <td className={cx(TD, 'tabular-nums', grey)}>{shortDay(row.date)}</td>
-      <td className={cx(TD, 'truncate')} title={note}>{note}</td>
-      <td className={cx(TD, selected && '[&_[data-testid=category-mark]]:bg-white!')}>
+      <td className={cx(TD, 'pl-[12px] text-[var(--mk-ink-2)] tabular-nums')}>{shortDay(row.date)}</td>
+      <td className={cx(TD, 'truncate')} title={note}>
+        {note}
+      </td>
+      <td className={TD}>
         <span className="flex min-w-0 items-center gap-[7px]">
           <CategoryIcon categoryId={category.transfer ? null : row.categoryId} accounts={accounts} transfer={category.transfer} size="xs" />
           <span className="truncate">{category.name}</span>
         </span>
       </td>
-      <td className={cx(TD, 'truncate', grey)}>{otherSide(row, accountId, minor)}</td>
-      <td className={cx(TD, 'text-right tabular-nums', minor > 0 && !selected && 'text-[var(--ph-up)]')}>{signedMoney(minor, currency)}</td>
-      <td className={cx(TD, 'text-right tabular-nums', grey)} data-testid="balance-after">
+      <td className={cx(TD, 'truncate text-[var(--mk-ink-2)]')}>{otherSide(row, accountId, minor)}</td>
+      <td className={cx(TD, 'text-right tabular-nums', minor > 0 && 'text-[var(--mk-t-green)]')}>{signedMoney(minor, currency)}</td>
+      <td className={cx(TD, 'text-right text-[var(--mk-ink-2)] tabular-nums')} data-testid="balance-after">
         {formatMinor(after, currency)}
       </td>
     </tr>
