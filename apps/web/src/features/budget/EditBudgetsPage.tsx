@@ -144,7 +144,7 @@ export function EditBudgetsPage() {
               {monthWords} · <span data-testid="edit-budgeted">{formatMinor(budgeted, currency)}</span> planned
             </>
           }
-          actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, run: () => void save(), disabled: !ready || busy || !initial }]}
+          actions={[{ key: 'save', label: 'Save budgets', glyph: <Check size={20} aria-hidden />, run: () => void save(), disabled: !ready || busy || !initial }]}
         />
         <div className="mb-[12px] flex items-center justify-between gap-[10px] text-[12.5px] text-[var(--mk-ink-2)]">
           <span data-testid="edit-unplanned" className="min-w-0 truncate">
@@ -154,7 +154,10 @@ export function EditBudgetsPage() {
             Take-home
           </button>
         </div>
-        <div className="mb-[6px] flex justify-end">
+        <div className="mb-[6px] flex items-center justify-between gap-[10px]">
+          <span data-testid="edit-share" className="min-w-0 truncate text-[12.5px] text-[var(--mk-ink-2)]">
+            {income > 0 ? `${Math.round((budgeted / income) * 100)}% of take-home budgeted` : 'Set a take-home first to budget by %'}
+          </span>
           <button type="button" disabled={!canFill} onClick={() => setState(filled)} className="flex items-center gap-[5px] text-[12.5px] font-semibold text-[var(--mk-blue)] disabled:opacity-40">
             <RotateCcw size={13} aria-hidden />
             Fill empty from last month
@@ -175,9 +178,24 @@ export function EditBudgetsPage() {
                     <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full" style={{ color: mark.colour, background: `color-mix(in srgb, ${mark.colour} 14%, var(--mk-panel))` }}>
                       {mark.icon}
                     </span>
-                    <label htmlFor={`cap-${row.id}`} className="min-w-0 flex-1 truncate text-[14px] text-[var(--mk-ink)]">
-                      {row.label}
-                    </label>
+                    {(() => {
+                      // What the box stands for, when it is more than the figure typed: a share's amount, a figure kept as an
+                      // amount once its parent goes, or Fill's.
+                      const keptMinor = kept.get(row.id) ?? null;
+                      const caption = value.filled
+                        ? 'Filled from last month'
+                        : keptMinor !== null
+                          ? `Kept as ${formatMinor(keptMinor, currency)} a month`
+                          : share
+                            ? `= ${formatMinor(figures.get(row.id) ?? 0, currency)} of ${base.label}`
+                            : null;
+                      return (
+                        <label htmlFor={`cap-${row.id}`} className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-[14px] text-[var(--mk-ink)]">{row.label}</span>
+                          {caption && <span className="truncate text-[12px] text-[var(--mk-ink-2)]">{caption}</span>}
+                        </label>
+                      );
+                    })()}
                     <input
                       id={`cap-${row.id}`}
                       ref={(input) => {
@@ -201,8 +219,9 @@ export function EditBudgetsPage() {
                       }}
                       onChange={(e) => {
                         const typed = e.target.value;
-                        // "15%" is a share of its parent (or of take-home); anything else an amount, in the row's own unit.
-                        if (typed.includes('%') && base.minor > 0) change(row.id, { mode: 'share', amount: typed.replace(/[^\d.,]/g, '') });
+                        // A % typed makes it a share of its parent (or of take-home); a share keeps being one while its figure is
+                        // typed, and the unit menu beside it turns it back into an amount.
+                        if ((typed.includes('%') || share) && base.minor > 0) change(row.id, { mode: 'share', amount: typed.replace(/[^\d.,]/g, '') });
                         else change(row.id, { mode: 'amount', amount: groupTypedAmount(typed.replace('%', ''), currency) });
                       }}
                       className={cx(
