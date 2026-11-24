@@ -36,7 +36,7 @@ export function shortBankName(bank: string): string {
 
 /**
  * Every name a bank may already be written as at the front of an account's name: the stored one, the list's full
- * name and every short one — so "Jenius Platinum" at Bank SMBC Indonesia, whose short names include Jenius, is
+ * name and every short one — so "Jenius Visa Platinum" at Bank SMBC Indonesia, whose short names include Jenius, is
  * already named by its bank.
  */
 export function bankNameWords(bank: string): string[] {

@@ -112,7 +112,7 @@ test('a card that earns by level is refused until the level is chosen, and nothi
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Credit card' }).click();
 
-  await pickCatalogueCard(page, 'jenius', 'Jenius Platinum');
+  await pickCatalogueCard(page, 'jenius', 'Jenius Visa Platinum');
   await expect(page.getByLabel(/ level$/)).toBeVisible();
   await page.getByRole('button', { name: 'Add card' }).click();
 
@@ -120,7 +120,7 @@ test('a card that earns by level is refused until the level is chosen, and nothi
   await expect(page).toHaveURL(/\/debts\/new$/);
   // Nothing was opened, so the same button finishes the job once the level is given.
   await page.goto('/wallet');
-  await expect(page.getByText('Jenius Platinum')).toHaveCount(0);
+  await expect(page.getByText('Jenius Visa Platinum')).toHaveCount(0);
 });
 
 test('a card filed under no bank is given one on its Settings, and its face follows', async ({ page }) => {

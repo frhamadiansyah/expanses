@@ -50,6 +50,6 @@ describe('a catalogue card on the bank-and-name row', () => {
     expect(entryOnRow(entryFor('cimb-niaga-world-all-accor'))).toEqual({ bank: 'CIMB Niaga', name: 'World All Accor' });
     // A product name that does not lead with its bank stays whole.
     const jenius = entryFor('jenius-platinum');
-    expect(entryOnRow(jenius)).toEqual({ bank: jenius.bank, name: 'Jenius Platinum' });
+    expect(entryOnRow(jenius)).toEqual({ bank: jenius.bank, name: 'Jenius Visa Platinum' });
   });
 });
