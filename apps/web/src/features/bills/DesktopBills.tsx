@@ -50,6 +50,7 @@ import { macV2 } from '../../ui/mac-detail';
 import { billCount, type BillTileKey, billTiles, bucketOf } from './bill-tiles';
 import { DeskMonthPill } from './DeskMonthPill';
 import { Bang } from './desk-glyphs';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 const STEP = 'flex h-[26px] w-[26px] items-center justify-center rounded-full text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill)]';
 const H2 = cx(CARD_HEAD, 'justify-between');
@@ -303,7 +304,7 @@ export function DesktopBills() {
        * query): wide, the calendar and the bars in a column on the left; narrower (the peek open on a smaller window),
        * the two side by side on top and everything else under them.
        */}
-      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={error ?? live.error ?? read.error} />
         <Unconverted missing={unconverted} currency={readCurrency} />
         {loaded && (

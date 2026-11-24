@@ -8,6 +8,7 @@ import { cx } from '../index';
 import { type CornerAction, planCornerActions, titleSteps } from './title';
 import { TAP } from './metrics';
 import { type FormPanel, FormPanelContext } from './form-panel-context';
+import { PANEL_ROUND, PANEL_SUBTITLE, PANEL_TITLE } from './panel-frame';
 import { CompactBar, PinnedTitleBar, useScrolledPast } from './CompactBar';
 
 /**
@@ -605,7 +606,7 @@ function PanelTitle({ title, back, onBack, backTo, backParams, backSearch, actio
   return (
     <header className="mb-[14px]" data-testid="panel-title">
       <div className="flex items-start gap-[10px]">
-        <h1 className="min-w-0 flex-1 pt-[2px] text-[22px] leading-[28px] font-extrabold tracking-[-0.2px] break-words text-[var(--mk-ink)]">{title}</h1>
+        <h1 className={PANEL_TITLE}>{title}</h1>
         {plan.inline.map((action) =>
           action.menu ? (
             <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
@@ -629,11 +630,11 @@ function PanelTitle({ title, back, onBack, backTo, backParams, backSearch, actio
           ),
         )}
         {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
-        <button type="button" data-panel-close aria-label={back ?? 'Close'} onClick={close} className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[var(--mk-pill)] text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill-hover)]">
+        <button type="button" data-panel-close aria-label={back ?? 'Close'} onClick={close} className={PANEL_ROUND}>
           <X size={15} aria-hidden />
         </button>
       </div>
-      {subtitle && <p className="mt-[2px] text-[13.5px] leading-[18px] text-[var(--mk-ink-2)]">{subtitle}</p>}
+      {subtitle && <p className={PANEL_SUBTITLE}>{subtitle}</p>}
       {/* A form whose own button saves (an Add row at its foot) keeps it; the panel's foot is then not drawn. */}
       {panel.foot && primary && createPortal(foot, panel.foot)}
     </header>

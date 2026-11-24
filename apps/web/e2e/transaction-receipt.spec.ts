@@ -55,9 +55,10 @@ test('a click on a Cashflow row opens its receipt as the peek, in place', async 
   await expect(peek.getByTestId('peek-title')).toHaveText('Superindo');
 
   // The figure, not the word: what the card was charged, beside the account that was charged.
-  await expect(peekLine(peek, 'Payment method')).toContainText('BCA Visa');
-  await expect(peekLine(peek, 'Total')).toContainText('500.000');
+  await expect(peekLine(peek, 'Paid with')).toContainText('BCA Visa');
   await expect(peek.getByTestId('peek-amount')).toContainText('500.000');
+  // The Total is that same figure: the panel does not say it twice (owner, 2026-11-24).
+  await expect(peek.locator('dt', { hasText: /^Total$/ })).toHaveCount(0);
 });
 
 /**
@@ -111,7 +112,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await expect(page).toHaveURL(/\/transactions\?account=/);
   // A trade is a transfer between the bank and the holding: its source reads From (main, 22 Nov 2026).
   await expect(peekLine(trade, 'From')).toContainText('BCA Tahapan');
-  await expect(peekLine(trade, 'Total')).toContainText('3.980.000');
+  await expect(trade.getByTestId('peek-amount')).toContainText('3.980.000');
   await expect(trade.getByTestId('peek-notice')).toHaveText('A trade is changed on its holding’s page.');
   await expect(trade.getByRole('button', { name: 'Open holding', exact: true })).toBeVisible();
   await expect(trade.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
@@ -139,7 +140,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
  *
  * Two taps, like the list's: `transactions-list.spec.ts` covers the row's, and nothing covered this one. The
  * deleted transaction is still readable afterwards — `includeVoid` is what makes the receipt openable from
- * under Show deleted — and it has to say what it is: a pill, and the amount struck through.
+ * under Show deleted — and it has to say what it is: Deleted under its title, and the amount struck through.
  */
 test('deleting from the receipt asks twice, and the deleted receipt says it is deleted', async ({ page }) => {
   await addCard(page);
@@ -157,7 +158,7 @@ test('deleting from the receipt asks twice, and the deleted receipt says it is d
   // Deleted, not destroyed: it reads as deleted, and offers no second way to delete it again.
   await showDeleted(page);
   const deleted = await openRowPeek(page, 'Superindo');
-  await expect(deleted.getByText('Deleted', { exact: true })).toBeVisible();
+  await expect(deleted.getByTestId('peek-subtitle')).toHaveText(/ · Deleted$/);
   await expect(deleted.getByTestId('peek-amount')).toHaveClass(/line-through/);
   await expect(deleted.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
   await expect(deleted.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);

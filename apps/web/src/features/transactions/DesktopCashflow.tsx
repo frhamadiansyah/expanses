@@ -31,6 +31,7 @@ import { NOT_MONTHLY_LABEL, notMonthlyWord } from './not-monthly';
 import { EditableRow, type TableHandlers, TypingRow } from './TransactionsTable';
 import { CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, PILL, PILL_BLACK, PILL_BLUE, PILL_ROUND, StatTile, Tag, TileRow, tileMoney } from '../../ui/desk';
 import { macV2 } from '../../ui/mac-detail';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 type Filters = Omit<ListFilters, 'month'>;
 
@@ -779,7 +780,7 @@ export function DesktopCashflow({
        * and (v2) the boxes go by the room they have (a container query, not the window's width), so they wrap rather
        * than squeeze.
        */}
-      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         {notices && <div className="mb-[16px] space-y-[8px] empty:hidden">{notices}</div>}
         {/* v1's four tiles: the period's Spent, Received and Left, read as the ring reads them, and Review's queue. */}
         <TileRow testId="cashflow-tiles">
@@ -1077,7 +1078,9 @@ function DeskRow({
   const amount = deskAmount(row);
   const { notMonthlyOut, extra } = amount;
   const kindLabel = helpers.kindLabel(row);
-  const grey = selected ? 'text-white/80' : 'text-[var(--ph-ink-3)]';
+  // v1 (owner, 2026-11-24) marks the picked row pale blue, its words as they were; v2 keeps the solid accent, white on it.
+  const solid = selected && macV2;
+  const grey = solid ? 'text-white/80' : 'text-[var(--ph-ink-3)]';
   const category = row.categoryName ? `${row.categoryName}${row.moreCounted ? ` +${row.moreCounted}` : ''}` : null;
   const refile = helpers.refile(row);
   // A not-monthly bill a month leaves out wears the phone's small grey ↻ on its category's circle (option D, owner
@@ -1093,7 +1096,7 @@ function DeskRow({
           data-testid="not-monthly-badge"
           className={cx(
             'absolute -right-[4px] -bottom-[4px] flex h-[12px] w-[12px] items-center justify-center rounded-full ring-[1.5px]',
-            selected ? 'bg-white text-[var(--mac-accent)] ring-[var(--mac-accent)]' : 'bg-[var(--ph-ink-3)] text-[var(--ph-surface)] ring-[var(--ph-surface)]',
+            solid ? 'bg-white text-[var(--mac-accent)] ring-[var(--mac-accent)]' : 'bg-[var(--ph-ink-3)] text-[var(--ph-surface)] ring-[var(--ph-surface)]',
           )}
         >
           <Repeat size={7} strokeWidth={3} aria-hidden />
@@ -1131,7 +1134,8 @@ function DeskRow({
         'cursor-default px-0.5 select-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--mac-accent)]',
         // v1's row: 40px, a hairline under it, no zebra.
         'min-h-[40px] border-b border-[var(--mk-line)]',
-        selected ? 'bg-[var(--mac-accent)] text-white' : 'text-[var(--ph-ink)]',
+        solid ? 'bg-[var(--mac-accent)] text-white' : 'text-[var(--ph-ink)]',
+        selected && !solid && 'rounded-[10px] bg-[var(--mk-sel)]',
         row.deleted && 'opacity-50',
       )}
     >
@@ -1143,13 +1147,13 @@ function DeskRow({
       <span {...cell('description')} className={cx('flex min-w-0 items-center gap-1.5 px-2 py-[5px]', row.deleted && 'line-through', blue('description'))}>
         <span className="truncate">{row.description || <span className={grey}>{category ?? kindLabel ?? 'No note'}</span>}</span>
         {row.instalment && (
-          <span data-testid="instalment-pill" className={cx('shrink-0 rounded-full px-[6px] text-[11px] tabular-nums', selected ? 'bg-white/20' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}>
+          <span data-testid="instalment-pill" className={cx('shrink-0 rounded-full px-[6px] text-[11px] tabular-nums', solid ? 'bg-white/20' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}>
             {row.instalment.number} of {row.instalment.of}
           </span>
         )}
       </span>
       {/* On the selected row's accent the tinted mark sits on white, or it would sink into the blue. */}
-      <span {...cell('category')} className={cx('flex min-w-0 items-center gap-[6px] px-2 py-[3px]', selected && '[&_[data-testid=category-mark]]:bg-white!', blue('category'))}>
+      <span {...cell('category')} className={cx('flex min-w-0 items-center gap-[6px] px-2 py-[3px]', solid && '[&_[data-testid=category-mark]]:bg-white!', blue('category'))}>
         {kindLabel ? (
           <span className={cx('truncate', grey)}>{kindLabel}</span>
         ) : (
@@ -1176,12 +1180,12 @@ function DeskRow({
           </>
         )}
       </span>
-      <span {...cell('paid')} className={cx('truncate px-2 py-[5px]', selected ? 'text-white' : 'text-[var(--ph-ink-2)]', blue('paid'))}>
+      <span {...cell('paid')} className={cx('truncate px-2 py-[5px]', solid ? 'text-white' : 'text-[var(--ph-ink-2)]', blue('paid'))}>
         {helpers.paidWith(row)}
       </span>
       <span
         {...cell('amount')}
-        className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', amount.tone === 'up' && !selected && 'text-[var(--ph-up)]', amount.tone === 'grey' && !selected && 'text-[var(--ph-ink-3)]', blue('amount'))}
+        className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', amount.tone === 'up' && !solid && 'text-[var(--ph-up)]', amount.tone === 'grey' && !solid && 'text-[var(--ph-ink-3)]', blue('amount'))}
       >
         {extra.length > 0 && (
           <span data-testid="amount-extra" title={extra.map((part) => part.text).join(' · ')} className={cx('truncate text-[11px]', grey)}>

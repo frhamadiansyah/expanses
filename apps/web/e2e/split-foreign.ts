@@ -72,7 +72,8 @@ export async function splitForeignJourney(page: Page) {
   const peek = receiptPeek(page);
   await expect(page.getByTestId('hero-amount').or(peek.getByTestId('peek-title'))).toBeVisible();
   const wide = (await peek.count()) > 0;
-  if (wide) await expect(peekLine(peek, 'Total')).toContainText('1.944.000');
+  // The peek's figure is the whole charge, so its Total is not said twice (owner, 2026-11-24).
+  if (wide) await expect(peek.getByTestId('peek-amount')).toContainText('1.944.000');
   else await expect(page.getByTestId('hero-amount')).toContainText('1.944.000');
   const receiptParts = (wide ? peek : page).getByTestId('split-part');
   await expect(receiptParts).toHaveCount(2);

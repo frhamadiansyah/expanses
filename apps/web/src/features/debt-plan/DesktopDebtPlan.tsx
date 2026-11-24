@@ -24,6 +24,7 @@ import { ShowSheet } from './SchedulePage';
 import type { MonthInput } from './schedule-view';
 import { macV2 } from '../../ui/mac-detail';
 import { CARD, Card, DeskBar, DeskTitle, type IconColour, PILL, PILL_BLUE, PILL_SMALL, RoundIcon, Seg, Tag, TileRow, Track } from '../../ui/desk';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 /** A table's head cell in v1: grey words over a hairline, no fill. */
 export const TH = 'border-b border-[var(--mk-head-line)] px-[10px] pt-[2px] pb-[8px] text-left text-[12.5px] font-semibold whitespace-nowrap text-[var(--mk-ink-2)]';
@@ -265,7 +266,7 @@ function PlanView({ model, ctx, bar }: { model: DebtPlanModel; ctx: DeskContext;
 
   return (
     <div {...doubleClick}>
-      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={saveError} />
         <PlanTiles model={model} currency={ctx.baseCurrency} />
         <div className="mb-[16px] grid grid-cols-1 items-stretch gap-[16px] @min-[760px]:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">

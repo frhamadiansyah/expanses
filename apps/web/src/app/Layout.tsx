@@ -11,6 +11,7 @@ import { Sidebar } from './Sidebar';
 import { edgeToEdge, SETTINGS_TO } from './sidebar-model';
 import { panelBase } from './form-panel-model';
 import { FormPanelHost } from './FormPanelHost';
+import { PEEK_MAIN_ROOM } from '../ui/native/panel-frame';
 import { TabBar } from './TabBar';
 import { usePhone, useSideways } from './use-phone';
 import { rotationFor, useCashflowRotation } from '../native/orientation';
@@ -136,10 +137,11 @@ export function Layout() {
         />
       )}
       {/* The phone draws under the status bar and the home indicator, so the shell gives both back. */}
-      {/* While a receipt peek stands on its own (an account's history), the page keeps clear of it rather than under it. */}
+      {/* While a receipt peek stands on its own (an account's history), the page keeps clear of it rather than under it:
+          its column narrows to the room left (min-w-0), never pushing the page wider than the window. */}
       {/* A wide screen draws to the window's top: the Mac app's hidden title bar (SceneDelegate.swift) leaves its inset
           to the page, and the page's own bar takes it — the window's buttons sit over the sidebar. */}
-      <main className={cx('relative flex-1', phoneShell ? 'pb-32' : deskBar ? undefined : 'pb-8', receiptPeek.room && 'pr-[330px]')} style={phoneShell ? { paddingTop: 'env(safe-area-inset-top)' } : undefined}>
+      <main className={cx('relative flex-1', phoneShell ? 'pb-32' : deskBar ? undefined : 'pb-8', receiptPeek.room && cx(PEEK_MAIN_ROOM, 'min-w-0'))} style={phoneShell ? { paddingTop: 'env(safe-area-inset-top)' } : undefined}>
         {/* Out of view the moment anything has scrolled under the status bar; watched, not listened to. */}
         <div ref={top} aria-hidden className="pointer-events-none absolute top-0 left-0 h-px w-px" />
         {/* The Mac pages draw their own title bar and grey page edge to edge (`edgeToEdge`); every other page sits in the column. */}

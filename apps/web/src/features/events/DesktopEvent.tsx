@@ -25,6 +25,7 @@ import { eventDates } from './event-dates';
 import { beforeItStarts, paidWithRows, startsAhead } from './events-desk-model';
 import { chartUnder, planTotals } from './plan-view';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 type TableTab = 'transactions' | 'plan';
 
@@ -196,7 +197,7 @@ export function DesktopLocalEvent() {
         settings={{ to: '/events/$eventId/settings' }}
         add={{ label: 'Add spending', run: () => void navigate(addSpendingTarget(eventId)) }}
       />
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={error ?? events.error ?? plan.error} />
         {workspaceTabs}
         {event && data && totals && hasPlan && (

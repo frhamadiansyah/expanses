@@ -27,6 +27,7 @@ import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { Award, Coins, Hourglass, TrendingUp } from 'lucide-react';
 import { Card, DeskBar, DeskTitle, PILL, PILL_BLUE, StatTile, Tag, tileMoney } from '../../ui/desk';
 import { macV2 } from '../../ui/mac-detail';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 const TH = 'border-b border-[var(--mk-line)] px-[10px] pt-[2px] pb-[8px] text-left text-[12px] font-semibold whitespace-nowrap text-[var(--mk-ink-3)]';
 const ROW = 'mx-[20px] flex items-baseline gap-3 border-t border-[var(--mk-line)] py-[8px] text-[13.5px] text-[var(--mk-ink)]';
@@ -189,7 +190,7 @@ export function DesktopPoints() {
       <DeskTitle title="Points" line={data.isSuccess ? pointsLine(rows.length, worth, (minor) => tileMoney(minor, base)) : undefined} />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={data.error} />
         {rows.length > 0 && (
           // Three across down to the peek-open page (1280 wide); the kit's TileRow stacks them below 700.

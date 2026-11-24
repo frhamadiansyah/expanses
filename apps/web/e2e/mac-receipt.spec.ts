@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openCard, walletCard } from './accounts';
 import { addTransaction, choosePayment, chooseTo } from './add-transaction';
 import { mockRates, openWithPockets } from './pockets';
-import { receiptPeek } from './receipt-peek';
+import { peekLine, receiptPeek } from './receipt-peek';
 
 /*
  * The Mac receipt (owner, 18 Nov 2026): on a wide screen a transaction opens as the side peek, never the phone's
@@ -32,9 +32,11 @@ test('a card purchase’s peek is its receipt: Instalments None, Turn into insta
   const peek = page.getByTestId('cashflow-peek');
   await expect(peek.getByTestId('peek-title')).toHaveText('Laptop');
   await expect(peek.getByTestId('peek-amount')).toHaveText(/^Rp\s12\.000\.000$/);
-  // The receipt's lines, in its order: what paid, the total — then its Instalments row.
-  await expect(peek.locator('dt')).toContainText(['Category', 'Payment method', 'Total']);
-  await expect(peek.locator('div', { has: page.locator('dt', { hasText: /^Payment method$/ }) })).toContainText('Kartu Biru ···· 4417');
+  // The panel (owner, 2026-11-24): the category under the figure; what paid in the first grey box (its Total is the
+  // figure, so not said again), then the Instalments row in the second.
+  await expect(peek.getByTestId('peek-kind')).toHaveText(/^Groceries/);
+  await expect(peek.getByTestId('peek-money').locator('dt')).toContainText(['Paid with', 'Workspace']);
+  await expect(peekLine(peek, 'Paid with')).toContainText('Kartu Biru ···· 4417');
   const instalments = peek.getByTestId('receipt-instalments');
   await expect(instalments).toContainText('None');
   // Never the phone's page: the address stays Cashflow's.
@@ -88,7 +90,7 @@ test('a foreign transfer opened from Wallet’s peek is its receipt, with Rate, 
   const peek = receiptPeek(page);
   await expect(peek).toBeVisible();
   await expect(page).toHaveURL(/\/wallet$/);
-  await expect(peek.locator('div', { has: page.locator('dt', { hasText: /^Rate$/ }) })).toContainText('Rp 16.300 per USD');
+  await expect(peekLine(peek, 'Rate')).toContainText('Rp 16.300 per USD');
   // ‹ back to the card's peek, which it covered.
   await peek.getByRole('button', { name: 'Back to Bank One Valas Plus' }).click();
   await expect(peek).toHaveCount(0);

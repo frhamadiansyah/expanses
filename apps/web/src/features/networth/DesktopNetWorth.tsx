@@ -29,6 +29,7 @@ import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { useHealthInputs, useHealthRatios } from './use-health';
 import { CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, type IconColour, PILL, PILL_BLUE, Seg, StatTile, Tag, TileRow, type Tone, Track, tileMoney } from '../../ui/desk';
 import { macV2 } from '../../ui/mac-detail';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 const CHART_HEIGHT = 176;
 const TREEMAP_HEIGHT = 150;
@@ -363,7 +364,7 @@ export function DesktopNetWorth() {
       <DeskNotices />
       <DeskTitle title="Net worth" line={ready && !sheetBlocked ? sheetLine(today, assets, debts) : undefined} />
 
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={series.error ?? sheetInputs.error ?? household.error ?? health.error} />
 
         {/* Total: the figure, its change since last month, the two sides, and the months drawn beside them. */}

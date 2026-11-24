@@ -63,6 +63,12 @@ function paidEntry(tx: TransactionView) {
   return { left, arrived, paid: left[0] ?? arrived[0], into: left[0] ? arrived[0] : undefined };
 }
 
+/** The money account a receipt's Payment method (or From, or Paid into) line names, unless it stands for a partner. */
+export function paidAccountId(tx: TransactionView): string | null {
+  const { paid } = paidEntry(tx);
+  return paid && !paid.placeholder ? paid.accountId : null;
+}
+
 /**
  * The word between the two figures on a split bill — null when there is only one figure to read.
  *

@@ -495,6 +495,8 @@ body:has([role='dialog']) .ph-under-dialog {
   --mk-black-ink: #ffffff;
   /* A progress bar's empty track; a picked row. */
   --mk-track: #e6e6ea;
+  /* A switch that is off, on a panel's grey box (the transaction peek's Paid off). */
+  --mk-switch-off: #e1e1e5;
   --mk-sel: #e9f2fe;
   --mk-hover: rgb(0 0 0 / 0.035);
   /* A field inside a card: white, rounded. */
@@ -579,6 +581,7 @@ body:has([role='dialog']) .ph-under-dialog {
     --mk-black: #f2f2f7;
     --mk-black-ink: #1f1f21;
     --mk-track: #3a3a3d;
+    --mk-switch-off: #545458;
     --mk-sel: #16304f;
     --mk-hover: rgb(255 255 255 / 0.04);
     --mk-field: #1f1f21;

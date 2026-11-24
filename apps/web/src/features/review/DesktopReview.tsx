@@ -43,6 +43,7 @@ import { CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, PILL, PILL_BLACK, PILL_
 import { macV2 } from '../../ui/mac-detail';
 import { Bang, Question } from '../bills/desk-glyphs';
 import { type MissingKey, missingTile, readyTotal } from './review-tiles';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 /** What the Recorded and Discarded lists show at most: the latest, newest first. */
 const RESOLVED_SHOWN = 200;
@@ -277,7 +278,7 @@ export function DesktopReview({
       <DeskNotices />
       <DeskTitle title="Review" line={titleLine} />
 
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={error} />
         {/* v2 keeps the five-count strip; the tiles then leave its test ids to it. */}
         {macV2 && <CountsBox counts={counts} loaded={loaded} />}

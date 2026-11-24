@@ -80,3 +80,45 @@ export function peekFigure(kind: Pick<Classified, 'type' | 'amountMinor' | 'curr
   const income = kind.type === 'income' || (kind.type === 'expense' && kind.amountMinor < 0);
   return { text: `${income ? '+' : ''}${formatMinor(Math.abs(kind.amountMinor), kind.currency)}`, income };
 }
+
+/** The v1 panel's words for two of the receipt's lines (owner, 2026-11-24): the forms' Paid with, and Points. */
+const PANEL_LABELS: Readonly<Record<string, string>> = { 'Payment method': 'Paid with', 'Points earned': 'Points' };
+
+/**
+ * The transaction peek in the v1 look (owner, 2026-11-24: docs/mockups/2026-11-24-mac-transaction-peek.html), as data:
+ * the same rows as `receiptPeekLines`, laid out as the forms' panel lays a form out. The category and Counts as go up
+ * into the line under the figure ("Groceries · Essential"); the receipt's lines and the workspace make the first grey
+ * box; what can be done with it — Bill, Instalments, Paid off, Past purchase — the second. A Total that only says the
+ * figure again is left out; a Total that differs (a share of a bill, another currency) stays.
+ */
+export interface PeekPanel {
+  /** Under the figure: the category (or what the row is), and Essential or Lifestyle when it counts as one. */
+  kindLine: string;
+  /** What paid and how: the receipt's lines, then the workspace. */
+  money: PeekLine[];
+  /** What it is tied to: Bill, Instalments, Paid off (or Settled), Past purchase — in that order. */
+  links: PeekLine[];
+}
+
+/** Drops the + a figure of money in carries, so "+Rp 5.000" and "Rp 5.000" read as the same figure. */
+const unsigned = (text: string) => text.replace(/^\+/, '');
+
+export function receiptPeekPanel(input: PeekLinesInput & { figure: string }): PeekPanel {
+  const rows = receiptPeekLines(input);
+  const money: PeekLine[] = [];
+  const linked = new Map<string, PeekLine>();
+  for (const row of rows) {
+    if (row.key === 'category' || row.key === 'counts') continue;
+    if (row.key === 'bill' || row.key === 'instalments' || row.key === 'paid-off' || row.key === 'past') {
+      linked.set(row.key, row);
+      continue;
+    }
+    if (row.label === 'Total' && unsigned(row.value) === unsigned(input.figure)) continue;
+    money.push(PANEL_LABELS[row.label] ? { ...row, label: PANEL_LABELS[row.label]! } : row);
+  }
+  return {
+    kindLine: input.countsAs ? `${input.category} · ${input.countsAs}` : input.category,
+    money,
+    links: (['bill', 'instalments', 'paid-off', 'past'] as const).flatMap((key) => linked.get(key) ?? []),
+  };
+}

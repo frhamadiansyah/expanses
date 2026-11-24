@@ -1,9 +1,17 @@
 import { cx, ErrorBox } from '../../ui';
+import { macV2 } from '../../ui/mac-detail';
 import { SidePeek } from '../../ui/native/SidePeek';
 import { useTwoTap } from '../../ui/two-tap';
 
-const BUTTON = 'rounded-[6px] border px-3 py-[4px] text-[13px] disabled:opacity-40';
-const PLAIN = 'border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]';
+// The v1 panel's pills (owner, 2026-11-24), as the transaction peek's foot draws them; v2 keeps its bordered buttons.
+const BUTTON = macV2 ? 'rounded-[6px] border px-3 py-[4px] text-[13px] disabled:opacity-40' : 'h-[34px] rounded-full px-[15px] text-[13.5px] font-semibold disabled:opacity-40';
+const PLAIN = macV2 ? 'border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]' : 'bg-[var(--mk-pill)] text-[var(--mk-ink)] hover:bg-[var(--mk-pill-hover)]';
+/** Delete, asking or not: red words on the plain button; red filled while it asks. */
+const ALARM = macV2
+  ? { armed: 'border-[var(--ph-alarm)] bg-[var(--ph-alarm)] text-white', rest: 'border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-[var(--ph-alarm)] hover:bg-[var(--ph-fill)]' }
+  : { armed: 'bg-[var(--mk-c-red)] text-white', rest: 'bg-[var(--mk-pill)] text-[var(--mk-c-red)] hover:bg-[var(--mk-pill-hover)]' };
+/** Record N: the dark button. */
+const DARK = macV2 ? 'border-[var(--ph-ink)] bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--mk-black)] text-[var(--mk-black-ink)] hover:opacity-90';
 
 /** What can be done to several rows at once: the list's own bulk actions, each offered when the list would offer it. */
 export interface BulkActions {
@@ -48,7 +56,7 @@ function DeleteMany({ count, busy, onConfirm }: { count: number; busy: boolean; 
       onBlur={onBlur}
       onClick={onClick}
       aria-label={armed ? `Click again to delete ${what}` : `Delete ${what}`}
-      className={cx(BUTTON, 'w-full text-left', armed ? 'border-[var(--ph-alarm)] bg-[var(--ph-alarm)] text-white' : 'border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-[var(--ph-alarm)] hover:bg-[var(--ph-fill)]')}
+      className={cx(BUTTON, 'w-full text-left', armed ? ALARM.armed : ALARM.rest)}
     >
       {armed ? `Click again to delete ${what}` : 'Delete'}
     </button>
@@ -87,7 +95,7 @@ export function SelectionPeek({
   return (
     <SidePeek top={top} label="Selected transactions" testId="cashflow-selection" title={`${picked} selected`} titleTestId="peek-title" noun="transaction" onClose={onClose}>
       <div className="px-[14px] pb-[10px]">
-        <div data-testid="selection-total" className="text-[22px] font-semibold text-[var(--ph-ink)] tabular-nums">
+        <div data-testid="selection-total" className={cx('text-[var(--ph-ink)] tabular-nums', macV2 ? 'text-[22px] font-semibold' : 'text-[30px] leading-[36px] font-extrabold tracking-[-0.4px]')}>
           {spent ?? received ?? (onlyWaiting ? record?.total : null) ?? '–'}
         </div>
         <div data-testid="selection-note" className="mt-[2px] text-[13px] text-[var(--ph-ink-3)]">
@@ -107,7 +115,7 @@ export function SelectionPeek({
             data-testid="record-many"
             disabled={record.busy || record.ready === 0}
             onClick={record.onRecord}
-            className={cx(BUTTON, 'w-full border-[var(--ph-ink)] bg-[var(--ph-ink)] text-left font-medium text-[var(--ph-surface)]')}
+            className={cx(BUTTON, 'w-full text-left font-medium', DARK)}
           >
             Record {record.ready}
           </button>

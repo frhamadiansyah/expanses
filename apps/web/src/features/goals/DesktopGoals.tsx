@@ -43,6 +43,7 @@ import { SetAsideSheet } from './SetAside';
 import { goalsTitleLine } from './goals-title-line';
 import { macV2 } from '../../ui/mac-detail';
 import { Card, CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, PILL, PILL_BLUE, Seg, StatTile, Tag, TileRow, Track } from '../../ui/desk';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 const GBTN = PILL;
 const PBTN = PILL_BLUE;
@@ -291,7 +292,7 @@ export function DesktopGoals() {
       <DeskTitle title="Goals" line={titleLine} />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={summary.error ?? error} />
         {ready && segment === 'active' && running.length > 0 && summary.data && (
           <div>

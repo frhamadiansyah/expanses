@@ -45,6 +45,7 @@ import {
 import { isJointKey, type JointCard, writeJointOrder } from './wallet-joint';
 import { byDue, type CardPayment, cardPayment, dayMonth, dueTag, shows, statementLine, walletLine, type WalletShow } from './wallet-v1-model';
 import { type PeekSubject, WalletPeek } from './WalletPeek';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 /** How many days the Balance's line is drawn over: the phone's. */
 const SPARK_DAYS = 30;
@@ -584,7 +585,7 @@ export function DesktopWallet() {
       <DeskTitle title="Wallet" line={line} />
 
       {/* The peek makes room on the whole page, so it covers no figure; the boxes go by the room they have. */}
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peeking && PEEK_ROOM)}>
         <ErrorBox error={orderError ?? accounts.error ?? statements.error ?? programmes.error} />
 
         {macV2 ? (

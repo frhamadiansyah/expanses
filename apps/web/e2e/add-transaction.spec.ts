@@ -195,7 +195,7 @@ test('a purchase on the account’s only card keeps that card once it is removed
 
   await page.goto('/transactions');
   const bakmi = await openRowPeek(page, 'Bakmi GM');
-  await expect(peekLine(bakmi, 'Payment method')).toContainText('BCA KrisFlyer ···· 1467 · removed card');
+  await expect(peekLine(bakmi, 'Paid with')).toContainText('BCA KrisFlyer ···· 1467 · removed card');
 
   // Edit shows it as the purchase's value, and never offers it for another.
   await bakmi.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -596,7 +596,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   await expect(row).toContainText('US$100,00');
 
   const dinner = await openRowPeek(page, 'Dinner with Andi');
-  await expect(peekLine(dinner, 'Payment method')).toContainText('BCA KF Signature ···· 8802');
+  await expect(peekLine(dinner, 'Paid with')).toContainText('BCA KF Signature ···· 8802');
   await expect(peekLine(dinner, 'Total')).toContainText('1.600.000');
   await expect(peekLine(dinner, 'Original amount')).toContainText('US$100,00');
 
@@ -1372,7 +1372,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   // own card lookup, and one receipt in isolation cannot tell it from "this account's first card".
   await page.goto('/transactions');
   const ranch = await openRowPeek(page, 'Ranch Market');
-  await expect(peekLine(ranch, 'Payment method')).toContainText('BCA KF Signature ···· 1467');
+  await expect(peekLine(ranch, 'Paid with')).toContainText('BCA KF Signature ···· 1467');
 
   // The MCC: remembered for the merchant rather than typed onto this purchase, which is what the checkbox
   // promised. The points engine reads it back through `resolveMcc`, and says where it came from.

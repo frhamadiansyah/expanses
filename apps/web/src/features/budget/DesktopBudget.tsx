@@ -27,6 +27,7 @@ import { macV2 } from '../../ui/mac-detail';
 import { DeskMonthPill } from '../bills/DeskMonthPill';
 import { budgetTiles } from './budget-tiles';
 import { CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, type IconColour, PILL, PILL_BLUE, Seg, StatTile, TileRow, tileMoney, Track } from '../../ui/desk';
+import { PEEK_ROOM } from '../../ui/native/panel-frame';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -293,7 +294,7 @@ export function DesktopBudget() {
        * While the peek is open the whole page makes room for it, tiles and table alike, so it covers no figure; the boxes
        * go by the room they have (a container query, not the window's width), so they wrap rather than squeeze.
        */}
-      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peekLine && 'mr-[322px]')}>
+      <div className={cx('@container space-y-[16px] px-[32px] pt-[2px] pb-[32px]', peekLine && PEEK_ROOM)}>
         <ErrorBox error={sheetQuery.error} />
         <Unconverted missing={sheet?.unconverted ?? []} currency={currency} />
         {tiles && (

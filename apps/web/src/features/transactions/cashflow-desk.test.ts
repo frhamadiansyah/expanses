@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { DailyBox, MonthBox, RingBox } from './CashflowBoxes';
 import { clickAction, countsAs, discardedLine, dayBarsShape, DESK_SORT, monthFigures, NO_SELECTION, orderNote, pageShortcut, peekKey, recordable, recordedToast, recordTickedLabel, ringArcs, ringLegend, type Selection, selectionReducer, skippedLine, sortDesk, tickClick, waitingOrder, waitingSpan } from './cashflow-desk-model';
 import type { ListRow } from './list-model';
-import { PeekRow } from './ReceiptPeek';
-import { kindWord, peekFigure, receiptPeekLines } from './receipt-peek-model';
+import { PanelRow, PeekRow } from './ReceiptPeek';
+import { kindWord, peekFigure, receiptPeekLines, receiptPeekPanel } from './receipt-peek-model';
 
 const colour = (id: string) => `#${id.padStart(6, '0').slice(-6)}`;
 const node = (id: string, name: string, totalMinor: number) => ({ id, name, totalMinor });
@@ -207,6 +207,75 @@ describe('the side peek', () => {
     expect(rate).toContain('>Rate</dt>');
     expect(rate).toContain('Market Rp 16.000');
     expect(rate).not.toContain('<button');
+  });
+});
+
+describe('the transaction peek as the forms’ panel (v1, owner 2026-11-24)', () => {
+  const base = { countsAs: null, workspace: null, bill: null, paidOff: null, instalments: null, past: false } as const;
+
+  it('lifts the category and Counts as under the figure; the receipt’s lines and the workspace make the first box, in the forms’ words', () => {
+    const panel = receiptPeekPanel({
+      ...base,
+      category: 'Groceries',
+      countsAs: 'Essential',
+      workspace: 'Personal',
+      lines: [
+        { label: 'Payment method', value: 'Kartu Biru ···· 4417' },
+        { label: 'Total', value: 'Rp 250.000' },
+        { label: 'Points earned', value: '25 points', tone: 'points' },
+      ],
+      figure: 'Rp 250.000',
+    });
+    expect(panel.kindLine).toBe('Groceries · Essential');
+    // The Total says the figure again: left out. Payment method and Points earned take the panel's words.
+    expect(panel.money.map((line) => [line.label, line.value])).toEqual([
+      ['Paid with', 'Kartu Biru ···· 4417'],
+      ['Points', '25 points'],
+      ['Workspace', 'Personal'],
+    ]);
+    expect(panel.money[1]).toMatchObject({ tone: 'points' });
+    expect(panel.links).toEqual([]);
+  });
+
+  it('keeps a Total that is not the figure: a share of a bill, or money in said with its +', () => {
+    const share = receiptPeekPanel({ ...base, category: 'Restaurants', lines: [{ label: 'Total', value: 'Rp 400.000' }], figure: 'Rp 100.000' });
+    expect(share.money.map((line) => line.label)).toEqual(['Total']);
+    // Money in: the figure carries a +, the Total does not; still the same figure.
+    const salary = receiptPeekPanel({ ...base, category: 'Salary', lines: [{ label: 'Paid into', value: 'Bank Satu' }, { label: 'Total', value: 'Rp 9.000.000' }], figure: '+Rp 9.000.000' });
+    expect(salary.money.map((line) => line.label)).toEqual(['Paid into']);
+    expect(salary.kindLine).toBe('Salary');
+  });
+
+  it('puts Bill, Instalments, Paid off and Past purchase in the second box, in that order', () => {
+    const panel = receiptPeekPanel({
+      ...base,
+      category: 'Electronics',
+      lines: [],
+      bill: 'None',
+      paidOff: { label: 'Paid off', on: false },
+      instalments: 'None',
+      past: true,
+      figure: 'Rp 1.000.000',
+    });
+    expect(panel.money).toEqual([]);
+    expect(panel.links.map((line) => line.key)).toEqual(['bill', 'instalments', 'paid-off', 'past']);
+    expect(panel.links[0]).toMatchObject({ action: 'bill', tone: 'muted', testId: 'receipt-bill' });
+  });
+
+  it('draws Paid off as a capsule switch, a row that opens something with a ›, a plain line plain', () => {
+    const noop = () => {};
+    const paidOff = renderToStaticMarkup(createElement(PanelRow, { line: { key: 'p', label: 'Paid off', value: 'Off', action: 'paid-off', on: false }, onAction: noop }));
+    expect(paidOff).toMatch(/role="switch"[^>]*aria-label="Paid off"/);
+    expect(paidOff).not.toContain('checked=""');
+    expect(paidOff).toContain('>Paid off</dt>');
+    const bill = renderToStaticMarkup(createElement(PanelRow, { line: { key: 'b', label: 'Bill', value: 'None', action: 'bill', testId: 'receipt-bill', tone: 'muted' }, onAction: noop }));
+    expect(bill).toContain('data-testid="receipt-bill"');
+    expect(bill).toContain('aria-label="Bill, None"');
+    expect(bill).toContain('lucide-chevron-right');
+    const workspace = renderToStaticMarkup(createElement(PanelRow, { line: { key: 'w', label: 'Workspace', value: 'Personal' } }));
+    expect(workspace).toContain('>Workspace</dt>');
+    expect(workspace).not.toContain('<button');
+    expect(workspace).not.toContain('lucide-chevron-right');
   });
 });
 

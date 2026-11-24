@@ -15,6 +15,7 @@ import { type PasteMark, pastedCategories, rememberedCategory, rememberedPaid } 
 import { needWords } from './need-words';
 import { ReceiptLink } from './ReceiptLink';
 import { groupedAmountCell, isNotionPageLinks, isQuickEditable, NOTION_ROWS_LINE, parsePastedRows, pastedCells, paymentKey, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
+import { macV2 } from '../../ui/mac-detail';
 
 export interface TableHandlers {
   busy: string | null;
@@ -368,7 +369,10 @@ export function EditableRow({
         desk
           ? // The desk draws a waiting row as a recorded one (option E): no amber, the zebra, the accent once picked.
             cx(
-              desk.selected
+              desk.selected && !macV2
+                ? // Pale blue, as a picked recorded row in the v1 look (owner, 2026-11-24).
+                  'rounded-[10px] bg-[var(--mk-sel)] text-[var(--ph-ink)]'
+                : desk.selected
                 ? // White on the accent, as a picked recorded row; the category's mark on white, or it sinks into the blue.
                   'bg-[var(--mac-accent)] text-white [&_[data-tick]>span]:border-white [&_[data-tick=on]>span]:bg-white [&_[data-tick=on]>span]:text-[var(--mac-accent)] [&_[data-cell]]:text-white [&_[data-testid=category-mark]]:bg-white! [&_input:focus]:text-[var(--ph-ink)]'
                 : cx('text-[var(--ph-ink)]', desk.striped && 'bg-[var(--mac-zebra)]'),

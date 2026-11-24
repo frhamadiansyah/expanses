@@ -2,6 +2,7 @@ import { RouterProvider, useNavigate, useRouter } from '@tanstack/react-router';
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { cx } from '../ui';
 import { FormPanelContext } from '../ui/native/form-panel-context';
+import { PANEL_FRAME, PANEL_X } from '../ui/native/panel-frame';
 import { DeskNotices } from './DeskNotices';
 import { createBaseRouter } from './router';
 import { edgeToEdge } from './sidebar-model';
@@ -71,10 +72,10 @@ function Panel({ baseHref, children }: { baseHref: string; children: ReactNode }
         aria-label="Form"
         data-testid="form-panel"
         onKeyDown={onKeyDown}
-        className="mk mk-panel fixed top-[var(--desk-bar)] right-[14px] bottom-[14px] z-30 flex w-[410px] max-w-[calc(100vw-28px)] flex-col overflow-hidden rounded-[22px] bg-[var(--mk-panel)] shadow-[var(--mk-panel-shadow)]"
+        className={cx('mk mk-panel top-[var(--desk-bar)] z-30', PANEL_FRAME)}
       >
-        <div className="mk-panel-body min-h-0 flex-1 overflow-y-auto px-[22px] pt-[20px] pb-[12px]">{children}</div>
-        <div ref={setFoot} data-testid="form-panel-foot" className={cx('flex shrink-0 items-center justify-end gap-[10px] px-[22px] pb-[16px] empty:hidden', 'pt-[10px]')} />
+        <div className={cx('mk-panel-body min-h-0 flex-1 overflow-y-auto pt-[20px] pb-[12px]', PANEL_X)}>{children}</div>
+        <div ref={setFoot} data-testid="form-panel-foot" className={cx('flex shrink-0 items-center justify-end gap-[10px] pt-[10px] pb-[16px] empty:hidden', PANEL_X)} />
       </aside>
     </FormPanelContext.Provider>
   );

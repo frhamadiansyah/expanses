@@ -252,5 +252,5 @@ export function rowClass(selected: boolean): string {
   );
 }
 
-/** The page makes room for the side peek at once, so no figure sits under it (the peek is 330 wide; the page keeps its 20). */
-export const PEEK_ROOM = 'mr-[322px]';
+/** The page makes room for the side peek at once, so no figure sits under it (`panel-frame`'s, the peek's own width). */
+export { PEEK_ROOM } from '../../ui/native/panel-frame';
