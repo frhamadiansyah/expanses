@@ -1,6 +1,6 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import type { CellPick } from './cell-look';
-import { type CellColumn, type CellRange, extendRange, isCellColumn, movePick, pasteAssignments, pastedLines, rangeIds, rangeKey, startRange, stretchPick } from './cell-range';
+import { type CellColumn, type CellRange, extendRange, fillReach, isCellColumn, movePick, pasteAssignments, pastedLines, rangeIds, rangeKey, rowAtHeight, startRange, stretchPick } from './cell-range';
 
 /**
  * The blue cells of a Mac table (`cell-range`): which cells are picked, and the mouse and keys that pick and use them.
@@ -11,8 +11,10 @@ import { type CellColumn, type CellRange, extendRange, isCellColumn, movePick, p
  * table whose ⇧-click already picks rows keeps that until cells are blue). While cells are picked — one or several —
  * the arrows move the blue, ⇧↑ ⇧↓ stretch it down its column, ⌘C copies, ⌘V pastes, ⌘D fills down, Delete clears,
  * Return types in the cell (or, for several Category or Paid with cells, asks for one choice; so does a double-click on
- * them), a letter starts typing in the cell in its place, and Esc lets go. Nothing here writes: the table's callbacks
- * do, by its own single edit's path.
+ * them), a letter starts typing in the cell in its place, and Esc lets go. The fill square at the blue's corner,
+ * dragged down its column, fills the cells it reaches with the top blue cell's value as ⌘D does (Esc mid-drag lets
+ * it go, filling nothing), and leaves the whole filled run blue. Nothing here writes: the table's callbacks do, by its
+ * own single edit's path.
  *
  * While cells are picked the keyboard rests on a hidden text box holding what they say, selected (`sink`). The Mac
  * app's web view hands ⌘C and ⌘V to the page as keys only when nothing is focused — no copy, no paste — and copies or
@@ -57,6 +59,14 @@ export function useCellRange({
   const swallowClick = useRef(false);
   const pressedInRange = useRef<{ column: CellColumn; id: string } | null>(null);
   const settle = useRef<number | null>(null);
+  /** The fill square being dragged: down which column, from which blue cells; `reach` the cells below it covers. */
+  const fill = useRef<{ column: CellColumn; block: string[] } | null>(null);
+  const [reach, setReachState] = useState<string[]>([]);
+  const reachNow = useRef<string[]>([]);
+  const setReach = (next: string[]) => {
+    reachNow.current = next;
+    setReachState(next);
+  };
 
   /** The cell last clicked (typed in, not blue): the start a ⇧-click or a drag reaches from. */
   const clicked = (next: CellRange | null) => {
@@ -70,6 +80,13 @@ export function useCellRange({
     setHeld(true);
   };
   const letGo = () => clicked(null);
+
+  /** The fill square let go of: its reach cleared, the pointer back. */
+  const endFill = () => {
+    fill.current = null;
+    setReach([]);
+    document.documentElement.style.removeProperty('cursor');
+  };
 
   // What the document's listeners read: the newest of everything, without listening again on every render.
   const now = useRef({ range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart });
@@ -152,6 +169,34 @@ export function useCellRange({
     const up = () => {
       if (drag.current?.moved) swallowClick.current = true;
       drag.current = null;
+      const filling = fill.current;
+      if (!filling) return;
+      const cells = reachNow.current;
+      endFill();
+      if (cells.length === 0) return;
+      // As ⌘D: the top blue cell's value into every cell below it, by the table's own fill; the whole run stays blue.
+      now.current.onFill(filling.column, [...filling.block, ...cells]);
+      hold({ column: filling.column, anchor: filling.block[0]!, focus: cells[cells.length - 1]! });
+    };
+    /** The fill square dragged: the row under the pointer, read down its column, sets how far it reaches. */
+    const move = (event: MouseEvent) => {
+      const filling = fill.current;
+      if (!filling) return;
+      // The button let go where no mouseup reached the page (another window, a sheet): the drag ends, filling nothing.
+      if ((event.buttons & 1) === 0) {
+        endFill();
+        return;
+      }
+      const rows = now.current.ids;
+      const tops = rows.flatMap((id) => {
+        const el = cellEl(filling.column, id);
+        return el ? [{ id, top: el.getBoundingClientRect().top }] : [];
+      });
+      const next = fillReach(rows, filling.block, rowAtHeight(tops, event.clientY));
+      if (next.join(',') !== reachNow.current.join(',')) setReach(next);
+    };
+    const leave = () => {
+      if (fill.current) endFill();
     };
     // A press anywhere outside the table (and not in a sheet over it) lets the range go.
     const away = (event: MouseEvent) => {
@@ -193,6 +238,15 @@ export function useCellRange({
     };
     const keys = (event: KeyboardEvent) => {
       const { active: on, range: r, picked: cells, ids: rows } = now.current;
+      // Mid-drag, the fill square answers Esc alone: let go, nothing filled.
+      if (fill.current) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          endFill();
+        }
+        return;
+      }
       if (!on) {
         escToPick(event);
         return;
@@ -265,12 +319,16 @@ export function useCellRange({
       now.current.onPaste(r.column, pasteAssignments(cells, lines));
     };
     document.addEventListener('mouseup', up);
+    document.addEventListener('mousemove', move);
+    window.addEventListener('blur', leave);
     document.addEventListener('mousedown', away);
     document.addEventListener('keydown', keys, true);
     document.addEventListener('copy', copy);
     document.addEventListener('paste', paste);
     return () => {
       document.removeEventListener('mouseup', up);
+      document.removeEventListener('mousemove', move);
+      window.removeEventListener('blur', leave);
       document.removeEventListener('mousedown', away);
       document.removeEventListener('keydown', keys, true);
       document.removeEventListener('copy', copy);
@@ -288,6 +346,19 @@ export function useCellRange({
       swallowClick.current = false;
       pressedInRange.current = null;
       clearSettle();
+      // The fill square: its own drag, never a run of cells, a row picked or the peek opened.
+      if ((event.target as HTMLElement | null)?.closest?.('[data-fill-square]')) {
+        event.preventDefault();
+        event.stopPropagation();
+        swallowClick.current = true;
+        if (active && range) {
+          fill.current = { column: range.column, block: [...picked] };
+          setReach([]);
+          document.documentElement.style.setProperty('cursor', 'crosshair');
+          rest();
+        }
+        return;
+      }
       const cell = cellOf(event.target);
       if (!cell) return;
       const { column, id } = cell;
@@ -360,8 +431,18 @@ export function useCellRange({
     if (!active || !range) return null;
     const at = picked.indexOf(id);
     const copiedHere = copied && copied.ids.includes(id) ? copied.column : null;
-    if (at < 0 && !copiedHere) return null;
-    return { column: at < 0 ? null : range.column, copied: copiedHere, many: picked.length >= 2, top: at === 0, bottom: at === picked.length - 1 };
+    const reached = reach.indexOf(id);
+    if (at < 0 && !copiedHere && reached < 0) return null;
+    return {
+      column: at < 0 ? null : range.column,
+      copied: copiedHere,
+      many: picked.length >= 2,
+      top: at === 0,
+      bottom: at === picked.length - 1,
+      corner: at >= 0 && at === picked.length - 1,
+      reach: reached < 0 ? null : reached === reach.length - 1 ? 'end' : 'middle',
+      reachColumn: reached < 0 ? null : range.column,
+    };
   };
 
   return {

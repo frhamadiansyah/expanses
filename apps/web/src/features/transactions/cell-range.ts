@@ -202,3 +202,29 @@ export function stretchPick(range: CellRange, ids: readonly string[], by: -1 | 1
   const next = row < 0 ? undefined : ids[Math.min(Math.max(row + by, 0), ids.length - 1)];
   return next ? { ...range, focus: next } : range;
 }
+
+/**
+ * The fill square (Google Sheets', owner 2026-11-24): dragged down from the corner of the blue cells, the cells it
+ * reaches below them, in the table's order — from the row under the blue down to the row under the pointer (`over`).
+ * Down only: with the pointer on the blue or above it, none. A row no longer listed reaches none.
+ */
+export function fillReach(ids: readonly string[], picked: readonly string[], over: string | null): string[] {
+  const last = picked.length > 0 ? ids.indexOf(picked[picked.length - 1]!) : -1;
+  const to = over === null ? -1 : ids.indexOf(over);
+  if (last < 0 || to <= last) return [];
+  return ids.slice(last + 1, to + 1);
+}
+
+/**
+ * The row under the pointer while the fill square is dragged, read down one column: the last of the rows whose cell
+ * starts at or above the pointer (`tops`, the cells' top edges in the table's order). Past the last row it stays on the
+ * last; above the first, none.
+ */
+export function rowAtHeight(tops: readonly { id: string; top: number }[], y: number): string | null {
+  let at: string | null = null;
+  for (const { id, top } of tops) {
+    if (top > y) break;
+    at = id;
+  }
+  return at;
+}

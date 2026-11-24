@@ -238,6 +238,85 @@ test('Esc picks the cell being typed in: ⌘C copies it, the arrows move it, ⇧
   await expect(draftRow(page, 'Kedai Empat')).toHaveCount(1);
 });
 
+/** Presses the fill square and moves the pointer down to the middle of a cell, holding the button. */
+async function dragSquareTo(page: Page, to: Locator) {
+  const square = page.locator('[data-fill-square]');
+  await square.hover();
+  await page.mouse.down();
+  const box = (await to.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 });
+}
+
+test('the fill square, dragged down three rows, fills them with the picked cell’s value; Undo puts them back; Esc mid-drag fills nothing', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(
+    page,
+    ['2026-10-16\tKedai Satu\tRestaurants\tBank Contoh\t21.000', '2026-10-15\tKedai Dua\t\tBank Contoh\t23.000', '2026-10-14\tKedai Tiga\t\tBank Contoh\t25.000', '2026-10-13\tKedai Empat\t\tBank Contoh\t27.000', '2026-10-12\tKedai Lima\t\tBank Contoh\t29.000'].join('\n'),
+  );
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(5);
+  const square = page.locator('[data-fill-square]');
+  const category = (note: string) => draftRow(page, note).getByLabel('Row category');
+
+  // Typing in a cell: no square. Esc picks it, and the square sits at its corner.
+  await category('Kedai Satu').click();
+  await expect(square).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(cellOf(draftRow(page, 'Kedai Satu'), 'category').locator('[data-fill-square]')).toHaveCount(1);
+
+  // Esc while dragging: the dashed cells go, nothing is filled, and the cell stays picked.
+  await dragSquareTo(page, cellOf(draftRow(page, 'Kedai Tiga'), 'category'));
+  await expect(page.locator('[data-cell="category"][data-reach]')).toHaveCount(2);
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(page.locator('[data-reach]')).toHaveCount(0);
+  await expect(page.getByTestId('cell-change')).toHaveCount(0);
+  for (const note of ['Kedai Dua', 'Kedai Tiga']) await expect(category(note)).toHaveValue('');
+  await expect(page.locator('[data-picked="true"]')).toHaveCount(1);
+  await expect(page.getByTestId('peek-amount')).toHaveCount(0);
+
+  // Dragged down three rows and let go: the three take Restaurants, and the four stay picked, the square at their foot.
+  await dragSquareTo(page, cellOf(draftRow(page, 'Kedai Empat'), 'category'));
+  await expect(page.locator('[data-cell="category"][data-reach]')).toHaveCount(3);
+  await page.screenshot({ path: test.info().outputPath('fill-square-drag.png') });
+  await page.mouse.up();
+  await expect(page.getByTestId('cell-change')).toContainText('Changed 3 cells');
+  for (const note of ['Kedai Dua', 'Kedai Tiga', 'Kedai Empat']) await expect(category(note)).toHaveValue('Restaurants');
+  await expect(category('Kedai Lima')).toHaveValue('');
+  await expect(page.locator('[data-cell="category"][data-picked="true"]')).toHaveCount(4);
+  await expect(cellOf(draftRow(page, 'Kedai Empat'), 'category').locator('[data-fill-square]')).toHaveCount(1);
+  // The press on the square picked no rows and opened no peek.
+  await expect(page.getByTestId('cashflow-selection')).toHaveCount(0);
+  await expect(page.getByTestId('peek-amount')).toHaveCount(0);
+
+  // One Undo puts all three back.
+  await page.getByTestId('cell-change').getByRole('button', { name: 'Undo' }).click();
+  for (const note of ['Kedai Dua', 'Kedai Tiga', 'Kedai Empat']) await expect(category(note)).toHaveValue('');
+  await expect(category('Kedai Satu')).toHaveValue('Restaurants');
+});
+
+test('the fill square on recorded rows fills them by their own edit and opens no peek', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(page, ['2026-10-16\tToko E\tRestaurants\tBank Contoh\t11.000', '2026-10-15\tToko F\tGroceries\tBank Contoh\t12.000', '2026-10-14\tToko G\tGroceries\tBank Contoh\t13.000'].join('\n'));
+  for (const note of ['Toko E', 'Toko F', 'Toko G']) await recordRow(page, note);
+  await expect(page.getByTestId('transaction-row')).toHaveCount(3);
+  const recorded = (note: string) => page.getByTestId('transaction-row').filter({ hasText: note });
+  // Whatever order the table reads them in, the top two Category cells are picked and the square dragged to the third:
+  // the top cell's value fills the two below it.
+  const order = await page.getByTestId('transaction-row').allTextContents();
+  const [first, second, third] = ['Toko E', 'Toko F', 'Toko G'].sort((a, b) => order.findIndex((t) => t.includes(a)) - order.findIndex((t) => t.includes(b)));
+  await dragCells(page, cellOf(recorded(first!), 'category'), cellOf(recorded(second!), 'category'));
+  await expect(page.locator('[data-cell="category"][data-picked="true"]')).toHaveCount(2);
+  const topValue = (await cellOf(recorded(first!), 'category').textContent())!.includes('Restaurants') ? 'Restaurants' : 'Groceries';
+  await dragSquareTo(page, cellOf(recorded(third!), 'category'));
+  await page.mouse.up();
+  await expect(page.getByTestId('cell-change')).toBeVisible();
+  for (const note of [second!, third!]) await expect(recorded(note)).toContainText(topValue);
+  await expect(page.getByTestId('peek-amount')).toHaveCount(0);
+  await expect(page.getByTestId('cashflow-selection')).toHaveCount(0);
+});
+
 test('a range of recorded rows changes them by their own edit, never clears them, and Undo puts them back', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');

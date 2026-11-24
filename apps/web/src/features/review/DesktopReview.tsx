@@ -16,7 +16,7 @@ import { BOX } from '../transactions/CashflowBoxes';
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { PaymentSheet } from '../transactions/PaymentSheet';
 import type { CellColumn } from '../transactions/cell-range';
-import { cellLook, cellMarks, type CellPick } from '../transactions/cell-look';
+import { cellCorner, cellLook, cellMarks, type CellPick } from '../transactions/cell-look';
 import { paymentOptions } from '../transactions/quick-row';
 import { pendingPaidLabel, pendingPaidOf, readMarks } from '../transactions/paste-categories';
 import { type CaptureType, captureTypeOf } from './capture-type';
@@ -645,11 +645,13 @@ function DraftTableRow({
       <td className="border-t border-[var(--mk-line)] py-[9px] pl-[9px]">{open ? <TickCircle ready={state.ready} /> : null}</td>
       {cols.when && (
         <td {...cell('date')} className={cx(CELL, 'leading-[17px] tabular-nums', blue('date'))}>
+          {cellCorner('date', pickedCell)}
           <span className="block font-semibold">{day}</span>
           {time && <span className="block text-[12px] text-[var(--mk-ink-2)]">{time}</span>}
         </td>
       )}
       <td {...cell('description')} className={cx(CELL, 'overflow-hidden leading-[17px]', blue('description'))} title={merged ? `${draft.description} · ${merged}` : draft.description}>
+        {cellCorner('description', pickedCell)}
         <span className="block truncate font-semibold">{draft.description}</span>
         <span className={cx('block truncate text-[12px]', lacks ? WARN : 'text-[var(--mk-ink-2)]')}>
           <span data-testid="review-from">{from.word}</span>
@@ -658,6 +660,7 @@ function DraftTableRow({
         </span>
       </td>
       <td {...cell('category')} className={cx(CELL, 'overflow-hidden', blue('category'))}>
+        {cellCorner('category', pickedCell)}
         {transfer
           ? pickCell(`To account for ${draft.description}`, 'to', to ? <span className="truncate">→ {to.name}</span> : <span className={WARN}>To which account?</span>)
           : pickCell(
@@ -676,6 +679,7 @@ function DraftTableRow({
       </td>
       {cols.paidWith && (
         <td {...cell('paid')} className={cx(CELL, 'overflow-hidden', blue('paid'))}>
+          {cellCorner('paid', pickedCell)}
           {pickCell(
             `Account for ${draft.description}`,
             'money',
@@ -696,6 +700,7 @@ function DraftTableRow({
         </td>
       )}
       <td {...cell('amount')} className={cx(CELL, 'text-right tabular-nums', blue('amount'))} data-testid="draft-amount">
+        {cellCorner('amount', pickedCell)}
         {draft.amountMinor === 0 ? (
           <span className={WARN}>No amount</span>
         ) : (

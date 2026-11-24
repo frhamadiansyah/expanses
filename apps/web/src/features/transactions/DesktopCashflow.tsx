@@ -18,7 +18,7 @@ import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
-import { cellLook, cellMarks, type CellPick } from './cell-look';
+import { cellCorner, cellLook, cellMarks, type CellPick } from './cell-look';
 import type { CellColumn } from './cell-range';
 import { useCashflowCells } from './cashflow-cells';
 import { type AddPaidChoice, addPaidChoices, fillAddedPaid, forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, pendingPaidLabel, pendingPaidOf, readMarks, rowsLine, unknownLinks, unknownLinksLine } from './paste-categories';
@@ -1144,9 +1144,11 @@ function DeskRow({
       {/* The first column is a waiting row's circle: a recorded row has none. */}
       <span />
       <span {...cell('date')} className={cx('truncate px-2 py-[5px] tabular-nums', grey, blue('date'))}>
+        {cellCorner('date', pickedCell)}
         {shortDate(row.date, today)}
       </span>
       <span {...cell('description')} className={cx('flex min-w-0 items-center gap-1.5 px-2 py-[5px]', row.deleted && 'line-through', blue('description'))}>
+        {cellCorner('description', pickedCell)}
         <span className="truncate">{row.description || <span className={grey}>{category ?? kindLabel ?? 'No note'}</span>}</span>
         {row.instalment && (
           <span data-testid="instalment-pill" className={cx('shrink-0 rounded-full px-[6px] text-[11px] tabular-nums', solid ? 'bg-white/20' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}>
@@ -1156,6 +1158,7 @@ function DeskRow({
       </span>
       {/* On the selected row's accent the tinted mark sits on white, or it would sink into the blue. */}
       <span {...cell('category')} className={cx('flex min-w-0 items-center gap-[6px] px-2 py-[3px]', solid && '[&_[data-testid=category-mark]]:bg-white!', blue('category'))}>
+        {cellCorner('category', pickedCell)}
         {kindLabel ? (
           <span className={cx('truncate', grey)}>{kindLabel}</span>
         ) : (
@@ -1183,12 +1186,14 @@ function DeskRow({
         )}
       </span>
       <span {...cell('paid')} className={cx('truncate px-2 py-[5px]', solid ? 'text-white' : 'text-[var(--ph-ink-2)]', blue('paid'))}>
+        {cellCorner('paid', pickedCell)}
         {helpers.paidWith(row)}
       </span>
       <span
         {...cell('amount')}
         className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', amount.tone === 'up' && !solid && 'text-[var(--ph-up)]', amount.tone === 'grey' && !solid && 'text-[var(--ph-ink-3)]', blue('amount'))}
       >
+        {cellCorner('amount', pickedCell)}
         {extra.length > 0 && (
           <span data-testid="amount-extra" title={extra.map((part) => part.text).join(' · ')} className={cx('truncate text-[11px]', grey)}>
             {extra.map((part, i) => (

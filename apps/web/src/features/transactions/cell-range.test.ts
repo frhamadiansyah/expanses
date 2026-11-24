@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CellColumn, type CellTarget, cellsText, changeLine, extendRange, isCellColumn, movePick, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick } from './cell-range';
+import { type CellColumn, type CellTarget, cellsText, changeLine, extendRange, fillReach, isCellColumn, movePick, rowAtHeight, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick } from './cell-range';
 
 const IDS = ['a', 'b', 'c', 'd', 'e'];
 
@@ -182,5 +182,36 @@ describe('moving and stretching the blue with the keyboard', () => {
   it('pastes into one blue cell as into several: one value, or the first of several lines', () => {
     expect(pasteAssignments(['c'], pastedLines('Groceries'))).toEqual([{ id: 'c', text: 'Groceries' }]);
     expect(pasteAssignments(['c'], pastedLines('Groceries\nCafe\n'))).toEqual([{ id: 'c', text: 'Groceries' }]);
+  });
+});
+
+describe('the fill square', () => {
+  it('reaches from the row under the blue down to the row under the pointer, down only', () => {
+    expect(fillReach(IDS, ['b'], 'd')).toEqual(['c', 'd']);
+    expect(fillReach(IDS, ['a', 'b'], 'e')).toEqual(['c', 'd', 'e']);
+    expect(fillReach(IDS, ['b'], 'c')).toEqual(['c']);
+    // On the blue itself, or above it: nothing to fill.
+    expect(fillReach(IDS, ['b', 'c'], 'c')).toEqual([]);
+    expect(fillReach(IDS, ['b', 'c'], 'b')).toEqual([]);
+    expect(fillReach(IDS, ['c'], 'a')).toEqual([]);
+    expect(fillReach(IDS, ['c'], null)).toEqual([]);
+    // A row gone from the table reaches nothing.
+    expect(fillReach(IDS, ['gone'], 'e')).toEqual([]);
+    expect(fillReach(IDS, ['b'], 'gone')).toEqual([]);
+    expect(fillReach(IDS, [], 'e')).toEqual([]);
+  });
+
+  it('reads the row under the pointer from the cells’ top edges, staying on the last past the end', () => {
+    const tops = [
+      { id: 'a', top: 100 },
+      { id: 'b', top: 140 },
+      { id: 'c', top: 180 },
+    ];
+    expect(rowAtHeight(tops, 99)).toBeNull();
+    expect(rowAtHeight(tops, 100)).toBe('a');
+    expect(rowAtHeight(tops, 139)).toBe('a');
+    expect(rowAtHeight(tops, 150)).toBe('b');
+    expect(rowAtHeight(tops, 900)).toBe('c');
+    expect(rowAtHeight([], 150)).toBeNull();
   });
 });

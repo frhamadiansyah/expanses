@@ -5,7 +5,7 @@ import { moneyHolders } from '../../lib/queries';
 import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { cellLook, cellMarks, type CellPick } from './cell-look';
+import { cellCorner, cellLook, cellMarks, type CellPick } from './cell-look';
 import type { CellColumn } from './cell-range';
 import { CellCombo, type ComboAdd, type ComboOption } from './CellCombo';
 import { foldName, lastFourOf, matchLastFour, matchPasted, pastedPayerOptions, payerOptions, paymentKey, type QuickValues, shownPaymentKey } from './quick-row';
@@ -282,6 +282,7 @@ export function QuickRowEditor({
     layout === 'desk' && cellRow ? (
       <div key={column} {...cellMarks(column, cellRow, pickedCell)} className={cx('min-w-0 rounded-[5px]', DESK_TONE[column], cellLook(column, pickedCell))}>
         {node}
+        {cellCorner(column, pickedCell)}
       </div>
     ) : (
       node
