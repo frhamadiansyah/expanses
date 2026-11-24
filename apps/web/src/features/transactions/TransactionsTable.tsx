@@ -6,7 +6,7 @@ import { Button, cx } from '../../ui';
 import { payerLine } from '../sharing/sharing-copy';
 import type { RowBook } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
-import type { CellColumn } from './cell-range';
+import type { CellPick } from './cell-look';
 import type { ComboAdd } from './CellCombo';
 import { isEditable } from './draft';
 import { type ListRow, showsPaidWith } from './list-model';
@@ -329,8 +329,8 @@ export function EditableRow({
   paidGuess?: { key: string; hint: string } | null;
   /** Its Paid with pasted as text naming nothing in cicis yet (the desk's): kept in the cell, with what to add for it. */
   paidPending?: { text: string | null; adds: readonly ComboAdd[] } | null;
-  /** The column of this row's cell in the desk's range of blue cells, if one is. */
-  pickedCell?: CellColumn | null;
+  /** What this row's cells show of the desk's blue cells (`cell-look`), if any. */
+  pickedCell?: CellPick | null;
 }) {
   const isDraft = row.kind === 'draft';
   const read = isDraft ? quickFromDraft(row.draft!, today, accounts) : quickFromTransaction(row.tx!, today);

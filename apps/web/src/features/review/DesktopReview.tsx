@@ -16,7 +16,7 @@ import { BOX } from '../transactions/CashflowBoxes';
 import { CategoryPicker } from '../transactions/CategoryPicker';
 import { PaymentSheet } from '../transactions/PaymentSheet';
 import type { CellColumn } from '../transactions/cell-range';
-import { PICKED_CELL } from '../transactions/QuickRowEditor';
+import { cellLook, cellMarks, type CellPick } from '../transactions/cell-look';
 import { paymentOptions } from '../transactions/quick-row';
 import { pendingPaidLabel, pendingPaidOf, readMarks } from '../transactions/paste-categories';
 import { type CaptureType, captureTypeOf } from './capture-type';
@@ -385,7 +385,7 @@ export function DesktopReview({
                     cards={cards}
                     cols={cols}
                     peeked={peekId === draft.id}
-                    pickedCell={cells.pickedColumn(draft.id)}
+                    pickedCell={cells.cellPick(draft.id)}
                     pendingPaid={pendingPaidLabel(pendingPaidOf(pasteMarks[draft.id], { accountId: draft.accountId ?? '' }) ?? undefined)}
                     busy={busy}
                     onPeek={() => peek(draft.id)}
@@ -584,8 +584,8 @@ function DraftTableRow({
   onDiscard,
 }: {
   draft: DraftRow;
-  /** The column of its cell in a range of blue cells, if one is. */
-  pickedCell: CellColumn | null;
+  /** What its cells show of the blue cells (`cell-look`), if any. */
+  pickedCell: CellPick | null;
   /** A row pasted in Cashflow whose Paid with names nothing in cicis yet: the pasted text ("•• 5512"), as Cashflow's cell shows it. */
   pendingPaid: string | null;
   /** Where it stands in the queue; null for one recorded or discarded (read only). */
@@ -620,8 +620,8 @@ function DraftTableRow({
     run();
   };
   // Each cell a range may run down is marked for it, and drawn blue while in one.
-  const cell = (column: CellColumn) => ({ 'data-cell': column, 'data-cell-row': draft.id, 'data-picked': pickedCell === column || undefined });
-  const blue = (column: CellColumn) => pickedCell === column && PICKED_CELL;
+  const cell = (column: CellColumn) => cellMarks(column, draft.id, pickedCell);
+  const blue = (column: CellColumn) => cellLook(column, pickedCell);
   const pickCell = (label: string, pick: PeekPick, face: ReactNode) =>
     open ? (
       <button type="button" aria-label={label} onClick={stop(() => onPick(pick))} onDoubleClick={(event) => event.stopPropagation()} className={CELL_PICK}>

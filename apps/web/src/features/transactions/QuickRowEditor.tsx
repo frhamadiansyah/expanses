@@ -5,6 +5,7 @@ import { moneyHolders } from '../../lib/queries';
 import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
+import { cellLook, cellMarks, type CellPick } from './cell-look';
 import type { CellColumn } from './cell-range';
 import { CellCombo, type ComboAdd, type ComboOption } from './CellCombo';
 import { foldName, lastFourOf, matchLastFour, matchPasted, pastedPayerOptions, payerOptions, paymentKey, type QuickValues, shownPaymentKey } from './quick-row';
@@ -32,11 +33,6 @@ export const DESK_COLUMNS = {
 
 const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
 const MISSING = 'bg-amber-50 ring-1 ring-amber-400 ring-inset';
-/**
- * A cell in a range of blue cells (`useCellRange`): the Mac accent's wash, edged in the accent — only while it is picked
- * (a drag or ⇧-click); a cell at rest, blank or not, is the row's own plain ground.
- */
-export const PICKED_CELL = 'bg-[var(--mac-accent-wash)] outline outline-1 -outline-offset-1 outline-[var(--mac-accent)]';
 /** The desk table's cell: 13 px, as tall as the rows under it, the Mac accent around the one being typed in. */
 const DESK_CELL = 'h-[30px] w-full rounded-[5px] bg-transparent px-2 text-[13px] placeholder:text-[var(--ph-ink-3)] focus:bg-[var(--ph-surface)] focus:outline-2 focus:outline-[var(--mac-accent)]';
 /**
@@ -178,8 +174,8 @@ export function QuickRowEditor({
    * `data-cell-row` on the cell. Left out on the typing row, which is no part of a range.
    */
   cellRow?: string;
-  /** The column of this row's cell in a range of blue cells, if one is. */
-  pickedCell?: CellColumn | null;
+  /** What this row's cells show of the blue cells (`cell-look`), if any. */
+  pickedCell?: CellPick | null;
   /**
    * The desk's Tab on the last cell (Amount): true when the row took it (the typing row keeps itself as waiting and
    * starts a fresh one). Otherwise Tab goes on to the next row's Date, as a spreadsheet does.
@@ -281,10 +277,10 @@ export function QuickRowEditor({
       {actions}
     </div>
   );
-  // A desk row's cells are marked for a range of blue cells, and drawn blue while in one.
+  // A desk row's cells are marked for a range of blue cells, and drawn blue while in one (`cell-look`).
   const cell = (column: CellColumn, node: ReactNode) =>
     layout === 'desk' && cellRow ? (
-      <div key={column} data-cell={column} data-cell-row={cellRow} data-picked={pickedCell === column || undefined} className={cx('min-w-0 rounded-[5px]', DESK_TONE[column], pickedCell === column && PICKED_CELL)}>
+      <div key={column} {...cellMarks(column, cellRow, pickedCell)} className={cx('min-w-0 rounded-[5px]', DESK_TONE[column], cellLook(column, pickedCell))}>
         {node}
       </div>
     ) : (

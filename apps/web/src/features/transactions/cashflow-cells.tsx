@@ -174,9 +174,9 @@ export function useCashflowCells({
   const cells = useCellRange({
     ids,
     // One rule for the whole table (Record many, owner 2026-11-18): ⇧-click picks rows — recorded and waiting alike,
-    // from the last row clicked to this one — and a drag picks cells. Once two cells or more are blue, ⇧-click in
-    // their column stretches them, as a spreadsheet does.
-    shiftExtends: (_range, picked) => picked.length >= 2,
+    // from the last row clicked to this one — and a drag (or Esc in a cell) picks cells. Once cells are blue, ⇧-click
+    // in their column stretches them, as a spreadsheet does.
+    shiftExtends: () => false,
     onStart: () => {
       setNote(null);
       onStart();
@@ -248,7 +248,12 @@ export function useCashflowCells({
     </p>
   ) : null;
 
-  const hint = cells.active ? `${cells.picked.length} cells · ⌘C copies · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears drafts` : null;
+  // One blue cell (Esc in a cell, or the arrows): what the keys do with it; several: what they do with them all.
+  const hint = !cells.active
+    ? null
+    : cells.picked.length === 1
+      ? '1 cell · ⌘C copies · ⌘V pastes · arrows move · ⇧↓ picks more · Return types · Esc lets go'
+      : `${cells.picked.length} cells · ⌘C copies · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears drafts`;
 
   return { ...cells, busy, line, picker, hint };
 }

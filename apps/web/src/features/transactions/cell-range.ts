@@ -1,8 +1,9 @@
 /*
  * Several cells at once, as a spreadsheet does (Mac Cashflow and Mac Review, owner 2026-11-18): a range of cells down
- * one column — clicked, then ⇧-clicked or dragged — copied as text (⌘C), pasted into (⌘V: one value fills them all,
- * several lines fill them in order), filled down from the top one (⌘D), cleared (Delete, drafts only), or given one
- * choice from the usual picker (Return). The blue cells are their own selection, apart from the rows ⌘-click picks.
+ * one column — clicked, then ⇧-clicked or dragged, or picked with Esc and the arrows (owner 2026-11-24) — copied as
+ * text (⌘C), pasted into (⌘V: one value fills them all, several lines fill them in order), filled down from the top one
+ * (⌘D), cleared (Delete, drafts only), or given one choice from the usual picker (Return). One blue cell takes all of
+ * these but ⌘D. The blue cells are their own selection, apart from the rows ⌘-click picks.
  *
  * What a change does to a row is each table's own (its single edit's path, its refusals); here is only which cells
  * are picked, what goes into each, and how the outcome is said.
@@ -139,17 +140,65 @@ export function changeLine(changed: number, skipped: readonly { reason: SkipReas
 }
 
 /**
- * A key on a range of two cells or more: what it asks for. ⌘C, ⌘V and ⌘D (Ctrl off a Mac); Delete or ⌫; Return; Esc.
- * Typing in a field asks for nothing — the field's own keys are its own.
+ * Esc picks the cell (Notion's table, owner 2026-11-24): Esc in a cell being typed in stops the typing and leaves that
+ * cell blue — what was typed kept, as leaving the row keeps it — and the keys below then work on the blue cells, one or
+ * several, until Esc again lets them go. A click on a cell still types in it at once.
+ *
+ * A key on blue cells: what it asks for. ⌘C, ⌘V and ⌘D (Ctrl off a Mac); Delete or ⌫; Return; Esc; the arrows (with ⇧
+ * up or down, the blue stretches down its column); Tab and ⇧Tab as → and ←; a letter, figure or sign starts typing in
+ * the cell. Typing in a field asks for nothing — the field's own keys are its own.
  */
-export type RangeKey = 'fill' | 'clear' | 'pick' | 'close' | null;
+export type RangeKey = 'fill' | 'clear' | 'pick' | 'close' | PickMove | 'more up' | 'more down' | 'type' | null;
+
+export type PickMove = 'up' | 'down' | 'left' | 'right';
 
 export function rangeKey(event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }, typing: boolean): RangeKey {
   if (typing || event.altKey) return null;
   const command = event.metaKey || event.ctrlKey;
   if (command) return !event.shiftKey && event.key.toLowerCase() === 'd' ? 'fill' : null;
-  if (event.key === 'Backspace' || event.key === 'Delete') return 'clear';
-  if (event.key === 'Enter') return 'pick';
-  if (event.key === 'Escape') return 'close';
-  return null;
+  switch (event.key) {
+    case 'Backspace':
+    case 'Delete':
+      return 'clear';
+    case 'Enter':
+      return 'pick';
+    case 'Escape':
+      return 'close';
+    case 'ArrowUp':
+      return event.shiftKey ? 'more up' : 'up';
+    case 'ArrowDown':
+      return event.shiftKey ? 'more down' : 'down';
+    // The blue stretches down one column only: ⇧← and ⇧→ ask for nothing.
+    case 'ArrowLeft':
+      return event.shiftKey ? null : 'left';
+    case 'ArrowRight':
+      return event.shiftKey ? null : 'right';
+    case 'Tab':
+      return event.shiftKey ? 'left' : 'right';
+  }
+  // One printable character (a space is not a start); a dead key or a name such as "F5" is not one.
+  return [...event.key].length === 1 && event.key !== ' ' ? 'type' : null;
+}
+
+/**
+ * An arrow on blue cells: one cell, the next one along from the far end of the blue (`focus`, the cell last reached).
+ * Up and down go by the table's rows (`ids`), left and right by the columns this row shows (`columns`, in its order);
+ * past the table's edge the blue stays where it is.
+ */
+export function movePick(range: CellRange, ids: readonly string[], columns: readonly CellColumn[], move: PickMove): CellRange {
+  const row = ids.indexOf(range.focus);
+  if (move === 'up' || move === 'down') {
+    const next = ids[Math.min(Math.max(row + (move === 'up' ? -1 : 1), 0), ids.length - 1)];
+    return startRange(range.column, row < 0 || !next ? range.focus : next);
+  }
+  const at = columns.indexOf(range.column);
+  const column = at < 0 ? range.column : (columns[Math.min(Math.max(at + (move === 'left' ? -1 : 1), 0), columns.length - 1)] ?? range.column);
+  return startRange(column, range.focus);
+}
+
+/** ⇧↑ or ⇧↓ on blue cells: the far end moves a row, the cell first picked stays; never past the table's edge. */
+export function stretchPick(range: CellRange, ids: readonly string[], by: -1 | 1): CellRange {
+  const row = ids.indexOf(range.focus);
+  const next = row < 0 ? undefined : ids[Math.min(Math.max(row + by, 0), ids.length - 1)];
+  return next ? { ...range, focus: next } : range;
 }

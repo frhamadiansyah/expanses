@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CellTarget, cellsText, changeLine, extendRange, isCellColumn, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange } from './cell-range';
+import { type CellColumn, type CellTarget, cellsText, changeLine, extendRange, isCellColumn, movePick, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick } from './cell-range';
 
 const IDS = ['a', 'b', 'c', 'd', 'e'];
 
@@ -121,6 +121,66 @@ describe('keys on a range', () => {
     expect(rangeKey(key('d', { metaKey: true, shiftKey: true }), false)).toBeNull();
     expect(rangeKey(key('Enter', { altKey: true }), false)).toBeNull();
     expect(rangeKey(key('c', { metaKey: true }), false)).toBeNull();
-    expect(rangeKey(key('a'), false)).toBeNull();
+    expect(rangeKey(key('a'), true)).toBeNull();
+    expect(rangeKey(key('ArrowDown'), true)).toBeNull();
+  });
+
+  it('moves the blue with the arrows (Tab and ⇧Tab as → and ←), stretches it with ⇧↑ ⇧↓, and types with a character', () => {
+    expect(rangeKey(key('ArrowUp'), false)).toBe('up');
+    expect(rangeKey(key('ArrowDown'), false)).toBe('down');
+    expect(rangeKey(key('ArrowLeft'), false)).toBe('left');
+    expect(rangeKey(key('ArrowRight'), false)).toBe('right');
+    expect(rangeKey(key('Tab'), false)).toBe('right');
+    expect(rangeKey(key('Tab', { shiftKey: true }), false)).toBe('left');
+    expect(rangeKey(key('ArrowUp', { shiftKey: true }), false)).toBe('more up');
+    expect(rangeKey(key('ArrowDown', { shiftKey: true }), false)).toBe('more down');
+    expect(rangeKey(key('ArrowLeft', { shiftKey: true }), false)).toBeNull();
+    for (const typed of ['a', 'G', '4', '-', 'é']) expect(rangeKey(key(typed), false)).toBe('type');
+    expect(rangeKey(key('R', { shiftKey: true }), false)).toBe('type');
+    for (const other of [' ', 'Dead', 'F5', 'Shift', 'Meta']) expect(rangeKey(key(other), false)).toBeNull();
+  });
+});
+
+describe('moving and stretching the blue with the keyboard', () => {
+  const COLUMNS: CellColumn[] = ['date', 'description', 'category', 'paid', 'amount'];
+
+  it('moves one cell up or down the rows, from the far end of the blue, and stops at the table’s edge', () => {
+    expect(movePick(startRange('category', 'b'), IDS, COLUMNS, 'down')).toEqual(startRange('category', 'c'));
+    expect(movePick(startRange('category', 'b'), IDS, COLUMNS, 'up')).toEqual(startRange('category', 'a'));
+    expect(movePick(startRange('category', 'a'), IDS, COLUMNS, 'up')).toEqual(startRange('category', 'a'));
+    expect(movePick(startRange('category', 'e'), IDS, COLUMNS, 'down')).toEqual(startRange('category', 'e'));
+    // Several blue cells: the arrow goes on from the cell last reached, and leaves one.
+    expect(movePick({ column: 'amount', anchor: 'b', focus: 'd' }, IDS, COLUMNS, 'down')).toEqual(startRange('amount', 'e'));
+    expect(movePick({ column: 'amount', anchor: 'b', focus: 'd' }, IDS, COLUMNS, 'up')).toEqual(startRange('amount', 'c'));
+  });
+
+  it('moves across the columns the row shows, in its order, and stops at either end', () => {
+    expect(movePick(startRange('category', 'b'), IDS, COLUMNS, 'right')).toEqual(startRange('paid', 'b'));
+    expect(movePick(startRange('category', 'b'), IDS, COLUMNS, 'left')).toEqual(startRange('description', 'b'));
+    expect(movePick(startRange('date', 'b'), IDS, COLUMNS, 'left')).toEqual(startRange('date', 'b'));
+    expect(movePick(startRange('amount', 'b'), IDS, COLUMNS, 'right')).toEqual(startRange('amount', 'b'));
+    // A row showing no Paid with (Review with the column hidden) goes from Category straight to Amount.
+    expect(movePick(startRange('category', 'b'), IDS, ['description', 'category', 'amount'], 'right')).toEqual(startRange('amount', 'b'));
+    expect(movePick({ column: 'date', anchor: 'a', focus: 'c' }, IDS, COLUMNS, 'right')).toEqual(startRange('description', 'c'));
+  });
+
+  it('stays put when its row has left the table', () => {
+    expect(movePick(startRange('date', 'gone'), IDS, COLUMNS, 'down')).toEqual(startRange('date', 'gone'));
+  });
+
+  it('stretches down (or up) one column from the cell first picked, and back again, never past the edge', () => {
+    const one = startRange('category', 'b');
+    const two = stretchPick(one, IDS, 1);
+    expect(two).toEqual({ column: 'category', anchor: 'b', focus: 'c' });
+    expect(rangeIds(stretchPick(two, IDS, 1), IDS)).toEqual(['b', 'c', 'd']);
+    expect(rangeIds(stretchPick(two, IDS, -1), IDS)).toEqual(['b']);
+    expect(rangeIds(stretchPick(stretchPick(one, IDS, -1), IDS, -1), IDS)).toEqual(['a', 'b']);
+    expect(stretchPick({ column: 'date', anchor: 'c', focus: 'e' }, IDS, 1)).toEqual({ column: 'date', anchor: 'c', focus: 'e' });
+    expect(stretchPick(startRange('date', 'gone'), IDS, 1)).toEqual(startRange('date', 'gone'));
+  });
+
+  it('pastes into one blue cell as into several: one value, or the first of several lines', () => {
+    expect(pasteAssignments(['c'], pastedLines('Groceries'))).toEqual([{ id: 'c', text: 'Groceries' }]);
+    expect(pasteAssignments(['c'], pastedLines('Groceries\nCafe\n'))).toEqual([{ id: 'c', text: 'Groceries' }]);
   });
 });

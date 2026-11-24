@@ -263,7 +263,11 @@ export function useReviewCells({
       )}
     </p>
   ) : null;
-  const hint = range.active ? `${range.picked.length} cells · ⌘C copies · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears` : null;
+  const hint = !range.active
+    ? null
+    : range.picked.length === 1
+      ? '1 cell · ⌘C copies · ⌘V pastes · arrows move · ⇧↓ picks more · Esc lets go'
+      : `${range.picked.length} cells · ⌘C copies · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears`;
 
   return { ...range, busy, line, hint, choose };
 }

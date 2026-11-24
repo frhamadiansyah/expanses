@@ -1,14 +1,23 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
-import { type CellColumn, type CellRange, extendRange, isCellColumn, pasteAssignments, pastedLines, rangeIds, rangeKey, startRange } from './cell-range';
+import type { CellPick } from './cell-look';
+import { type CellColumn, type CellRange, extendRange, isCellColumn, movePick, pasteAssignments, pastedLines, rangeIds, rangeKey, startRange, stretchPick } from './cell-range';
 
 /**
  * The blue cells of a Mac table (`cell-range`): which cells are picked, and the mouse and keys that pick and use them.
  *
  * A table marks each of its cells `data-cell="<column>"` and `data-cell-row="<row id>"`, and spreads `containerProps` on
- * what holds its rows. A click starts a range at a cell; a drag down the same column, or ⇧-click when `shiftExtends`
- * says so (a table whose ⇧-click already picks rows keeps that), stretches it. With two cells or more picked: ⌘C copies
- * them, ⌘V pastes into them, ⌘D fills down, Delete clears, Return (or a double-click on the range) asks for one choice,
- * Esc lets go. Nothing here writes: the table's callbacks do, by its own single edit's path.
+ * what holds its rows. A click on a cell types in it (a cell with a field) or opens its row; it picks nothing. Cells are
+ * picked (blue) by Esc in a cell being typed in, by a drag down a column, or by ⇧-click when `shiftExtends` says so (a
+ * table whose ⇧-click already picks rows keeps that until cells are blue). While cells are picked — one or several —
+ * the arrows move the blue, ⇧↑ ⇧↓ stretch it down its column, ⌘C copies, ⌘V pastes, ⌘D fills down, Delete clears,
+ * Return types in the cell (or, for several Category or Paid with cells, asks for one choice; so does a double-click on
+ * them), a letter starts typing in the cell in its place, and Esc lets go. Nothing here writes: the table's callbacks
+ * do, by its own single edit's path.
+ *
+ * While cells are picked the keyboard rests on a hidden text box holding what they say, selected (`sink`). The Mac
+ * app's web view hands ⌘C and ⌘V to the page as keys only when nothing is focused — no copy, no paste — and copies or
+ * pastes only with a field focused (seen in a Mac build, 24 Nov 2026), so this is what lets them work there; in a
+ * browser it changes nothing. Esc, the arrows, Return and letters reach the page there as anywhere.
  */
 export function useCellRange({
   ids,
@@ -23,30 +32,48 @@ export function useCellRange({
 }: {
   /** The rows in the table's order. */
   ids: readonly string[];
-  /** Whether ⇧-click on a cell stretches this range (rather than leaving the click to the row). */
+  /** Whether ⇧-click on a cell stretches this range (rather than leaving the click to the row) while nothing is picked. */
   shiftExtends: (range: CellRange, picked: readonly string[]) => boolean;
-  /** Called as a range of two cells or more begins: the row selection and its peek step aside. */
+  /** Called as cells are picked: the row selection and its peek step aside. */
   onStart?: () => void;
   copyText: (column: CellColumn, ids: readonly string[]) => string;
   onPaste: (column: CellColumn, assignments: { id: string; text: string }[]) => void;
   onFill: (column: CellColumn, ids: readonly string[]) => void;
   onClear: (column: CellColumn, ids: readonly string[]) => void;
-  /** Return or a double-click on a range of Category or Paid with cells: the usual picker, its choice for them all. */
+  /** Return or a double-click on Category or Paid with cells (Return on one with no field to type in): the usual picker, its choice for them all. */
   onPick: (column: CellColumn, ids: readonly string[]) => void;
   enabled?: boolean;
 }) {
-  const [range, setRange] = useState<CellRange | null>(null);
+  const [range, setRangeState] = useState<CellRange | null>(null);
+  /** Whether the range is picked (blue), not just the cell last clicked. */
+  const [held, setHeld] = useState(false);
+  /** The cells ⌘C copied from, dashed until a paste or Esc. */
+  const [copied, setCopied] = useState<{ column: CellColumn; ids: string[] } | null>(null);
   const picked = rangeIds(range, ids);
-  const active = enabled && range !== null && picked.length >= 2;
+  const active = enabled && range !== null && picked.length > 0 && held;
   const container = useRef<HTMLElement | null>(null);
+  const sink = useRef<HTMLTextAreaElement | null>(null);
   const drag = useRef<{ column: CellColumn; anchor: string; moved: boolean } | null>(null);
   const swallowClick = useRef(false);
   const pressedInRange = useRef<{ column: CellColumn; id: string } | null>(null);
   const settle = useRef<number | null>(null);
 
+  /** The cell last clicked (typed in, not blue): the start a ⇧-click or a drag reaches from. */
+  const clicked = (next: CellRange | null) => {
+    setRangeState(next);
+    setHeld(false);
+    setCopied(null);
+  };
+  /** Cells picked: blue. */
+  const hold = (next: CellRange) => {
+    setRangeState(next);
+    setHeld(true);
+  };
+  const letGo = () => clicked(null);
+
   // What the document's listeners read: the newest of everything, without listening again on every render.
-  const now = useRef({ range, picked, active, copyText, onPaste, onFill, onClear, onPick });
-  now.current = { range, picked, active, copyText, onPaste, onFill, onClear, onPick };
+  const now = useRef({ range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart });
+  now.current = { range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart };
 
   const cellOf = (target: EventTarget | null): { column: CellColumn; id: string; el: HTMLElement } | null => {
     // A cell's own list of choices hangs inside the cell but is no part of it: a press on a choice starts no drag, or the
@@ -58,21 +85,68 @@ export function useCellRange({
     const id = el?.dataset.cellRow;
     return el && isCellColumn(column) && id ? { column, id, el } : null;
   };
+  const cellEl = (column: CellColumn, id: string) =>
+    [...(container.current?.querySelectorAll<HTMLElement>('[data-cell]') ?? [])].find((el) => el.dataset.cell === column && el.dataset.cellRow === id) ?? null;
+  /** The keyboard rests on the hidden box once cells are blue, its words selected for ⌘C. */
+  const rest = () => {
+    const box = sink.current;
+    if (!box) return;
+    if (document.activeElement !== box) box.focus({ preventScroll: true });
+    box.select();
+  };
   const begin = () => {
     (document.activeElement as HTMLElement | null)?.blur?.();
     window.getSelection()?.removeAllRanges();
-    onStart?.();
+    now.current.onStart?.();
+    rest();
   };
   const clearSettle = () => {
     if (settle.current !== null) window.clearTimeout(settle.current);
     settle.current = null;
   };
 
+  // The hidden box: in the page while the table is, out of sight and out of the way of the pointer.
+  useEffect(() => {
+    if (!enabled) return;
+    const box = document.createElement('textarea');
+    box.dataset.cellSink = 'true';
+    box.setAttribute('aria-label', 'Picked cells');
+    box.tabIndex = -1;
+    box.spellcheck = false;
+    box.setAttribute('autocomplete', 'off');
+    box.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;resize:none;border:0;padding:0;';
+    // Nothing is ever typed into it: what lands there (a paste no cell took) is put back.
+    box.addEventListener('input', () => {
+      const { active: on, range: r, picked: cells } = now.current;
+      box.value = on && r ? now.current.copyText(r.column, cells) : '';
+      box.select();
+    });
+    document.body.appendChild(box);
+    sink.current = box;
+    return () => {
+      box.remove();
+      sink.current = null;
+    };
+  }, [enabled]);
+
+  // The box holds what the blue cells say, selected, so the web view's own Copy copies them too.
+  const text = active && range ? copyText(range.column, picked) : '';
+  useEffect(() => {
+    const box = sink.current;
+    if (!box) return;
+    box.value = text;
+    if (active) {
+      const focused = document.activeElement;
+      if (focused === box || focused === document.body || focused === null) rest();
+    } else if (document.activeElement === box) box.blur();
+  }, [active, text]);
+
   useEffect(() => {
     if (!enabled) return;
     const typingIn = (target: EventTarget | null) => {
       const el = target as HTMLElement | null;
-      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+      if (!el || el === sink.current) return false;
+      return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable;
     };
     const covered = () => document.querySelector('[role="dialog"]') !== null;
     const up = () => {
@@ -84,33 +158,110 @@ export function useCellRange({
       const target = event.target as Node | null;
       if (container.current?.contains(target) || covered()) return;
       if ((target as HTMLElement | null)?.closest?.('[role="dialog"], [role="listbox"]')) return;
-      setRange(null);
+      letGo();
+    };
+    /** Typing in a picked cell: its field takes the keyboard, holding `typed` in place of what it held when given. */
+    const typeIn = (column: CellColumn, id: string, typed: string | null): boolean => {
+      const field = cellEl(column, id)?.querySelector<HTMLInputElement>('input:not([disabled])');
+      if (!field) return false;
+      clicked(startRange(column, id));
+      field.focus();
+      if (typed !== null) {
+        // Set as the browser sets a typed value, so the cell's own change (React's) reads it.
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(field, typed);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      const end = field.value.length;
+      field.setSelectionRange(end, end);
+      return true;
+    };
+    /** Esc in a cell being typed in: the typing stops, what was typed is kept (as leaving the row keeps it), and the cell is picked. */
+    const escToPick = (event: KeyboardEvent): boolean => {
+      if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing) return false;
+      const field = event.target as HTMLElement | null;
+      if (!field || field.tagName !== 'INPUT' || !container.current?.contains(field) || covered()) return false;
+      // A cell's list, open, closes first (its own Esc); the next Esc picks the cell.
+      if (field.getAttribute('aria-expanded') === 'true') return false;
+      const cell = cellOf(field);
+      if (!cell) return false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setCopied(null);
+      hold(startRange(cell.column, cell.id));
+      begin();
+      return true;
     };
     const keys = (event: KeyboardEvent) => {
-      const { active: on, range: r, picked: cells } = now.current;
-      if (!on || !r || covered()) return;
+      const { active: on, range: r, picked: cells, ids: rows } = now.current;
+      if (!on) {
+        escToPick(event);
+        return;
+      }
+      if (!r || covered() || event.isComposing) return;
       const asked = rangeKey(event, typingIn(event.target));
       if (!asked) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (asked === 'close') setRange(null);
-      else if (asked === 'fill') now.current.onFill(r.column, cells);
-      else if (asked === 'clear') now.current.onClear(r.column, cells);
-      else if (r.column === 'category' || r.column === 'paid') now.current.onPick(r.column, cells);
+      const show = (next: CellRange) => {
+        hold(next);
+        cellEl(next.column, next.focus)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+        rest();
+      };
+      switch (asked) {
+        case 'close':
+          letGo();
+          return;
+        case 'fill':
+          if (cells.length >= 2) now.current.onFill(r.column, cells);
+          return;
+        case 'clear':
+          now.current.onClear(r.column, cells);
+          return;
+        case 'up':
+        case 'down':
+        case 'left':
+        case 'right': {
+          const columns = [...(container.current?.querySelectorAll<HTMLElement>('[data-cell]') ?? [])]
+            .filter((el) => el.dataset.cellRow === r.focus)
+            .map((el) => el.dataset.cell)
+            .filter(isCellColumn);
+          show(movePick(r, rows, columns, asked));
+          return;
+        }
+        case 'more up':
+        case 'more down':
+          show(stretchPick(r, rows, asked === 'more up' ? -1 : 1));
+          return;
+        case 'type':
+          // A letter types in the far cell of the blue, in place of what it held (a sheet's way), when it has a field.
+          typeIn(r.column, r.focus, event.key);
+          return;
+        case 'pick':
+          if (cells.length === 1) {
+            if (typeIn(r.column, r.focus, null)) return;
+          }
+          if (r.column === 'category' || r.column === 'paid') now.current.onPick(r.column, cells);
+          return;
+      }
     };
     const copy = (event: ClipboardEvent) => {
       const { active: on, range: r, picked: cells } = now.current;
       if (!on || !r || typingIn(event.target) || covered()) return;
       event.clipboardData?.setData('text/plain', now.current.copyText(r.column, cells));
-      event.preventDefault();
+      // From the hidden box, its own copy stands: it holds these words, selected, and the Mac app's web view puts on
+      // the clipboard what was selected but not what a page sets (seen in a Mac build, 24 Nov 2026). From anywhere
+      // else (nothing focused, in a browser), the words set here are the copy.
+      if (event.target !== sink.current) event.preventDefault();
+      setCopied({ column: r.column, ids: [...cells] });
     };
     const paste = (event: ClipboardEvent) => {
       const { active: on, range: r, picked: cells } = now.current;
       // Into the picked cells only: a row merely clicked (its peek open) is never pasted over.
       if (!on || !r || typingIn(event.target) || covered()) return;
+      event.preventDefault();
       const lines = pastedLines(event.clipboardData?.getData('text/plain') ?? '');
       if (lines.length === 0) return;
-      event.preventDefault();
+      setCopied(null);
       now.current.onPaste(r.column, pasteAssignments(cells, lines));
     };
     document.addEventListener('mouseup', up);
@@ -141,25 +292,25 @@ export function useCellRange({
       if (!cell) return;
       const { column, id } = cell;
       const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
-      if (event.shiftKey && plain && range && range.column === column && shiftExtends(range, picked)) {
+      if (event.shiftKey && plain && range && range.column === column && (active || shiftExtends(range, picked))) {
         event.preventDefault();
         swallowClick.current = true;
-        setRange(extendRange(range, column, id));
+        hold(extendRange(range, column, id));
         begin();
         return;
       }
       if (!plain || event.shiftKey) {
-        setRange(null);
+        letGo();
         return;
       }
-      // A press inside the range keeps it, for a double-click to ask for one choice; a single click lets it go.
-      if (active && range?.column === column && picked.includes(id)) {
+      // A press inside several blue cells keeps them, for a double-click to ask for one choice; a single click lets them go.
+      if (active && picked.length >= 2 && range?.column === column && picked.includes(id)) {
         event.preventDefault();
         swallowClick.current = true;
         pressedInRange.current = { column, id };
         return;
       }
-      setRange(startRange(column, id));
+      clicked(startRange(column, id));
       drag.current = { column, anchor: id, moved: false };
     },
     onMouseOver: (event: ReactMouseEvent) => {
@@ -172,7 +323,7 @@ export function useCellRange({
         held.moved = true;
         begin();
       }
-      setRange({ column: held.column, anchor: held.anchor, focus: cell.id });
+      hold({ column: held.column, anchor: held.anchor, focus: cell.id });
     },
     onClickCapture: (event: ReactMouseEvent) => {
       if (!swallowClick.current) return;
@@ -185,7 +336,7 @@ export function useCellRange({
         const target = cellOf(event.target)?.el;
         settle.current = window.setTimeout(() => {
           settle.current = null;
-          setRange(startRange(pressed.column, pressed.id));
+          clicked(startRange(pressed.column, pressed.id));
           // A draft's cell is typed in, as a single click on it always was.
           target?.querySelector<HTMLInputElement>('input:not([disabled])')?.focus();
         }, 280);
@@ -193,7 +344,7 @@ export function useCellRange({
     },
     onDoubleClickCapture: (event: ReactMouseEvent) => {
       const cell = cellOf(event.target);
-      if (!active || !range || !cell || cell.column !== range.column || !picked.includes(cell.id)) return;
+      if (!active || picked.length < 2 || !range || !cell || cell.column !== range.column || !picked.includes(cell.id)) return;
       event.stopPropagation();
       event.preventDefault();
       clearSettle();
@@ -201,8 +352,25 @@ export function useCellRange({
     },
   };
 
-  /** The column a row's picked cell is in, while two cells or more are picked; null otherwise. */
-  const pickedColumn = (id: string): CellColumn | null => (active && range && picked.includes(id) ? range.column : null);
+  /**
+   * What a row's cells show of the blue cells (`cell-look`), while cells are picked: its picked cell, where it sits in
+   * the block, and the cell ⌘C copied from (until a paste); null for a row with neither.
+   */
+  const cellPick = (id: string): CellPick | null => {
+    if (!active || !range) return null;
+    const at = picked.indexOf(id);
+    const copiedHere = copied && copied.ids.includes(id) ? copied.column : null;
+    if (at < 0 && !copiedHere) return null;
+    return { column: at < 0 ? null : range.column, copied: copiedHere, many: picked.length >= 2, top: at === 0, bottom: at === picked.length - 1 };
+  };
 
-  return { range, picked, active, setRange, containerProps, pickedColumn, clear: () => setRange(null) };
+  return {
+    range,
+    picked,
+    active,
+    setRange: (next: CellRange | null) => (next ? hold(next) : letGo()),
+    containerProps,
+    cellPick,
+    clear: letGo,
+  };
 }

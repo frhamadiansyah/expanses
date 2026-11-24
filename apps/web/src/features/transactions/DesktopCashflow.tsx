@@ -17,7 +17,8 @@ import { type BulkActions, type RecordMany, SelectionPeek } from './CashflowPeek
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
-import { DESK_COLUMNS, DESK_GRID, PICKED_CELL, type RowOptions } from './QuickRowEditor';
+import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
+import { cellLook, cellMarks, type CellPick } from './cell-look';
 import type { CellColumn } from './cell-range';
 import { useCashflowCells } from './cashflow-cells';
 import { type AddPaidChoice, addPaidChoices, fillAddedPaid, forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, pendingPaidLabel, pendingPaidOf, readMarks, rowsLine, unknownLinks, unknownLinksLine } from './paste-categories';
@@ -930,14 +931,14 @@ export function DesktopCashflow({
                 {rows.map((row) =>
                   row.kind === 'draft' ? (
                     <li key={`d:${row.id}`} className="list-none">
-                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: false, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.pickedColumn(row.id)} />
+                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: false, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.cellPick(row.id)} />
                     </li>
                   ) : (
                     <DeskRow
                       key={`t:${row.id}`}
                       row={row}
                       selected={picked.has(row.id)}
-                      pickedCell={cells.pickedColumn(row.id)}
+                      pickedCell={cells.cellPick(row.id)}
                       today={today}
                       accounts={accounts}
                       helpers={helpers}
@@ -967,7 +968,7 @@ export function DesktopCashflow({
                       guess={guessOf(row.id)}
                       paidGuess={paidGuessOf(row.id)}
                       paidPending={paidPendingOf(row)}
-                      pickedCell={cells.pickedColumn(row.id)}
+                      pickedCell={cells.cellPick(row.id)}
                     />
                   </li>
                 ))}
@@ -1065,8 +1066,8 @@ function DeskRow({
 }: {
   row: ListRow;
   selected: boolean;
-  /** The column of its cell in a range of blue cells (`useCellRange`), if one is. */
-  pickedCell: CellColumn | null;
+  /** What its cells show of the blue cells (`useCellRange`, `cell-look`), if any. */
+  pickedCell: CellPick | null;
   today: string;
   accounts: readonly AccountRow[];
   helpers: DeskRowHelpers;
@@ -1104,9 +1105,9 @@ function DeskRow({
       )}
     </span>
   );
-  // Each cell is marked for a range of blue cells, and drawn blue while in one.
-  const cell = (column: CellColumn) => ({ 'data-cell': column, 'data-cell-row': row.id, 'data-picked': pickedCell === column || undefined });
-  const blue = (column: CellColumn) => pickedCell === column && PICKED_CELL;
+  // Each cell is marked for a range of blue cells, and drawn blue while in one (`cell-look`).
+  const cell = (column: CellColumn) => cellMarks(column, row.id, pickedCell);
+  const blue = (column: CellColumn) => cellLook(column, pickedCell);
   return (
     <li
       data-testid="transaction-row"

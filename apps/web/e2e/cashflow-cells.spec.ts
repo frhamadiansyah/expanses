@@ -138,6 +138,106 @@ test('⌘D fills down from the top cell, Delete clears drafts only, ⌘C copies 
   await expect(page.locator('[data-picked="true"]')).toHaveCount(0);
 });
 
+/** ⌘C and ⌘V as the page gets them where the keyboard rests (the blue cells' hidden box), with the text they carry. */
+async function copyHere(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const data = new DataTransfer();
+    (document.activeElement ?? document.body).dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }));
+    return data.getData('text/plain');
+  });
+}
+async function pasteHere(page: Page, text: string) {
+  await page.evaluate((plain) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', plain);
+    (document.activeElement ?? document.body).dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
+}
+
+test('Esc picks the cell being typed in: ⌘C copies it, the arrows move it, ⇧↓ stretches it, ⌘V fills, Return or a letter types again, Esc lets go', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(
+    page,
+    ['2026-10-16\tWarung Satu\tRestaurants\tBank Contoh\t21.000', '2026-10-15\tWarung Dua\t\tBank Contoh\t23.000', '2026-10-14\tWarung Tiga\t\tBank Contoh\t25.000', '2026-10-13\tWarung Empat\t\tBank Contoh\t27.000'].join('\n'),
+  );
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(4);
+  const picked = page.locator('[data-picked="true"]');
+  const blueAt = (note: string, column: string) => cellOf(draftRow(page, note), column);
+
+  // A click types in the cell at once, as before.
+  const satu = draftRow(page, 'Warung Satu').getByLabel('Row category');
+  await satu.click();
+  await expect(satu).toBeFocused();
+  await expect(picked).toHaveCount(0);
+
+  // Esc: no more typing; the cell is blue, and the keys say what they do.
+  await page.keyboard.press('Escape');
+  await expect(satu).not.toBeFocused();
+  await expect(picked).toHaveCount(1);
+  await expect(blueAt('Warung Satu', 'category')).toHaveAttribute('data-picked', 'true');
+  await expect(page.getByTestId('table-note')).toContainText('1 cell · ⌘C copies');
+  await expect(satu).toHaveValue('Restaurants');
+
+  // ⌘C copies the one cell, which keeps a dashed line.
+  expect(await copyHere(page)).toBe('Restaurants');
+  await expect(blueAt('Warung Satu', 'category')).toHaveAttribute('data-copied', 'true');
+
+  // ↓ moves the blue; ⇧↓ ⇧↓ stretches it down the column.
+  await page.keyboard.press('ArrowDown');
+  await expect(picked).toHaveCount(1);
+  await expect(blueAt('Warung Dua', 'category')).toHaveAttribute('data-picked', 'true');
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(picked).toHaveCount(3);
+  for (const note of ['Warung Dua', 'Warung Tiga', 'Warung Empat']) await expect(blueAt(note, 'category')).toHaveAttribute('data-picked', 'true');
+  await expect(page.getByTestId('table-note')).toContainText('3 cells');
+  await page.screenshot({ path: test.info().outputPath('cell-pick-stretched.png') });
+
+  // ⌘V: the one value copied fills all three, with Undo on the line under the table; the dashed line goes.
+  await pasteHere(page, 'Restaurants');
+  await expect(page.getByTestId('cell-change')).toContainText('Changed 3 cells');
+  for (const note of ['Warung Dua', 'Warung Tiga', 'Warung Empat']) await expect(draftRow(page, note).getByLabel('Row category')).toHaveValue('Restaurants');
+  await expect(page.locator('[data-copied="true"]')).toHaveCount(0);
+
+  // → → leaves one cell, Amount on the row last reached; a paste into the one cell sets it.
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(picked).toHaveCount(1);
+  await expect(blueAt('Warung Empat', 'amount')).toHaveAttribute('data-picked', 'true');
+  await pasteHere(page, '45.000');
+  await expect(draftRow(page, 'Warung Empat').getByLabel('Row amount (IDR)')).toHaveValue(money('45.000'));
+  await expect(page.getByTestId('cell-change')).toContainText('Changed 1 cell');
+
+  // Return types in the cell again; Esc picks it again, what was typed kept.
+  await page.keyboard.press('Enter');
+  const amount = draftRow(page, 'Warung Empat').getByLabel('Row amount (IDR)');
+  await expect(amount).toBeFocused();
+  await expect(picked).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(amount).not.toBeFocused();
+  await expect(blueAt('Warung Empat', 'amount')).toHaveAttribute('data-picked', 'true');
+
+  // A letter types in the cell in place of what it held, as a sheet does; Esc keeps it.
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowLeft');
+  await expect(blueAt('Warung Empat', 'description')).toHaveAttribute('data-picked', 'true');
+  await page.keyboard.press('K');
+  const note = page.getByTestId('not-recorded-row').nth(3).getByLabel('Row description');
+  await expect(note).toBeFocused();
+  await expect(note).toHaveValue('K');
+  await page.keyboard.type('edai Empat');
+  await page.keyboard.press('Escape');
+  await expect(note).toHaveValue('Kedai Empat');
+  await expect(note).not.toBeFocused();
+  await expect(picked).toHaveCount(1);
+
+  // Esc again lets go: nothing blue, nothing typed in.
+  await page.keyboard.press('Escape');
+  await expect(picked).toHaveCount(0);
+  await expect(page.getByTestId('table-note')).not.toContainText('cell');
+  await expect(draftRow(page, 'Kedai Empat')).toHaveCount(1);
+});
+
 test('a range of recorded rows changes them by their own edit, never clears them, and Undo puts them back', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');

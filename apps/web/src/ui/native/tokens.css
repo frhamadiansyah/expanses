@@ -498,6 +498,9 @@ body:has([role='dialog']) .ph-under-dialog {
   /* A switch that is off, on a panel's grey box (the transaction peek's Paid off). */
   --mk-switch-off: #e1e1e5;
   --mk-sel: #e9f2fe;
+  /* A table's picked cell (Esc, the arrows), and each of several picked down a column (owner, look D, 2026-11-24). */
+  --mk-cell-pick: #e8f1ff;
+  --mk-cell-range: #d6e7ff;
   --mk-hover: rgb(0 0 0 / 0.035);
   /* A field inside a card: white, rounded. */
   --mk-field: #ffffff;
@@ -583,6 +586,8 @@ body:has([role='dialog']) .ph-under-dialog {
     --mk-track: #3a3a3d;
     --mk-switch-off: #545458;
     --mk-sel: #16304f;
+    --mk-cell-pick: #16324f;
+    --mk-cell-range: #1a3a5c;
     --mk-hover: rgb(255 255 255 / 0.04);
     --mk-field: #1f1f21;
     --mk-field-line: #3a3a3d;
