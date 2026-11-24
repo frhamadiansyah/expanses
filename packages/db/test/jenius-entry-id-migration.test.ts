@@ -37,7 +37,7 @@ describe('migration 0039', () => {
     await migrate(older);
 
     expect((await getCatalogState(older, ws, program.id)).entryId).toBe('jenius-platinum');
-    expect(findEntry('jenius-platinum')!.name).toBe('Jenius Platinum');
+    expect(findEntry('jenius-platinum')!.name).toBe('Jenius Visa Platinum');
     // The old id is gone, so a program left on it would have had nothing to sync against.
     expect(findEntry('jenius-kartu-kredit')).toBeUndefined();
   });

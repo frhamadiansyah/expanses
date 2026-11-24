@@ -55,7 +55,7 @@ describe('an account is shown with its bank', () => {
     expect(accountDisplayName({ name: 'Mandiri Signature', subtype: 'credit_card', bank: 'Mandiri' })).toBe('Mandiri Signature');
     expect(accountDisplayName({ name: 'BCA Singapore Airlines KrisFlyer Visa Infinite', subtype: 'credit_card', bank: 'BCA' })).toBe('BCA Singapore Airlines KrisFlyer Visa Infinite');
     expect(accountDisplayName({ name: 'BCA KrisFlyer', subtype: 'credit_card', bank: 'Bank Central Asia' })).toBe('BCA KrisFlyer');
-    expect(accountDisplayName({ name: 'Jenius Platinum', subtype: 'credit_card', bank: 'Bank SMBC Indonesia' })).toBe('Jenius Platinum');
+    expect(accountDisplayName({ name: 'Jenius Visa Platinum', subtype: 'credit_card', bank: 'Bank SMBC Indonesia' })).toBe('Jenius Visa Platinum');
     expect(accountDisplayName({ name: 'Nusa Voyager Travel', subtype: 'credit_card' })).toBe('Nusa Voyager Travel');
   });
 

@@ -246,6 +246,15 @@
 .row2 b{font-weight:600}.row2 span{color:var(--ink2);font-size:13px}.row2 .chev{margin-left:auto;color:var(--ink3)}
 .ph{background:var(--card);border-radius:18px;height:130px}
 .callout{position:absolute;background:#fff4c2;border:1px solid #e6c84a;color:#5c4a00;font-size:12.5px;padding:6px 10px;border-radius:9px;max-width:250px;line-height:1.35;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:9}
+.panel{position:absolute;top:58px;right:14px;bottom:14px;width:410px;background:#fff;border-radius:22px;box-shadow:0 18px 50px rgba(0,0,0,.18),0 0 0 1px rgba(0,0,0,.05);z-index:5;padding:20px 22px 18px;display:flex;flex-direction:column}
+.panel .ph2{display:flex;align-items:center;gap:10px;margin-bottom:2px}.panel h2{font-size:22px;font-weight:800;margin:0;flex:1}
+.panel .x{width:30px;height:30px;border-radius:50%;background:#f0f0f2;display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:14px}
+.panel .fcard{padding:6px 14px;margin-bottom:10px;box-shadow:none}
+.panel .fr .l{width:118px}
+.panel .sbtns{margin-top:auto}
+.shrunk .body{padding-right:440px!important}
+.shrunk .grid4{grid-template-columns:repeat(2,1fr)}
+.sel-tile{outline:2.5px solid var(--purple);outline-offset:-2.5px}
 </style><body><svg width="0" height="0" style="position:absolute">
   <symbol id="home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
   <symbol id="flow" viewBox="0 0 24 24"><path d="M4 8h14l-3-3M20 16H6l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -278,7 +287,7 @@
   <symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
 </svg>
 <h1 class="page-h">cicis for Mac · Add asset, Add debt, Add card in the v1 look</h1>
-<p class="page-p">Same two ways as before (A own page, B sheet), now drawn in v1: soft grey cards, big page title, pill buttons, blue Add, round coloured icons. Invented data. Yellow notes are for this mockup only.</p>
+<p class="page-p">Three ways (A own page, B sheet, C panel on the right), now drawn in v1: soft grey cards, big page title, pill buttons, blue Add, round coloured icons. Invented data. Yellow notes are for this mockup only.</p>
 
 <div class="lbl">A · Own page — New credit card</div>
 <div class="win side"><div class="sb"><div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="ws"><span class="av">P</span><div><b>Personal</b><span>IDR · on this device</span></div></div><div class="it"><svg><use href="#home"/></svg>Overview</div><div class="it"><svg><use href="#flow"/></svg>Cashflow</div><div class="it"><svg><use href="#pie"/></svg>Budget</div><div class="it"><svg><use href="#calbill"/></svg>Bills<span class="ct">2</span></div><div class="it"><svg><use href="#inbox"/></svg>Review<span class="ct red">4</span></div><div class="g">Money</div><div class="it on" style="background:var(--orange)"><svg><use href="#card"/></svg>Wallet</div><div class="it"><svg><use href="#trend"/></svg>Net worth</div><div class="it"><svg><use href="#award"/></svg>Points</div><div class="g">Plans</div><div class="it"><svg><use href="#flag"/></svg>Goals</div><div class="it"><svg><use href="#calevent"/></svg>Events</div><div class="it"><svg><use href="#target"/></svg>Debt-free plan<span class="ct red">3 late</span></div><div class="g">Accounts ›</div><div class="it" style="margin-top:auto"><svg><use href="#gear"/></svg>Settings</div></div><div class="main">
@@ -332,5 +341,31 @@
 <div class="sbtns"><span class="pill ghost">Cancel</span></div></div>
 <div class="callout" style="right:24px;bottom:40px">A row turns the sheet into that asset's form, with ‹ to go back</div>
 </div>
-<p class="page-p" style="margin-top:16px">Still A recommended: long forms (Add transaction, Add holding, Edit budgets) fit a page better than a sheet. The v1 look itself is not built yet — today's Mac pages use the plain look; these forms would follow whichever look the Mac pages use.</p>
+<div class="lbl" id="c">C · Panel on the right — New credit card over Wallet</div>
+<div class="win side"><div class="sb"><div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="ws"><span class="av">P</span><div><b>Personal</b><span>IDR · on this device</span></div></div><div class="it"><svg><use href="#home"/></svg>Overview</div><div class="it"><svg><use href="#flow"/></svg>Cashflow</div><div class="it"><svg><use href="#pie"/></svg>Budget</div><div class="it"><svg><use href="#calbill"/></svg>Bills<span class="ct">2</span></div><div class="it"><svg><use href="#inbox"/></svg>Review<span class="ct red">4</span></div><div class="g">Money</div><div class="it on" style="background:var(--orange)"><svg><use href="#card"/></svg>Wallet</div><div class="it"><svg><use href="#trend"/></svg>Net worth</div><div class="it"><svg><use href="#award"/></svg>Points</div><div class="g">Plans</div><div class="it"><svg><use href="#flag"/></svg>Goals</div><div class="it"><svg><use href="#calevent"/></svg>Events</div><div class="it"><svg><use href="#target"/></svg>Debt-free plan<span class="ct red">3 late</span></div><div class="g">Accounts ›</div><div class="it" style="margin-top:auto"><svg><use href="#gear"/></svg>Settings</div></div><div class="main shrunk">
+<div class="bar"><span class="t">Wallet</span><div class="r"><span class="pill blue">＋ Add</span></div></div>
+<div class="body" style="padding:10px 30px 0"><h1>Wallet</h1><p class="sub">6 accounts · 3 cards</p>
+<div class="grid4"><div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div></div><div class="ph" style="height:250px"></div></div>
+</div>
+<div class="panel"><div class="ph2"><h2>New credit card</h2><span class="x">✕</span></div><p class="sub">It shows in Wallet and the sidebar once added</p>
+<div class="fcard"><div class="fr"><span class="l">Bank</span><span class="inp sel">Choose a bank</span></div><div class="fr"><span class="l">Card name</span><span class="inp">Name on the card face</span></div><div class="fr"><span class="l">Last 4 digits</span><span class="inp">Four digits</span></div></div>
+<div class="fcard"><div class="fr"><span class="l">Current balance</span><span class="inp">Amount owed today</span></div><div class="fr"><span class="l">Credit limit</span><span class="inp">Amount</span></div></div>
+<div class="fcard"><div class="fr"><span class="l">Billing date</span><span class="inp sel">Day of month</span></div><div class="fr"><span class="l">Due date</span><span class="inp sel">Day of month</span></div></div>
+<div class="sbtns"><span class="pill ghost">Cancel</span><span class="pill dim">Add card</span></div></div>
+<div class="callout" style="left:300px;bottom:60px">The page stays visible and scrolls while the form is open</div>
+</div>
+
+<div class="lbl">C · Panel on the right — New asset over Net worth</div>
+<div class="win side"><div class="sb"><div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="ws"><span class="av">P</span><div><b>Personal</b><span>IDR · on this device</span></div></div><div class="it"><svg><use href="#home"/></svg>Overview</div><div class="it"><svg><use href="#flow"/></svg>Cashflow</div><div class="it"><svg><use href="#pie"/></svg>Budget</div><div class="it"><svg><use href="#calbill"/></svg>Bills<span class="ct">2</span></div><div class="it"><svg><use href="#inbox"/></svg>Review<span class="ct red">4</span></div><div class="g">Money</div><div class="it"><svg><use href="#card"/></svg>Wallet</div><div class="it on" style="background:var(--purple)"><svg><use href="#trend"/></svg>Net worth</div><div class="it"><svg><use href="#award"/></svg>Points</div><div class="g">Plans</div><div class="it"><svg><use href="#flag"/></svg>Goals</div><div class="it"><svg><use href="#calevent"/></svg>Events</div><div class="it"><svg><use href="#target"/></svg>Debt-free plan<span class="ct red">3 late</span></div><div class="g">Accounts ›</div><div class="it" style="margin-top:auto"><svg><use href="#gear"/></svg>Settings</div></div><div class="main shrunk">
+<div class="bar"><span class="t">Net worth</span><div class="r"><span class="pill blue">＋ Add</span></div></div>
+<div class="body" style="padding:10px 30px 0"><h1>Net worth</h1><p class="sub">November 2026</p>
+<div class="grid4"><div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div></div><div class="ph" style="height:250px"></div></div>
+</div>
+<div class="panel"><div class="ph2"><h2>New asset</h2><span class="x">✕</span></div><p class="sub">Pick what it is</p>
+<div class="srch" style="max-width:none;margin-bottom:10px">⌕ Search everything that can be owned</div>
+<div class="fcard"><div class="row2"><span class="ti" style="background:var(--teal)">🤝</span><div><b>Receivables</b><br><span>money owed</span></div><span class="chev">›</span></div><div class="row2"><span class="ti" style="background:var(--blue)">↗</span><div><b>Investments</b><br><span>shares, bonds, funds, insurance</span></div><span class="chev">›</span></div><div class="row2"><span class="ti" style="background:var(--orange)">🚗</span><div><b>Movable property</b><br><span>vehicles and machinery</span></div><span class="chev">›</span></div><div class="row2"><span class="ti" style="background:var(--green)">⌂</span><div><b>Immovable property</b><br><span>land and buildings</span></div><span class="chev">›</span></div><div class="row2"><span class="ti" style="background:var(--purple)">◆</span><div><b>Intangible and other</b><br><span>gold, jewellery, patents, things</span></div><span class="chev">›</span></div></div>
+<div class="sbtns"><span class="pill ghost">Add an account instead</span><span class="pill ghost">Add a debt instead</span></div></div>
+<div class="callout" style="left:300px;bottom:60px">A row turns the panel into that asset's form, with ‹ to go back</div>
+</div>
+<p class="page-p" style="margin-top:16px">A: most room, best for long forms. B: quick, but long forms scroll in a small window. C: the page stays visible and usable beside the form, like the side peek that opens when a row is clicked; long forms scroll inside the panel.</p>
 </body></html>

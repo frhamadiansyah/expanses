@@ -36,7 +36,7 @@ export function catalogueOffers(entries: readonly CatalogEntry[], bank: string, 
 /**
  * A catalogue card on the bank-and-name row: its bank in the bank's place and its name without the bank's words —
  * "BCA UnionPay" is BCA, UnionPay — so the two compose again wherever the card is named. A product whose name does
- * not lead with its bank ("Jenius Platinum", issued by Bank SMBC Indonesia) keeps its name whole.
+ * not lead with its bank ("Jenius Visa Platinum", issued by Bank SMBC Indonesia) keeps its name whole.
  */
 export function entryOnRow(entry: CatalogEntry): { bank: string; name: string } {
   return { bank: entry.bank, name: splitCardName(entry.name, [entry.bank]).name };
