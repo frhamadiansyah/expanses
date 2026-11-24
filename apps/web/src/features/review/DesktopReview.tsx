@@ -1,5 +1,5 @@
 import { DeskNotices } from '../../app/DeskNotices';
-import { formatMinor } from '@expanses/core';
+import { formatMinor, isoDate } from '@expanses/core';
 import type { AccountRow, CaptureSource, CardRow, DraftEdit, DraftRow } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useOpenReceipt } from '../transactions/ReceiptPeekHost';
@@ -25,18 +25,24 @@ import type { Correction } from './draft-form';
 import { DraftPeek, type PeekPick } from './DraftPeek';
 import { useDrafts, useSkippedCaptures } from './queries';
 import {
+  anyFilter,
   type DeskColumns,
   type DeskDraftState,
   deskColumns,
   deskState,
   fromTag,
+  matchesFilters,
   newestFirst,
+  NO_FILTERS,
   paidWithOf,
   peekAfterGone,
   queueCounts,
   queueKey,
+  type ReviewFilters,
+  shownLine,
   whenText,
 } from './review-desk-model';
+import { ChoiceHead, NoteHead, WhenHead } from './ReviewHeadFilters';
 import { useReviewCells } from './review-cells';
 import { SkippedList } from './SkippedList';
 import { CARD, CARD_HEAD, CARD_NOTE, DeskBar, DeskTitle, PILL, PILL_BLACK, PILL_BLUE, PILL_SMALL, Seg, StatTile, Tag, TileRow, tileMoney } from '../../ui/desk';
@@ -149,13 +155,43 @@ export function DesktopReview({
   const queue = useMemo(() => newestFirst(drafts), [drafts]);
   const states = useMemo(() => new Map(queue.map((draft) => [draft.id, deskState(draft, sourceOf(draft), guesses, sharedEvents)])), [queue, sourceOf, guesses, sharedEvents]);
   const counts = queueCounts([...states.values()]);
-  const ready = queue.filter((draft) => states.get(draft.id)?.ready);
 
   const resolvedQuery = tab === 'confirmed' ? recorded : tab === 'dismissed' ? discarded : null;
   const resolvedAll = useMemo(() => newestFirst(resolvedQuery?.data ?? []), [resolvedQuery?.data]);
   const resolved = resolvedAll.slice(0, RESOLVED_SHOWN);
-  const rows = tab === 'pending' ? queue : resolved;
+  const listed = tab === 'pending' ? queue : resolved;
+  // The header filters (owner 2026-11-24): for the visit only. The rows they leave out are out of reach — not recorded
+  // by Record N, not picked, not peeked — until Show all.
+  const [filters, setFilters] = useState<ReviewFilters>(NO_FILTERS);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const filtering = anyFilter(filters);
+  const setFilter = (patch: Partial<ReviewFilters>) => setFilters((now) => ({ ...now, ...patch }));
+  const rows = filtering
+    ? listed.filter((draft) =>
+        matchesFilters(
+          {
+            occurredOn: draft.occurredOn,
+            note: draft.description,
+            line: [fromTag(draft, captureTypeOf(draft, sourceOf(draft))).word, captureRowView(draft, null).merged ?? ''].join(' '),
+            categoryId: effectiveCategory(draft, guesses),
+            accountId: draft.accountId,
+          },
+          filters,
+        ),
+      )
+    : listed;
   const ids = rows.map((draft) => draft.id);
+  // Record N records the ready rows shown, and only those.
+  const ready = tab === 'pending' ? rows.filter((draft) => states.get(draft.id)?.ready) : [];
+  // What the Category and Paid with headers offer: the ones the rows listed name, by name.
+  const categoryChoices = useMemo(() => {
+    const named = new Set(listed.map((draft) => effectiveCategory(draft, guesses)).filter((id): id is string => !!id));
+    return accounts.filter((a) => named.has(a.id)).map((a) => ({ value: a.id, label: a.name })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [listed, guesses, accounts]);
+  const paidChoices = useMemo(() => {
+    const named = new Set(listed.map((draft) => draft.accountId).filter((id): id is string => !!id));
+    return accounts.filter((a) => named.has(a.id)).map((a) => ({ value: a.id, label: a.name })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [listed, accounts]);
 
   // The side peek: which capture it shows, stepped through the table's order.
   const [peekId, setPeekId] = useState<string | null>(null);
@@ -173,7 +209,8 @@ export function DesktopReview({
   // A peeked capture that leaves the queue (recorded, discarded) hands the peek to the row that took its place.
   const idsKey = ids.join('|');
   useEffect(() => {
-    if (peekId && !ids.includes(peekId)) setPeekId(peekAfterGone(ids, peekAt.current));
+    // A row a filter hides puts the peek away; one gone from the queue hands it on.
+    if (peekId && !ids.includes(peekId)) setPeekId(listed.some((draft) => draft.id === peekId) ? null : peekAfterGone(ids, peekAt.current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey]);
   const changeTab = (next: Tab) => {
@@ -213,6 +250,12 @@ export function DesktopReview({
   // typing, or under a sheet or a picker.
   const keys = useRef<(event: KeyboardEvent) => void>(() => undefined);
   keys.current = (event: KeyboardEvent) => {
+    // ⌘F: the Note header's search.
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f' && !document.querySelector('[role="dialog"]')) {
+      event.preventDefault();
+      setNoteOpen(true);
+      return;
+    }
     if (!peeked) return;
     const target = event.target as HTMLElement | null;
     const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
@@ -330,6 +373,14 @@ export function DesktopReview({
           <h2 className={CARD_HEAD}>
             <Inbox size={17} strokeWidth={1.9} aria-hidden className="shrink-0" />
             <span className="shrink-0">{tableTitle}</span>
+            {filtering && (
+              <span className="shrink-0 text-[13px] font-medium text-[var(--mk-ink-2)]" data-testid="review-shown">
+                {shownLine(rows.length, listed.length)} ·{' '}
+                <button type="button" onClick={() => setFilters(NO_FILTERS)} className="font-semibold text-[var(--mk-blue)] hover:underline">
+                  Show all
+                </button>
+              </span>
+            )}
             <span className={CARD_NOTE} data-testid="table-note">
               {cells.hint ??
                 (tab === 'pending'
@@ -352,10 +403,22 @@ export function DesktopReview({
                   <th className={cx(TH, 'w-[34px] px-0')}>
                     <span className="sr-only">Ready</span>
                   </th>
-                  {cols.when && <th className={cx(TH, 'w-[96px]')}>When</th>}
-                  <th className={TH}>Note</th>
-                  <th className={cx(TH, 'w-[156px]')}>Category</th>
-                  {cols.paidWith && <th className={cx(TH, 'w-[156px]')}>Paid with</th>}
+                  {cols.when && (
+                    <th className={cx(TH, filters.from || filters.to ? 'w-[176px]' : 'w-[96px]')}>
+                      <WhenHead from={filters.from} to={filters.to} today={isoDate()} onChange={(from, to) => setFilter({ from, to })} />
+                    </th>
+                  )}
+                  <th className={TH}>
+                    <NoteHead value={filters.note} open={noteOpen} onOpen={() => setNoteOpen(true)} onClose={() => setNoteOpen(false)} onChange={(note) => setFilter({ note })} />
+                  </th>
+                  <th className={cx(TH, 'w-[156px]')}>
+                    <ChoiceHead name="Category" noneLabel="No category" value={filters.category} options={categoryChoices} onChange={(category) => setFilter({ category })} />
+                  </th>
+                  {cols.paidWith && (
+                    <th className={cx(TH, 'w-[156px]')}>
+                      <ChoiceHead name="Paid with" noneLabel="No account" value={filters.paid} options={paidChoices} onChange={(paid) => setFilter({ paid })} />
+                    </th>
+                  )}
                   <th className={cx(TH, 'w-[104px] text-right')}>Amount</th>
                   <th className={cx(TH, cols.discard ? 'w-[150px]' : 'w-[80px]')}>
                     <span className="sr-only">Actions</span>
@@ -363,7 +426,14 @@ export function DesktopReview({
                 </tr>
               </thead>
               <tbody {...cells.containerProps}>
-                {loaded && rows.length === 0 && (
+                {loaded && rows.length === 0 && filtering && listed.length > 0 && (
+                  <tr>
+                    <td colSpan={5 + Number(cols.when) + Number(cols.paidWith)} className="px-3 py-6 text-center text-[13.5px] text-[var(--mk-ink-2)]">
+                      No rows match the filters.
+                    </td>
+                  </tr>
+                )}
+                {loaded && listed.length === 0 && (
                   <tr>
                     <td colSpan={5 + Number(cols.when) + Number(cols.paidWith)} className="px-3 py-6 text-center text-[13.5px] text-[var(--mk-ink-2)]">
                       {tab === 'pending'
@@ -448,6 +518,7 @@ export function DesktopReview({
         />
       )}
 
+      {cells.bulkField}
       {cells.choose?.draft && (
         <Picker
           draft={cells.choose.draft}

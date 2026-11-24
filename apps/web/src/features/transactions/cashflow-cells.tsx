@@ -5,6 +5,7 @@ import { canPayWith } from '../../lib/account-types';
 import { moneyHolders } from '../../lib/queries';
 import { useCards } from '../cards/card-queries';
 import { CategoryPicker } from './CategoryPicker';
+import { CellBulkField } from './CellBulkField';
 import { type CellChange, type CellColumn, type CellTarget, changeLine, planChange, type SkipReason } from './cell-range';
 import type { ListRow } from './list-model';
 import { rememberedCategory, rememberedPaid } from './paste-categories';
@@ -210,7 +211,7 @@ export function useCashflowCells({
   });
 
   const money = moneyHolders([...accounts]).filter((account) => canPayWith(account));
-  const picker: ReactNode = picking ? (
+  const sheet: ReactNode = picking ? (
     picking.column === 'category' ? (
       <CategoryPicker
         kind="expense"
@@ -253,7 +254,15 @@ export function useCashflowCells({
     ? null
     : cells.picked.length === 1
       ? '1 cell · ⌘C copies · ⌘V pastes · arrows move · ⇧↓ picks more · Return types · Esc lets go'
-      : `${cells.picked.length} cells · ⌘C copies · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears drafts`;
+      : `${cells.picked.length} cells · type a value for all · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears drafts`;
+
+  // The picker for several cells, or the one value typed for them (`CellBulkField`).
+  const picker: ReactNode = (
+    <>
+      {sheet}
+      {cells.bulk && <CellBulkField key={cells.bulk.ids.join(',')} bulk={cells.bulk} onDone={cells.submitBulk} onCancel={cells.cancelBulk} />}
+    </>
+  );
 
   return { ...cells, busy, line, picker, hint };
 }

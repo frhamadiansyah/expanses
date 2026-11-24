@@ -14,11 +14,16 @@ export type CellColumn = 'date' | 'description' | 'category' | 'paid' | 'amount'
 
 export const CELL_COLUMNS: readonly CellColumn[] = ['date', 'description', 'category', 'paid', 'amount'];
 
-/** A range down one column: from the cell first clicked (`anchor`) to the one ⇧-clicked or dragged to (`focus`). */
+/**
+ * A range down one column: from the cell first clicked (`anchor`) to the one ⇧-clicked or dragged to (`focus`) — or,
+ * once ⌘-click has added or taken out a cell (owner 2026-11-24), the cells it holds (`ids`), next to each other or
+ * not; `focus` is then the cell last ⌘-clicked.
+ */
 export interface CellRange {
   column: CellColumn;
   anchor: string;
   focus: string;
+  ids?: readonly string[];
 }
 
 export const isCellColumn = (value: string | undefined | null): value is CellColumn => !!value && (CELL_COLUMNS as readonly string[]).includes(value);
@@ -26,6 +31,10 @@ export const isCellColumn = (value: string | undefined | null): value is CellCol
 /** The rows a range covers, in the table's order (`ids`). A row no longer listed drops out; with its anchor gone, so does the range. */
 export function rangeIds(range: CellRange | null, ids: readonly string[]): string[] {
   if (!range) return [];
+  if (range.ids) {
+    const held = new Set(range.ids);
+    return ids.filter((id) => held.has(id));
+  }
   const from = ids.indexOf(range.anchor);
   if (from < 0) return [];
   const to = ids.indexOf(range.focus);
@@ -39,7 +48,19 @@ export function startRange(column: CellColumn, id: string): CellRange {
 }
 
 export function extendRange(range: CellRange | null, column: CellColumn, id: string): CellRange {
-  return range && range.column === column ? { ...range, focus: id } : startRange(column, id);
+  return range && range.column === column ? { column, anchor: range.anchor, focus: id } : startRange(column, id);
+}
+
+/**
+ * ⌘-click on a cell while cells are picked: in their column it adds the cell, or takes it out, wherever it sits (the
+ * cells need not be next to each other); in another column it starts again there. Null when the last one is taken out.
+ */
+export function togglePick(range: CellRange | null, ids: readonly string[], column: CellColumn, id: string): CellRange | null {
+  if (!range || range.column !== column) return startRange(column, id);
+  const now = rangeIds(range, ids);
+  const next = now.includes(id) ? now.filter((one) => one !== id) : ids.filter((one) => one === id || now.includes(one));
+  if (next.length === 0) return null;
+  return { column, anchor: next[0]!, focus: now.includes(id) ? next[next.length - 1]! : id, ids: next };
 }
 
 /** Cells copied: one per line, as a sheet's column pastes — a tab or line break inside a cell read as a space. */
@@ -200,7 +221,8 @@ export function movePick(range: CellRange, ids: readonly string[], columns: read
 export function stretchPick(range: CellRange, ids: readonly string[], by: -1 | 1): CellRange {
   const row = ids.indexOf(range.focus);
   const next = row < 0 ? undefined : ids[Math.min(Math.max(row + by, 0), ids.length - 1)];
-  return next ? { ...range, focus: next } : range;
+  // Cells ⌘-clicked apart become one run again: from the first picked to the far end, moved.
+  return next ? { column: range.column, anchor: range.anchor, focus: next } : range;
 }
 
 /**

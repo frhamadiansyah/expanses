@@ -218,3 +218,82 @@ export function deskColumns(width: number): DeskColumns {
   }
   return shown;
 }
+
+/*
+ * The table's header filters (owner, 2026-11-24: docs/mockups/2026-11-24-mac-review-header-filter.html): each column
+ * name narrows the rows — Note by words, When by From / To, Category and Paid with by one value or none. They hold for
+ * the visit only. A filter left empty narrows nothing.
+ */
+
+/** "No category", or no account: the one value a Category or Paid with filter can hold that names nothing. */
+export const NONE = '';
+
+export interface ReviewFilters {
+  /** Words the note or the line under it holds (any case, accents left out). */
+  note: string;
+  /** The first and last day shown (ISO dates, both kept); null for no bound. */
+  from: string | null;
+  to: string | null;
+  /** A category's id, or `NONE` for no category; null for any. */
+  category: string | null;
+  /** An account's id, or `NONE` for none; null for any. */
+  paid: string | null;
+}
+
+export const NO_FILTERS: ReviewFilters = { note: '', from: null, to: null, category: null, paid: null };
+
+/** Whether any filter narrows the rows. */
+export const anyFilter = (filters: ReviewFilters) => filters.note.trim() !== '' || filters.from !== null || filters.to !== null || filters.category !== null || filters.paid !== null;
+
+/** Words as matched: any case, accents left out ("Café" is "cafe"), spaces as one. */
+const fold = (text: string) =>
+  text
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** What a row is matched on: its day, its note and the line under it, its category (as shown), its account. */
+export interface FilterRow {
+  occurredOn: string;
+  note: string;
+  /** The line under the note: where it came from, what it was merged with. */
+  line: string;
+  categoryId: string | null;
+  accountId: string | null;
+}
+
+export function matchesFilters(row: FilterRow, filters: ReviewFilters): boolean {
+  const words = fold(filters.note);
+  if (words && !fold(`${row.note} ${row.line}`).includes(words)) return false;
+  if (filters.from !== null && row.occurredOn < filters.from) return false;
+  if (filters.to !== null && row.occurredOn > filters.to) return false;
+  if (filters.category !== null && (row.categoryId ?? NONE) !== filters.category) return false;
+  if (filters.paid !== null && (row.accountId ?? NONE) !== filters.paid) return false;
+  return true;
+}
+
+/** The first and last day of the month `back` months before the one `today` is in: This month (0), Last month (1). */
+export function monthBounds(today: string, back: number): { from: string; to: string } {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7)) - 1 - back;
+  const first = new Date(Date.UTC(year, month, 1));
+  const last = new Date(Date.UTC(year, month + 1, 0));
+  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
+}
+
+/** What a When filter holds, as its header says it: "1–30 Sep", "28 Aug – 3 Sep", "from 1 Sep", "to 30 Sep". */
+export function whenFilterText(from: string | null, to: string | null): string {
+  if (from && to) {
+    if (from === to) return dayMonth(from);
+    if (from.slice(0, 7) === to.slice(0, 7)) return `${Number(from.slice(8, 10))}–${dayMonth(to)}`;
+    return `${dayMonth(from)} – ${dayMonth(to)}`;
+  }
+  if (from) return `from ${dayMonth(from)}`;
+  if (to) return `to ${dayMonth(to)}`;
+  return '';
+}
+
+/** The table's title line while a filter is on: "6 of 24 shown". */
+export const shownLine = (shown: number, of: number) => `${shown} of ${of} shown`;

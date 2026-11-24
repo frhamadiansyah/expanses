@@ -1,6 +1,6 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import type { CellPick } from './cell-look';
-import { type CellColumn, type CellRange, extendRange, fillReach, isCellColumn, movePick, pasteAssignments, pastedLines, rangeIds, rangeKey, rowAtHeight, startRange, stretchPick } from './cell-range';
+import { type CellColumn, type CellRange, extendRange, fillReach, isCellColumn, movePick, pasteAssignments, pastedLines, rangeIds, rangeKey, rowAtHeight, startRange, stretchPick, togglePick } from './cell-range';
 
 /**
  * The blue cells of a Mac table (`cell-range`): which cells are picked, and the mouse and keys that pick and use them.
@@ -31,6 +31,7 @@ export function useCellRange({
   onClear,
   onPick,
   enabled = true,
+  commandPicksRows = true,
 }: {
   /** The rows in the table's order. */
   ids: readonly string[];
@@ -45,12 +46,22 @@ export function useCellRange({
   /** Return or a double-click on Category or Paid with cells (Return on one with no field to type in): the usual picker, its choice for them all. */
   onPick: (column: CellColumn, ids: readonly string[]) => void;
   enabled?: boolean;
+  /**
+   * Whether ⌘-click picks rows while no cells are picked (Cashflow's Record many). Where it does not (Review), ⌘-click
+   * picks the cell. Once cells are picked, ⌘-click in their column adds a cell or takes it out, in either table.
+   */
+  commandPicksRows?: boolean;
 }) {
   const [range, setRangeState] = useState<CellRange | null>(null);
   /** Whether the range is picked (blue), not just the cell last clicked. */
   const [held, setHeld] = useState(false);
   /** The cells ⌘C copied from, dashed until a paste or Esc. */
   const [copied, setCopied] = useState<{ column: CellColumn; ids: string[] } | null>(null);
+  /**
+   * A letter typed with several cells picked: one value for them all, in a small field over the cells (`CellBulkField`),
+   * begun with that letter. Return puts it into every one by the paste's path; Esc lets it go.
+   */
+  const [bulk, setBulk] = useState<{ column: CellColumn; ids: string[]; typed: string } | null>(null);
   const picked = rangeIds(range, ids);
   const active = enabled && range !== null && picked.length > 0 && held;
   const container = useRef<HTMLElement | null>(null);
@@ -73,6 +84,7 @@ export function useCellRange({
     setRangeState(next);
     setHeld(false);
     setCopied(null);
+    setBulk(null);
   };
   /** Cells picked: blue. */
   const hold = (next: CellRange) => {
@@ -287,8 +299,10 @@ export function useCellRange({
           show(stretchPick(r, rows, asked === 'more up' ? -1 : 1));
           return;
         case 'type':
-          // A letter types in the far cell of the blue, in place of what it held (a sheet's way), when it has a field.
-          typeIn(r.column, r.focus, event.key);
+          // Several cells: one value for them all, begun with the letter. One: the letter types in the cell, in place of
+          // what it held (a sheet's way), when it has a field.
+          if (cells.length >= 2) setBulk({ column: r.column, ids: [...cells], typed: event.key });
+          else typeIn(r.column, r.focus, event.key);
           return;
         case 'pick':
           if (cells.length === 1) {
@@ -370,6 +384,23 @@ export function useCellRange({
         begin();
         return;
       }
+      // ⌘-click: a cell added to the picked ones or taken out, in their column, next to them or not. Elsewhere it is the
+      // row's own ⌘-click where ⌘-click picks rows (Cashflow); where it picks none (Review), it picks the cell — in
+      // another column, a new pick there. Never the row's ⌘-click then, nor its peek.
+      const command = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+      if (command && ((active && range?.column === column) || !commandPicksRows)) {
+        event.preventDefault();
+        event.stopPropagation();
+        swallowClick.current = true;
+        const next = active ? togglePick(range, ids, column, id) : startRange(column, id);
+        if (!next) {
+          letGo();
+          return;
+        }
+        hold(next);
+        begin();
+        return;
+      }
       if (!plain || event.shiftKey) {
         letGo();
         return;
@@ -437,8 +468,9 @@ export function useCellRange({
       column: at < 0 ? null : range.column,
       copied: copiedHere,
       many: picked.length >= 2,
-      top: at === 0,
-      bottom: at === picked.length - 1,
+      // A block's ends are where the row above (below) is not picked: cells ⌘-clicked apart are each closed off.
+      top: at >= 0 && !picked.includes(ids[ids.indexOf(id) - 1] ?? ''),
+      bottom: at >= 0 && !picked.includes(ids[ids.indexOf(id) + 1] ?? ''),
       corner: at >= 0 && at === picked.length - 1,
       reach: reached < 0 ? null : reached === reach.length - 1 ? 'end' : 'middle',
       reachColumn: reached < 0 ? null : range.column,
@@ -452,6 +484,20 @@ export function useCellRange({
     setRange: (next: CellRange | null) => (next ? hold(next) : letGo()),
     containerProps,
     cellPick,
+    bulk,
+    /** The one value typed for several cells: into every one by the paste's path; nothing when left blank. */
+    submitBulk: (text: string) => {
+      const asked = bulk;
+      setBulk(null);
+      rest();
+      if (!asked || !text.trim()) return;
+      setCopied(null);
+      onPaste(asked.column, pasteAssignments(asked.ids, [text.trim()]));
+    },
+    cancelBulk: () => {
+      setBulk(null);
+      rest();
+    },
     clear: letGo,
   };
 }

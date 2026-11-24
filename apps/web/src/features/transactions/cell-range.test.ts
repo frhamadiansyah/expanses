@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CellColumn, type CellTarget, cellsText, changeLine, extendRange, fillReach, isCellColumn, movePick, rowAtHeight, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick } from './cell-range';
+import { type CellColumn, type CellTarget, cellsText, changeLine, extendRange, fillReach, isCellColumn, movePick, rowAtHeight, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick, togglePick } from './cell-range';
 
 const IDS = ['a', 'b', 'c', 'd', 'e'];
 
@@ -213,5 +213,31 @@ describe('the fill square', () => {
     expect(rowAtHeight(tops, 150)).toBe('b');
     expect(rowAtHeight(tops, 900)).toBe('c');
     expect(rowAtHeight([], 150)).toBeNull();
+  });
+});
+
+describe('⌘-click on picked cells', () => {
+  it('adds a cell anywhere in the column, next to the others or not, and takes one out again', () => {
+    const one = startRange('description', 'b');
+    const two = togglePick(one, IDS, 'description', 'd')!;
+    expect(rangeIds(two, IDS)).toEqual(['b', 'd']);
+    const three = togglePick(two, IDS, 'description', 'a')!;
+    expect(rangeIds(three, IDS)).toEqual(['a', 'b', 'd']);
+    expect(three.focus).toBe('a');
+    expect(rangeIds(togglePick(three, IDS, 'description', 'b'), IDS)).toEqual(['a', 'd']);
+    // The last one taken out: nothing is picked.
+    expect(togglePick(one, IDS, 'description', 'b')).toBeNull();
+  });
+
+  it('starts again in another column, and a row gone from the table drops out', () => {
+    const two = togglePick(startRange('description', 'b'), IDS, 'description', 'd')!;
+    expect(togglePick(two, IDS, 'category', 'c')).toEqual(startRange('category', 'c'));
+    expect(rangeIds(two, ['a', 'd', 'e'])).toEqual(['d']);
+  });
+
+  it('is one run again once stretched: from the first picked to the far end, moved', () => {
+    const apart = togglePick(startRange('amount', 'a'), IDS, 'amount', 'c')!;
+    expect(rangeIds(stretchPick(apart, IDS, 1), IDS)).toEqual(['a', 'b', 'c', 'd']);
+    expect(rangeIds(extendRange(apart, 'amount', 'e'), IDS)).toEqual(['a', 'b', 'c', 'd', 'e']);
   });
 });

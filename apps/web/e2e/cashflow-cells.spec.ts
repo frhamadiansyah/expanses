@@ -317,6 +317,36 @@ test('the fill square on recorded rows fills them by their own edit and opens no
   await expect(page.getByTestId('cashflow-selection')).toHaveCount(0);
 });
 
+test('once a cell is picked, ⌘-click adds Note cells apart from it, and a letter opens one value for them all', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(page, ['2026-10-16\tGrab\t\tBank Contoh\t21.000', '2026-10-15\tToko Antara\t\tBank Contoh\t23.000', '2026-10-14\tGrab\t\tBank Contoh\t25.000'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  const rows = page.getByTestId('not-recorded-row');
+  // With nothing picked, ⌘-click still picks the row (Record many).
+  await rows.nth(0).getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  await expect(page.getByTestId('cashflow-selection')).toHaveCount(0);
+  await rows.nth(0).getByLabel('Row date').click({ modifiers: ['ControlOrMeta'] });
+  // Esc picks the first Note; ⌘-click adds the third, leaving the one between alone.
+  await rows.nth(0).getByLabel('Row description').click();
+  await page.keyboard.press('Escape');
+  await cellOf(rows.nth(2), 'description').click({ modifiers: ['ControlOrMeta'] });
+  await expect(page.locator('[data-cell="description"][data-picked="true"]')).toHaveCount(2);
+  await expect(cellOf(rows.nth(1), 'description')).not.toHaveAttribute('data-picked', 'true');
+  await page.keyboard.type('GrabFood');
+  await expect(page.getByRole('dialog', { name: 'Note for 2 rows' }).getByRole('textbox')).toHaveValue('GrabFood');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('cell-change')).toContainText('Changed 2 cells');
+  await expect(rows.nth(0).getByLabel('Row description')).toHaveValue('GrabFood');
+  await expect(rows.nth(1).getByLabel('Row description')).toHaveValue('Toko Antara');
+  await expect(rows.nth(2).getByLabel('Row description')).toHaveValue('GrabFood');
+  // Esc in the field lets it go, nothing changed.
+  await page.keyboard.type('X');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Note for 2 rows' })).toHaveCount(0);
+  await expect(rows.nth(0).getByLabel('Row description')).toHaveValue('GrabFood');
+});
+
 test('a range of recorded rows changes them by their own edit, never clears them, and Undo puts them back', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');

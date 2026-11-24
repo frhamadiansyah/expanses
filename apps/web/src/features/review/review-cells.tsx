@@ -6,6 +6,7 @@ import { rememberedCategory } from '../transactions/paste-categories';
 import { buildRowOptions } from '../transactions/QuickRowEditor';
 import { shortDate } from '../transactions/quick-row';
 import { useCellRange } from '../transactions/useCellRange';
+import { CellBulkField } from '../transactions/CellBulkField';
 import { effectiveCategory } from './capture-view';
 import { paidWithOf } from './review-desk-model';
 
@@ -203,6 +204,8 @@ export function useReviewCells({
 
   const range = useCellRange({
     ids,
+    // Review picks no rows with ⌘-click: there it picks cells, next to each other or not.
+    commandPicksRows: false,
     // Review's ⇧-click picks nothing else: from any cell, it stretches the range.
     shiftExtends: () => true,
     onStart: () => {
@@ -267,7 +270,10 @@ export function useReviewCells({
     ? null
     : range.picked.length === 1
       ? '1 cell · ⌘C copies · ⌘V pastes · arrows move · ⇧↓ picks more · Esc lets go'
-      : `${range.picked.length} cells · ⌘C copies · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears`;
+      : `${range.picked.length} cells · type a value for all · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears`;
 
-  return { ...range, busy, line, hint, choose };
+  // A letter typed on several picked cells: one value for them all (`CellBulkField`).
+  const bulkField: ReactNode = range.bulk ? <CellBulkField key={range.bulk.ids.join(',')} bulk={range.bulk} onDone={range.submitBulk} onCancel={range.cancelBulk} /> : null;
+
+  return { ...range, busy, line, hint, choose, bulkField };
 }
