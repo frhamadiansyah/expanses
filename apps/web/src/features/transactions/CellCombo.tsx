@@ -119,6 +119,9 @@ export function CellCombo({
   }
 
   function settle() {
+    // Leaving the cell always shuts its list, even one opened with nothing typed (a click on pasted text, or ↓):
+    // otherwise each cell visited left its list standing over the rows below (owner, 24 Nov).
+    setOpen(false);
     if (query === null) return;
     if (query.trim() === '') onChange('');
     else {
@@ -211,7 +214,12 @@ export function CellCombo({
         <span className={cx('tabular pointer-events-none absolute top-1/2 right-2 -translate-y-1/2', dense ? 'text-[11px]' : 'text-xs font-semibold text-slate-600')}>{selected.meta}</span>
       )}
       {open && (
-        <ul id={listId} role="listbox" style={dense && place ? place : undefined} className={cx(dense && place ? 'z-40' : 'absolute left-0 z-30 mt-1', 'max-h-64 w-full overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200', adds.length > 0 ? 'min-w-[320px]' : 'min-w-64')}>
+        <ul
+          id={listId}
+          role="listbox"
+          // A press on the list itself (its scroll bar, a heading) keeps the cell's focus, so the list stays to be used.
+          onMouseDown={(event) => event.preventDefault()}
+          style={dense && place ? place : undefined} className={cx(dense && place ? 'z-40' : 'absolute left-0 z-30 mt-1', 'max-h-64 w-full overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200', adds.length > 0 ? 'min-w-[320px]' : 'min-w-64')}>
           {adds.length > 0 && (
             <>
               <li role="presentation" className="px-2 pt-1 pb-0.5 text-[11px] font-semibold text-slate-500">

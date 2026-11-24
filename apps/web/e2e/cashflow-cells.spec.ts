@@ -472,3 +472,23 @@ test('a pasted card or account not in cicis yet stays on its rows, is added from
   await expect(draftRow(page, 'Parkir Lagi Contoh').getByLabel('Row payment method')).toHaveValue('Jago');
   await expect(tickOf(page, 'Toko Lagi Contoh')).toHaveAttribute('data-tick', 'on');
 });
+
+test('the Paid with list closes when another cell is clicked, whether a click on pasted text or ↓ opened it', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(page, ['2026-09-14\tToko Buah Contoh\tGroceries\t7731\t41.300'].join('\n'));
+  const buah = draftRow(page, 'Toko Buah Contoh');
+  // Opened by a click on the pasted card digits: what to add, then the ways to pay already there.
+  await buah.getByLabel('Row payment method').click();
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await buah.getByLabel('Row description').click();
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  await expect(buah.getByTestId('paid-pending')).toHaveText('•• 7731');
+  // Opened with ↓ in the typing row's empty cell, nothing typed.
+  const typing = page.getByTestId('typing-row');
+  await typing.getByLabel('Row payment method').click();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await typing.getByLabel('Row description').click();
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+});
