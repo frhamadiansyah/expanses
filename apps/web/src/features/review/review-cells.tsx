@@ -4,7 +4,7 @@ import { type ReactNode, useState } from 'react';
 import { type CellChange, type CellColumn, type CellTarget, changeLine, planChange, type SkipReason } from '../transactions/cell-range';
 import { rememberedCategory } from '../transactions/paste-categories';
 import { buildRowOptions } from '../transactions/QuickRowEditor';
-import { shortDate } from '../transactions/quick-row';
+import { type QuickValues, shortDate } from '../transactions/quick-row';
 import { useCellRange } from '../transactions/useCellRange';
 import { CellBulkField } from '../transactions/CellBulkField';
 import { effectiveCategory } from './capture-view';
@@ -55,6 +55,7 @@ export function useReviewCells({
   onEdit,
   onPickAccount,
   onStart,
+  onRecord,
 }: {
   /** The table's rows, in its order. */
   rows: readonly DraftRow[];
@@ -66,6 +67,8 @@ export function useReviewCells({
   onEdit: (draft: DraftRow, patch: DraftEdit) => Promise<boolean>;
   onPickAccount: (draft: DraftRow, accountId: string, cardId: string | null) => Promise<boolean>;
   onStart: () => void;
+  /** ⌘Return on picked cells: records the captures they are in. */
+  onRecord?: (drafts: DraftRow[]) => void;
 }) {
   const today = isoDate();
   const ids = rows.map((draft) => draft.id);
@@ -189,6 +192,35 @@ export function useReviewCells({
     setNote({ text: changeLine(done.length, [...plan.skipped, ...failed]), undo: done.length > 0 ? done : null });
   }
 
+  /**
+   * A row's cells as typed in place (Review's rows are Cashflow's, owner 2026-11-24), written as a cell writes them:
+   * the figure in the capture's own currency, an account by the account pick. Resolves the capture as it now stands,
+   * or null when a write was refused.
+   */
+  async function saveRow(draft: DraftRow, values: QuickValues): Promise<DraftRow | null> {
+    if (!pending) return null;
+    const before = cellsOf(draft);
+    const typed = values.amount.trim();
+    const after: ReviewCells = {
+      occurredOn: parseLooseDate(values.date, today) ?? draft.occurredOn,
+      description: values.description.trim(),
+      amountMinor: typed ? (parseLooseAmount(typed, draft.currency) ?? before.amountMinor) : 0,
+      categoryAccountId: values.categoryId || null,
+      accountId: values.accountId || null,
+      cardId: values.cardId || null,
+    };
+    if (!same(before, after) && !(await write(draft, before, after))) return null;
+    return {
+      ...draft,
+      occurredOn: after.occurredOn,
+      description: after.description,
+      amountMinor: draft.kind === 'income' ? -after.amountMinor : after.amountMinor,
+      categoryAccountId: after.categoryAccountId,
+      accountId: after.accountId,
+      cardId: after.cardId,
+    };
+  }
+
   async function undo(changes: readonly CellChange<ReviewCells>[]) {
     setBusy(true);
     try {
@@ -206,6 +238,7 @@ export function useReviewCells({
     ids,
     // Review picks no rows with ⌘-click: there it picks cells, next to each other or not.
     commandPicksRows: false,
+    onRecord: (picked) => onRecord?.(picked.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))),
     // Review's ⇧-click picks nothing else: from any cell, it stretches the range.
     shiftExtends: () => true,
     onStart: () => {
@@ -275,5 +308,5 @@ export function useReviewCells({
   // A letter typed on several picked cells: one value for them all (`CellBulkField`).
   const bulkField: ReactNode = range.bulk ? <CellBulkField key={range.bulk.ids.join(',')} bulk={range.bulk} onDone={range.submitBulk} onCancel={range.cancelBulk} /> : null;
 
-  return { ...range, busy, line, hint, choose, bulkField };
+  return { ...range, busy, line, hint, choose, bulkField, saveRow };
 }

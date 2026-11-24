@@ -32,6 +32,7 @@ export function useCellRange({
   onPick,
   enabled = true,
   commandPicksRows = true,
+  onRecord,
 }: {
   /** The rows in the table's order. */
   ids: readonly string[];
@@ -51,6 +52,8 @@ export function useCellRange({
    * picks the cell. Once cells are picked, ⌘-click in their column adds a cell or takes it out, in either table.
    */
   commandPicksRows?: boolean;
+  /** ⌘Return with cells picked: records the rows they are in, as the table records a row. */
+  onRecord?: (ids: readonly string[]) => void;
 }) {
   const [range, setRangeState] = useState<CellRange | null>(null);
   /** Whether the range is picked (blue), not just the cell last clicked. */
@@ -101,8 +104,8 @@ export function useCellRange({
   };
 
   // What the document's listeners read: the newest of everything, without listening again on every render.
-  const now = useRef({ range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart });
-  now.current = { range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart };
+  const now = useRef({ range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart, onRecord });
+  now.current = { range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart, onRecord };
 
   const cellOf = (target: EventTarget | null): { column: CellColumn; id: string; el: HTMLElement } | null => {
     // A cell's own list of choices hangs inside the cell but is no part of it: a press on a choice starts no drag, or the
@@ -233,19 +236,30 @@ export function useCellRange({
       return true;
     };
     /** Esc in a cell being typed in: the typing stops, what was typed is kept (as leaving the row keeps it), and the cell is picked. */
-    const escToPick = (event: KeyboardEvent): boolean => {
-      if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing) return false;
+    /**
+     * Esc or Return in a cell being typed in (Notion's table, owner 2026-11-24): the typing stops, what was typed is kept
+     * (as leaving the row keeps it), and the cell is picked. Nothing is recorded: ⌘Return records.
+     */
+    const finishToPick = (event: KeyboardEvent): boolean => {
+      if ((event.key !== 'Escape' && event.key !== 'Enter') || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing) return false;
       const field = event.target as HTMLElement | null;
       if (!field || field.tagName !== 'INPUT' || !container.current?.contains(field) || covered()) return false;
-      // A cell's list, open, closes first (its own Esc); the next Esc picks the cell.
-      if (field.getAttribute('aria-expanded') === 'true') return false;
       const cell = cellOf(field);
       if (!cell) return false;
+      const pick = () => {
+        setCopied(null);
+        hold(startRange(cell.column, cell.id));
+        begin();
+      };
+      if (field.getAttribute('aria-expanded') === 'true') {
+        // A cell's list, open: Esc closes it first (its own Esc), the next Esc picks the cell. Return takes the choice
+        // highlighted (the list's own Return), and then the cell is picked.
+        if (event.key === 'Enter') window.setTimeout(() => document.activeElement === field && pick(), 0);
+        return false;
+      }
       event.preventDefault();
       event.stopImmediatePropagation();
-      setCopied(null);
-      hold(startRange(cell.column, cell.id));
-      begin();
+      pick();
       return true;
     };
     const keys = (event: KeyboardEvent) => {
@@ -260,7 +274,7 @@ export function useCellRange({
         return;
       }
       if (!on) {
-        escToPick(event);
+        finishToPick(event);
         return;
       }
       if (!r || covered() || event.isComposing) return;
@@ -277,6 +291,14 @@ export function useCellRange({
         case 'close':
           letGo();
           return;
+        case 'record': {
+          // One row: recorded as ⌘Return in its own cells records it, with what its cells hold now (an edit just ended
+          // may still be on its way to being saved). Several: the table records them together.
+          const field = cells.length === 1 ? cellEl(r.column, cells[0]!)?.closest('[data-quick-row]')?.querySelector<HTMLInputElement>('input:not([disabled])') : null;
+          if (field) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', metaKey: true, ctrlKey: true, bubbles: true, cancelable: true }));
+          else now.current.onRecord?.(cells);
+          return;
+        }
         case 'fill':
           if (cells.length >= 2) now.current.onFill(r.column, cells);
           return;
@@ -332,6 +354,16 @@ export function useCellRange({
       setCopied(null);
       now.current.onPaste(r.column, pasteAssignments(cells, lines));
     };
+    // A cell's field taking the keyboard while cells are picked (Tab into it, or a field focused by the page): typing
+    // there now, so the blue lets go, and Esc or Return in it pick it again.
+    const into = (event: FocusEvent) => {
+      if (!now.current.active) return;
+      const field = event.target as HTMLElement | null;
+      if (!field || field.tagName !== 'INPUT' || !container.current?.contains(field)) return;
+      const cell = cellOf(field);
+      if (cell) clicked(startRange(cell.column, cell.id));
+    };
+    document.addEventListener('focusin', into);
     document.addEventListener('mouseup', up);
     document.addEventListener('mousemove', move);
     window.addEventListener('blur', leave);
@@ -340,6 +372,7 @@ export function useCellRange({
     document.addEventListener('copy', copy);
     document.addEventListener('paste', paste);
     return () => {
+      document.removeEventListener('focusin', into);
       document.removeEventListener('mouseup', up);
       document.removeEventListener('mousemove', move);
       window.removeEventListener('blur', leave);
@@ -374,7 +407,11 @@ export function useCellRange({
         return;
       }
       const cell = cellOf(event.target);
-      if (!cell) return;
+      if (!cell) {
+        // A press on the table but on no cell (a row's circle, between the cells) lets the blue go, as one outside it.
+        if (active && !(event.target as HTMLElement | null)?.closest?.('[role="listbox"]')) letGo();
+        return;
+      }
       const { column, id } = cell;
       const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
       if (event.shiftKey && plain && range && range.column === column && (active || shiftExtends(range, picked))) {

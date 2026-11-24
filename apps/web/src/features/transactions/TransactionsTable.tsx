@@ -201,7 +201,7 @@ export function TypingRow({
     <div
       ref={frame}
       data-testid="typing-row"
-      title={desk ? 'Type a row: Tab moves along, Return records it. Or paste from a spreadsheet: Date · Note · Category · Payment method · Amount (or with a header row, any order)' : undefined}
+      title={desk ? 'Type a row: Tab moves along, ⌘Return records it. Or paste from a spreadsheet: Date · Note · Category · Payment method · Amount (or with a header row, any order)' : undefined}
       className={desk ? 'border-t border-dashed border-[var(--ph-chevron)]' : 'border-b border-slate-200 bg-slate-50/60'}
     >
       <QuickRowEditor
@@ -274,7 +274,7 @@ export function TypingRow({
                 Record
               </Button>
             )}
-            {/* The desk's row keeps an unfinished row with Return alone, as its header says: no second button. */}
+            {/* The desk's row keeps an unfinished row with ⌘Return alone, as its hover says: no second button. */}
             {!desk && (
               <Button variant="ghost" className="px-2 py-1.5 text-xs" disabled={!touched || busy} title="Keep it as not recorded, to finish later" onClick={() => void handlers.keepTyped(values).then((ok) => ok && reset())}>
                 Later

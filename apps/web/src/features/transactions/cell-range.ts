@@ -167,16 +167,22 @@ export function changeLine(changed: number, skipped: readonly { reason: SkipReas
  *
  * A key on blue cells: what it asks for. ⌘C, ⌘V and ⌘D (Ctrl off a Mac); Delete or ⌫; Return; Esc; the arrows (with ⇧
  * up or down, the blue stretches down its column); Tab and ⇧Tab as → and ←; a letter, figure or sign starts typing in
- * the cell. Typing in a field asks for nothing — the field's own keys are its own.
+ * the cell; ⌘Return records the rows the picked cells are in. Typing in a field asks for nothing — the field's own keys
+ * are its own.
  */
-export type RangeKey = 'fill' | 'clear' | 'pick' | 'close' | PickMove | 'more up' | 'more down' | 'type' | null;
+export type RangeKey = 'fill' | 'clear' | 'pick' | 'close' | 'record' | PickMove | 'more up' | 'more down' | 'type' | null;
 
 export type PickMove = 'up' | 'down' | 'left' | 'right';
 
 export function rangeKey(event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }, typing: boolean): RangeKey {
   if (typing || event.altKey) return null;
   const command = event.metaKey || event.ctrlKey;
-  if (command) return !event.shiftKey && event.key.toLowerCase() === 'd' ? 'fill' : null;
+  if (command) {
+    if (event.shiftKey) return null;
+    // ⌘Return records the rows of the picked cells (owner, 2026-11-24: plain Return only ends a cell's typing).
+    if (event.key === 'Enter') return 'record';
+    return event.key.toLowerCase() === 'd' ? 'fill' : null;
+  }
   switch (event.key) {
     case 'Backspace':
     case 'Delete':

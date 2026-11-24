@@ -25,11 +25,11 @@ async function typeRow(page: Page, description: string, amount: string, category
   await pick(typing, 'Row category', category);
   await pick(typing, 'Row payment method', 'bca');
   await typing.getByLabel('Row amount (IDR)').fill(amount);
-  await typing.getByLabel('Row amount (IDR)').press('Enter');
+  await typing.getByLabel('Row amount (IDR)').press('ControlOrMeta+Enter');
   await expect(page.getByTestId('transaction-row').filter({ hasText: description })).toHaveCount(1);
 }
 
-test('a row typed in the last row is saved with Return, counted in the boxes, and its peek opens, steps and closes', async ({ page }) => {
+test('a row typed in the last row is saved with ⌘Return, counted in the boxes, and its peek opens, steps and closes', async ({ page }) => {
   // Reads the ring and This month's box, v2 parts of Mac Cashflow.
   await macV2(page);
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });

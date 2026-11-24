@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 
 /*
- * Mac Review's header filters (owner 2026-11-24): the column names narrow the waiting rows — Note by words, When by
+ * Mac Review's header filters (owner 2026-11-24): the column names narrow the waiting rows — Note by words, Date by
  * From / To — and the rows shown are fixed together: ⌘-click picks Note cells apart from each other, a letter opens one
  * value for them all, Return gives one category for all, and Record N records only the rows shown. Invented rows.
  */
@@ -34,7 +34,7 @@ const ROWS = [
   '2026-10-02\tGrab\t\tBank Contoh\t27.000',
 ];
 
-test('the Note and When headers narrow Review to Grab in September; three Note cells picked apart take one value and one category; Record N records only the rows shown', async ({ page }) => {
+test('the Note and Date headers narrow Review to Grab in September; three Note cells picked apart take one value and one category; Record N records only the rows shown', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
   await pasteInto(page, ROWS.join('\n'));
@@ -52,15 +52,15 @@ test('the Note and When headers narrow Review to Grab in September; three Note c
   await expect(page.getByTestId('filter-note')).toContainText('GRAB');
   await expect(page.getByTestId('review-shown')).toContainText('7 of 9 shown');
 
-  // When: From and To, both days kept.
-  await table.getByRole('button', { name: 'When' }).click();
-  const when = page.getByRole('dialog', { name: 'When filter' });
+  // Date (When before Review took Cashflow's columns): From and To, both days kept.
+  await table.getByRole('button', { name: 'Date' }).click();
+  const when = page.getByRole('dialog', { name: 'Date filter' });
   await when.getByLabel('From date').fill('2026-09-01');
   await when.getByLabel('To date').fill('2026-09-30');
   await page.keyboard.press('Escape');
   await expect(when).toHaveCount(0);
   await expect(rows).toHaveCount(6);
-  await expect(page.getByTestId('filter-when')).toContainText('When: 1–30 Sep');
+  await expect(page.getByTestId('filter-date')).toContainText('Date: 1–30 Sep');
   await expect(page.getByTestId('review-shown')).toContainText('6 of 9 shown');
   await expect(table.getByRole('button', { name: 'Record 6' })).toBeVisible();
 
@@ -78,17 +78,17 @@ test('the Note and When headers narrow Review to Grab in September; three Note c
   await page.screenshot({ path: test.info().outputPath('review-bulk.png') });
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('cell-change')).toContainText('Changed 3 cells');
-  for (const at of rides) await expect(rows.nth(at).locator('[data-cell="description"]')).toContainText('GrabRide');
-  await expect(rows.nth(0).locator('[data-cell="description"]')).not.toContainText('GrabRide');
+  for (const at of rides) await expect(rows.nth(at).getByLabel('Row description')).toHaveValue('GrabRide');
+  await expect(rows.nth(0).getByLabel('Row description')).toHaveValue('Grab');
 
   // Undo puts the three back; done again, they stay.
   await page.getByTestId('cell-change').getByRole('button', { name: 'Undo' }).click();
-  await expect(rows.filter({ hasText: 'GrabRide' })).toHaveCount(0);
+  await expect(rows.filter({ has: page.locator('input[value="GrabRide"]') })).toHaveCount(0);
   for (const at of rides) await rows.nth(at).locator('[data-cell="description"]').click({ modifiers: ['ControlOrMeta'] });
   await expect(page.locator('[data-cell="description"][data-picked="true"]')).toHaveCount(3);
   await page.keyboard.type('GrabRide');
   await page.keyboard.press('Enter');
-  await expect(rows.filter({ hasText: 'GrabRide' })).toHaveCount(3);
+  await expect(rows.filter({ has: page.locator('input[value="GrabRide"]') })).toHaveCount(3);
 
   // Their Category cells, picked apart the same way: Return gives one picker for the three.
   for (const at of rides) await rows.nth(at).locator('[data-cell="category"]').click({ modifiers: ['ControlOrMeta'] });
@@ -97,7 +97,7 @@ test('the Note and When headers narrow Review to Grab in September; three Note c
   const picker = page.getByRole('dialog', { name: 'Category for 3 captures' });
   await picker.getByRole('button', { name: 'Ride hailing', exact: true }).click();
   await expect(page.getByTestId('cell-change')).toContainText('Changed 3 cells');
-  for (const at of rides) await expect(rows.nth(at).locator('[data-cell="category"]')).toContainText('Ride hailing');
+  for (const at of rides) await expect(rows.nth(at).getByLabel('Row category')).toHaveValue('Ride hailing');
 
   // Record 6 records the six shown, and only those; Show all brings back the three left out.
   await table.getByRole('button', { name: 'Record 6' }).click();
@@ -105,6 +105,5 @@ test('the Note and When headers narrow Review to Grab in September; three Note c
   await page.getByTestId('review-shown').getByRole('button', { name: 'Show all' }).click();
   await expect(rows).toHaveCount(3);
   await expect(page.getByTestId('review-shown')).toHaveCount(0);
-  for (const note of ['Toko Contoh', 'Kedai Contoh']) await expect(rows.filter({ hasText: note })).toHaveCount(1);
-  await expect(rows.filter({ hasText: 'Grab' })).toHaveCount(1);
+  for (const note of ['Toko Contoh', 'Kedai Contoh', 'Grab']) await expect(rows.filter({ has: page.locator(`input[value="${note}"]`) })).toHaveCount(1);
 });

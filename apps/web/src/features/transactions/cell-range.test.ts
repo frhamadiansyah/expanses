@@ -113,6 +113,10 @@ describe('keys on a range', () => {
     expect(rangeKey(key('Backspace'), false)).toBe('clear');
     expect(rangeKey(key('Enter'), false)).toBe('pick');
     expect(rangeKey(key('Escape'), false)).toBe('close');
+    // ⌘Return records the picked cells' rows; Return alone types in the cell (or asks for one choice for several).
+    expect(rangeKey(key('Enter', { metaKey: true }), false)).toBe('record');
+    expect(rangeKey(key('Enter', { ctrlKey: true }), false)).toBe('record');
+    expect(rangeKey(key('Enter', { metaKey: true }), true)).toBeNull();
   });
 
   it('asks for nothing while typing in a field, nor with ⌥ or ⇧⌘', () => {

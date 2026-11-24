@@ -58,6 +58,8 @@ export function buildRowOptions(
   ready = true,
   /** The digits an account with no card shows beside its name (a bank account's number, a wallet's phone), by account. */
   numbers: Readonly<Record<string, string>> = {},
+  /** Whose categories the Category cell offers: spending's (Cashflow's rows), or money in's (a capture of income in Review). */
+  kind: 'expense' | 'income' = 'expense',
 ) {
   const money = moneyHolders(accounts);
   const toCombo = (option: PaymentOption): ComboOption => ({
@@ -71,7 +73,7 @@ export function buildRowOptions(
   // A paste may also name a card or account switched off "For spending" (owner, 2026-11-22); picking by hand may not.
   const pasteable = pastedPayerOptions(money, cards);
   const paid: ComboOption[] = payments.map(toCombo);
-  const categoryRows = offeredCategories(accounts, 'expense', membership, inOpenBook);
+  const categoryRows = offeredCategories(accounts, kind, membership, inOpenBook);
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const categories: ComboOption[] = categoryRows
     .map((a) => ({
@@ -146,6 +148,8 @@ export function QuickRowEditor({
   pickedCell,
   onTabOut,
   lead,
+  placeholders = false,
+  categoryCell,
 }: {
   values: QuickValues;
   onChange: (patch: Partial<QuickValues>) => void;
@@ -183,6 +187,10 @@ export function QuickRowEditor({
   onTabOut?: () => boolean;
   /** The desk's first column: a waiting row's circle; blank on the typing row. */
   lead?: ReactNode;
+  /** A blank cell of a row in the table says its column's word in grey (Review's rows: something missing). */
+  placeholders?: boolean;
+  /** In place of the Category cell's list: a transfer's "to which account" (Review), which has no category. */
+  categoryCell?: ReactNode;
 }) {
   const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
     if (onPaste?.(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'))) event.preventDefault();
@@ -194,7 +202,7 @@ export function QuickRowEditor({
   // A row of the table (not the typing row): no word in a blank cell, and its figure read as the recorded rows print it
   // ("Rp 320.000") until the cell is typed in.
   const inTable = layout === 'desk' && !!cellRow;
-  const hint = (word: string) => (inTable ? undefined : word);
+  const hint = (word: string) => (inTable && !placeholders ? undefined : word);
   const [amountFocused, setAmountFocused] = useState(false);
   const amountMinor = inTable && !amountFocused ? parseLooseAmount(values.amount, currency) : null;
   const amountShown = amountMinor !== null && values.amount.trim() !== '' ? formatMinor(amountMinor, currency) : values.amount;
@@ -295,7 +303,7 @@ export function QuickRowEditor({
           </div>,
           cell('date', date),
           cell('description', description),
-          cell('category', category),
+          cell('category', categoryCell ?? category),
           cell('paid', paid),
           cell('amount', amount),
           ends,
@@ -308,7 +316,10 @@ export function QuickRowEditor({
       onKeyDown={(event) => {
         if (event.key === 'Enter' && (event.target as HTMLElement).tagName === 'INPUT') {
           event.preventDefault();
-          onSubmit();
+          // The wide table (owner, 2026-11-24, Notion's and a sheet's way): Return ends the cell's typing — what was typed
+          // is kept, and a row's cell is picked (`useCellRange`) — and ⌘Return records the row. The phone's row: Return.
+          if (layout !== 'desk' || event.metaKey || event.ctrlKey) onSubmit();
+          else (event.target as HTMLElement).blur();
         } else if (event.key === 'Escape') {
           event.preventDefault();
           onCancel();

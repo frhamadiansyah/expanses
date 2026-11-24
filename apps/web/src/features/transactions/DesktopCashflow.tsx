@@ -497,6 +497,12 @@ export function DesktopCashflow({
         return;
       }
     }
+    // ⌘Return records the waiting rows picked (⌘-click), as their peek's Record does.
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && !typing && !covered && !readOnly && waitingPicked > 0) {
+      event.preventDefault();
+      void recordMany(pickedWaiting);
+      return;
+    }
     // ⌘A in a field selects its text, as everywhere; on the table it picks every row listed.
     if (shortcut === 'all' && !typing) {
       event.preventDefault();
@@ -576,7 +582,18 @@ export function DesktopCashflow({
   // The blue cells: a range down one column, across recorded rows and the waiting rows under them (`cashflow-cells`).
   // Starting one lets the picked rows and their peek go, so the two selections never show at once.
   const tableRows = [...rows, ...waiting];
-  const cells = useCashflowCells({ rows: tableRows, today, accounts, rowOptions, handlers, saveDraft: deskHandlers.saveDraft, readOnly, onStart: () => dispatch({ type: 'close' }) });
+  const cells = useCashflowCells({
+    rows: tableRows,
+    today,
+    accounts,
+    rowOptions,
+    handlers,
+    saveDraft: deskHandlers.saveDraft,
+    readOnly,
+    onStart: () => dispatch({ type: 'close' }),
+    // ⌘Return on picked cells records the waiting rows they are in, as Record N does.
+    onRecord: (ids) => void recordMany(recordable(ids, [...rows.filter((row) => row.kind === 'draft'), ...waiting], accounts, today, baseCurrency)),
+  });
   const guessOf = (id: string) => {
     const mark = marks[id];
     const hint = guessHint(mark);
@@ -974,7 +991,7 @@ export function DesktopCashflow({
                   </li>
                 ))}
               </ul>
-              {/* The typing row is the table's last row (option E): today's date, Tab across, Return or Record saves it. */}
+              {/* The typing row is the table's last row (option E): today's date, Tab across, ⌘Return or Record saves it. */}
               {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{}} />}
             </div>
           </div>

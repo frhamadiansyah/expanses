@@ -111,7 +111,7 @@ export function NoteHead({ value, open, onOpen, onClose, onChange }: { value: st
   );
 }
 
-/** When: From and To, both days kept, with This month, Last month and Any time. */
+/** Date (Cashflow's column name, owner 2026-11-24): From and To, both days kept, with This month, Last month and Any time. */
 export function WhenHead({ from, to, today, onChange }: { from: string | null; to: string | null; today: string; onChange: (from: string | null, to: string | null) => void }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
@@ -143,14 +143,14 @@ export function WhenHead({ from, to, today, onChange }: { from: string | null; t
   return (
     <span ref={anchor} className="inline-flex">
       {on ? (
-        <OnHead name="When" text={`When: ${whenFilterText(from, to)}`} onOpen={() => setOpen((was) => !was)} onClear={() => onChange(null, null)} />
+        <OnHead name="Date" text={`Date: ${whenFilterText(from, to)}`} onOpen={() => setOpen((was) => !was)} onClear={() => onChange(null, null)} />
       ) : (
         <button type="button" onClick={() => setOpen((was) => !was)} className={HEAD} aria-expanded={open}>
-          When <ChevronDown size={13} strokeWidth={2.4} aria-hidden className="opacity-70" />
+          Date <ChevronDown size={13} strokeWidth={2.4} aria-hidden className="opacity-70" />
         </button>
       )}
       {open && (
-        <HeadPopover anchor={anchor.current} label="When filter" onClose={() => setOpen(false)}>
+        <HeadPopover anchor={anchor.current} label="Date filter" onClose={() => setOpen(false)}>
           {day('From', from, (value) => onChange(value, to))}
           {day('To', to, (value) => onChange(from, value))}
           <div className="mt-[10px] flex gap-[6px]">

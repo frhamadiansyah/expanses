@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { pickDraftCategory } from './review';
+import { discardDraft, pickDraftCategory, recordDraft } from './review';
 import { macV2 } from './mac-detail';
 
 test.beforeEach(async ({ page }) => {
@@ -53,7 +53,7 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
 
   // The parser's guess is a starting point; the category is chosen here.
   await pickDraftCategory(page, 'SUPERINDO KEBAYORAN', 'Groceries');
-  await page.getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' }).click();
+  await recordDraft(page, 'SUPERINDO KEBAYORAN');
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
 
   await page.goto('/transactions');
@@ -72,7 +72,7 @@ test('a discarded capture is not offered again, and never reaches the ledger', a
   await expect(page.getByText(/Sent \d+ rows to Review/)).toBeVisible();
 
   await page.goto('/review');
-  await page.getByRole('button', { name: 'Discard APOTEK K24' }).click();
+  await discardDraft(page, 'APOTEK K24');
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
 
   // Re-reading the same file offers nothing new: what was dealt with stays dealt with.
@@ -95,8 +95,8 @@ test('a capture is finished and recorded from the transactions list itself', asy
   await page.goto('/transactions');
   const apotek = draftRow(page, 'APOTEK K24');
   await apotek.getByLabel('Row amount (IDR)').fill('80.000');
-  // Return in its cells records it: the desk's waiting row has no Record button of its own.
-  await apotek.getByLabel('Row amount (IDR)').press('Enter');
+  // ⌘Return in its cells records it: the desk's waiting row has no Record button of its own.
+  await apotek.getByLabel('Row amount (IDR)').press('ControlOrMeta+Enter');
 
   // Recorded, it is a row of the month like any other — and the draft beside it still waits, still counted.
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'APOTEK K24' })).toContainText('80.000');
@@ -121,10 +121,10 @@ test('the queue row is the way in to Review, and leaves with the last draft', as
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
 
   await pickDraftCategory(page, 'SUPERINDO KEBAYORAN', 'Groceries');
-  await page.getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' }).click();
+  await recordDraft(page, 'SUPERINDO KEBAYORAN');
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
   await pickDraftCategory(page, 'APOTEK K24', 'Pharmacy');
-  await page.getByRole('button', { name: 'Record APOTEK K24' }).click();
+  await recordDraft(page, 'APOTEK K24');
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
 
   // Nothing waiting, so the count is nought and no link — and both purchases are in the list.

@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
+import { draftRow as reviewRow, recordDraft } from './review';
 
 /*
  * Mac Cashflow's paste and blue cells (owner 2026-11-18): a Notion copy read right, a paste's empty categories guessed
@@ -49,10 +50,10 @@ const draftRow = (page: Page, note: string) => page.getByTestId('not-recorded-ro
 const money = (figure: string) => new RegExp(`^Rp\\s?${figure.replace(/\./g, '\\.')}$`);
 /** A waiting row's own Record: black once complete, disabled (grey) while a cell is blank. */
 const tickOf = (page: Page, note: string) => draftRow(page, note).getByTestId('waiting-tick');
-/** Return in one of its cells records a waiting row: the desk's row has no Record button of its own (option A). */
+/** ⌘Return in one of its cells records a waiting row: the desk's row has no Record button of its own (option A). */
 async function recordRow(page: Page, note: string) {
   await draftRow(page, note).getByLabel('Row description').click();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('ControlOrMeta+Enter');
 }
 /** ⌘-click picks a waiting row, ⌫ discards it (option A: no ✕ on the row). */
 async function discardRow(page: Page, note: string) {
@@ -387,16 +388,14 @@ test('pasted rows wait in Cashflow and in Review alike: counted by both, recorde
   await nav.getByRole('link', { name: /^Review/ }).click();
   await expect(page.getByTestId('review-to-review-count')).toHaveText('2');
   await expect(page.getByTestId('review-ready-count')).toHaveText('2');
-  const toko = (note: string) => page.getByTestId('draft-row').filter({ hasText: note });
+  const toko = (note: string) => reviewRow(page, note);
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
-  // Its From says the door it came in by; the peek has no captured words to show.
-  await expect(toko('Toko C').getByTestId('review-from')).toHaveText('Cashflow');
-  // Clicked on its date: the middle of the row is its Category cell, which opens its own picker.
-  await toko('Toko C').getByRole('cell', { name: '16 Oct' }).click();
+  // A click on the row: its peek says the door it came in by, and has no captured words to show.
+  await toko('Toko C').getByTestId('review-tick').click();
   await expect(page.getByTestId('peek-when')).toContainText('typed or pasted in Cashflow');
   await expect(page.getByTestId('peek-captured')).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await toko('Toko C').getByRole('button', { name: 'Record Toko C' }).click();
+  await recordDraft(page, 'Toko C');
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
   await expect(page.getByTestId('review-to-review-count')).toHaveText('1');
   await expect(nav.getByRole('link', { name: /^Review/ })).toHaveText(/^Review\s*1$/);
@@ -638,8 +637,8 @@ test('a pasted card or account not in cicis yet stays on its rows, is added from
   // Review lists the same rows, its Paid with cell showing the same text.
   const nav = page.locator('aside').getByRole('navigation', { name: 'Sections' });
   await nav.getByRole('link', { name: /^Review/ }).click();
-  await expect(page.getByTestId('draft-row').filter({ hasText: 'Toko Buah Contoh' }).getByTestId('paid-pending')).toHaveText('•• 5512');
-  await expect(page.getByTestId('draft-row').filter({ hasText: 'Parkir Contoh' }).getByTestId('paid-pending')).toHaveText('Jago');
+  await expect(reviewRow(page, 'Toko Buah Contoh').getByTestId('paid-pending')).toHaveText('•• 5512');
+  await expect(reviewRow(page, 'Parkir Contoh').getByTestId('paid-pending')).toHaveText('Jago');
   await nav.getByRole('link', { name: /^Cashflow/ }).click();
 
   // The cell's picker: what to add first, with the rows waiting for it, then the ways to pay already there.

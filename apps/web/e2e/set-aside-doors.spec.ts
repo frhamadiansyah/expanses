@@ -7,7 +7,7 @@ import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
 import { paySeveral } from './bills-desk';
-import { pickDraftCategory } from './review';
+import { pickDraftCategory, recordDraft } from './review';
 import { openShortTrade, openTradeDetails, pickTradeCash, recordShortTrade, shortTrade } from './trades';
 
 /*
@@ -440,7 +440,7 @@ async function typeRow(page: Page, description: string, amount: string) {
     await cell.pressSequentially(text);
     await cell.press('Enter');
   }
-  await typing.getByLabel('Row description').press('Enter');
+  await typing.getByLabel('Row description').press('ControlOrMeta+Enter');
   return typing;
 }
 
@@ -508,13 +508,13 @@ test('confirming a draft that takes promised money asks in the same sheet', asyn
 
   await page.goto('/review');
   await pickDraftCategory(page, 'LAPTOP STORE', 'Groceries');
-  await page.getByRole('button', { name: 'Record LAPTOP STORE' }).click();
+  await recordDraft(page, 'LAPTOP STORE');
   const sheet = page.getByRole('dialog', { name: 'Money set aside' });
   await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   // Closing it records nothing: the draft still waits.
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Record LAPTOP STORE' }).click();
+  await recordDraft(page, 'LAPTOP STORE');
   await borrowFromEmergencyFund(sheet);
   await sheet.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(0);

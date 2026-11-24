@@ -26,7 +26,7 @@ test('rows are typed into the table, and the next purchase at the same shop gues
   await typing.getByLabel('Row amount (IDR)').fill('450.000');
   await pick(typing, 'Row payment method', 'bca');
   await pick(typing, 'Row category', 'groceries');
-  await typing.getByLabel('Row description').press('Enter');
+  await typing.getByLabel('Row description').press('ControlOrMeta+Enter');
 
   const recorded = page.getByTestId('transaction-row');
   await expect(recorded).toHaveCount(1);
@@ -47,7 +47,7 @@ test('an unfinished row waits as not recorded, and is finished in place', async 
 
   await typing.getByLabel('Row description').fill('Apotek K24');
   await typing.getByLabel('Row amount (IDR)').fill('85000');
-  await typing.getByLabel('Row amount (IDR)').press('Enter');
+  await typing.getByLabel('Row amount (IDR)').press('ControlOrMeta+Enter');
 
   const waiting = page.getByTestId('not-recorded-row');
   await expect(waiting).toHaveCount(1);
@@ -120,7 +120,7 @@ const tickOf = (page: Page, note: string) => draftRow(page, note).getByTestId('w
 /** Return in one of its cells records a waiting row: the desk's row has no Record button of its own (option A). */
 async function recordRow(page: Page, note: string) {
   await draftRow(page, note).getByLabel('Row description').click();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('ControlOrMeta+Enter');
 }
 /** ⌘-click picks a waiting row, ⌫ discards it (option A: no ✕ on the row). */
 async function discardRow(page: Page, note: string) {

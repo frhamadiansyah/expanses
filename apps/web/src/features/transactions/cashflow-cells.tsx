@@ -50,6 +50,7 @@ export function useCashflowCells({
   saveDraft,
   readOnly,
   onStart,
+  onRecord,
 }: {
   rows: readonly ListRow[];
   today: string;
@@ -60,6 +61,8 @@ export function useCashflowCells({
   saveDraft: TableHandlers['saveDraft'];
   readOnly: boolean;
   onStart: () => void;
+  /** ⌘Return on picked cells: records the waiting rows they are in. */
+  onRecord: (ids: readonly string[]) => void;
 }) {
   const cards = useCards().data ?? [];
   const ids = rows.map((row) => row.id);
@@ -207,6 +210,7 @@ export function useCashflowCells({
     onPick: (column, picked) => {
       if (column === 'category' || column === 'paid') setPicking({ column, ids: [...picked] });
     },
+    onRecord,
     enabled: !readOnly,
   });
 

@@ -1,14 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { choosePayment } from './add-transaction';
 import { inject, notice } from './capture';
-import { pickDraftCategory } from './review';
+import { draftRow, pickDraftAccount, pickDraftCategory } from './review';
 import { doubleClickInPlace } from './desk-double-click';
 import { macV2 } from './mac-detail';
 
 /*
- * Review on a wide screen (Mac Review): the counts, the queue as a table filled in place, Record / Record N ready /
- * Discard through Review's own paths, and the side peek with what was captured. Invented captures.
+ * Review on a wide screen (Mac Review): the counts, the queue as Cashflow's waiting rows typed in place, ⌘Return /
+ * Record N ready / ⌫ through Review's own paths, and the side peek with what was captured. Invented captures.
  */
 
 test.beforeEach(async ({ page }) => {
@@ -18,7 +17,7 @@ test.beforeEach(async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Everyday bank', balance: '50000000' });
 });
 
-const row = (page: Page, description: string) => page.getByTestId('draft-row').filter({ hasText: description });
+const row = draftRow;
 const count = (page: Page, id: string) => page.getByTestId(`${id}-count`);
 const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
 const sidebarReview = (page: Page) => page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: /^Review/ });
@@ -27,12 +26,11 @@ const sidebarReview = (page: Page) => page.getByRole('navigation', { name: 'Sect
 async function answeredSource(page: Page) {
   await page.goto('/review');
   await inject(page, [notice({ id: 'note-seed', body: 'Pembayaran Rp1.000 berhasil. Merchant: SEED SHOP', capturedAt: '2026-09-30T08:00:00+07:00' })]);
-  await row(page, 'SEED SHOP').getByRole('button', { name: 'Account for SEED SHOP' }).click();
-  await choosePayment(page, 'Everyday bank', 'Payment method');
-  await expect(row(page, 'SEED SHOP').getByRole('button', { name: 'Account for SEED SHOP' })).toHaveText('Everyday bank');
+  await pickDraftAccount(page, 'SEED SHOP', 'Everyday bank');
+  await expect(row(page, 'SEED SHOP')).toHaveAttribute('data-ready', 'true');
 }
 
-test('a missing account is filled in place, the row turns ready (a blank category holds nothing back), and Record records it', async ({ page }) => {
+test('a missing account is filled in place, the row turns ready (a blank category holds nothing back), and ⌘Return records it', async ({ page }) => {
   // Reads every count of the queue, zeros included: the counts box is a v2 part of Mac Review.
   await macV2(page);
   await page.goto('/review');
@@ -47,21 +45,23 @@ test('a missing account is filled in place, the row turns ready (a blank categor
   await expect(count(page, 'review-need-category')).toHaveText('1');
   await expect(count(page, 'review-need-account')).toHaveText('1');
   await expect(sidebarReview(page)).toContainText('1');
-  await expect(kopi.getByTestId('review-from')).toHaveText('Notification');
-  await expect(kopi.getByTestId('draft-amount')).toHaveText('38.000');
+  // Cashflow's row: no source line under the note, no time under the date, no buttons of its own.
+  await expect(kopi).not.toContainText('Notification');
+  await expect(kopi.getByRole('button', { name: /^(Record|Discard)/ })).toHaveCount(0);
+  await expect(kopi.getByLabel('Row amount (IDR)')).toHaveValue(/^Rp\s?38\.000$/);
 
-  // Not ready: Record is greyed, and the orange cell says what is missing. The blank category is plain, not orange.
+  // Not ready: the dashed circle, and the blank cells say their column's word in grey — no orange words.
   await expect(kopi).toHaveAttribute('data-ready', 'false');
-  await expect(kopi.getByRole('button', { name: 'Record TOKO KOPI' })).toBeDisabled();
-  await expect(kopi.getByRole('button', { name: 'Account for TOKO KOPI' })).toHaveText('Which account?');
-  await expect(kopi.getByRole('button', { name: 'Category for TOKO KOPI' })).toHaveText('');
+  await expect(kopi.getByTestId('review-tick')).toHaveAttribute('data-ready', 'false');
+  await expect(kopi.getByLabel('Row payment method')).toHaveValue('');
+  await expect(kopi.getByLabel('Row payment method')).toHaveAttribute('placeholder', 'Payment method');
+  await expect(kopi.getByLabel('Row category')).toHaveValue('');
+  await expect(kopi.getByLabel('Row category')).toHaveAttribute('placeholder', 'Category');
 
-  // The account, in the phone's Paid with sheet, in place: a date, an amount and Paid with, so the row turns ready.
-  await kopi.getByRole('button', { name: 'Account for TOKO KOPI' }).click();
-  await choosePayment(page, 'Everyday bank', 'Payment method');
+  // The account, typed in its cell: a date, an amount and Paid with, so the row turns ready.
+  await pickDraftAccount(page, 'TOKO KOPI', 'Everyday bank');
   await expect(count(page, 'review-need-account')).toHaveText('0');
   await expect(kopi).toHaveAttribute('data-ready', 'true');
-  await expect(kopi.getByRole('button', { name: 'Record TOKO KOPI' })).toBeEnabled();
   await expect(count(page, 'review-ready')).toHaveText('1');
   await expect(count(page, 'review-need-category')).toHaveText('1');
 
@@ -72,7 +72,13 @@ test('a missing account is filled in place, the row turns ready (a blank categor
   await expect(count(page, 'review-need-category')).toHaveText('0');
   await expect(page.getByRole('button', { name: 'Record 1', exact: true })).toBeVisible();
 
-  await kopi.getByRole('button', { name: 'Record TOKO KOPI' }).click();
+  // Return in a cell only ends its typing; ⌘Return records the row.
+  await kopi.getByLabel('Row description').click();
+  await page.keyboard.press('Enter');
+  await expect(kopi.locator('[data-cell="description"]')).toHaveAttribute('data-picked', 'true');
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await kopi.getByLabel('Row description').click();
+  await page.keyboard.press('ControlOrMeta+Enter');
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
   await expect(toast(page)).toContainText('Recorded TOKO KOPI');
   await expect(count(page, 'review-to-review')).toHaveText('0');
@@ -123,7 +129,7 @@ test('Record N ready records every ready row at once, and Undo puts them all bac
   await toast(page).getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(3);
   await expect(count(page, 'review-ready')).toHaveText('3');
-  await expect(row(page, 'SEED SHOP').getByRole('button', { name: 'Category for SEED SHOP' })).toHaveText('');
+  await expect(row(page, 'SEED SHOP').getByLabel('Row category')).toHaveValue('');
   await expect(count(page, 'review-need-category')).toHaveText('1');
   await page.goto('/transactions');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'WARUNG SATE' })).toHaveCount(0);
@@ -136,21 +142,16 @@ test('a capture with no category is a plain blank cell, counts as ready, and Rec
   await inject(page, [notice({ id: 'note-a', body: 'Pembayaran Rp45.000 berhasil. Merchant: WARUNG SATE', capturedAt: '2026-09-30T09:00:00+07:00' })]);
   await pickDraftCategory(page, 'WARUNG SATE', 'Restaurants');
 
-  // SEED SHOP: no category, nothing guessed. Its cell is blank and plain — no orange — and still opens the picker.
+  // SEED SHOP: no category, nothing guessed. Its cell is blank, its column's word in grey — no orange — and ready.
   const seed = row(page, 'SEED SHOP');
-  const cell = seed.getByRole('button', { name: 'Category for SEED SHOP' });
-  await expect(cell).toHaveText('');
-  await expect(cell.locator('[class*="ph-warn"]')).toHaveCount(0);
+  const cell = seed.getByLabel('Row category');
+  await expect(cell).toHaveValue('');
+  await expect(cell).toHaveAttribute('placeholder', 'Category');
   await expect(seed).toHaveAttribute('data-ready', 'true');
-  await expect(seed.getByRole('button', { name: 'Record SEED SHOP' })).toBeEnabled();
   await expect(count(page, 'review-ready')).toHaveText('2');
   await expect(page.getByTestId('review-need-category')).toContainText('No category');
   await expect(count(page, 'review-need-category')).toHaveText('1');
   await expect(count(page, 'review-need-category')).not.toHaveClass(/ph-warn/);
-  await cell.click();
-  await expect(page.getByRole('dialog', { name: 'Category for SEED SHOP' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Category for SEED SHOP' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Record 2', exact: true }).click();
   await expect(toast(page)).toContainText('Recorded 2 captures');
@@ -167,12 +168,13 @@ test('a capture with no category is a plain blank cell, counts as ready, and Rec
   await expect(page.getByTestId('transaction-row')).toContainText('SEED SHOP');
 });
 
-test('Discard takes a row out of the queue for good, with Undo on the toast', async ({ page }) => {
+test('⌫ on a row takes it out of the queue for good, with Undo on the toast', async ({ page }) => {
   await page.goto('/review');
   await inject(page, [notice(), notice({ id: 'note-2', body: 'Pembayaran Rp15.000 berhasil. Merchant: PARKIR MALL', capturedAt: '2026-09-30T11:00:00+07:00' })]);
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
 
-  await row(page, 'PARKIR MALL').getByRole('button', { name: 'Discard PARKIR MALL' }).click();
+  await row(page, 'PARKIR MALL').getByTestId('review-tick').click();
+  await page.keyboard.press('Backspace');
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
   await expect(toast(page)).toContainText('Discarded PARKIR MALL');
   await expect(count(page, 'review-to-review')).toHaveText('1');
@@ -180,21 +182,22 @@ test('Discard takes a row out of the queue for good, with Undo on the toast', as
   await toast(page).getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
 
-  await row(page, 'PARKIR MALL').getByRole('button', { name: 'Discard PARKIR MALL' }).click();
+  await row(page, 'PARKIR MALL').getByTestId('review-tick').click();
+  await page.keyboard.press('Backspace');
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
   // Kept as discarded, so the same capture is not offered again.
   await page.getByRole('radio', { name: 'Discarded' }).click();
   await expect(page.getByTestId('resolved-row').filter({ hasText: 'PARKIR MALL' })).toHaveCount(1);
 });
 
-test('a row’s peek shows what was captured, steps with the arrows, and Return records, ⌫ discards', async ({ page }) => {
+test('a row’s peek shows what was captured, steps with the arrows, and ⌘Return records, ⌫ discards', async ({ page }) => {
   await answeredSource(page);
   await inject(page, [notice({ id: 'note-a', body: 'Pembayaran Rp45.000 berhasil. Merchant: WARUNG SATE', capturedAt: '2026-09-30T09:00:00+07:00' })]);
   await pickDraftCategory(page, 'WARUNG SATE', 'Restaurants');
 
   // Newest first: WARUNG SATE (09:00) above SEED SHOP (08:00).
-  // Its Note cell: the note, and the door it came in by under it (From) — not one of the cells that open a picker.
-  await row(page, 'WARUNG SATE').getByRole('cell', { name: /^WARUNG SATE\b/ }).click();
+  // A click on the row (its circle: a click in a cell types there too) opens what was captured.
+  await row(page, 'WARUNG SATE').getByTestId('review-tick').click();
   const peek = page.getByTestId('review-peek');
   await expect(peek).toBeVisible();
   await expect(peek.getByTestId('peek-title')).toHaveText('WARUNG SATE');
@@ -216,9 +219,11 @@ test('a row’s peek shows what was captured, steps with the arrows, and Return 
   await expect(row(page, 'Sate Pak Kumis')).toHaveCount(1);
   await expect(peek.getByTestId('peek-title')).toHaveText('Sate Pak Kumis');
 
-  // Return records the peeked row; the peek moves on to the row that took its place.
+  // ⌘Return records the peeked row (Return alone does not); the peek moves on to the row that took its place.
   await peek.getByTestId('peek-title').click();
   await page.keyboard.press('Enter');
+  await expect(page.getByTestId('draft-row')).toHaveCount(2);
+  await page.keyboard.press('ControlOrMeta+Enter');
   await expect(toast(page)).toContainText('Recorded Sate Pak Kumis');
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
   await expect(peek.getByTestId('peek-title')).toHaveText('SEED SHOP');
@@ -231,8 +236,8 @@ test('a row’s peek shows what was captured, steps with the arrows, and Return 
   await inject(page, [notice({ id: 'note-b', body: 'Pembayaran Rp52.000 berhasil. Merchant: BAKSO MALANG', capturedAt: '2026-09-30T10:00:00+07:00' })]);
   // A double-click opens the row's form, even when the peek its first click opened (a 1280 window making room for it)
   // moved the row from under the pointer.
-  // On its name: the row's middle is its Category cell in the v1 Captured card, which opens the category's own sheet.
-  await doubleClickInPlace(page, row(page, 'BAKSO MALANG').getByText('BAKSO MALANG', { exact: true }));
+  // On its circle: a double-click in a cell picks a word there.
+  await doubleClickInPlace(page, row(page, 'BAKSO MALANG').getByTestId('review-tick'));
   await expect(page.getByRole('form', { name: 'Review BAKSO MALANG' })).toBeVisible();
 });
 

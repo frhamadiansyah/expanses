@@ -25,10 +25,10 @@ async function pasteInto(page: Page, text: string) {
 
 const draftRow = (page: Page, note: string) => page.getByTestId('not-recorded-row').filter({ has: page.locator(`input[value="${note}"]`) });
 const tickOf = (page: Page, note: string) => draftRow(page, note).getByTestId('waiting-tick');
-/** Return in one of its cells records a waiting row: the desk's row has no Record button of its own (option A). */
+/** ⌘Return in one of its cells records a waiting row: the desk's row has no Record button of its own (option A). */
 async function recordRow(page: Page, note: string) {
   await draftRow(page, note).getByLabel('Row description').click();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('ControlOrMeta+Enter');
 }
 /** ⌘-click picks a waiting row, ⌫ discards it (option A: no ✕ on the row). */
 async function discardRow(page: Page, note: string) {
@@ -211,7 +211,7 @@ test('a row typed into the last row is recorded into the list above it, and the 
       await typing.getByLabel('Row payment method').press('Enter');
     }
     await typing.getByLabel('Row amount (IDR)').fill(amount);
-    await typing.getByLabel('Row amount (IDR)').press('Enter');
+    await typing.getByLabel('Row amount (IDR)').press('ControlOrMeta+Enter');
     await expect(page.getByTestId('transaction-row').filter({ hasText: note })).toHaveCount(1);
     // The typing row clears once the row is saved, keeping the day and what paid.
     await expect(typing.getByLabel('Row description')).toHaveValue('');
@@ -308,11 +308,11 @@ test('Tab moves along the typing row, past Amount keeps it waiting and starts a 
   await draftRow(page, 'Sate Contoh').getByLabel('Row amount (IDR)').click();
   await page.keyboard.press('Tab');
   await expect(typing.getByLabel('Row date')).toBeFocused();
-  // Return in the typing row still records.
+  // ⌘Return in the typing row records.
   await page.keyboard.press('Tab');
   await page.keyboard.type('Kopi Contoh');
   await typing.getByLabel('Row amount (IDR)').fill('9000');
-  await typing.getByLabel('Row amount (IDR)').press('Enter');
+  await typing.getByLabel('Row amount (IDR)').press('ControlOrMeta+Enter');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Kopi Contoh' })).toHaveCount(1);
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
 });
@@ -386,7 +386,7 @@ test('Record N records the waiting rows ticked — each that can be recorded sta
   await expect(page.getByTestId('needs-category-card')).toContainText('1 needs a category');
 });
 
-test('a waiting row has a circle and no buttons of its own: Return records it, ⌫ on the rows picked discards them, and Undo brings them back', async ({ page }) => {
+test('a waiting row has a circle and no buttons of its own: ⌘Return records it, ⌫ on the rows picked discards them, and Undo brings them back', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
   await page.goto('/transactions');
   await pasteInto(page, ['2026-11-03\tRoti Contoh\tRestaurants\tBank Contoh\t15.000', '2026-11-04\tSate Contoh\tRestaurants\tBank Contoh\t42.000', '2026-11-05\tKopi Contoh\tRestaurants\t\t9.000'].join('\n'));
@@ -400,7 +400,7 @@ test('a waiting row has a circle and no buttons of its own: Return records it, �
   await expect(tickOf(page, 'Kopi Contoh')).toHaveAttribute('data-tick', 'missing');
   await expect(page.getByTestId('record-ticked')).toHaveText('Record 2');
 
-  // Return in a row typed in records it.
+  // ⌘Return in a row typed in records it.
   await recordRow(page, 'Roti Contoh');
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Roti Contoh' })).toHaveCount(1);
   await expect(page.getByTestId('record-ticked')).toHaveText('Record 1');
@@ -466,4 +466,51 @@ test('a click on the first waiting row and ⇧-click on the last picks every wai
   await expect(page.getByTestId('recorded-toast')).toContainText('Recorded 3 in August and September 2026 · 1 skipped');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
   for (const note of ['Apotek Contoh', 'Roti Contoh']) await expect(draftRow(page, note)).toHaveCount(1);
+});
+
+test('Return ends a cell’s typing and leaves it picked, recording nothing; ⌘Return records — a waiting row, a picked cell’s row, and the typing row', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(page, ['2026-11-16\tRoti Contoh\tRestaurants\tBank Contoh\t15.000', '2026-11-17\tSate Contoh\tRestaurants\tBank Contoh\t42.000'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+  const recorded = page.getByTestId('transaction-row');
+
+  // Return in a waiting row's cell: the typing ends, what was typed is kept, the cell is picked, and nothing is recorded.
+  const roti = draftRow(page, 'Roti Contoh');
+  await roti.getByLabel('Row description').fill('Roti Bakar Contoh');
+  await page.keyboard.press('Enter');
+  const note = draftRow(page, 'Roti Bakar Contoh');
+  await expect(note.getByLabel('Row description')).not.toBeFocused();
+  await expect(note.locator('[data-cell="description"]')).toHaveAttribute('data-picked', 'true');
+  await expect(recorded).toHaveCount(0);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+
+  // ⌘Return with the cell picked records its row.
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await expect(recorded.filter({ hasText: 'Roti Bakar Contoh' })).toHaveCount(1);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+
+  // ⌘Return while typing in a waiting row's cell records it.
+  await draftRow(page, 'Sate Contoh').getByLabel('Row amount (IDR)').click();
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await expect(recorded.filter({ hasText: 'Sate Contoh' })).toHaveCount(1);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
+
+  // The typing row: Return ends the typing and adds nothing; ⌘Return adds the row.
+  const typing = page.getByTestId('typing-row');
+  await typing.getByLabel('Row description').fill('Kopi Contoh');
+  await typing.getByLabel('Row category').fill('Restaurants');
+  await typing.getByLabel('Row category').press('Enter');
+  await typing.getByLabel('Row payment method').fill('Bank Contoh');
+  await typing.getByLabel('Row payment method').press('Enter');
+  await typing.getByLabel('Row amount (IDR)').fill('9000');
+  await typing.getByLabel('Row amount (IDR)').press('Enter');
+  await expect(typing.getByLabel('Row amount (IDR)')).not.toBeFocused();
+  await expect(recorded).toHaveCount(2);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
+  await expect(typing.getByLabel('Row description')).toHaveValue('Kopi Contoh');
+  await typing.getByLabel('Row amount (IDR)').click();
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await expect(recorded.filter({ hasText: 'Kopi Contoh' })).toHaveCount(1);
+  await expect(typing.getByLabel('Row description')).toHaveValue('');
 });

@@ -2,8 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { answerSource, inject, notice, picture, screen } from './capture';
 import { expectBalance } from './deposit-maturity';
-import { choosePayment } from './add-transaction';
-import { pickDraftCategory } from './review';
+import { pickDraftAccount, pickDraftCategory, recordDraft } from './review';
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -21,19 +20,19 @@ test('a notification becomes a draft the owner files, and recording it leaves a 
   // see phone-capture.spec.ts.)
   const row = page.getByTestId('draft-row');
   await expect(row).toHaveCount(1);
-  await expect(row).toContainText('TOKO KOPI');
-  await expect(row).toContainText('38.000');
-  await expect(row).toContainText('Today');
+  await expect(row.getByLabel('Row description')).toHaveValue('TOKO KOPI');
+  await expect(row.getByLabel('Row amount (IDR)')).toHaveValue(/38\.000$/);
+  await expect(row.getByLabel('Row date')).toHaveValue('30 Sep');
 
-  // Whose money it was is the one thing a notification cannot know, and the row asks it (Mac Review): Record waits
-  // greyed until the question is answered, rather than filing it against nothing.
-  const paidWith = row.getByRole('button', { name: 'Account for TOKO KOPI' });
-  await expect(paidWith).toHaveText('Which account?');
-  await expect(page.getByRole('button', { name: 'Record TOKO KOPI' })).toBeDisabled();
-  await paidWith.click();
-  await choosePayment(page, 'Everyday bank', 'Payment method');
+  // Whose money it was is the one thing a notification cannot know, and the row asks it (Mac Review): its Paid with
+  // cell is blank and its circle dashed until the question is answered, and ⌘Return files it against nothing.
+  await expect(row.getByLabel('Row payment method')).toHaveValue('');
+  await expect(row).toHaveAttribute('data-ready', 'false');
+  await recordDraft(page, 'TOKO KOPI');
+  await expect(row).toHaveCount(1);
+  await pickDraftAccount(page, 'TOKO KOPI', 'Everyday bank');
   await pickDraftCategory(page, 'TOKO KOPI', 'Groceries');
-  await page.getByRole('button', { name: 'Record TOKO KOPI' }).click();
+  await recordDraft(page, 'TOKO KOPI');
   await expect(page.getByTestId('draft-row')).toHaveCount(0);
 
   // Recorded where it belongs: the merchant is the transaction's own name, at the figure the notification printed.
@@ -53,8 +52,8 @@ test('the same payment caught by a screenshot minutes later stays one draft', as
   // phone, where rows have room for the words — see phone-capture.spec.ts.)
   const row = page.getByTestId('draft-row');
   await expect(row).toHaveCount(1);
-  await expect(row).toContainText('TOKO KOPI');
-  await expect(row).toContainText('38.000');
+  await expect(row.getByLabel('Row description')).toHaveValue('TOKO KOPI');
+  await expect(row.getByLabel('Row amount (IDR)')).toHaveValue(/38\.000$/);
 });
 
 test('a payment out and a top-up in are one transfer, and recording it moves both accounts', async ({ page }) => {
@@ -80,10 +79,13 @@ test('a payment out and a top-up in are one transfer, and recording it moves bot
 
   // Out of the bank and into the wallet is one movement: the halves pair, and the row keeps both captures.
   await expect(page.getByTestId('draft-row')).toHaveCount(3);
-  const transfer = page.getByTestId('draft-row').filter({ hasText: '200.000' });
+  const transfer = page.getByTestId('draft-row').filter({ has: page.locator('input[aria-label^="Row amount"][value$="200.000"]') });
   await expect(transfer).toHaveCount(1);
-  await expect(transfer).toContainText('Seen in 2 captures');
-  await transfer.getByRole('button', { name: /^Record / }).click();
+  // The row keeps both captures: its peek says so (the row itself has no line for it, as Cashflow's).
+  await transfer.getByTestId('review-tick').click();
+  await expect(page.getByTestId('review-peek')).toContainText('Seen in 2 captures');
+  await transfer.getByLabel(/^Row amount/).click();
+  await page.keyboard.press('ControlOrMeta+Enter');
 
   // Nothing was asked. A movement between the owner's own accounts is no spending, so no goal has a question to put
   // to it — the row simply goes, and the one that is left is the two seed captures waiting for their own answers.
@@ -126,7 +128,7 @@ test('an offer is skipped rather than queued, and can be brought back', async ({
   // Bringing it back overrules the filter for this one capture: it becomes the draft it would have been, at the
   // figure it printed.
   await expect(page.getByTestId('draft-row')).toHaveCount(1);
-  await expect(page.getByTestId('draft-row')).toContainText('10.000');
+  await expect(page.getByTestId('draft-row').getByLabel(/^Row amount/)).toHaveValue(/10\.000$/);
   await expect(page.getByText('Skipped (1)')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Skipped ·/ })).toHaveCount(0);
 });
