@@ -22,15 +22,16 @@ export interface CellPick {
   bottom: boolean;
 }
 
-// The class names are written out whole (no pieces put together), so the stylesheet's build finds them.
+// The class names are written out whole (no pieces put together), so the stylesheet's build finds them. A picked cell
+// fills its row's height (its words kept in the middle), so a block of them reads as one.
 /** One picked cell: the accent edge all round, the pale blue in it. */
-const ONE = 'rounded-[6px]! bg-[var(--mk-cell-pick)] shadow-[inset_0_0_0_2px_var(--mk-blue)]';
+const ONE = 'self-stretch content-center rounded-[6px]! bg-[var(--mk-cell-pick)] shadow-[inset_0_0_0_2px_var(--mk-blue)]';
 /** A cell of a block: the deeper pale blue, edged at its sides, and at the top or bottom where the block ends there. */
 const BLOCK = {
-  middle: 'rounded-none! bg-[var(--mk-cell-range)] shadow-[inset_2px_0_0_var(--mk-blue),inset_-2px_0_0_var(--mk-blue)]',
-  top: 'rounded-none! bg-[var(--mk-cell-range)] shadow-[inset_2px_0_0_var(--mk-blue),inset_-2px_0_0_var(--mk-blue),inset_0_2px_0_var(--mk-blue)]',
-  bottom: 'rounded-none! bg-[var(--mk-cell-range)] shadow-[inset_2px_0_0_var(--mk-blue),inset_-2px_0_0_var(--mk-blue),inset_0_-2px_0_var(--mk-blue)]',
-  both: 'rounded-[6px]! bg-[var(--mk-cell-range)] shadow-[inset_0_0_0_2px_var(--mk-blue)]',
+  middle: 'self-stretch content-center rounded-none! bg-[var(--mk-cell-range)] shadow-[inset_2px_0_0_var(--mk-blue),inset_-2px_0_0_var(--mk-blue)]',
+  top: 'self-stretch content-center rounded-none! bg-[var(--mk-cell-range)] shadow-[inset_2px_0_0_var(--mk-blue),inset_-2px_0_0_var(--mk-blue),inset_0_2px_0_var(--mk-blue)]',
+  bottom: 'self-stretch content-center rounded-none! bg-[var(--mk-cell-range)] shadow-[inset_2px_0_0_var(--mk-blue),inset_-2px_0_0_var(--mk-blue),inset_0_-2px_0_var(--mk-blue)]',
+  both: 'self-stretch content-center rounded-[6px]! bg-[var(--mk-cell-range)] shadow-[inset_0_0_0_2px_var(--mk-blue)]',
 } as const;
 /** The cell copied from: a dashed line just inside its edge. */
 const COPIED = 'outline-2 outline-dashed -outline-offset-[5px] outline-[var(--mk-blue)]';

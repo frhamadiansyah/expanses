@@ -894,8 +894,9 @@ export function DesktopCashflow({
               className={cx(
                 'text-[13.5px]',
                 peeking ? 'min-w-[560px]' : 'min-w-[700px]',
-                // The rows typed in (waiting, and the typing row) stand as tall as a recorded row, a hairline under each.
-                '[&_[data-testid=not-recorded-row]]:border-b [&_[data-testid=not-recorded-row]]:border-[var(--mk-line)] [&_[data-testid=not-recorded-row]]:py-[5px]',
+                // The rows typed in (waiting, and the typing row) stand as tall as a recorded row, a hairline under each;
+                // the height is the cells' own row's, so a picked cell can fill it (`cell-look`).
+                '[&_[data-testid=not-recorded-row]]:border-b [&_[data-testid=not-recorded-row]]:border-[var(--mk-line)] [&_[data-testid=not-recorded-row]_[data-quick-row]]:min-h-[40px]',
                 '[&_[data-testid=typing-row]]:border-t-0 [&_[data-testid=typing-row]_[data-quick-row]]:py-[4px]',
               )}
             >
