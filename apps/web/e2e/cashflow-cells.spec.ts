@@ -492,3 +492,24 @@ test('the Paid with list closes when another cell is clicked, whether a click on
   await typing.getByLabel('Row description').click();
   await expect(page.getByRole('listbox')).toHaveCount(0);
 });
+
+test('a category picked from a cell’s list with the mouse picks no cells: the press on the list starts no range', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'Bank Contoh', balance: '9000000' });
+  await page.goto('/transactions');
+  await pasteInto(page, ['2026-10-14\tPasar Lama\t\tBank Contoh\t41.500', '2026-10-15\tKios Sayur\t\tBank Contoh\t17.250', '2026-10-16\tToko Beras\t\tBank Contoh\t96.000'].join('\n'));
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(3);
+  const beras = draftRow(page, 'Toko Beras').getByLabel('Row category');
+  await beras.click();
+  await page.keyboard.type('Groc');
+  const option = page.getByRole('listbox').getByRole('option', { name: /Groceries/ });
+  const box = (await option.boundingBox())!;
+  // A hand pressing a choice (owner's video, 24 Nov): the list goes on the press, and the pointer, still down, now rests
+  // on another row's Category cell that the list had covered.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  const under = (await cellOf(draftRow(page, 'Pasar Lama'), 'category').boundingBox())!;
+  await page.mouse.move(under.x + under.width / 2, under.y + under.height / 2);
+  await page.mouse.up();
+  await expect(beras).toHaveValue('Groceries');
+  await expect(page.locator('[data-picked="true"]')).toHaveCount(0);
+});

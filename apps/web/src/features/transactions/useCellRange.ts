@@ -49,6 +49,10 @@ export function useCellRange({
   now.current = { range, picked, active, copyText, onPaste, onFill, onClear, onPick };
 
   const cellOf = (target: EventTarget | null): { column: CellColumn; id: string; el: HTMLElement } | null => {
+    // A cell's own list of choices hangs inside the cell but is no part of it: a press on a choice starts no drag, or the
+    // list, gone on that press, would leave the pointer over the rows it covered and stretch a range to them (owner's
+    // video, 24 Nov: four Category cells picked after choosing one).
+    if ((target as HTMLElement | null)?.closest?.('[role="listbox"]')) return null;
     const el = (target as HTMLElement | null)?.closest?.<HTMLElement>('[data-cell]');
     const column = el?.dataset.cell;
     const id = el?.dataset.cellRow;
