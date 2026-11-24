@@ -13,6 +13,7 @@ import { RecoveryScreen } from './features/recovery/RecoveryScreen';
 import { isMacApp, isPhoneApp } from './lib/mac';
 import { registerServiceWorker } from './lib/pwa';
 import { lockPortrait } from './native/orientation';
+import { installTabKey } from './native/tab-key';
 import { noteSkippedCopy } from './sync/sync-log-device';
 import './styles.css';
 
@@ -21,6 +22,9 @@ import './styles.css';
 if (isPhoneApp()) void lockPortrait();
 // The Mac app draws its sidebar under the window's buttons (styles: `.mac-app`).
 if (isMacApp()) document.documentElement.classList.add('mac-app');
+// The Mac app's web view hands Tab to the page but never moves focus for it, so the page does (native/tab-key.ts). The
+// end-to-end tests turn the same code on in Chromium (`__cicisTabKey`, e2e/mac-tab-key.spec.ts) to walk the Mac's order.
+if (isMacApp() || (globalThis as { __cicisTabKey?: unknown }).__cicisTabKey === true) installTabKey();
 
 registerServiceWorker();
 
