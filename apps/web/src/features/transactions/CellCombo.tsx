@@ -59,6 +59,9 @@ export function CellCombo({
   }
 
   function settle() {
+    // Leaving the cell always shuts its list, even one opened with nothing typed (↓): otherwise it stayed standing
+    // over the rows below (owner, 24 Nov).
+    setOpen(false);
     if (query === null) return;
     if (query.trim() === '') onChange('');
     else {
@@ -125,7 +128,7 @@ export function CellCombo({
         <span className="tabular pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs font-semibold text-slate-600">{selected.meta}</span>
       )}
       {open && (
-        <ul id={listId} role="listbox" className="absolute left-0 z-30 mt-1 max-h-64 w-full min-w-64 overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200">
+        <ul id={listId} role="listbox" onMouseDown={(event) => event.preventDefault()} className="absolute left-0 z-30 mt-1 max-h-64 w-full min-w-64 overflow-y-auto rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200">
           {matching.length === 0 && <li className="px-2 py-2 text-xs text-slate-500">Nothing matches.</li>}
           {matching.map((option, i) => (
             <li
