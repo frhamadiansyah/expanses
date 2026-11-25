@@ -52,24 +52,36 @@ export function useStockAndBroker(accountId: string, opts: { share?: boolean } =
     });
   const sameFund = (otherAccountId: string) => run(() => sameFundAs(database, ws, accountId, otherAccountId || null));
   /** A place not in the app, by name: it is the tax report's Nama institusi, written whole as the profile's other fields are. */
-  const placeName = (profile: AssetProfileRow, name: string) =>
+  const placeName = (profile: AssetProfileRow, name: string) => run(() => writePlace(profile, name));
+  /**
+   * A fund's or bond's Institution (owner, 25 Nov 2026): a broker's cash account it links to, a place typed by name
+   * (Other place), or none. A link also writes the account's name as the typed one, so the tax report's Nama institusi
+   * and the NPWP shared by holdings at one institution read the same name; a typed place or none lets the link go.
+   */
+  const heldAt = (profile: AssetProfileRow, choice: { accountId: string } | { name: string } | null) =>
     run(async () => {
-      if ((profile.coretaxFields.inst ?? '') === name.trim()) return;
-      await saveAssetProfile(database, ws, {
-        accountId: profile.accountId,
-        assetKind: profile.assetKind,
-        planGroup: profile.planGroup,
-        unitKind: profile.unitKind,
-        lotSize: profile.lotSize,
-        risk: profile.risk,
-        coretaxSection: profile.coretaxSection,
-        coretaxCode: profile.coretaxCode,
-        acquiredYear: profile.acquiredYear,
-        reportable: profile.reportable,
-        taxTreatment: profile.taxTreatment,
-        coretaxFields: { ...profile.coretaxFields, inst: name.trim() },
-      });
+      const brokerAccountId = choice && 'accountId' in choice ? choice.accountId : null;
+      if ((link?.brokerAccountId ?? null) !== brokerAccountId) await linkHolding(database, ws, { accountId, brokerAccountId });
+      const name = choice === null ? '' : 'accountId' in choice ? (accounts.find((a) => a.id === choice.accountId)?.name ?? '') : choice.name;
+      await writePlace(profile, name);
     });
+  async function writePlace(profile: AssetProfileRow, name: string) {
+    if ((profile.coretaxFields.inst ?? '') === name.trim()) return;
+    await saveAssetProfile(database, ws, {
+      accountId: profile.accountId,
+      assetKind: profile.assetKind,
+      planGroup: profile.planGroup,
+      unitKind: profile.unitKind,
+      lotSize: profile.lotSize,
+      risk: profile.risk,
+      coretaxSection: profile.coretaxSection,
+      coretaxCode: profile.coretaxCode,
+      acquiredYear: profile.acquiredYear,
+      reportable: profile.reportable,
+      taxTreatment: profile.taxTreatment,
+      coretaxFields: { ...profile.coretaxFields, inst: name.trim() },
+    });
+  }
 
-  return { link, security, ready, brokers, places, samePlaces, keptAt, newBroker, sameFund, placeName, error };
+  return { link, security, ready, brokers, places, samePlaces, keptAt, newBroker, sameFund, placeName, heldAt, error };
 }

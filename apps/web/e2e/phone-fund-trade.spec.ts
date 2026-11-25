@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { fillFigure } from './add-transaction';
 import { fundByMoney } from './fund-trade';
+import { pickTradeCash } from './trades';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -12,6 +13,8 @@ test('phone: a fund bought by amount grows by it, then sold with All down to not
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const sheet = page.getByRole('dialog');
   await fillFigure(sheet, 'Amount', '500000');
+  // No account is chosen for her until one has been used (owner, 25 Nov 2026): picked here once.
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   await page.getByRole('button', { name: 'Record buy' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('asset-card')).toContainText('1.552.000');

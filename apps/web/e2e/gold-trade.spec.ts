@@ -18,7 +18,9 @@ test('Buy gold bars: grams and the receipt’s total, and the holding gains both
   // The holding is fixed and named alone, as Expense's Category row reads: no second line under it.
   const holding = page.getByTestId('trade-holding');
   await expect(holding).toHaveText(GOLD);
-  // Paid with first, as Expense: the bank is chosen already.
+  // Paid with first, as Expense: nothing is chosen until an account has been used for this holding (owner, 25 Nov 2026).
+  await expect(sheet.getByRole('button', { name: /^Payment method/ })).not.toContainText('BCA');
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   await expect(sheet.getByRole('button', { name: /^Payment method/ })).toContainText('BCA');
   await expect(page.getByRole('button', { name: 'Record buy' })).toBeDisabled();
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
@@ -40,6 +42,9 @@ test('Sell gold bars: the gain against the average cost, no more grams than are 
   await page.getByRole('button', { name: 'Sell', exact: true }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByRole('heading', { name: 'Sell' })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: /^Received into/ })).not.toContainText('BCA');
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, sheet, 'Received into', 'BCA');
   await expect(sheet.getByRole('button', { name: /^Received into/ })).toContainText('BCA');
   const grams = sheet.getByLabel('Grams', { exact: true });
   await grams.fill('2');
@@ -71,6 +76,8 @@ test('Add more details opens a second box in the same sheet; a fee folded away i
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9850000');
 
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   const toggle = sheet.getByRole('button', { name: 'Add more details' });
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
@@ -123,6 +130,8 @@ test('a sell from a goal takes its grams out of that goal', async ({ page }) => 
   let sheet = page.getByRole('dialog');
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9850000');
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   await openTradeDetails(sheet);
   await chooseGoal(sheet, 'Hajj fund');
   await page.getByRole('button', { name: 'Record buy' }).click();

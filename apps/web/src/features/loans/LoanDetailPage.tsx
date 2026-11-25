@@ -428,7 +428,8 @@ function PayOffSheet({ accountId, currency, balanceMinor, onClose }: { accountId
   const { database, ws } = useApp();
   const { money } = usePayingAccounts();
   const today = isoDate();
-  const side = useCashSide(money[0]?.id ?? null);
+  // A loan is paid off from its first paying account, as before; the account is picked from the list otherwise.
+  const side = useCashSide((choices) => (choices.some((a) => a.id === money[0]?.id) ? money[0]!.id : (choices[0]?.id ?? null)));
   const [picking, setPicking] = useState(false);
   const [fee, setFee] = useState('');
   const [asShare, setAsShare] = useState(false);

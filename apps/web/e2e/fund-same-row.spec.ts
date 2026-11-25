@@ -3,6 +3,7 @@ import { openAccount } from './accounts';
 import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { openAsset } from './asset-page';
 import { openAssets } from './drawers';
+import { setInstitution } from './fund-trade';
 
 const HOLDING = /\/net-worth\/assets\/([^/]+)$/;
 const ACROSS = /\/net-worth\/investments\/security\/[^/]+$/;
@@ -29,10 +30,7 @@ async function fundAt(page: Page, o: { name: string; amount: string; value: stri
   await page.getByLabel('Value', { exact: true }).fill(o.value);
   await page.getByRole('button', { name: 'Save value' }).click();
   await expect(page.getByTestId('asset-card')).toContainText(o.value.replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
-  const held = page.getByLabel('Institution', { exact: true });
-  await held.fill(o.place);
-  await held.blur();
-  await expect(held).toHaveValue(o.place);
+  await setInstitution(page, { other: o.place });
   return HOLDING.exec(new URL(page.url()).pathname)![1]!;
 }
 

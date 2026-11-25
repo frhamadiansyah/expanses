@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { fillDay, openNewAsset } from './add-asset';
 import { addEstimated, addPriced, changeCostAndEstimates, openAsset, priceSaid, typePrice } from './asset-page';
 import { mockRates } from './pockets';
+import { pickTradeCash } from './trades';
 import { backFromSettings, openAccount, openValueSheet } from './accounts';
 
 test.beforeEach(({ page }) => {
@@ -181,6 +182,8 @@ test('Buy opens the holding’s own sheet over the page, and records there', asy
   await expect(sheet.getByRole('button', { name: 'More options' })).toHaveCount(0);
   await sheet.getByLabel('Grams', { exact: true }).fill('2');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('4970000');
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   await page.getByRole('button', { name: 'Record buy', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('Gold bullion · 12 g')).toBeVisible();
