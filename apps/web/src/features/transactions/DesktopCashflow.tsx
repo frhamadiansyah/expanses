@@ -29,7 +29,10 @@ import { NewPaidPeek } from './NewPaidPeek';
 import { quickFromDraft, type QuickValues, shortDate } from './quick-row';
 import { UndoToast } from '../../ui/UndoToast';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
-import { ReceiptPeek } from './ReceiptPeek';
+import { ReceiptPeek, ReceiptRowMenu } from './ReceiptPeek';
+import { TableMenu, type TableMenuItem } from './TableMenu';
+import { copyToClipboard, pasteFromClipboard } from './clipboard';
+import { useUndoKeys, useUndoStack } from './undo-stack';
 import { useSpendingTrend } from './SpendingTrend';
 import { NOT_MONTHLY_LABEL, notMonthlyWord } from './not-monthly';
 import { EditableRow, type TableHandlers, TypingRow } from './TransactionsTable';
@@ -517,6 +520,12 @@ export function DesktopCashflow({
       if (ids.length > 0) dispatch({ type: 'all', ids });
       return;
     }
+    // Space on a row whose peek is open closes it (quick look's way, owner 2026-11-25); a focused row's Space opens it.
+    if (event.key === ' ' && selected && !typing && !covered && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !target?.closest('button, a')) {
+      event.preventDefault();
+      dispatch({ type: 'close' });
+      return;
+    }
     const action = peekKey(event.key, { count: selected ? 1 : selection.ids.length, typing, covered });
     if (!action) return;
     // Return on a button or a link (the peek's Delete, say) is that control's own press, never the edit screen.
@@ -537,7 +546,20 @@ export function DesktopCashflow({
   const [marks, setMarks] = useState(readMarks);
   // Rows recorded from the waiting rows: the toast says which month they went to, with Show › and Undo (option E), and
   // how many Record N or Record all left waiting.
-  const [recorded, setRecorded] = useState<{ items: { draftId: string; transactionId: string; month: string }[]; skipped: number } | null>(null);
+  const [recorded, setRecordedState] = useState<{ items: { draftId: string; transactionId: string; month: string }[]; skipped: number; entry: number | null } | null>(null);
+  // Rows recorded go on the table's stack too: ⌘Z puts them back waiting, as the toast's Undo does (nothing to redo).
+  const setRecorded = (next: { items: { draftId: string; transactionId: string; month: string }[]; skipped: number } | null) => {
+    if (!next) return setRecordedState(null);
+    const entry = handlers.unrecord
+      ? undo.push({
+          undo: () => {
+            setRecordedState(null);
+            return handlers.unrecord?.(next.items);
+          },
+        })
+      : null;
+    setRecordedState({ ...next, entry });
+  };
   // While Record N or Record all runs, each row recorded joins one toast rather than showing its own.
   const batch = useRef<{ draftId: string; transactionId: string; month: string }[] | null>(null);
   const [recordingMany, setRecordingMany] = useState(false);
@@ -587,10 +609,47 @@ export function DesktopCashflow({
       return ok;
     },
   };
+  // A waiting row's cell typed in goes on the table's stack (owner 2026-11-25): ⌘Z puts the row back as it was.
+  const typedHandlers: TableHandlers = {
+    ...deskHandlers,
+    saveDraft: async (id, values, record, onRecorded) => {
+      const was = drafts.find((draft) => draft.id === id);
+      const before = was ? quickFromDraft(was, today, accounts) : null;
+      const saving = deskHandlers.saveDraft(id, values, record, onRecorded);
+      // On the stack as the save starts, so ⌘Z straight after waits for it; a save that fails leaves it.
+      const entry =
+        !record && before && (Object.keys(values) as (keyof QuickValues)[]).some((key) => values[key] !== before[key])
+          ? undo.push({ ready: saving, undo: () => deskHandlers.saveDraft(id, before, false), redo: () => deskHandlers.saveDraft(id, values, false) })
+          : null;
+      const ok = await saving;
+      if (!ok && entry !== null) undo.drop(entry);
+      return ok;
+    },
+  };
   // The blue cells: a range down one column, across recorded rows and the waiting rows under them (`cashflow-cells`).
   // Starting one lets the picked rows and their peek go, so the two selections never show at once.
   const tableRows = [...rows, ...waiting];
+  // The table's Undo and Redo (owner 2026-11-25): ⌘Z puts back the last change made in it, ⇧⌘Z makes it again.
+  const undo = useUndoStack();
+  useUndoKeys(undo, !readOnly);
+  // Quick look (Space on picked cells, as Finder's): the peek follows the cell as the arrows move it.
+  const [look, setLook] = useState(false);
+  // The right-click menu, at the pointer, for the row it was opened on.
+  const [menu, setMenu] = useState<{ id: string; column: CellColumn | null; x: number; y: number } | null>(null);
   const cells = useCashflowCells({
+    undo,
+    onLook: (id) => {
+      if (look) {
+        setLook(false);
+        dispatch({ type: 'close' });
+        return;
+      }
+      const row = rows.find((one) => one.id === id);
+      if (!row || !peekable(row)) return;
+      setLook(true);
+      dispatch({ type: 'open', id });
+    },
+    onMenu: setMenu,
     rows: tableRows,
     today,
     accounts,
@@ -603,6 +662,19 @@ export function DesktopCashflow({
     // ⌘Return on picked cells records the waiting rows they are in, as Record N does.
     onRecord: (ids) => void recordMany(recordable(ids, [...rows.filter((row) => row.kind === 'draft'), ...waiting], accounts, today, baseCurrency)),
   });
+  const lookAt = cells.active ? (cells.range?.focus ?? null) : null;
+  useEffect(() => {
+    if (!look) return;
+    // The blue let go: the peek stays, as a peek opened by a click.
+    if (!lookAt) {
+      setLook(false);
+      return;
+    }
+    const row = rows.find((one) => one.id === lookAt);
+    if (row && peekable(row)) {
+      if (one !== lookAt) dispatch({ type: 'open', id: lookAt });
+    } else if (selection.ids.length > 0) dispatch({ type: 'close' });
+  }, [look, lookAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const guessOf = (id: string) => {
     const mark = marks[id];
     const hint = guessHint(mark);
@@ -661,14 +733,25 @@ export function DesktopCashflow({
     tickAnchor.current = id;
   };
   // ⌫'s toast: the rows discarded, put back by its Undo; a pasted row's marks are let go only once the toast has gone.
-  const [discarded, setDiscarded] = useState<string[] | null>(null);
+  const [discarded, setDiscarded] = useState<{ ids: string[]; entry: number } | null>(null);
   const discardWaiting = async (chosen: readonly string[]) => {
     const gone: string[] = [];
     for (const id of chosen) if (await handlers.dismissDraft(id)) gone.push(id);
     if (gone.length === 0) return;
     dispatch({ type: 'close' });
     setRecorded(null);
-    setDiscarded((was) => [...(was ?? []), ...gone]);
+    // On the table's stack: ⌘Z brings them back, ⇧⌘Z discards them again.
+    const entry: number = undo.push({
+      undo: () => {
+        setDiscarded(null);
+        return handlers.undiscard?.(gone);
+      },
+      redo: async () => {
+        for (const id of gone) await handlers.dismissDraft(id);
+        setDiscarded({ ids: gone, entry });
+      },
+    });
+    setDiscarded((was) => ({ ids: [...(was?.ids ?? []), ...gone], entry }));
   };
   const recordMany = async (which: { ready: readonly ListRow[]; skipped: number }) => {
     setDiscarded(null);
@@ -697,6 +780,32 @@ export function DesktopCashflow({
           onRecord: () => void recordMany(pickedWaiting),
         }
       : undefined;
+  /** The cells' Copy and Paste, at the head of the right-click menu, while cells are picked. */
+  const cellItems = (): TableMenuItem[] =>
+    !cells.active
+      ? []
+      : [
+          {
+            key: 'copy',
+            label: 'Copy',
+            keys: '⌘C',
+            onPick: () => {
+              copyToClipboard(cells.copied());
+              cells.markCopied();
+            },
+          },
+          ...(readOnly ? [] : [{ key: 'paste', label: 'Paste', keys: '⌘V', onPick: () => void pasteFromClipboard(cells.pasteText) }]),
+        ];
+  // The right-click menu (owner 2026-11-25): a recorded row's is its peek's own doings; a waiting row's, Delete.
+  const rowMenu = (at: { id: string; x: number; y: number }) => {
+    const close = () => setMenu(null);
+    const row = tableRows.find((one) => one.id === at.id);
+    if (!row) return null;
+    if (peekable(row)) return <ReceiptRowMenu key={at.id} transactionId={row.tx!.id} x={at.x} y={at.y} lead={cellItems()} onOpen={() => dispatch({ type: 'open', id: row.id })} onClose={close} />;
+    const items = cellItems();
+    if (row.kind === 'draft' && !readOnly) items.push({ key: 'delete', label: 'Delete', keys: '⌫', danger: true, divided: true, onPick: () => void discardWaiting([row.id]) });
+    return items.length > 0 ? <TableMenu x={at.x} y={at.y} items={items} onClose={close} /> : null;
+  };
   const toast = recorded ? recordedToast(recorded.items.map((item) => item.month), recorded.skipped) : null;
   const at = selected ? peekIds.indexOf(selected.id) : -1;
   // A column's name sorts the table by it (owner 2026-11-25): its menu's two orders, the arrow after the name while on.
@@ -974,7 +1083,7 @@ export function DesktopCashflow({
                 {rows.map((row) =>
                   row.kind === 'draft' ? (
                     <li key={`d:${row.id}`} className="list-none">
-                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{ striped: false, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.cellPick(row.id)} />
+                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={typedHandlers} desk={{ striped: false, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.cellPick(row.id)} />
                     </li>
                   ) : (
                     <DeskRow
@@ -998,7 +1107,7 @@ export function DesktopCashflow({
                       accounts={accounts}
                       today={today}
                       baseCurrency={baseCurrency}
-                      handlers={deskHandlers}
+                      handlers={typedHandlers}
                       desk={{
                         striped: false,
                         selected: picked.has(row.id),
@@ -1044,24 +1153,29 @@ export function DesktopCashflow({
           first={at <= 0}
           last={at === peekIds.length - 1}
           onStep={(by) => dispatch({ type: 'step', by, ids: peekIds })}
-          onClose={() => dispatch({ type: 'close' })}
+          onClose={() => {
+            setLook(false);
+            dispatch({ type: 'close' });
+          }}
+          keys={!readOnly}
         />
       )}
       {/* ⌫ on waiting rows: how many went, with Undo (option A). */}
       {discarded && (
         <UndoToast
-          key={discarded.join(',')}
+          key={discarded.ids.join(',')}
           icon="discarded"
           testId="discarded-toast"
-          text={discardedLine(discarded.length)}
+          text={discardedLine(discarded.ids.length)}
           wide
           onUndo={() => {
-            const ids = discarded;
+            const { ids, entry } = discarded;
             setDiscarded(null);
+            undo.drop(entry);
             void handlers.undiscard?.(ids);
           }}
           onDone={() => {
-            for (const id of discarded) forgetMark(id);
+            for (const id of discarded.ids) forgetMark(id);
             setMarks(readMarks());
             setDiscarded(null);
           }}
@@ -1071,6 +1185,7 @@ export function DesktopCashflow({
         <NewPaidPeek key={`${adding.kind}:${adding.text}`} top={peekTop} choice={adding} onClose={() => setAdding(null)} onCreated={(accountId) => void addedPaid(adding, accountId)} />
       )}
       {cells.picker}
+      {menu && rowMenu(menu)}
       {/* Rows recorded from the waiting rows went to their own month: where, with Show › there, and Undo (option E). */}
       {recorded && toast && (
         <UndoToast
@@ -1094,8 +1209,9 @@ export function DesktopCashflow({
             ) : null
           }
           onUndo={() => {
-            const items = recorded.items;
+            const { items, entry } = recorded;
             setRecorded(null);
+            if (entry !== null) undo.drop(entry);
             void handlers.unrecord?.(items);
           }}
           onDone={() => setRecorded(null)}

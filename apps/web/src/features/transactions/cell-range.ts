@@ -170,18 +170,26 @@ export function changeLine(changed: number, skipped: readonly { reason: SkipReas
  * the cell; ⌘Return records the rows the picked cells are in. Typing in a field asks for nothing — the field's own keys
  * are its own.
  */
-export type RangeKey = 'fill' | 'clear' | 'pick' | 'close' | 'record' | PickMove | 'more up' | 'more down' | 'type' | null;
+export type RangeKey = 'fill' | 'clear' | 'pick' | 'close' | 'record' | PickMove | 'more up' | 'more down' | 'type' | 'look' | PickJump | 'more first' | 'more last' | 'column' | null;
 
 export type PickMove = 'up' | 'down' | 'left' | 'right';
+
+/** ⌘↑ ⌘↓: the column's first or last row; Home and End: the row's first or last cell (owner 2026-11-25). */
+export type PickJump = 'first' | 'last' | 'home' | 'end';
 
 export function rangeKey(event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }, typing: boolean): RangeKey {
   if (typing || event.altKey) return null;
   const command = event.metaKey || event.ctrlKey;
   if (command) {
-    if (event.shiftKey) return null;
+    // ⇧⌘↑ ⇧⌘↓ stretch the blue to the column's first or last row; nothing else with ⇧.
+    if (event.shiftKey) return event.key === 'ArrowUp' ? 'more first' : event.key === 'ArrowDown' ? 'more last' : null;
     // ⌘Return records the rows of the picked cells (owner, 2026-11-24: plain Return only ends a cell's typing).
     if (event.key === 'Enter') return 'record';
-    return event.key.toLowerCase() === 'd' ? 'fill' : null;
+    if (event.key === 'ArrowUp') return 'first';
+    if (event.key === 'ArrowDown') return 'last';
+    const letter = event.key.toLowerCase();
+    // ⌘A picks the whole column, the rows shown (owner 2026-11-25).
+    return letter === 'd' ? 'fill' : letter === 'a' ? 'column' : null;
   }
   switch (event.key) {
     case 'Backspace':
@@ -191,6 +199,13 @@ export function rangeKey(event: { key: string; metaKey: boolean; ctrlKey: boolea
       return 'pick';
     case 'Escape':
       return 'close';
+    // Space is Finder's quick look (owner 2026-11-25): the row's panel, opened or closed.
+    case ' ':
+      return event.shiftKey ? null : 'look';
+    case 'Home':
+      return event.shiftKey ? null : 'home';
+    case 'End':
+      return event.shiftKey ? null : 'end';
     case 'ArrowUp':
       return event.shiftKey ? 'more up' : 'up';
     case 'ArrowDown':
@@ -205,6 +220,32 @@ export function rangeKey(event: { key: string; metaKey: boolean; ctrlKey: boolea
   }
   // One printable character (a space is not a start); a dead key or a name such as "F5" is not one.
   return [...event.key].length === 1 && event.key !== ' ' ? 'type' : null;
+}
+
+/**
+ * A jump on blue cells (owner 2026-11-25): ⌘↑ ⌘↓ one cell, the column's first or last row; Home and End one cell, the
+ * row's first or last column (`columns`, the ones this row shows). An empty table leaves the blue where it is.
+ */
+export function jumpPick(range: CellRange, ids: readonly string[], columns: readonly CellColumn[], jump: PickJump): CellRange {
+  if (jump === 'first' || jump === 'last') {
+    const id = jump === 'first' ? ids[0] : ids[ids.length - 1];
+    return id ? startRange(range.column, id) : range;
+  }
+  const column = jump === 'home' ? columns[0] : columns[columns.length - 1];
+  return startRange(column ?? range.column, range.focus);
+}
+
+/** ⇧⌘↑ ⇧⌘↓: the far end to the column's first or last row, the cell first picked staying. */
+export function stretchTo(range: CellRange, ids: readonly string[], end: 'first' | 'last'): CellRange {
+  const id = end === 'first' ? ids[0] : ids[ids.length - 1];
+  return id ? { column: range.column, anchor: range.anchor, focus: id } : range;
+}
+
+/** ⌘A: every cell of the column, the rows the table shows. */
+export function columnPick(range: CellRange, ids: readonly string[]): CellRange {
+  const first = ids[0];
+  const last = ids[ids.length - 1];
+  return first && last ? { column: range.column, anchor: first, focus: last } : range;
 }
 
 /**

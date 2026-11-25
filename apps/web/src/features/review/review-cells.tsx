@@ -1,11 +1,12 @@
 import { groupedMajorString, isoDate, parseLooseAmount, parseLooseDate } from '@expanses/core';
 import type { AccountRow, CardRow, DraftEdit, DraftRow } from '@expanses/db';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { type CellChange, type CellColumn, type CellTarget, changeLine, planChange, type SkipReason } from '../transactions/cell-range';
 import { rememberedCategory } from '../transactions/paste-categories';
 import { buildRowOptions } from '../transactions/QuickRowEditor';
 import { type QuickValues, shortDate } from '../transactions/quick-row';
 import { useCellRange } from '../transactions/useCellRange';
+import type { UndoStack } from '../transactions/undo-stack';
 import { CellBulkField } from '../transactions/CellBulkField';
 import { draftFigure, sumFigures, sumLine } from '../transactions/table-figures';
 import { effectiveCategory } from './capture-view';
@@ -57,7 +58,14 @@ export function useReviewCells({
   onPickAccount,
   onStart,
   onRecord,
+  undo: stack,
+  onLook,
+  onMenu,
 }: {
+  /** The table's Undo and Redo (`undo-stack`): each change is put on it, and the line's Undo is its top. */
+  undo: UndoStack;
+  onLook?: (id: string) => void;
+  onMenu?: Parameters<typeof useCellRange>[0]['onMenu'];
   /** The table's rows, in its order. */
   rows: readonly DraftRow[];
   /** Whether the table is the queue (To review): only then may a cell change. */
@@ -75,7 +83,10 @@ export function useReviewCells({
   const ids = rows.map((draft) => draft.id);
   const byId = new Map(rows.map((draft) => [draft.id, draft]));
   const options = buildRowOptions(accounts, cards);
-  const [note, setNote] = useState<{ text: string; undo: CellChange<ReviewCells>[] | null } | null>(null);
+  const [note, setNote] = useState<{ text: string; entry: number | null } | null>(null);
+  // The rows as they stand now, for an Undo or Redo made later than the change.
+  const current = useRef(byId);
+  current.current = byId;
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<{ column: 'category' | 'paid'; ids: string[] } | null>(null);
 
@@ -179,18 +190,27 @@ export function useReviewCells({
       return why ? { ...target, values: null, refusal: why } : target;
     });
     const plan = planChange(targets, (cells, id) => next(cells, byId.get(id)!), same);
+    if (plan.changes.length === 0) {
+      setNote({ text: changeLine(0, plan.skipped), entry: null });
+      return;
+    }
+    // One change on the table's stack, put there as it starts (⌘Z waits for it to land); a failed write is left out.
+    const saved = new Set<CellChange<ReviewCells>>();
+    let landed = () => undefined as void;
+    const entry = stack.push({ ready: new Promise<void>((resolve) => (landed = resolve)), undo: () => putBack(plan.changes.filter((c) => saved.has(c)), 'before'), redo: () => putBack(plan.changes.filter((c) => saved.has(c)), 'after') });
     setBusy(true);
-    const done: CellChange<ReviewCells>[] = [];
     const failed: { id: string; reason: SkipReason }[] = [];
     try {
       for (const change of plan.changes) {
-        if (await write(byId.get(change.id)!, change.before, change.after)) done.push(change);
+        if (await write(byId.get(change.id)!, change.before, change.after)) saved.add(change);
         else failed.push({ id: change.id, reason: 'not saved' });
       }
     } finally {
       setBusy(false);
+      landed();
     }
-    setNote({ text: changeLine(done.length, [...plan.skipped, ...failed]), undo: done.length > 0 ? done : null });
+    if (saved.size === 0) stack.drop(entry);
+    setNote({ text: changeLine(saved.size, [...plan.skipped, ...failed]), entry: saved.size > 0 ? entry : null });
   }
 
   /**
@@ -210,7 +230,25 @@ export function useReviewCells({
       accountId: values.accountId || null,
       cardId: values.cardId || null,
     };
-    if (!same(before, after) && !(await write(draft, before, after))) return null;
+    if (!same(before, after)) {
+      // A row's cells typed in go on the table's stack as the write starts (owner 2026-11-25): ⌘Z puts the row back.
+      const writing = write(draft, before, after);
+      const entry = stack.push({
+        ready: writing,
+        undo: () => {
+          const now = current.current.get(draft.id);
+          return now ? write(now, after, before) : undefined;
+        },
+        redo: () => {
+          const now = current.current.get(draft.id);
+          return now ? write(now, before, after) : undefined;
+        },
+      });
+      if (!(await writing)) {
+        stack.drop(entry);
+        return null;
+      }
+    }
     return {
       ...draft,
       occurredOn: after.occurredOn,
@@ -222,12 +260,13 @@ export function useReviewCells({
     };
   }
 
-  async function undo(changes: readonly CellChange<ReviewCells>[]) {
+  /** A change put back (`before`) or made again (`after`), by the same paths a cell writes by. */
+  async function putBack(changes: readonly CellChange<ReviewCells>[], side: 'before' | 'after') {
     setBusy(true);
     try {
-      for (const change of [...changes].reverse()) {
-        const draft = byId.get(change.id);
-        if (draft) await write(draft, change.after, change.before);
+      for (const change of side === 'before' ? [...changes].reverse() : changes) {
+        const draft = current.current.get(change.id);
+        if (draft) await write(draft, side === 'before' ? change.after : change.before, change[side]);
       }
     } finally {
       setBusy(false);
@@ -239,6 +278,8 @@ export function useReviewCells({
     ids,
     // Review picks no rows with ⌘-click: there it picks cells, next to each other or not.
     commandPicksRows: false,
+    onLook,
+    onMenu,
     onRecord: (picked) => onRecord?.(picked.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))),
     // Review's ⇧-click picks nothing else: from any cell, it stretches the range.
     shiftExtends: () => true,
@@ -293,8 +334,8 @@ export function useReviewCells({
   const line: ReactNode = note ? (
     <p data-testid="cell-change" role="status" className="flex flex-wrap items-center gap-x-[10px] px-[14px] pb-[6px] text-[11.5px] text-[var(--ph-ink-2)]">
       <span>{note.text}</span>
-      {note.undo && (
-        <button type="button" disabled={busy} onClick={() => void undo(note.undo!)} className="text-[var(--mac-accent)] hover:underline disabled:opacity-50">
+      {note.entry !== null && note.entry === stack.top() && (
+        <button type="button" disabled={busy} onClick={() => void stack.undo()} className="text-[var(--mac-accent)] hover:underline disabled:opacity-50">
           Undo
         </button>
       )}

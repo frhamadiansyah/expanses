@@ -1,6 +1,6 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import type { CellPick } from './cell-look';
-import { type CellColumn, type CellRange, extendRange, fillReach, isCellColumn, movePick, pasteAssignments, pastedLines, rangeIds, rangeKey, rowAtHeight, startRange, stretchPick, togglePick } from './cell-range';
+import { type CellColumn, type CellRange, columnPick, extendRange, fillReach, isCellColumn, jumpPick, movePick, pasteAssignments, pastedLines, rangeIds, rangeKey, rowAtHeight, startRange, stretchPick, stretchTo, togglePick } from './cell-range';
 
 /**
  * The blue cells of a Mac table (`cell-range`): which cells are picked, and the mouse and keys that pick and use them.
@@ -33,6 +33,8 @@ export function useCellRange({
   enabled = true,
   commandPicksRows = true,
   onRecord,
+  onLook,
+  onMenu,
 }: {
   /** The rows in the table's order. */
   ids: readonly string[];
@@ -54,6 +56,13 @@ export function useCellRange({
   commandPicksRows?: boolean;
   /** ⌘Return with cells picked: records the rows they are in, as the table records a row. */
   onRecord?: (ids: readonly string[]) => void;
+  /** Space with cells picked (Finder's quick look, owner 2026-11-25): the row of the cell last reached. */
+  onLook?: (id: string) => void;
+  /**
+   * A right-click (or a two-finger click) on the table (owner 2026-11-25): the table's own menu at the pointer, never
+   * the system's. On a cell not picked, that cell is picked first; `column` is null on a row but off its cells.
+   */
+  onMenu?: (at: { id: string; column: CellColumn | null; x: number; y: number }) => void;
 }) {
   const [range, setRangeState] = useState<CellRange | null>(null);
   /** Whether the range is picked (blue), not just the cell last clicked. */
@@ -104,8 +113,8 @@ export function useCellRange({
   };
 
   // What the document's listeners read: the newest of everything, without listening again on every render.
-  const now = useRef({ range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart, onRecord });
-  now.current = { range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart, onRecord };
+  const now = useRef({ range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart, onRecord, onLook });
+  now.current = { range, picked, active, ids, copyText, onPaste, onFill, onClear, onPick, onStart, onRecord, onLook };
 
   const cellOf = (target: EventTarget | null): { column: CellColumn; id: string; el: HTMLElement } | null => {
     // A cell's own list of choices hangs inside the cell but is no part of it: a press on a choice starts no drag, or the
@@ -217,7 +226,8 @@ export function useCellRange({
     const away = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (container.current?.contains(target) || covered()) return;
-      if ((target as HTMLElement | null)?.closest?.('[role="dialog"], [role="listbox"]')) return;
+      // A sheet, a cell's list, the table's own menu, or a bar that works on the picked cells (Find and replace).
+      if ((target as HTMLElement | null)?.closest?.('[role="dialog"], [role="listbox"], [role="menu"], [data-keeps-cells]')) return;
       letGo();
     };
     /** Typing in a picked cell: its field takes the keyboard, holding `typed` in place of what it held when given. */
@@ -287,9 +297,30 @@ export function useCellRange({
         cellEl(next.column, next.focus)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
         rest();
       };
+      const columnsOf = (id: string) =>
+        [...(container.current?.querySelectorAll<HTMLElement>('[data-cell]') ?? [])]
+          .filter((el) => el.dataset.cellRow === id)
+          .map((el) => el.dataset.cell)
+          .filter(isCellColumn);
       switch (asked) {
         case 'close':
           letGo();
+          return;
+        case 'look':
+          now.current.onLook?.(r.focus);
+          return;
+        case 'first':
+        case 'last':
+        case 'home':
+        case 'end':
+          show(jumpPick(r, rows, columnsOf(r.focus), asked));
+          return;
+        case 'more first':
+        case 'more last':
+          show(stretchTo(r, rows, asked === 'more first' ? 'first' : 'last'));
+          return;
+        case 'column':
+          show(columnPick(r, rows));
           return;
         case 'record': {
           // One row: recorded as ⌘Return in its own cells records it, with what its cells hold now (an edit just ended
@@ -308,14 +339,9 @@ export function useCellRange({
         case 'up':
         case 'down':
         case 'left':
-        case 'right': {
-          const columns = [...(container.current?.querySelectorAll<HTMLElement>('[data-cell]') ?? [])]
-            .filter((el) => el.dataset.cellRow === r.focus)
-            .map((el) => el.dataset.cell)
-            .filter(isCellColumn);
-          show(movePick(r, rows, columns, asked));
+        case 'right':
+          show(movePick(r, rows, columnsOf(r.focus), asked));
           return;
-        }
         case 'more up':
         case 'more down':
           show(stretchPick(r, rows, asked === 'more up' ? -1 : 1));
@@ -481,6 +507,21 @@ export function useCellRange({
         }, 280);
       }
     },
+    onContextMenu: (event: ReactMouseEvent) => {
+      if (!enabled) return;
+      const cell = cellOf(event.target);
+      const row = cell?.id ?? (event.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-peek-row], [data-row-id]');
+      const id = typeof row === 'string' ? row : (row?.dataset.peekRow ?? row?.dataset.rowId);
+      if (!id) return;
+      // The table's own menu, never the system's (the web view's Reload, Inspect).
+      event.preventDefault();
+      event.stopPropagation();
+      if (cell && !(active && range && picked.includes(cell.id) && range.column === cell.column)) {
+        hold(startRange(cell.column, cell.id));
+        begin();
+      }
+      onMenu?.({ id, column: cell?.column ?? null, x: event.clientX, y: event.clientY });
+    },
     onDoubleClickCapture: (event: ReactMouseEvent) => {
       const cell = cellOf(event.target);
       if (!active || picked.length < 2 || !range || !cell || cell.column !== range.column || !picked.includes(cell.id)) return;
@@ -536,5 +577,19 @@ export function useCellRange({
       rest();
     },
     clear: letGo,
+    /** The picked cells' words, as ⌘C copies them (the menu's Copy). */
+    copied: () => (active && range ? copyText(range.column, picked) : ''),
+    /** The menu's Copy done: the cells copied from are dashed, as after ⌘C. */
+    markCopied: () => {
+      if (active && range) setCopied({ column: range.column, ids: [...picked] });
+    },
+    /** Words pasted into the picked cells, as ⌘V pastes them (the menu's Paste). */
+    pasteText: (text: string) => {
+      if (!active || !range) return;
+      const lines = pastedLines(text);
+      if (lines.length === 0) return;
+      setCopied(null);
+      onPaste(range.column, pasteAssignments(picked, lines));
+    },
   };
 }

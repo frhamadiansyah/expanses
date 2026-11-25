@@ -14,6 +14,7 @@ import type { RowOptions } from './QuickRowEditor';
 import { isQuickEditable, notionKey, paymentOptions, quickFromDraft, quickFromTransaction, type QuickValues, shortDate, withoutNotionLinks } from './quick-row';
 import type { TableHandlers } from './TransactionsTable';
 import { useCellRange } from './useCellRange';
+import type { UndoStack } from './undo-stack';
 import { cashflowFigure } from './cashflow-desk-model';
 import { sumFigures, sumLine } from './table-figures';
 
@@ -54,7 +55,14 @@ export function useCashflowCells({
   baseCurrency,
   onStart,
   onRecord,
+  undo: stack,
+  onLook,
+  onMenu,
 }: {
+  /** The table's Undo and Redo (`undo-stack`): each change is put on it, and the line's Undo is its top. */
+  undo: UndoStack;
+  onLook?: (id: string) => void;
+  onMenu?: Parameters<typeof useCellRange>[0]['onMenu'];
   rows: readonly ListRow[];
   /** The workspace's currency: what a sum of picked amounts is said in (`cashflowFigure`). */
   baseCurrency: string;
@@ -72,7 +80,7 @@ export function useCashflowCells({
   const cards = useCards().data ?? [];
   const ids = rows.map((row) => row.id);
   const byId = new Map(rows.map((row) => [row.id, row]));
-  const [note, setNote] = useState<{ text: string; undo: CellChange<QuickValues>[] | null } | null>(null);
+  const [note, setNote] = useState<{ text: string; entry: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<{ column: 'category' | 'paid'; ids: string[] } | null>(null);
 
@@ -150,29 +158,43 @@ export function useCashflowCells({
     });
     // A recorded row keeps a cell that is pasted empty: only a draft is cleared.
     const plan = planChange(targets, next, same, opts);
+    if (plan.changes.length === 0) {
+      setNote({ text: changeLine(0, plan.skipped), entry: null });
+      return;
+    }
+    // One change on the table's stack, however many cells, put there as it starts (⌘Z waits for it to land): ⌘Z (or
+    // the line's Undo) puts them all back, ⇧⌘Z makes them again. A row whose save failed is left out of both.
+    const changes = plan.changes.map((change) => ({ ...change }));
+    const saved = new Set<CellChange<QuickValues>>();
+    let landed = () => undefined as void;
+    const entry = stack.push({ ready: new Promise<void>((resolve) => (landed = resolve)), undo: () => putBack(changes.filter((c) => saved.has(c)), 'before'), redo: () => putBack(changes.filter((c) => saved.has(c)), 'after') });
     setBusy(true);
-    const done: CellChange<QuickValues>[] = [];
     const failed: { id: string; reason: SkipReason }[] = [];
     try {
-      for (const change of plan.changes) {
+      for (const change of changes) {
         // A recorded row's edit replaces it: Undo puts back the row that took its place.
-        let now = change.id;
-        const ok = change.draft ? await saveDraft(change.id, change.after, false) : await handlers.saveRecorded(change.id, change.after, (replacement) => (now = replacement));
-        if (ok) done.push({ ...change, id: now });
+        const ok = change.draft ? await saveDraft(change.id, change.after, false) : await handlers.saveRecorded(change.id, change.after, (replacement) => (change.id = replacement));
+        if (ok) saved.add(change);
         else failed.push({ id: change.id, reason: 'not saved' });
       }
     } finally {
       setBusy(false);
+      landed();
     }
-    setNote({ text: changeLine(done.length, [...plan.skipped, ...failed]), undo: done.length > 0 ? done : null });
+    if (saved.size === 0) stack.drop(entry);
+    setNote({ text: changeLine(saved.size, [...plan.skipped, ...failed]), entry: saved.size > 0 ? entry : null });
   }
 
-  async function undo(changes: readonly CellChange<QuickValues>[]) {
+  /**
+   * A change put back (`before`) or made again (`after`), by the same paths. A recorded row's edit replaces it, so each
+   * change follows the row that took its place, for the next Undo or Redo.
+   */
+  async function putBack(changes: CellChange<QuickValues>[], side: 'before' | 'after') {
     setBusy(true);
     try {
-      for (const change of [...changes].reverse()) {
-        if (change.draft) await saveDraft(change.id, change.before, false);
-        else await handlers.saveRecorded(change.id, change.before);
+      for (const change of side === 'before' ? [...changes].reverse() : changes) {
+        if (change.draft) await saveDraft(change.id, change[side], false);
+        else await handlers.saveRecorded(change.id, change[side], (replacement) => (change.id = replacement));
       }
     } finally {
       setBusy(false);
@@ -216,6 +238,8 @@ export function useCashflowCells({
       if (column === 'category' || column === 'paid') setPicking({ column, ids: [...picked] });
     },
     onRecord,
+    onLook,
+    onMenu,
     enabled: !readOnly,
   });
 
@@ -250,8 +274,8 @@ export function useCashflowCells({
   const line: ReactNode = note ? (
     <p data-testid="cell-change" role="status" className="flex flex-wrap items-center gap-x-[10px] px-[14px] pb-[6px] text-[11.5px] text-[var(--ph-ink-2)]">
       <span>{note.text}</span>
-      {note.undo && (
-        <button type="button" disabled={busy} onClick={() => void undo(note.undo!)} className="text-[var(--mac-accent)] hover:underline disabled:opacity-50">
+      {note.entry !== null && note.entry === stack.top() && (
+        <button type="button" disabled={busy} onClick={() => void stack.undo()} className="text-[var(--mac-accent)] hover:underline disabled:opacity-50">
           Undo
         </button>
       )}

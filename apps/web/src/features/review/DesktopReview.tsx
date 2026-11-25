@@ -41,6 +41,9 @@ import { ColumnHead, type ColumnSort, SORT_WORDS } from '../transactions/ColumnH
 import { stickyHead, useStuck } from '../transactions/sticky-head';
 import { draftFigure, sumFigures, totalFoot } from '../transactions/table-figures';
 import { useReviewCells } from './review-cells';
+import { TableMenu, type TableMenuItem } from '../transactions/TableMenu';
+import { copyToClipboard, pasteFromClipboard } from '../transactions/clipboard';
+import { useUndoKeys, useUndoStack } from '../transactions/undo-stack';
 import { ResolvedRow, ReviewRow, TickCircle, ToAccountCell } from './ReviewRow';
 import { useRowOptions } from '../transactions/row-options';
 import { DESK_COLUMNS, DESK_GRID } from '../transactions/QuickRowEditor';
@@ -250,6 +253,15 @@ export function DesktopReview({
     }
     if (!peeked) return;
     const target = event.target as HTMLElement | null;
+    // Space closes the peek (quick look's way, owner 2026-11-25), when no cells are picked and nothing is typed in.
+    if (event.key === ' ' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !document.querySelector('[role="dialog"]')) {
+      const typingNow = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || target.tagName === 'BUTTON');
+      if (!typingNow) {
+        event.preventDefault();
+        setPeekId(null);
+        return;
+      }
+    }
     const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
     // ⌘Return records the peeked row (owner, 2026-11-24): Return alone ends a cell's typing, as in Cashflow.
     const command = event.metaKey || event.ctrlKey;
@@ -286,8 +298,25 @@ export function DesktopReview({
     return text ? { text: pendingPaidLabel(text), adds: [] } : null;
   };
 
+  // The table's Undo and Redo (owner 2026-11-25): ⌘Z puts back the last change made in it, ⇧⌘Z makes it again.
+  const undo = useUndoStack();
+  useUndoKeys(undo);
+  // Quick look (Space on picked cells, as Finder's): the peek follows the cell as the arrows move it.
+  const [look, setLook] = useState(false);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   // The blue cells: a range down one column of the queue (`review-cells`); starting one puts the peek away.
   const cells = useReviewCells({
+    undo,
+    onLook: (id) => {
+      if (look) {
+        setLook(false);
+        setPeekId(null);
+        return;
+      }
+      setLook(true);
+      peek(id);
+    },
+    onMenu: setMenu,
     rows,
     pending: tab === 'pending',
     accounts,
@@ -302,6 +331,34 @@ export function DesktopReview({
       if (fit.length > 0 && busy === null) actions.onRecordReady(fit);
     },
   });
+
+  const lookAt = cells.active ? (cells.range?.focus ?? null) : null;
+  useEffect(() => {
+    if (!look) return;
+    if (!lookAt) setLook(false);
+    else if (peekId !== lookAt) peek(lookAt);
+  }, [look, lookAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The right-click menu (owner 2026-11-25): the cells' Copy and Paste, Open (the peek), and Discard for a waiting row.
+  const rowMenu = (at: { id: string; x: number; y: number }) => {
+    const draft = rows.find((one) => one.id === at.id);
+    if (!draft) return null;
+    const items: TableMenuItem[] = [];
+    if (cells.active) {
+      items.push({
+        key: 'copy',
+        label: 'Copy',
+        keys: '⌘C',
+        onPick: () => {
+          copyToClipboard(cells.copied());
+          cells.markCopied();
+        },
+      });
+      if (tab === 'pending') items.push({ key: 'paste', label: 'Paste', keys: '⌘V', onPick: () => void pasteFromClipboard(cells.pasteText) });
+    }
+    items.push({ key: 'open', label: 'Open', keys: 'Space', divided: true, onPick: () => peek(draft.id) });
+    if (tab === 'pending') items.push({ key: 'discard', label: 'Discard', keys: '⌫', danger: true, divided: true, onPick: () => actions.onDiscard(draft) });
+    return <TableMenu x={at.x} y={at.y} items={items} onClose={() => setMenu(null)} />;
+  };
 
   // The cells' choices, as Cashflow's rows offer them (money in's categories for a capture of income).
   // The cells wait (disabled) until the accounts are read: a list of no accounts would take nothing typed.
@@ -534,7 +591,10 @@ export function DesktopReview({
           busy={busy !== null}
           error={null}
           onStep={step}
-          onClose={() => setPeekId(null)}
+          onClose={() => {
+            setLook(false);
+            setPeekId(null);
+          }}
           onRecord={() => actions.onRecord(peeked)}
           onDiscard={() => actions.onDiscard(peeked)}
           onOpenForm={() => actions.onOpenForm(peeked)}
@@ -553,6 +613,7 @@ export function DesktopReview({
       )}
 
       {cells.bulkField}
+      {menu && rowMenu(menu)}
       {cells.choose?.draft && (
         <Picker
           draft={cells.choose.draft}

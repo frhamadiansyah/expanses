@@ -26,7 +26,7 @@ import {
   User,
   Users,
 } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { cx, ErrorBox } from '../../ui';
 import { PILL, PILL_BLUE } from '../../ui/desk';
@@ -49,6 +49,7 @@ import { TurnIntoSheet } from './TurnIntoSheet';
 import { type Receipt, useReceipt } from './use-receipt';
 import { paidAccountId } from './receipt-view';
 import { NOT_MONTHLY_BILL_NOTE } from './not-monthly';
+import { TableMenu, type TableMenuItem } from './TableMenu';
 
 /** "Wed 11 Nov 2026". */
 const peekDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -68,6 +69,7 @@ function DeletePeek({ busy, onConfirm }: { busy: boolean; onConfirm: () => void 
       disabled={busy}
       onBlur={onBlur}
       onClick={onClick}
+      data-peek-delete
       aria-label={armed ? 'Click again to delete' : 'Delete this transaction'}
       className={cx(
         'rounded-[6px] border px-3 py-[4px] text-[13px] disabled:opacity-40',
@@ -139,8 +141,11 @@ export function ReceiptPeek({
   back,
   onReplaced,
   notMonthlyOut = false,
+  keys = false,
 }: {
   transactionId: string;
+  /** The table's keys work on it (Mac Cashflow, owner 2026-11-25): ⌘D duplicates, ⌫ ⌫ deletes. */
+  keys?: boolean;
   /** Cashflow's month leaves this not-monthly bill's payment out of its figures (`leaveOutNotMonthly`): the peek says so, with the bill. */
   notMonthlyOut?: boolean;
   top?: number;
@@ -166,9 +171,9 @@ export function ReceiptPeek({
         <p className="px-[14px] py-2 text-[13px] text-[var(--ph-ink-3)]">That transaction is not on this device.</p>
       ) : tx && view ? (
         macV2 ? (
-          <PeekBody key={transactionId} receipt={receipt} notMonthlyOut={notMonthlyOut} />
+          <PeekBody key={transactionId} receipt={receipt} notMonthlyOut={notMonthlyOut} keys={keys} />
         ) : (
-          <PanelBody key={transactionId} receipt={receipt} notMonthlyOut={notMonthlyOut} />
+          <PanelBody key={transactionId} receipt={receipt} notMonthlyOut={notMonthlyOut} keys={keys} />
         )
       ) : (
         <ErrorBox error={receipt.receipt.error} />
@@ -237,8 +242,9 @@ function peekDoings(receipt: Receipt, readOnly: boolean, navigate: ReturnType<ty
   return { edit, split, splittable, removable, notice, anyButton };
 }
 
-function PeekBody({ receipt, notMonthlyOut }: { receipt: Receipt; notMonthlyOut: boolean }) {
+function PeekBody({ receipt, notMonthlyOut, keys }: { receipt: Receipt; notMonthlyOut: boolean; keys: boolean }) {
   const navigate = useNavigate();
+  usePeekKeys(receipt, keys);
   const needs = useResolvedNeeds().data;
   const openBook = useOpenBook();
   const readOnly = useOpenBookReadOnly();
@@ -589,6 +595,7 @@ function DeletePanel({ busy, onConfirm }: { busy: boolean; onConfirm: () => void
       disabled={busy}
       onBlur={onBlur}
       onClick={onClick}
+      data-peek-delete
       aria-label={armed ? 'Click again to delete' : 'Delete this transaction'}
       className={cx(
         'inline-flex h-[34px] shrink-0 items-center rounded-full text-[14px] font-semibold whitespace-nowrap disabled:opacity-40',
@@ -608,8 +615,9 @@ function DeletePanel({ busy, onConfirm }: { busy: boolean; onConfirm: () => void
  * left, Duplicate and Split, and Edit in blue, which opens the edit form in this same panel. Every line and every button
  * is the receipt's (`PeekBody`'s), by the same rules; only the layout is the panel's.
  */
-function PanelBody({ receipt, notMonthlyOut }: { receipt: Receipt; notMonthlyOut: boolean }) {
+function PanelBody({ receipt, notMonthlyOut, keys }: { receipt: Receipt; notMonthlyOut: boolean; keys: boolean }) {
   const navigate = useNavigate();
+  usePeekKeys(receipt, keys);
   const needs = useResolvedNeeds().data;
   const openBook = useOpenBook();
   const readOnly = useOpenBookReadOnly();
@@ -830,4 +838,73 @@ function PanelBody({ receipt, notMonthlyOut }: { receipt: Receipt; notMonthlyOut
       )}
     </>
   );
+}
+
+/**
+ * The right-click menu of a recorded row on the Mac tables (owner 2026-11-25): the cells' Copy and Paste, Open (the
+ * peek, Space), and what the peek itself offers for this row by the receipt's own refusals — Duplicate, Split…, Turn
+ * into instalments…, Delete (asking twice). Nothing the peek would not offer.
+ */
+export function ReceiptRowMenu({ transactionId, x, y, lead, onOpen, onClose }: { transactionId: string; x: number; y: number; lead: readonly TableMenuItem[]; onOpen: () => void; onClose: () => void }) {
+  const navigate = useNavigate();
+  const readOnly = useOpenBookReadOnly();
+  const receipt = useReceipt(transactionId, { onDeleted: () => undefined, onReplaced: () => undefined });
+  const [turning, setTurning] = useState(false);
+  const { tx, view, accounts, isTrade } = receipt;
+  if (turning && tx && view?.instalmentCard) {
+    const card = view.instalmentCard;
+    return (
+      <TurnIntoSheet
+        purchase={{ transactionId: tx.id, description: tx.description, occurredOn: tx.occurredOn, amountMinor: card.amountMinor }}
+        card={{ accountId: card.cardAccountId, name: accounts.find((a) => a.id === card.cardAccountId)?.name ?? '' }}
+        currency={accounts.find((a) => a.id === card.cardAccountId)?.currency ?? view.kind.currency}
+        investment={isTrade}
+        onClose={onClose}
+      />
+    );
+  }
+  const items: TableMenuItem[] = [...lead, { key: 'open', label: 'Open', keys: 'Space', divided: true, onPick: onOpen }];
+  if (tx && view) {
+    const { split, splittable } = peekDoings(receipt, readOnly, navigate);
+    if (view.duplicable) items.push({ key: 'duplicate', label: 'Duplicate', keys: '⌘D', onPick: () => void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId } }) });
+    if (splittable) items.push({ key: 'split', label: 'Split…', onPick: split });
+    // Turn into instalments: a card purchase with no plan yet, as the peek's Instalments line offers it.
+    if (view.instalmentCard && !view.plan && !readOnly) items.push({ key: 'turn', label: 'Turn into instalments…', onPick: () => setTurning(true) });
+    if (view.deletable) items.push({ key: 'delete', label: 'Delete', keys: '⌫', danger: true, divided: true, onPick: () => void receipt.remove() });
+  }
+  // Turning keeps this mounted for its sheet: the menu's own close waits for it.
+  return <TableMenu x={x} y={y} items={items} onClose={() => (turning ? undefined : onClose())} />;
+}
+
+/**
+ * The peek's keys on the Mac tables (owner 2026-11-25), as the right-click menu says them: ⌘D duplicates the row, ⌫
+ * asks to delete it and ⌫ again deletes it (the Delete button's own two presses) — never while typing, or under a sheet.
+ */
+function usePeekKeys(receipt: Receipt, enabled: boolean) {
+  const navigate = useNavigate();
+  const latest = useRef(receipt);
+  latest.current = receipt;
+  useEffect(() => {
+    if (!enabled) return;
+    const keys = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if (typing || event.altKey || event.defaultPrevented || document.querySelector('[role="dialog"], [role="menu"]')) return;
+      const { view, tx } = latest.current;
+      if (!view || !tx) return;
+      const command = event.metaKey || event.ctrlKey;
+      if (command && !event.shiftKey && event.key.toLowerCase() === 'd' && view.duplicable) {
+        event.preventDefault();
+        void navigate({ to: '/transactions/$transactionId/duplicate', params: { transactionId: tx.id } });
+      } else if (!command && !event.shiftKey && (event.key === 'Backspace' || event.key === 'Delete') && view.deletable) {
+        const button = document.querySelector<HTMLButtonElement>('[data-peek-delete]');
+        if (!button) return;
+        event.preventDefault();
+        button.focus();
+        button.click();
+      }
+    };
+    document.addEventListener('keydown', keys);
+    return () => document.removeEventListener('keydown', keys);
+  }, [enabled, navigate]);
 }

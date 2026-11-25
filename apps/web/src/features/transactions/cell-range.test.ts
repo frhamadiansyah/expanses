@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CellColumn, type CellTarget, cellsText, changeLine, extendRange, fillReach, isCellColumn, movePick, rowAtHeight, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick, togglePick } from './cell-range';
+import { type CellColumn, type CellTarget, cellsText, columnPick, jumpPick, stretchTo, changeLine, extendRange, fillReach, isCellColumn, movePick, rowAtHeight, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick, togglePick } from './cell-range';
 
 const IDS = ['a', 'b', 'c', 'd', 'e'];
 
@@ -123,6 +123,7 @@ describe('keys on a range', () => {
     expect(rangeKey(key('Backspace'), true)).toBeNull();
     expect(rangeKey(key('d', { metaKey: true }), true)).toBeNull();
     expect(rangeKey(key('d', { metaKey: true, shiftKey: true }), false)).toBeNull();
+    expect(rangeKey(key('z', { metaKey: true }), false)).toBeNull();
     expect(rangeKey(key('Enter', { altKey: true }), false)).toBeNull();
     expect(rangeKey(key('c', { metaKey: true }), false)).toBeNull();
     expect(rangeKey(key('a'), true)).toBeNull();
@@ -141,7 +142,39 @@ describe('keys on a range', () => {
     expect(rangeKey(key('ArrowLeft', { shiftKey: true }), false)).toBeNull();
     for (const typed of ['a', 'G', '4', '-', 'é']) expect(rangeKey(key(typed), false)).toBe('type');
     expect(rangeKey(key('R', { shiftKey: true }), false)).toBe('type');
-    for (const other of [' ', 'Dead', 'F5', 'Shift', 'Meta']) expect(rangeKey(key(other), false)).toBeNull();
+    for (const other of ['Dead', 'F5', 'Shift', 'Meta']) expect(rangeKey(key(other), false)).toBeNull();
+  });
+
+  it('Space is quick look; ⌘↑ ⌘↓ Home End jump; ⇧⌘↑ ⇧⌘↓ stretch to the ends; ⌘A picks the column (owner 2026-11-25)', () => {
+    expect(rangeKey(key(' '), false)).toBe('look');
+    expect(rangeKey(key(' '), true)).toBeNull();
+    expect(rangeKey(key('ArrowUp', { metaKey: true }), false)).toBe('first');
+    expect(rangeKey(key('ArrowDown', { ctrlKey: true }), false)).toBe('last');
+    expect(rangeKey(key('Home'), false)).toBe('home');
+    expect(rangeKey(key('End'), false)).toBe('end');
+    expect(rangeKey(key('ArrowUp', { metaKey: true, shiftKey: true }), false)).toBe('more first');
+    expect(rangeKey(key('ArrowDown', { metaKey: true, shiftKey: true }), false)).toBe('more last');
+    expect(rangeKey(key('a', { metaKey: true }), false)).toBe('column');
+    expect(rangeKey(key('a', { metaKey: true }), true)).toBeNull();
+  });
+});
+
+describe('jumping with the keyboard (owner 2026-11-25)', () => {
+  const COLUMNS: CellColumn[] = ['date', 'description', 'category', 'paid', 'amount'];
+
+  it('⌘↑ ⌘↓ go to the column’s first or last row as one cell; Home and End to the row’s first or last cell', () => {
+    expect(jumpPick({ column: 'amount', anchor: 'b', focus: 'c' }, IDS, COLUMNS, 'first')).toEqual(startRange('amount', 'a'));
+    expect(jumpPick(startRange('amount', 'b'), IDS, COLUMNS, 'last')).toEqual(startRange('amount', 'e'));
+    expect(jumpPick(startRange('category', 'b'), IDS, COLUMNS, 'home')).toEqual(startRange('date', 'b'));
+    expect(jumpPick(startRange('category', 'b'), IDS, COLUMNS, 'end')).toEqual(startRange('amount', 'b'));
+    expect(jumpPick(startRange('category', 'b'), [], COLUMNS, 'last')).toEqual(startRange('category', 'b'));
+  });
+
+  it('⇧⌘↓ stretches to the last row from the cell first picked; ⌘A picks every row of the column', () => {
+    expect(stretchTo(startRange('amount', 'b'), IDS, 'last')).toEqual({ column: 'amount', anchor: 'b', focus: 'e' });
+    expect(stretchTo(startRange('amount', 'c'), IDS, 'first')).toEqual({ column: 'amount', anchor: 'c', focus: 'a' });
+    expect(columnPick(startRange('paid', 'c'), IDS)).toEqual({ column: 'paid', anchor: 'a', focus: 'e' });
+    expect(rangeIds(columnPick(startRange('paid', 'c'), IDS), IDS)).toEqual(IDS);
   });
 });
 
