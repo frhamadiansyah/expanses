@@ -10,8 +10,9 @@ vi.setConfig({ testTimeout: 60_000 });
  * Invented figures: pocket money Rp 100.000 a week, the electricity token Rp 1.000.000 every 3 weeks from 3 Nov 2026.
  */
 
-const BUILD = '0.5.8';
-const OLDER = '0.5.7';
+const BUILD = '0.5.9';
+// TestFlight 175 said 0.5.8 with bills by weeks but no Budget C: it is the older build here.
+const OLDER = '0.5.8';
 
 async function household(husbandVersion: string) {
   const home = new Household();

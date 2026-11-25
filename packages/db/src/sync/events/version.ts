@@ -108,7 +108,7 @@ export const WEEKLY_BILLS_MIN_APP_VERSION = '0.5.8';
  * (`saveBudget`, `saveBudgets`, refused with REPEAT_PHONES_BEHIND, naming them), and a linked device on an older build
  * holds every change of this data version (migration 0129) until it updates.
  *
- * Ship order: rides 0.5.8 with bills by weeks, so every build that says 0.5.8 must contain migration 0129 and Budget C as
- * well as 0128. Should a 0.5.8 build go out without them, this becomes 0.5.9 (and the web app's version with it).
+ * Ship order: 0.5.9. TestFlight 175 already went out as 0.5.8 with bills by weeks (0128) but without Budget C, so a
+ * phone saying 0.5.8 may not read it; every build that says 0.5.9 contains migration 0129 and Budget C.
  */
-export const BUDGET_REPEAT_MIN_APP_VERSION = '0.5.8';
+export const BUDGET_REPEAT_MIN_APP_VERSION = '0.5.9';
