@@ -343,8 +343,16 @@ export function countsInOrOut(row: ListRow): boolean {
 }
 
 export interface Sort {
-  key: 'date' | 'amount';
+  /** The phone sorts by date or amount; the Mac table's column names sort by any of its columns (owner 2026-11-25). */
+  key: 'date' | 'amount' | 'description' | 'category' | 'paid';
   dir: 'asc' | 'desc';
+}
+
+/** The words a row is sorted by under Note, Category or Payment method: what the cell shows. */
+function sortWords(row: ListRow, key: 'description' | 'category' | 'paid'): string {
+  if (key === 'description') return row.description.trim();
+  if (key === 'category') return (row.categoryName ?? '').trim();
+  return row.accountLabel.trim();
 }
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -587,6 +595,16 @@ export function sortRows(rows: readonly ListRow[], sort: Sort): ListRow[] {
   const dir = sort.dir === 'asc' ? 1 : -1;
   // An undated draft sorts as the newest thing there is, so it sits at the top where it will be seen.
   const dateOf = (row: ListRow) => row.date || '9999-12-31';
+  if (sort.key === 'description' || sort.key === 'category' || sort.key === 'paid') {
+    const key = sort.key;
+    // By words, A→Z or Z→A, any case; a blank cell goes to the bottom either way, and a tie reads oldest first.
+    return [...rows].sort((a, b) => {
+      const x = sortWords(a, key);
+      const y = sortWords(b, key);
+      if (!x !== !y) return x ? -1 : 1;
+      return x.localeCompare(y, undefined, { sensitivity: 'base', numeric: true }) * dir || dateOf(a).localeCompare(dateOf(b));
+    });
+  }
   return [...rows].sort(
     (a, b) =>
       (sort.key === 'amount' ? a.amountMinor - b.amountMinor : dateOf(a).localeCompare(dateOf(b))) * dir ||

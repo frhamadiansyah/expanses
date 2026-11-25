@@ -35,9 +35,12 @@ test('Show, Filter and the Amount header narrow and sort the table, and Clear pu
   await expect(rows).toHaveCount(3);
 
   // The Amount header sorts largest first, then smallest; Clear puts it back to oldest at the top.
+  // (owner 2026-11-25: the name opens a small menu, Sort and Filter.)
   await page.getByRole('button', { name: /^Amount/ }).click();
+  await page.getByRole('dialog', { name: 'Amount menu' }).getByRole('menuitemradio', { name: /High to low/ }).click();
   await expect(rows.first()).toContainText('Salary');
   await page.getByRole('button', { name: /^Amount/ }).click();
+  await page.getByRole('dialog', { name: 'Amount menu' }).getByRole('menuitemradio', { name: /Low to high/ }).click();
   await expect(rows.first()).toContainText('Kopi Kenangan');
 
   // Filter ⌄: what paid, found by typing; the button counts what is on.

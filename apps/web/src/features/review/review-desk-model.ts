@@ -3,6 +3,7 @@ import type { AccountRow, CardRow, CaptureSource, DraftRow } from '@expanses/db'
 import { CAPTURE_TYPES, type CaptureType } from './capture-type';
 import { captureRowView, effectiveCategory } from './capture-view';
 import { recordsOnForm } from './draft-form';
+import { type AmountFilter, amountFilterOn, NO_AMOUNT_FILTER, withinAmount } from '../transactions/table-figures';
 
 /*
  * Review on a wide screen (Mac Review, owner 2026-11-17): the queue as a table you work through, with the counts above
@@ -238,12 +239,15 @@ export interface ReviewFilters {
   category: string | null;
   /** An account's id, or `NONE` for none; null for any. */
   paid: string | null;
+  /** The Amount header's Over and Under (owner 2026-11-25). */
+  amount: AmountFilter;
 }
 
-export const NO_FILTERS: ReviewFilters = { note: '', from: null, to: null, category: null, paid: null };
+export const NO_FILTERS: ReviewFilters = { note: '', from: null, to: null, category: null, paid: null, amount: NO_AMOUNT_FILTER };
 
 /** Whether any filter narrows the rows. */
-export const anyFilter = (filters: ReviewFilters) => filters.note.trim() !== '' || filters.from !== null || filters.to !== null || filters.category !== null || filters.paid !== null;
+export const anyFilter = (filters: ReviewFilters) =>
+  filters.note.trim() !== '' || filters.from !== null || filters.to !== null || filters.category !== null || filters.paid !== null || amountFilterOn(filters.amount);
 
 /** Words as matched: any case, accents left out ("Café" is "cafe"), spaces as one. */
 const fold = (text: string) =>
@@ -262,6 +266,9 @@ export interface FilterRow {
   line: string;
   categoryId: string | null;
   accountId: string | null;
+  /** Its figure as the Amount cell shows it, and its currency. */
+  amountMinor?: number;
+  currency?: string;
 }
 
 export function matchesFilters(row: FilterRow, filters: ReviewFilters): boolean {
@@ -271,7 +278,40 @@ export function matchesFilters(row: FilterRow, filters: ReviewFilters): boolean 
   if (filters.to !== null && row.occurredOn > filters.to) return false;
   if (filters.category !== null && (row.categoryId ?? NONE) !== filters.category) return false;
   if (filters.paid !== null && (row.accountId ?? NONE) !== filters.paid) return false;
+  if (filters.amount && amountFilterOn(filters.amount) && !withinAmount(row.amountMinor ?? 0, row.currency ?? 'IDR', filters.amount)) return false;
   return true;
+}
+
+/** Review's order picked from a column's name (owner 2026-11-25); none is the queue's own, newest first. */
+export interface ReviewSort {
+  key: 'date' | 'description' | 'category' | 'paid' | 'amount';
+  dir: 'asc' | 'desc';
+}
+
+/**
+ * The rows in the order a column's name asks for: by date, by the figure the Amount cell shows, or by the words a cell
+ * shows (`words`: the category's or the account's name), A→Z or Z→A, any case. A blank cell goes to the bottom either
+ * way; a tie keeps the queue's order (newest first).
+ */
+export function sortDrafts<T extends Pick<DraftRow, 'id' | 'occurredOn' | 'createdAt' | 'description' | 'amountMinor'>>(
+  drafts: readonly T[],
+  sort: ReviewSort | null,
+  words: (draft: T, key: 'category' | 'paid') => string,
+): T[] {
+  const queue = newestFirst(drafts);
+  if (!sort) return queue;
+  const at = new Map(queue.map((draft, i) => [draft.id, i]));
+  const dir = sort.dir === 'asc' ? 1 : -1;
+  const textOf = (draft: T) => (sort.key === 'description' ? draft.description : sort.key === 'category' || sort.key === 'paid' ? words(draft, sort.key) : '').trim();
+  return [...queue].sort((a, b) => {
+    const tie = at.get(a.id)! - at.get(b.id)!;
+    if (sort.key === 'date') return a.occurredOn.localeCompare(b.occurredOn) * dir || tie;
+    if (sort.key === 'amount') return (Math.abs(a.amountMinor) - Math.abs(b.amountMinor)) * dir || tie;
+    const x = textOf(a);
+    const y = textOf(b);
+    if (!x !== !y) return x ? -1 : 1;
+    return x.localeCompare(y, undefined, { sensitivity: 'base', numeric: true }) * dir || tie;
+  });
 }
 
 /** The first and last day of the month `back` months before the one `today` is in: This month (0), Last month (1). */

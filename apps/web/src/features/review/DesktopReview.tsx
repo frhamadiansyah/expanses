@@ -27,6 +27,9 @@ import {
   matchesFilters,
   newestFirst,
   NO_FILTERS,
+  paidWithOf,
+  type ReviewSort,
+  sortDrafts,
   peekAfterGone,
   queueCounts,
   queueKey,
@@ -34,6 +37,9 @@ import {
   shownLine,
 } from './review-desk-model';
 import { ChoiceHead, NoteHead, WhenHead } from './ReviewHeadFilters';
+import { ColumnHead, type ColumnSort, SORT_WORDS } from '../transactions/ColumnHead';
+import { stickyHead, useStuck } from '../transactions/sticky-head';
+import { draftFigure, sumFigures, totalFoot } from '../transactions/table-figures';
 import { useReviewCells } from './review-cells';
 import { ResolvedRow, ReviewRow, TickCircle, ToAccountCell } from './ReviewRow';
 import { useRowOptions } from '../transactions/row-options';
@@ -134,7 +140,16 @@ export function DesktopReview({
   const resolvedQuery = tab === 'confirmed' ? recorded : tab === 'dismissed' ? discarded : null;
   const resolvedAll = useMemo(() => newestFirst(resolvedQuery?.data ?? []), [resolvedQuery?.data]);
   const resolved = resolvedAll.slice(0, RESOLVED_SHOWN);
-  const listed = tab === 'pending' ? queue : resolved;
+  // A column's name sorts the table (owner 2026-11-25); none picked, the queue's own order, newest first.
+  const [sort, setSort] = useState<ReviewSort | null>(null);
+  const nameOfDraft = (draft: DraftRow, key: 'category' | 'paid') => {
+    if (key === 'category') {
+      const id = effectiveCategory(draft, guesses);
+      return (id && accounts.find((a) => a.id === id)?.name) || '';
+    }
+    return paidWithOf(draft.accountId, draft.cardId, accounts, cards)?.name ?? '';
+  };
+  const listed = sortDrafts(tab === 'pending' ? queue : resolved, sort, nameOfDraft);
   // The header filters (owner 2026-11-24): for the visit only. The rows they leave out are out of reach — not recorded
   // by Record N, not picked, not peeked — until Show all.
   const [filters, setFilters] = useState<ReviewFilters>(NO_FILTERS);
@@ -150,6 +165,8 @@ export function DesktopReview({
             line: [fromTag(draft, captureTypeOf(draft, sourceOf(draft))).word, captureRowView(draft, null).merged ?? ''].join(' '),
             categoryId: effectiveCategory(draft, guesses),
             accountId: draft.accountId,
+            amountMinor: draft.amountMinor,
+            currency: draft.currency,
           },
           filters,
         ),
@@ -296,6 +313,11 @@ export function DesktopReview({
   const readySum = readyTotal(ready);
   const titleLine = loaded ? `${counts.toReview} captured · ${counts.ready} ready to record` : undefined;
   const tableTitle = tab === 'pending' ? 'Captured' : SEGMENTS.find((s) => s.value === tab)!.label;
+  const sortOf = (key: ReviewSort['key'], choices: ColumnSort['choices']): ColumnSort => ({ dir: sort?.key === key ? sort.dir : null, choices, onSort: (dir) => setSort({ key, dir }) });
+  // Under the Amount column: the rows shown, and what they come to (owner 2026-11-25).
+  const foot = totalFoot(sumFigures(rows.map(draftFigure), rows[0]?.currency ?? 'IDR'));
+  // The column names stay on top while the queue scrolls under them.
+  const head = useStuck<HTMLDivElement>();
 
   return (
     <div className="min-h-dvh bg-[var(--mk-page)]" data-testid="review-page" data-desk="true" {...doubleClick}>
@@ -392,23 +414,31 @@ export function DesktopReview({
           {cells.line}
           {/* Cashflow's table (owner, 2026-11-24): its columns, its 40px rows typed in place, the filters in the names. */}
           <div className="px-[10px]" style={{ '--desk-cols': peeking ? DESK_COLUMNS.peek : DESK_COLUMNS.wide } as CSSProperties}>
-            <div className={cx(DESK_GRID, 'border-b border-[var(--mk-head-line)] px-0.5 text-left text-[12.5px] font-semibold text-[var(--mk-ink-2)]')} data-testid="review-head">
+            <div ref={head.ref} className={cx(DESK_GRID, 'border-b border-[var(--mk-head-line)] px-0.5 text-left text-[12.5px] font-semibold text-[var(--mk-ink-2)]', stickyHead(head.stuck))} data-testid="review-head">
               <span>
                 <span className="sr-only">Ready</span>
               </span>
               <span className="min-w-0 px-2 py-[8px]">
-                <WhenHead from={filters.from} to={filters.to} today={isoDate()} onChange={(from, to) => setFilter({ from, to })} />
+                <WhenHead from={filters.from} to={filters.to} today={isoDate()} sort={sortOf('date', SORT_WORDS.date)} onChange={(from, to) => setFilter({ from, to })} />
               </span>
               <span className="min-w-0 px-2 py-[8px]">
                 <NoteHead value={filters.note} open={noteOpen} onOpen={() => setNoteOpen(true)} onClose={() => setNoteOpen(false)} onChange={(note) => setFilter({ note })} />
               </span>
               <span className="min-w-0 px-2 py-[8px]">
-                <ChoiceHead name="Category" noneLabel="No category" value={filters.category} options={categoryChoices} onChange={(category) => setFilter({ category })} />
+                <ChoiceHead name="Category" noneLabel="No category" value={filters.category} options={categoryChoices} sort={sortOf('category', SORT_WORDS.words)} onChange={(category) => setFilter({ category })} />
               </span>
               <span className="min-w-0 px-2 py-[8px]">
-                <ChoiceHead name="Paid with" noneLabel="No account" value={filters.paid} options={paidChoices} onChange={(paid) => setFilter({ paid })} />
+                <ChoiceHead name="Paid with" noneLabel="No account" value={filters.paid} options={paidChoices} sort={sortOf('paid', SORT_WORDS.words)} onChange={(paid) => setFilter({ paid })} />
               </span>
-              <span className="px-2 py-[8px] text-right">Amount</span>
+              <span className="min-w-0 px-2 py-[8px] text-right">
+                <ColumnHead
+                  name="Amount"
+                  align="right"
+                  chevron
+                  sort={sortOf('amount', SORT_WORDS.amount)}
+                  amount={{ filter: filters.amount, currency: rows[0]?.currency ?? listed[0]?.currency ?? 'IDR', onChange: (amount) => setFilter({ amount }) }}
+                />
+              </span>
               <span />
             </div>
             <ul aria-label={tableTitle} {...cells.containerProps} className="text-[13px]">
@@ -461,6 +491,16 @@ export function DesktopReview({
                 );
               })}
             </ul>
+            {rows.length > 0 && (
+              <div data-testid="table-total" className="flex items-baseline justify-between px-[10px] pt-[10px] pb-[2px] text-[12.5px] text-[var(--mk-ink-2)] tabular-nums">
+                <span>{foot.shown}</span>
+                {foot.total && (
+                  <span>
+                    Total <b className="ml-[6px] text-[14px] font-bold text-[var(--mk-ink)]">{foot.total}</b>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           {tab === 'pending' && rows.length > 0 && (
             <p className="flex items-center gap-[18px] px-[20px] pt-[10px] pb-[12px] text-[12.5px] text-[var(--mk-ink-2)]" data-testid="review-legend">

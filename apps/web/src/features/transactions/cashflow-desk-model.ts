@@ -1,3 +1,4 @@
+import type { Figure } from './table-figures';
 import { type CategoryNeed, monthName, type TrendBar } from '@expanses/core';
 import type { AccountRow, DraftRow } from '@expanses/db';
 import { OTHER_COLOUR, ringSlices } from './category-colours';
@@ -227,6 +228,10 @@ export function sortDesk(rows: readonly ListRow[], sort: Sort): ListRow[] {
 
 /** The box header's grey note on the order the table reads in. */
 export function orderNote(sort: Sort): string {
+  if (sort.key === 'description' || sort.key === 'category' || sort.key === 'paid') {
+    const name = sort.key === 'description' ? 'Note' : sort.key === 'category' ? 'Category' : 'Payment method';
+    return `${name} ${sort.dir === 'asc' ? 'A→Z' : 'Z→A'} · new rows at the bottom`;
+  }
   if (sort.key === 'amount') return `${sort.dir === 'asc' ? 'smallest' : 'largest'} at the top · new rows at the bottom`;
   return `${sort.dir === 'asc' ? 'oldest' : 'newest'} at the top · new rows at the bottom`;
 }
@@ -336,6 +341,18 @@ export function deskAmount(row: ListRow): { minor: number; sign: '+' | ''; tone:
     notMonthlyOut,
     extra: row.tx ? amountExtraParts(row.tx, undefined, row) : [],
   };
+}
+
+/**
+ * What a row adds to the sum of picked Amount cells and to the table's Total (`table-figures`): a recorded row what
+ * the month's figures count of it — its spending, less its money in, in the workspace's currency — and nothing while it
+ * is grey (deleted, left out of the report, a not-monthly bill left out of the month); a row not recorded yet its own
+ * figure, in its own currency (money in below zero).
+ */
+export function cashflowFigure(row: ListRow, baseCurrency: string): Figure {
+  if (row.kind === 'draft') return { minor: row.draft?.amountMinor ?? row.amountMinor, currency: row.draft?.currency ?? row.currency };
+  if (row.deleted || row.notMonthlyOut || deskAmount(row).minor === 0) return { minor: 0, currency: baseCurrency };
+  return { minor: row.spentMinor - row.earnedMinor, currency: baseCurrency };
 }
 
 /*

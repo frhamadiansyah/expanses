@@ -7,6 +7,7 @@ import { buildRowOptions } from '../transactions/QuickRowEditor';
 import { type QuickValues, shortDate } from '../transactions/quick-row';
 import { useCellRange } from '../transactions/useCellRange';
 import { CellBulkField } from '../transactions/CellBulkField';
+import { draftFigure, sumFigures, sumLine } from '../transactions/table-figures';
 import { effectiveCategory } from './capture-view';
 import { paidWithOf } from './review-desk-model';
 
@@ -299,11 +300,14 @@ export function useReviewCells({
       )}
     </p>
   ) : null;
+  // Several Amount cells: what they add up to, as a sheet says it (owner 2026-11-25).
   const hint = !range.active
     ? null
     : range.picked.length === 1
       ? '1 cell · ⌘C copies · ⌘V pastes · arrows move · ⇧↓ picks more · Esc lets go'
-      : `${range.picked.length} cells · type a value for all · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears`;
+      : range.range?.column === 'amount'
+        ? `${sumLine(sumFigures(range.picked.flatMap((id) => (byId.has(id) ? [draftFigure(byId.get(id)!)] : [])), rows[0]?.currency ?? 'IDR'))} · ⌘C copies`
+        : `${range.picked.length} cells · type a value for all · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears`;
 
   // A letter typed on several picked cells: one value for them all (`CellBulkField`).
   const bulkField: ReactNode = range.bulk ? <CellBulkField key={range.bulk.ids.join(',')} bulk={range.bulk} onDone={range.submitBulk} onCancel={range.cancelBulk} /> : null;

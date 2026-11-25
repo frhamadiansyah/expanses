@@ -218,7 +218,9 @@ test('a row typed into the last row is recorded into the list above it, and the 
   }
   await expect(typing.getByLabel('Row date')).toHaveValue('18 Nov');
   expect(await tableOrder(page)).toEqual(['Roti Contoh', 'Sate Contoh', '(typing row)']);
+  // The Date name's menu (owner 2026-11-25): New to old.
   await page.getByRole('button', { name: /^Date/ }).click();
+  await page.getByRole('dialog', { name: 'Date menu' }).getByRole('menuitemradio', { name: /New to old/ }).click();
   expect(await tableOrder(page)).toEqual(['Sate Contoh', 'Roti Contoh', '(typing row)']);
   await expect(page.getByTestId('table-note')).toHaveText('newest at the top · new rows at the bottom');
 });

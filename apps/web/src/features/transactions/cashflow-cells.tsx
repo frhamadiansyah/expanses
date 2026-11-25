@@ -14,6 +14,8 @@ import type { RowOptions } from './QuickRowEditor';
 import { isQuickEditable, notionKey, paymentOptions, quickFromDraft, quickFromTransaction, type QuickValues, shortDate, withoutNotionLinks } from './quick-row';
 import type { TableHandlers } from './TransactionsTable';
 import { useCellRange } from './useCellRange';
+import { cashflowFigure } from './cashflow-desk-model';
+import { sumFigures, sumLine } from './table-figures';
 
 /*
  * Mac Cashflow's blue cells (`cell-range`, owner 2026-11-18): a range down Date, Note, Category, Paid with or Amount,
@@ -49,10 +51,13 @@ export function useCashflowCells({
   handlers,
   saveDraft,
   readOnly,
+  baseCurrency,
   onStart,
   onRecord,
 }: {
   rows: readonly ListRow[];
+  /** The workspace's currency: what a sum of picked amounts is said in (`cashflowFigure`). */
+  baseCurrency: string;
   today: string;
   accounts: readonly AccountRow[];
   rowOptions: RowOptions;
@@ -254,11 +259,14 @@ export function useCashflowCells({
   ) : null;
 
   // One blue cell (Esc in a cell, or the arrows): what the keys do with it; several: what they do with them all.
+  // Several Amount cells: what they add up to, as a sheet says it (owner 2026-11-25).
   const hint = !cells.active
     ? null
     : cells.picked.length === 1
       ? '1 cell · ⌘C copies · ⌘V pastes · arrows move · ⇧↓ picks more · Return types · Esc lets go'
-      : `${cells.picked.length} cells · type a value for all · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears drafts`;
+      : cells.range?.column === 'amount'
+        ? `${sumLine(sumFigures(cells.picked.flatMap((id) => (byId.has(id) ? [cashflowFigure(byId.get(id)!, baseCurrency)] : [])), baseCurrency))} · ⌘C copies`
+        : `${cells.picked.length} cells · type a value for all · ⌘V pastes · ⌘D fills down · Return chooses for all · Delete clears drafts`;
 
   // The picker for several cells, or the one value typed for them (`CellBulkField`).
   const picker: ReactNode = (

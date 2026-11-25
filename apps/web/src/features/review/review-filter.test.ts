@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anyFilter, type FilterRow, matchesFilters, monthBounds, NO_FILTERS, NONE, shownLine, whenFilterText } from './review-desk-model';
+import { anyFilter, type FilterRow, matchesFilters, monthBounds, NO_FILTERS, NONE, shownLine, sortDrafts, whenFilterText } from './review-desk-model';
 
 // Invented rows.
 const row = (over: Partial<FilterRow> = {}): FilterRow => ({ occurredOn: '2026-09-14', note: 'Grab', line: 'Cashflow', categoryId: null, accountId: 'acct-1', ...over });
@@ -63,5 +63,28 @@ describe('Review’s header filters', () => {
     expect(whenFilterText(null, '2026-09-30')).toBe('to 30 Sep');
     expect(whenFilterText(null, null)).toBe('');
     expect(shownLine(6, 24)).toBe('6 of 24 shown');
+  });
+});
+
+describe('the Amount header and the column names’ sort (owner 2026-11-25)', () => {
+  it('Over and Under keep the rows whose figure is between, without its sign', () => {
+    const over = { ...NO_FILTERS, amount: { over: '50.000', under: '' } };
+    expect(anyFilter(over)).toBe(true);
+    expect(matchesFilters(row({ amountMinor: 92_500, currency: 'IDR' }), over)).toBe(true);
+    expect(matchesFilters(row({ amountMinor: 38_000, currency: 'IDR' }), over)).toBe(false);
+  });
+
+  it('sorts by any column, a blank at the bottom, a tie in the queue’s order', () => {
+    const d = (id: string, occurredOn: string, description: string, amountMinor: number) => ({ id, occurredOn, createdAt: id, description, amountMinor });
+    const drafts = [d('a', '2026-09-03', 'GrabRide', 38_000), d('b', '2026-09-05', 'GrabFood', 92_500), d('c', '2026-09-01', '', 24_000)];
+    const words = (draft: { id: string }, key: 'category' | 'paid') => (key === 'category' ? ({ a: 'Ride hailing', b: 'Takeaways', c: '' } as Record<string, string>)[draft.id]! : 'Bank Contoh');
+    const ids = (sort: Parameters<typeof sortDrafts>[1]) => sortDrafts(drafts, sort, words).map((one) => one.id);
+    expect(ids(null)).toEqual(['b', 'a', 'c']);
+    expect(ids({ key: 'date', dir: 'asc' })).toEqual(['c', 'a', 'b']);
+    expect(ids({ key: 'amount', dir: 'desc' })).toEqual(['b', 'a', 'c']);
+    expect(ids({ key: 'description', dir: 'asc' })).toEqual(['b', 'a', 'c']);
+    expect(ids({ key: 'category', dir: 'desc' })).toEqual(['b', 'a', 'c']);
+    // All one name: the queue's own order, newest first.
+    expect(ids({ key: 'paid', dir: 'asc' })).toEqual(['b', 'a', 'c']);
   });
 });

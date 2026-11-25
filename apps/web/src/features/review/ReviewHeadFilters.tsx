@@ -1,6 +1,7 @@
 import { ChevronDown, Search, X } from 'lucide-react';
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cx } from '../../ui';
+import { type ColumnSort, HEAD, HEAD_ON, HeadPopover, OnHead, SortPart, sortArrow } from '../transactions/ColumnHead';
 import { monthBounds, NONE, whenFilterText } from './review-desk-model';
 
 /*
@@ -8,63 +9,6 @@ import { monthBounds, NONE, whenFilterText } from './review-desk-model';
  * own column names are the filters, so nothing new sits on the page. A header with a filter on is blue and says what
  * it holds, with ✕ to take it off.
  */
-
-/** A column name that opens its filter; blue while one is on. */
-const HEAD = 'inline-flex items-center gap-[5px] whitespace-nowrap rounded-[7px] px-[8px] py-[3px] -ml-[8px] hover:bg-[var(--mk-pill)]';
-const HEAD_ON = 'bg-[var(--mk-sel)] text-[var(--mk-blue)] hover:bg-[var(--mk-sel)]';
-
-/** A header's filter as it stands: blue, saying what it holds, with ✕ to take it off. */
-function OnHead({ name, text, icon, onOpen, onClear }: { name: string; text: string; icon?: ReactNode; onOpen?: () => void; onClear: () => void }) {
-  return (
-    <span className={cx(HEAD, HEAD_ON, 'pr-[4px]')} data-testid={`filter-${name.toLowerCase().replace(/\s+/g, '-')}`} data-on="true">
-      <button type="button" onClick={onOpen} className="inline-flex shrink-0 items-center gap-[5px] font-semibold" title={`${name} filter`}>
-        {icon}
-        <span className="max-w-[170px] truncate">{text}</span>
-      </button>
-      <button type="button" aria-label={`Clear the ${name} filter`} onClick={onClear} className="rounded-full p-[2px] opacity-70 hover:opacity-100">
-        <X size={12} strokeWidth={2.6} aria-hidden />
-      </button>
-    </span>
-  );
-}
-
-/** A small panel under a header: closes on Esc and on a press outside it. */
-function HeadPopover({ anchor, label, onClose, children }: { anchor: HTMLElement | null; label: string; onClose: () => void; children: ReactNode }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
-  useLayoutEffect(() => {
-    const rect = anchor?.getBoundingClientRect();
-    if (rect) setPlace({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 300)) });
-  }, [anchor]);
-  useEffect(() => {
-    const away = (event: MouseEvent) => {
-      if (!box.current?.contains(event.target as Node) && !anchor?.contains(event.target as Node)) onClose();
-    };
-    const key = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    document.addEventListener('mousedown', away);
-    document.addEventListener('keydown', key, true);
-    return () => {
-      document.removeEventListener('mousedown', away);
-      document.removeEventListener('keydown', key, true);
-    };
-  }, [anchor, onClose]);
-  return (
-    <div
-      ref={box}
-      role="dialog"
-      aria-label={label}
-      style={place ?? { visibility: 'hidden' }}
-      className="fixed z-[60] min-w-[220px] rounded-[14px] bg-[var(--mk-panel)] p-[12px] text-[13px] font-normal text-[var(--mk-ink)] shadow-[0_12px_40px_rgb(0_0_0/0.18),0_0_0_1px_rgb(0_0_0/0.06)]"
-    >
-      {children}
-    </div>
-  );
-}
 
 /** Note: a click turns the name into a search field that narrows as typed; ⌘F opens it too. */
 export function NoteHead({ value, open, onOpen, onClose, onChange }: { value: string; open: boolean; onOpen: () => void; onClose: () => void; onChange: (value: string) => void }) {
@@ -112,7 +56,20 @@ export function NoteHead({ value, open, onOpen, onClose, onChange }: { value: st
 }
 
 /** Date (Cashflow's column name, owner 2026-11-24): From and To, both days kept, with This month, Last month and Any time. */
-export function WhenHead({ from, to, today, onChange }: { from: string | null; to: string | null; today: string; onChange: (from: string | null, to: string | null) => void }) {
+export function WhenHead({
+  from,
+  to,
+  today,
+  sort,
+  onChange,
+}: {
+  from: string | null;
+  to: string | null;
+  today: string;
+  /** Sort by date, at the top of the menu (owner 2026-11-25). */
+  sort?: ColumnSort;
+  onChange: (from: string | null, to: string | null) => void;
+}) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const on = from !== null || to !== null;
@@ -143,14 +100,15 @@ export function WhenHead({ from, to, today, onChange }: { from: string | null; t
   return (
     <span ref={anchor} className="inline-flex">
       {on ? (
-        <OnHead name="Date" text={`Date: ${whenFilterText(from, to)}`} onOpen={() => setOpen((was) => !was)} onClear={() => onChange(null, null)} />
+        <OnHead name="Date" text={`Date${sortArrow(sort?.dir ?? null)}: ${whenFilterText(from, to)}`} onOpen={() => setOpen((was) => !was)} onClear={() => onChange(null, null)} />
       ) : (
         <button type="button" onClick={() => setOpen((was) => !was)} className={HEAD} aria-expanded={open}>
-          Date <ChevronDown size={13} strokeWidth={2.4} aria-hidden className="opacity-70" />
+          Date{sortArrow(sort?.dir ?? null)} <ChevronDown size={13} strokeWidth={2.4} aria-hidden className="opacity-70" />
         </button>
       )}
       {open && (
         <HeadPopover anchor={anchor.current} label="Date filter" onClose={() => setOpen(false)}>
+          {sort && <SortHead sort={sort} onDone={() => setOpen(false)} />}
           {day('From', from, (value) => onChange(value, to))}
           {day('To', to, (value) => onChange(from, value))}
           <div className="mt-[10px] flex gap-[6px]">
@@ -170,10 +128,13 @@ export function ChoiceHead({
   noneLabel,
   value,
   options,
+  sort,
   onChange,
 }: {
   name: string;
   noneLabel: string;
+  /** Sort by this column's names, at the top of the menu (owner 2026-11-25). */
+  sort?: ColumnSort;
   /** The value held: an id, `NONE`, or null for any. */
   value: string | null;
   options: readonly { value: string; label: string }[];
@@ -200,14 +161,16 @@ export function ChoiceHead({
   return (
     <span ref={anchor} className="inline-flex">
       {value !== null ? (
-        <OnHead name={name} text={label} onOpen={() => setOpen((was) => !was)} onClear={() => onChange(null)} />
+        <OnHead name={name} text={`${sortArrow(sort?.dir ?? null).trim() ? `${sortArrow(sort?.dir ?? null).trim()} ` : ''}${label}`} onOpen={() => setOpen((was) => !was)} onClear={() => onChange(null)} />
       ) : (
         <button type="button" onClick={() => setOpen((was) => !was)} className={HEAD} aria-expanded={open}>
-          {name} <ChevronDown size={13} strokeWidth={2.4} aria-hidden className="opacity-70" />
+          {name}
+          {sortArrow(sort?.dir ?? null)} <ChevronDown size={13} strokeWidth={2.4} aria-hidden className="opacity-70" />
         </button>
       )}
       {open && (
         <HeadPopover anchor={anchor.current} label={`${name} filter`} onClose={() => setOpen(false)}>
+          {sort && <SortHead sort={sort} onDone={() => setOpen(false)} />}
           <div role="menu" aria-label={`${name} filter`} className="max-h-[300px] overflow-y-auto">
             {item(null, 'Any')}
             {item(NONE, noneLabel)}
@@ -216,5 +179,14 @@ export function ChoiceHead({
         </HeadPopover>
       )}
     </span>
+  );
+}
+
+/** A header's Sort, above its filter: the two orders, and a line under them. */
+function SortHead({ sort, onDone }: { sort: ColumnSort; onDone: () => void }) {
+  return (
+    <div className="-mx-[4px] -mt-[4px] mb-[8px] border-b border-[var(--mk-line)] pb-[6px]">
+      <SortPart sort={sort} onDone={onDone} />
+    </div>
   );
 }

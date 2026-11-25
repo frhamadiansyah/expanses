@@ -12,13 +12,16 @@ import { CategoryIcon, useCategoryMarkColour } from '../categories/CategoryIcon'
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { useMonthStart, useOpenBook } from '../workspaces/queries';
 import { BOX, DailyBox, MonthBox, RingBox } from './CashflowBoxes';
-import { cashflowLine, clickAction, deskAmount, discardedLine, monthFigures, orderNote, recordedCount, pageShortcut, peekKey, recordable, recordedToast, recordTickedLabel, ringLegend, type Selection, type SelectionAction, skippedLine, tickClick, waitingOrder, waitingSpan } from './cashflow-desk-model';
+import { cashflowFigure, cashflowLine, clickAction, deskAmount, discardedLine, monthFigures, orderNote, recordedCount, pageShortcut, peekKey, recordable, recordedToast, recordTickedLabel, ringLegend, type Selection, type SelectionAction, skippedLine, tickClick, waitingOrder, waitingSpan } from './cashflow-desk-model';
 import { type BulkActions, type RecordMany, SelectionPeek } from './CashflowPeek';
 import type { ChipOption } from './ChipMenu';
 import { categoryButtonLabel, type ListFilters, type ListRow, type Sort } from './list-model';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
 import { cellCorner, cellLook, cellMarks, type CellPick } from './cell-look';
+import { ColumnHead, type ColumnSort, SORT_WORDS } from './ColumnHead';
+import { stickyHead, useFits, useStuck } from './sticky-head';
+import { type AmountFilter, amountFilterOn, NO_AMOUNT_FILTER, sumFigures, totalFoot, withinAmount } from './table-figures';
 import type { CellColumn } from './cell-range';
 import { useCashflowCells } from './cashflow-cells';
 import { type AddPaidChoice, addPaidChoices, fillAddedPaid, forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, pendingPaidLabel, pendingPaidOf, readMarks, rowsLine, unknownLinks, unknownLinksLine } from './paste-categories';
@@ -296,7 +299,7 @@ export function DesktopCashflow({
   onSort,
   kind,
   paidAccountId,
-  rows,
+  rows: listedRows,
   emptyText,
   limitNote,
   pendingCount,
@@ -374,6 +377,11 @@ export function DesktopCashflow({
   children?: ReactNode;
 }) {
   const { database, ws } = useApp();
+  // The Amount header's Over and Under (owner 2026-11-25), for the visit: the rows it leaves out are out of the table —
+  // not picked, not peeked, not counted in its Total — until it is taken off.
+  const [amountFilter, setAmountFilter] = useState<AmountFilter>(NO_AMOUNT_FILTER);
+  const amountOn = amountFilterOn(amountFilter);
+  const rows = amountOn ? listedRows.filter((row) => withinAmount(deskAmount(row).minor, row.currency, amountFilter)) : listedRows;
   const colourFor = useCategoryMarkColour();
   // Under a year the ring, Spent / Received / Left and the day bars leave not-monthly bills out, as the phone's do.
   const ring = useRing(kind, month, paidAccountId, notMonthly.out);
@@ -590,6 +598,7 @@ export function DesktopCashflow({
     handlers,
     saveDraft: deskHandlers.saveDraft,
     readOnly,
+    baseCurrency,
     onStart: () => dispatch({ type: 'close' }),
     // ⌘Return on picked cells records the waiting rows they are in, as Record N does.
     onRecord: (ids) => void recordMany(recordable(ids, [...rows.filter((row) => row.kind === 'draft'), ...waiting], accounts, today, baseCurrency)),
@@ -690,10 +699,19 @@ export function DesktopCashflow({
       : undefined;
   const toast = recorded ? recordedToast(recorded.items.map((item) => item.month), recorded.skipped) : null;
   const at = selected ? peekIds.indexOf(selected.id) : -1;
-  const sortBy = (key: Sort['key']) => onSort({ key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' });
-  const sortMark = (key: Sort['key']) => (sort.key === key ? (sort.dir === 'desc' ? ' ↓' : ' ↑') : '');
-  const ariaSort = (key: Sort['key']) => (sort.key === key ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none');
+  // A column's name sorts the table by it (owner 2026-11-25): its menu's two orders, the arrow after the name while on.
+  const sortOf = (key: Sort['key'], choices: ColumnSort['choices']): ColumnSort => ({ dir: sort.key === key ? sort.dir : null, choices, onSort: (dir) => onSort({ key, dir }) });
+  // Clear search and filters takes the Amount header's off too.
+  const clearAll = () => {
+    setAmountFilter(NO_AMOUNT_FILTER);
+    onClearAll();
+  };
+  // Under the Amount column: the rows the table shows, and what they come to (owner 2026-11-25).
+  const foot = totalFoot(sumFigures([...rows, ...waiting].map((row) => cashflowFigure(row, baseCurrency)), baseCurrency));
   const periodNote = period?.kind === 'month' ? monthName(month, 'long') : periodLabel(month);
+  // The column names stay on top while the month scrolls under them (owner 2026-11-25).
+  const head = useStuck<HTMLDivElement>();
+  const wide = useFits<HTMLDivElement>((peeking ? 560 : 700) + 20);
 
   return (
     <div className="min-h-dvh bg-[var(--ov-ground)]" data-testid="desktop-cashflow" {...doubleClick}>
@@ -873,7 +891,7 @@ export function DesktopCashflow({
          * v1's rows: 40px, a hairline under each, no zebra; the rows typed in keep their cells, drawn to the same height.
          */}
         <section
-          className={cx(BOX, 'overflow-hidden [contain:inline-size]')}
+          className={cx(BOX, 'overflow-clip [contain:inline-size]')}
           style={{ '--desk-cols': peeking ? DESK_COLUMNS.peek : DESK_COLUMNS.wide } as CSSProperties}
           aria-label="Transactions"
         >
@@ -906,7 +924,8 @@ export function DesktopCashflow({
             </span>
           </h2>
           {cells.line}
-          <div className="overflow-x-auto px-[10px] pb-[6px]">
+          {/* Sideways scroll only when the window is narrower than the table: a box that scrolls would hold the sticky header in. */}
+          <div ref={wide.ref} className={cx('px-[10px] pb-[6px]', wide.fits ? 'overflow-x-clip' : 'overflow-x-auto')}>
             <div
               className={cx(
                 'text-[13.5px]',
@@ -917,26 +936,32 @@ export function DesktopCashflow({
                 '[&_[data-testid=typing-row]]:border-t-0 [&_[data-testid=typing-row]_[data-quick-row]]:py-[4px]',
               )}
             >
-              <div className={cx(DESK_GRID, 'border-b border-[var(--mk-line)] px-0.5 text-[12.5px] font-semibold text-[var(--mk-ink-2)]')}>
+              <div ref={head.ref} data-testid="table-head" className={cx(DESK_GRID, 'border-b border-[var(--mk-line)] px-0.5 text-[12.5px] font-semibold text-[var(--mk-ink-2)]', stickyHead(head.stuck))}>
                 <span />
-                <button type="button" aria-sort={ariaSort('date')} onClick={() => sortBy('date')} className="truncate px-2 py-[9px] text-left whitespace-nowrap hover:text-[var(--mk-ink)]">
-                  Date{sortMark('date')}
-                </button>
-                <span className="truncate px-2 py-[9px] whitespace-nowrap">Note</span>
-                <span className="truncate px-2 py-[9px] whitespace-nowrap">Category</span>
-                <span className="truncate px-2 py-[9px] whitespace-nowrap">Payment method</span>
-                <button type="button" aria-sort={ariaSort('amount')} onClick={() => sortBy('amount')} className="truncate px-2 py-[9px] text-right whitespace-nowrap hover:text-[var(--mk-ink)]">
-                  Amount{sortMark('amount')}
-                </button>
+                <span className="min-w-0 px-2 py-[6px]">
+                  <ColumnHead name="Date" sort={sortOf('date', SORT_WORDS.date)} />
+                </span>
+                <span className="min-w-0 px-2 py-[6px]">
+                  <ColumnHead name="Note" sort={sortOf('description', SORT_WORDS.words)} />
+                </span>
+                <span className="min-w-0 px-2 py-[6px]">
+                  <ColumnHead name="Category" chevron sort={sortOf('category', SORT_WORDS.words)} />
+                </span>
+                <span className="min-w-0 px-2 py-[6px]">
+                  <ColumnHead name="Payment method" chevron sort={sortOf('paid', SORT_WORDS.words)} />
+                </span>
+                <span className="min-w-0 px-2 py-[6px] text-right">
+                  <ColumnHead name="Amount" align="right" chevron sort={sortOf('amount', SORT_WORDS.amount)} amount={{ filter: amountFilter, currency: baseCurrency, onChange: setAmountFilter }} />
+                </span>
                 <span />
               </div>
               {rows.length === 0 && (
                 <div className="border-b border-[var(--mk-line)] px-3 py-6 text-center text-[13px] text-[var(--mk-ink-2)]">
                   {emptyText}
-                  {narrowed && (
+                  {(narrowed || amountOn) && (
                     <>
                       {' '}
-                      <button type="button" onClick={onClearAll} className="text-[var(--mk-blue)] hover:underline">
+                      <button type="button" onClick={clearAll} className="text-[var(--mk-blue)] hover:underline">
                         Clear search and filters
                       </button>
                     </>
@@ -993,6 +1018,16 @@ export function DesktopCashflow({
               </ul>
               {/* The typing row is the table's last row (option E): today's date, Tab across, ⌘Return or Record saves it. */}
               {!readOnly && <TypingRow options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={deskHandlers} desk={{}} />}
+              {rows.length + waiting.length > 0 && (
+                <div data-testid="table-total" className="flex items-baseline justify-between px-[10px] pt-[10px] pb-[4px] text-[12.5px] text-[var(--mk-ink-2)] tabular-nums">
+                  <span>{foot.shown}</span>
+                  {foot.total && (
+                    <span>
+                      Total <b className="ml-[6px] text-[14px] font-bold text-[var(--mk-ink)]">{foot.total}</b>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -1208,7 +1243,7 @@ function DeskRow({
       </span>
       <span
         {...cell('amount')}
-        className={cx('flex items-baseline justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', amount.tone === 'up' && !solid && 'text-[var(--ph-up)]', amount.tone === 'grey' && !solid && 'text-[var(--ph-ink-3)]', blue('amount'))}
+        className={cx('flex items-center justify-end gap-[6px] truncate px-2 py-[5px] text-right tabular-nums', amount.tone === 'up' && !solid && 'text-[var(--ph-up)]', amount.tone === 'grey' && !solid && 'text-[var(--ph-ink-3)]', blue('amount'))}
       >
         {cellCorner('amount', pickedCell)}
         {extra.length > 0 && (
