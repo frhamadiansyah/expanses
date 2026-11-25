@@ -103,6 +103,7 @@ const REPLICATE: readonly string[] = [
   'card_fee_waivers',
   'card_identity',
   'card_installments',
+  'card_part_payments',
   'card_postings',
   'card_settlements',
   'card_statement_settings',

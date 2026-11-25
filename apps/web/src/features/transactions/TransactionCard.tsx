@@ -151,8 +151,10 @@ export interface CardFinish {
 
 /** See `TransactionCard`'s `paysPurchases`. */
 export interface PaysPurchases {
-  /** Drawn under the card's rows: the purchases the payment is for. */
-  list: ReactNode;
+  /** Drawn under the card's rows: the purchases the payment is for, read against the amount as it stands. */
+  list: (draft: FormDraft) => ReactNode;
+  /** The amount is their total and not a control; false when one purchase is paid and its amount may be typed. */
+  fixed: boolean;
   /** Saves the form in the caller's own way; a throw is shown on the card, as a failed save is. */
   save: (draft: FormDraft, setAside: SetAsideChoice | null) => Promise<void>;
 }
@@ -1345,7 +1347,7 @@ function CardBody({
               set={set}
               selectOnOpen={!!duplicateOf}
               noRefund={!!finish}
-              fixed={!!paysPurchases}
+              fixed={paysPurchases?.fixed === true}
               {...(photosOnAmount ? { photos: { count: draft.photoIds.length, open: () => (draft.photoIds.length === 0 ? receiptInput.current?.click() : setSheet('photos')) } } : {})}
               {...(transferSecond ? { second: transferSecond } : {})}
             />
@@ -1439,7 +1441,7 @@ function CardBody({
         )}
       </div>
 
-      {paysPurchases?.list}
+      {paysPurchases?.list(draft)}
 
       {offersTransferGoal(draft, { editing: !!initial, payCard, goals: goals.length }) && (
         <FormRows>

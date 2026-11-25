@@ -1472,6 +1472,11 @@ export async function replaceTransactionTx(tx: Tx, ws: WorkspaceContext, id: str
   }
   await tx.update(cardSettlements).set({ purchaseTransactionId: replacement }).where(and(eq(cardSettlements.purchaseTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
   await tx.update(cardSettlements).set({ paymentTransactionId: replacement }).where(and(eq(cardSettlements.paymentTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
+  // So is a payment for part of one purchase (0130), whichever of the two was edited.
+  if ((await tx.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'card_part_payments'`)).length > 0) {
+    await tx.run(sql`UPDATE card_part_payments SET purchase_transaction_id = ${replacement} WHERE purchase_transaction_id = ${id} AND workspace_id = ${ws.workspaceId}`);
+    await tx.run(sql`UPDATE card_part_payments SET payment_transaction_id = ${replacement} WHERE payment_transaction_id = ${id} AND workspace_id = ${ws.workspaceId}`);
+  }
   // The instalment plan a purchase was converted to is a fact about the same money too: its statement rows and its
   // Each month spreading (0120) follow the edited purchase rather than staying with the voided one.
   await tx.run(sql`UPDATE card_installments SET transaction_id = ${replacement} WHERE transaction_id = ${id} AND workspace_id = ${ws.workspaceId}`);

@@ -144,6 +144,8 @@ const GOES_WITH_TRANSACTION: readonly [table: string, column: string][] = [
   ['card_installments', 'transaction_id'],
   ['card_settlements', 'purchase_transaction_id'],
   ['card_settlements', 'payment_transaction_id'],
+  ['card_part_payments', 'purchase_transaction_id'],
+  ['card_part_payments', 'payment_transaction_id'],
   ['transaction_point_actuals', 'transaction_id'],
   ['point_entries', 'transaction_id'],
   ['statement_links', 'transaction_id'],

@@ -136,6 +136,11 @@ export function StatementPanel({
   // What the card's payments cover, oldest first: worked out by the ledger with the statement, never stored.
   const cover = useMemo<ReadonlyMap<string, LineCover>>(() => (statement.data ? statementCover(statement.data) : new Map()), [statement.data]);
   const coveredWhole = (line: StatementLine) => cover.get(line.key)?.whole === true;
+  // Covered in part (a lump payment, or a payment for part of it): still to pay, drawn half paid.
+  const partPaid = (line: StatementLine) => {
+    const covered = cover.get(line.key);
+    return !!covered && !covered.whole && covered.coveredMinor > 0;
+  };
   /*
    * An instalment of a plan with no purchase (0124): its ✓ is the plan's Paid list's. Ticked, it and every one before it
    * are paid; only the latest ticked can be unticked, which leaves the ones before it paid.
@@ -350,10 +355,14 @@ export function StatementPanel({
         onChange={() => toggle(line.transactionId)}
         aria-label={`Pay ${line.description}`}
       />
-      {/* A line picked to pay is an ink ring with a ✓, not filled. */}
+      {/* A line picked to pay is an ink ring with a ✓, not filled. One paid in part is half filled green until picked. */}
       <span
         aria-hidden
-        className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-checked:border-[var(--ph-ink)] peer-checked:text-[var(--ph-ink)] peer-disabled:opacity-60"
+        {...(partPaid(line) ? { 'data-testid': 'statement-part-paid' } : {})}
+        className={cx(
+          'flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[var(--ph-ink-3)] text-transparent peer-checked:border-[var(--ph-ink)] peer-checked:bg-none peer-checked:text-[var(--ph-ink)] peer-disabled:opacity-60',
+          partPaid(line) && 'border-[var(--ph-up)] bg-[linear-gradient(90deg,var(--ph-up)_50%,transparent_50%)]',
+        )}
       >
         <Check size={11} strokeWidth={3.5} aria-hidden />
       </span>
@@ -381,11 +390,13 @@ export function StatementPanel({
     // An instalment row names the purchase's category, as a purchase row on Cashflow does; its "1 of 12" is a pill.
     if (line.instalment) out.push([categoryNameOf(line.instalment.categoryId), 'instalment'].filter(Boolean).join(' · '));
     if (line.convertedTo) out.push(`converted to ${line.convertedTo.months} months, billed monthly`);
-    // How a paid line was paid is in its ✓'s bubble; part covered says how much is left to pay.
+    // How a paid line was paid is in its ✓'s bubble; one paid in part (its half-filled ring) says what is left to pay,
+    // first, so a phone's narrow row never cuts it off.
     const covered = cover.get(line.key);
-    if (covered && !covered.whole && covered.coveredMinor > 0) out.push(`${money(covered.coveredMinor)} covered, ${money(covered.leftMinor)} left`);
+    if (covered && !covered.whole && covered.coveredMinor > 0) out.unshift(<span data-testid="statement-left" className="text-[var(--ph-warn-ink)]">{money(covered.leftMinor)} left</span>);
     // A payment made for chosen purchases says so, so a batch can be told from a bill payment.
     if (line.settles > 0) out.push(`for ${line.settles} purchase${line.settles === 1 ? '' : 's'}`);
+    else if (line.paysPartOf) out.push('for part of a purchase');
     if (!grouped && last4(line.cardId)) out.push(<span className="tabular font-semibold">···· {last4(line.cardId)}</span>);
     const tag = tagFor(line);
     if (tag) out.push(tag);
@@ -651,7 +662,7 @@ export function StatementPanel({
     const subtitle = [
       day(line.occurredOn),
       entry.refund ? 'counts as paid' : from ? `from ${from}` : null,
-      line.settles > 0 ? `for ${line.settles} purchase${line.settles === 1 ? '' : 's'}` : null,
+      line.settles > 0 ? `for ${line.settles} purchase${line.settles === 1 ? '' : 's'}` : line.paysPartOf ? 'for part of a purchase' : null,
       entry.countedMinor < entry.wholeMinor ? `part of ${money(entry.wholeMinor)}` : null,
       line.postedOn ? `posted ${day(line.postedOn)}` : null,
     ]

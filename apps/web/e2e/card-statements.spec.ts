@@ -250,7 +250,7 @@ test('a payment made with Pay covers the statement’s purchases oldest first, a
   await expect(ride.getByTestId('statement-covered')).toBeVisible();
   await expect(ride.getByRole('button', { name: /^Ride to airport, Paid with the \d+ \w+ payment$/ })).toBeVisible();
   await expect(page.getByLabel('Pay Ride to airport')).toHaveCount(0);
-  await expect(hotel).toContainText(/200\.000 covered, Rp\s1\.800\.000 left/);
+  await expect(hotel).toContainText(/Rp\s1\.800\.000 left/);
   await expect(page.getByTestId('statement-group')).toContainText(/1 of 2 paid/i);
   // No legend under the statement, and no words on the rows: the ✓ keeps them.
   await expect(page.getByTestId('statement-legend')).toHaveCount(0);

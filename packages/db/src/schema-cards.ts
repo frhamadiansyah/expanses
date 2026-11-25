@@ -32,3 +32,13 @@ export const cardSettlements = sqliteTable('card_settlements', {
   paymentTransactionId: text('payment_transaction_id').notNull(),
   workspaceId: text('workspace_id').notNull(),
 });
+
+/**
+ * A payment that paid part of one card purchase (0130): which purchase it was for. How much is the payment's own amount,
+ * up to what the purchase still charges; never stored. A purchase paid whole is a settlement instead.
+ */
+export const cardPartPayments = sqliteTable('card_part_payments', {
+  paymentTransactionId: text('payment_transaction_id').primaryKey(),
+  purchaseTransactionId: text('purchase_transaction_id').notNull(),
+  workspaceId: text('workspace_id').notNull(),
+});
