@@ -134,10 +134,12 @@ test('row 6 — the same goal worked out counting all spending', async ({ page }
 });
 
 test('row 7 — a weekly line overridden for one month keeps its unit, and next month is the week again', async ({ page }) => {
+  // A week is counted by the month's Mondays (Budget C): five in November 2026, four in December.
+  await page.clock.setSystemTime(new Date('2026-11-25T10:00:00'));
   await page.goto('/budget');
   await cap(page, '— Groceries', 'weekly', '500000');
   await budgetTab(page, 'Plan');
-  await expect(page.getByTestId('caps-total')).toContainText('2.166.667');
+  await expect(page.getByTestId('caps-total')).toContainText('2.500.000');
 
   let sheet = await openCapOf(page, '— Groceries');
   await sheet.getByLabel('Just this month').check();
@@ -160,24 +162,27 @@ test('row 7 — a weekly line overridden for one month keeps its unit, and next 
 
   await page.getByRole('button', { name: 'Next month' }).click();
   await budgetTab(page, 'Plan');
-  await expect(page.getByTestId('caps-total')).toContainText('2.166.667');
+  await expect(page.getByTestId('caps-total')).toContainText('2.000.000');
   sheet = await openCapOf(page, '— Groceries');
   await expect(sheet.getByLabel('Just this month')).not.toBeChecked();
 });
 test('row 8 — five units, and the total is the sum of the converted lines', async ({ page }) => {
+  // A day and a week are counted in November 2026 (Budget C): 30 days, 5 Mondays.
+  await page.clock.setSystemTime(new Date('2026-11-25T10:00:00'));
   await page.goto('/budget');
   await cap(page, '— Groceries', 'daily', '50000');
   await cap(page, 'Utilities', 'weekly', '500000');
   await cap(page, 'Transportation', 'monthly', '900000');
   await cap(page, 'Education', 'quarterly', '15386000');
   await cap(page, 'Personal care', 'yearly', '2400000');
-  // 1.520.833 + 2.166.667 + 900.000 + 5.128.667 + 200.000 — never the typed figures, never ×4 or ×30.
+  // 1.500.000 + 2.500.000 + 900.000 + 5.128.667 + 200.000 — a day × 30, a week × 5 Mondays; a quarter and a year their
+  // average month, never the typed figures.
   await openDrawer(page, 'Household');
-  await expect(page.getByTestId('line-Groceries')).toContainText('left of 1.520.833');
+  await expect(page.getByTestId('line-Groceries')).toContainText('left of 1.500.000');
   await expect(page.getByTestId('line-Education')).toContainText('left of 5.128.667');
   await expect(page.getByTestId('line-Personal care')).toContainText('left of 200.000');
   await budgetTab(page, 'Plan');
-  await expect(page.getByTestId('caps-total')).toContainText('9.916.167');
+  await expect(page.getByTestId('caps-total')).toContainText('10.228.667');
 
   // Each cap keeps what was typed and the unit it was typed in.
   for (const [option, figure, every] of [['— Groceries', '50.000', 'daily'], ['Education', '15.386.000', 'quarterly'], ['Personal care', '2.400.000', 'yearly']] as const) {

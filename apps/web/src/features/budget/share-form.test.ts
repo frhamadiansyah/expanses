@@ -12,6 +12,8 @@ const stored = (categoryAccountId: string, planMinor: number, amountMinor: numbe
   overridden: amountMinor !== planMinor,
   frequency: 'monthly',
   amountAsSetMinor: planMinor,
+  everyWeeks: null,
+  startsOn: null,
   share,
 });
 

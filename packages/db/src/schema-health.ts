@@ -11,6 +11,10 @@ export const budgetFrequencies = sqliteTable('budget_frequencies', {
   workspaceId: text('workspace_id').notNull(),
   frequency: text('frequency', { enum: ['daily', 'weekly', 'quarterly', 'yearly'] }).notNull(),
   amountAsSetMinor: integer('amount_as_set_minor').notNull(),
+  /** A week's gap in weeks (0129): null is every week. */
+  everyWeeks: integer('every_weeks'),
+  /** YYYY-MM-DD: the day every few weeks is counted from (0129). */
+  startsOn: text('starts_on'),
 });
 
 export const goalStageTerms = sqliteTable('goal_stage_terms', {

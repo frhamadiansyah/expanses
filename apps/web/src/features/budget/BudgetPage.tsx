@@ -13,6 +13,7 @@ import { CappedRow, FigureRow, OverRow, UseBar, useCategoryMarks } from './budge
 import { daysLeft, findLine, noBudgetRows, planSplit, spendingView } from './budget-view';
 import { MonthSheet, SplitSheet, TakeHomeSheet } from './BudgetSheets';
 import { CapSheet } from './CapSheet';
+import { repeatLine } from './frequency-form';
 import { dependantsOf, shareBaseOf } from './share-form';
 import { useBudgets, useBudgetSheet, useCommittedBills, useSpendingHistory } from './queries';
 
@@ -98,6 +99,8 @@ export function BudgetPage() {
   const view = sheet ? spendingView(sheet.lines) : null;
   const history = useSpendingHistory(month, currency);
   const openCap = (id: string) => setOpen({ kind: 'cap', id });
+  // A budget by days or weeks says how it repeats under its name (Budget C); every other row is as it was.
+  const repeatOf = (id: string) => repeatLine(budgets.find((row) => row.categoryAccountId === id), planCurrency);
   const close = () => setOpen(null);
 
   const menu: CornerAction[] = [
@@ -151,7 +154,7 @@ export function BudgetPage() {
           {view.over.length > 0 && (
             <InsetGroup header="Over the cap">
               {view.over.map((line) => (
-                <OverRow key={line.id} line={line} mark={markOf(line.id)} currency={currency} onOpen={() => openCap(line.id)} />
+                <OverRow key={line.id} line={line} mark={markOf(line.id)} currency={currency} repeat={repeatOf(line.id)} onOpen={() => openCap(line.id)} />
               ))}
             </InsetGroup>
           )}
@@ -162,7 +165,7 @@ export function BudgetPage() {
             ) : (
               view.budgeted.flatMap((entry, index) => {
                 if (entry.kind === 'line') {
-                  return [<CappedRow key={entry.line.id} line={entry.line} mark={markOf(entry.line.id)} currency={currency} onOpen={() => openCap(entry.line.id)} />];
+                  return [<CappedRow key={entry.line.id} line={entry.line} mark={markOf(entry.line.id)} currency={currency} repeat={repeatOf(entry.line.id)} onOpen={() => openCap(entry.line.id)} />];
                 }
                 const key = entry.parent.id;
                 const shown = drawers.open.has(key);
@@ -191,6 +194,7 @@ export function BudgetPage() {
                           depth={1}
                           title={line.id === entry.parent.id ? `All ${line.name}` : line.name}
                           currency={currency}
+                          repeat={repeatOf(line.id)}
                           onOpen={() => openCap(line.id)}
                         />
                       ))

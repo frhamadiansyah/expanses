@@ -1,4 +1,4 @@
-import { convertMinor, isMonthStartDay, isoDate, isSupportedCurrency, monthPeriod, type MonthStartDay, perMonthMinor, periodMonthOf, uuidv7 } from '@expanses/core';
+import { averageMonthlyMinor, convertMinor, isMonthStartDay, isoDate, isSupportedCurrency, monthPeriod, type MonthStartDay, periodMonthOf, uuidv7 } from '@expanses/core';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -9,7 +9,7 @@ import { NOT_IN_A_SET } from '../schema-category-sets';
 import { categoryMccs } from '../schema-points';
 import { budgetFrequencies, categoryNeeds } from '../schema-health';
 import { findRate } from './fx';
-import { healthTablesExist } from './health-tables';
+import { budgetRepeatColumnsExist, healthTablesExist } from './health-tables';
 // Making a workspace is where three things meet: the book itself, the categories it starts with, and the card
 // rules that name them. The other two live where they belong and are called from here.
 import { replanCatalogProgramsTx } from './catalog';
@@ -431,6 +431,10 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
             .where(inArray(budgetFrequencies.budgetId, caps.map((cap) => cap.id)))
         : [];
     const unitOf = new Map(units.map((row) => [row.budgetId, row]));
+    // A week's gap (Budget C, 0129): every few weeks keeps its average month a week's divided by their number.
+    const gaps = units.length && (await budgetRepeatColumnsExist(tx))
+      ? new Map((await tx.values<[string, number | null]>(sql`SELECT budget_id, every_weeks FROM budget_frequencies WHERE budget_id IN ${units.map((row) => row.budgetId)}`)).map(([id, every]) => [id, every]))
+      : new Map<string, number | null>();
     for (const cap of caps) {
       const unit = unitOf.get(cap.id);
       const asSet = unit ? into(unit.amountAsSetMinor) : 0;
@@ -441,7 +445,7 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
         // failing the whole change.
         await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, cap.id));
       }
-      const monthlyMinor = unit && asSet > 0 ? perMonthMinor(asSet, unit.frequency) : into(cap.amountMinor);
+      const monthlyMinor = unit && asSet > 0 ? averageMonthlyMinor(asSet, unit.frequency, gaps.get(cap.id) ?? null) : into(cap.amountMinor);
       if (monthlyMinor <= 0) {
         // A cap of nothing a month cannot be stored (budgets.amount_minor > 0), and dropping it silently would lose
         // the owner's plan: the change is refused, naming the line, and the whole transaction goes back.

@@ -43,7 +43,8 @@ export interface CapInput {
   /** The option as the picker lists it: a parent by name, a child as "— Groceries". */
   option: string;
   amount: string;
-  every?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  /** A unit, or every few weeks as 'weeks-3' (Budget C). */
+  every?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | `weeks-${number}`;
   thisMonthOnly?: boolean;
   /** Typed a key at a time, as a thumb types, rather than filled at once. */
   typed?: boolean;

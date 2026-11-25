@@ -217,7 +217,10 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
     scope: (bookId) => sql`t.budget_id IN (${budgetsOfBook(bookId)})`,
     // Settled (spec §15): keyed by budget_id, one row per budget (0053).
     keyColumns: ['budget_id'],
-    fields: { frequency: 'frequency', amountAsSetMinor: 'amount_as_set_minor' },
+    // everyWeeks and startsOn (Budget C, 0129): a week's gap and the day every few weeks is counted from. A build before
+    // it passes them over, so a budget is set to repeat by days or weeks only once every phone reads them
+    // (BUDGET_REPEAT_MIN_APP_VERSION).
+    fields: { frequency: 'frequency', amountAsSetMinor: 'amount_as_set_minor', everyWeeks: 'every_weeks', startsOn: 'starts_on' },
     localOnInsert: [],
   },
   {

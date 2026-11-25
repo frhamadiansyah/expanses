@@ -17,3 +17,17 @@ export async function healthTablesExist(db: Db): Promise<boolean> {
   if (exists) healthTables.set(db, true);
   return exists;
 }
+
+const repeatColumns = new WeakMap<Db, boolean>();
+
+/**
+ * Whether migration 0129 has run: budget_frequencies' every_weeks and starts_on (Budget C). Without them every week is
+ * every week, and a budget cannot be set every few weeks. A positive answer is remembered per handle, as above.
+ */
+export async function budgetRepeatColumnsExist(db: Db): Promise<boolean> {
+  if (repeatColumns.get(db)) return true;
+  const rows = await db.values<[number]>(sql`SELECT 1 FROM pragma_table_info('budget_frequencies') WHERE name = 'every_weeks'`);
+  const exists = rows.length > 0;
+  if (exists) repeatColumns.set(db, true);
+  return exists;
+}

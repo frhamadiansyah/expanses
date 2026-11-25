@@ -1,8 +1,8 @@
-import { type BudgetFrequency, type BudgetLine, type BudgetShare, bpOf, formatBp, formatMinor, parsePercentBp, type ShareBasis, shareOfMinor } from '@expanses/core';
+import { type BudgetLine, type BudgetShare, bpOf, formatBp, formatMinor, parsePercentBp, type ShareBasis, shareOfMinor } from '@expanses/core';
 import type { BudgetRow } from '@expanses/db';
 import { bareFigure } from '../networth/debt-rows';
 import { findLine } from './budget-view';
-import { perMonthPreview } from './frequency-form';
+import { type BudgetUnit, perMonthPreview } from './frequency-form';
 
 /** What a % typed for a category is of: its parent's budget, or this month's take-home. */
 export interface ShareBase {
@@ -34,7 +34,7 @@ export function shareBaseOf(lines: readonly BudgetLine[], categoryId: string, ta
  * A typed amount as its share of the basis: the share its month is, whatever unit it was typed in. Empty when it
  * cannot be read or there is no basis.
  */
-export function toPercent(amount: string, frequency: BudgetFrequency, base: ShareBase, currency: string): string {
+export function toPercent(amount: string, frequency: BudgetUnit, base: ShareBase, currency: string): string {
   const monthly = perMonthPreview(amount, frequency, currency);
   const bp = monthly === null ? null : bpOf(monthly, base.minor);
   return bp === null ? '' : formatBp(bp);
