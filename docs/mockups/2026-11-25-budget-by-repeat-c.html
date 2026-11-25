@@ -1,0 +1,83 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Budget by how it repeats</title><style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; --tint:#007aff; --green:#248a3d; --red:#c0392b; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1240px; line-height:1.4; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; }
+  .col { width:320px; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .cap b { display:inline-block; width:20px; height:20px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:20px; font-size:12px; margin-right:6px; }
+  .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:70px; line-height:1.4; }
+  .phone { background:var(--ground); border-radius:26px; padding:10px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .bar { display:flex; justify-content:space-between; align-items:center; margin:4px 4px 12px; font-size:16px; } .bar .l, .bar .r { color:var(--tint); font-size:15px; } .bar b { font-weight:600; }
+  .hd { font-size:12px; letter-spacing:.05em; color:var(--ink3); margin:12px 14px 6px; font-weight:600; }
+  .grp { background:#fff; border-radius:12px; overflow:hidden; margin-bottom:12px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; gap:8px; min-height:44px; }
+  .r + .r { border-top:.5px solid var(--hair); }
+  .v { color:var(--ink3); white-space:nowrap; font-size:15px; } .chev::after { content:" ›"; color:#c7c7cc; }
+  .tick { display:flex; align-items:center; gap:10px; }
+  .c { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .c.on { background:var(--tint); color:#fff; } .c svg { width:12px; height:12px; }
+  .tt .n { font-size:16px; } .tt .s { font-size:12.5px; color:var(--ink3); }
+  .amt { font-variant-numeric:tabular-nums; }
+  .sw { width:44px; height:26px; border-radius:13px; background:#34c759; position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; right:2px; top:2px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+  .new { box-shadow:inset 0 0 0 2px #ff9f0a; }
+  .ft { font-size:12.5px; color:var(--ink3); margin:-6px 14px 12px; line-height:1.35; }
+  .act { color:var(--tint); justify-content:center; font-weight:600; }
+  .tx { display:flex; align-items:center; gap:10px; padding:10px 12px; }
+  .tx + .tx { border-top:.5px solid var(--hair); }
+  .ic { width:36px; height:36px; border-radius:50%; background:#e9ebef; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#56607a; font-size:15px; }
+  .grow { flex:1; min-width:0; } .grow .n { font-size:16px; } .grow .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pill { font-size:12px; font-weight:600; color:var(--green); background:#e5f5e9; border-radius:9px; padding:2px 8px; white-space:nowrap; }
+  .tot { background:#fff; border-radius:11px; padding:12px 16px; margin-bottom:12px; }
+  .tot .t { display:flex; justify-content:space-between; align-items:baseline; } .tot .t span:first-child { color:var(--ink3); } .tot .t span:last-child { font-size:22px; font-weight:600; }
+  .split { display:flex; gap:2px; height:8px; border-radius:4px; overflow:hidden; margin-top:10px; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:8px; }
+  .flag { display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:#ff9f0a; border-radius:8px; padding:1px 6px; margin-left:6px; vertical-align:1px; }
+
+  .row { display:flex; gap:18px; align-items:flex-start; margin-bottom:28px; }
+  .lead { width:250px; flex-shrink:0; } .lead h2 { font-size:17px; margin:0 0 6px; display:flex; align-items:center; gap:8px; }
+  .lead h2 b { display:inline-block; min-width:24px; height:24px; border-radius:7px; background:var(--ink); color:#fff; text-align:center; line-height:24px; font-size:13px; padding:0 5px; }
+  .lead p { font-size:13px; color:#444; line-height:1.45; margin:0 0 8px; }
+  .lead .pro { color:var(--green); } .lead .con { color:#a05a00; }
+  .hero { background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+  .hero .k { font-size:11.5px; letter-spacing:.06em; color:var(--ink3); font-weight:600; }
+  .hero .big { font-size:26px; font-weight:700; margin:2px 0 0; font-variant-numeric:tabular-nums; }
+  .hero .s { font-size:13px; color:var(--ink3); margin-top:2px; }
+  .chip { display:inline-block; font-size:11.5px; font-weight:600; border-radius:9px; padding:2px 8px; white-space:nowrap; }
+  .chip.g { color:var(--green); background:#e5f5e9; } .chip.o { color:#a05a00; background:#fff1dc; } .chip.gy { color:var(--ink3); background:#efeff4; }
+  .meter { height:8px; border-radius:4px; background:#e5e5ea; overflow:hidden; margin:8px 0 4px; display:flex; }
+  .meter i { display:block; height:100%; }
+  .mo { padding:10px 14px; } .mo + .mo { border-top:.5px solid var(--hair); }
+  .mo .top { display:flex; justify-content:space-between; align-items:baseline; gap:10px; } .mo .top .amt { white-space:nowrap; } .mo .top .n { font-size:16px; font-weight:600; }
+  .mo .sub2 { font-size:12.5px; color:var(--ink3); margin-top:2px; line-height:1.4; }
+  .est { font-style:italic; color:var(--ink3); }
+  .cf .tx .n { font-size:15px; }
+
+  .stripe { background:repeating-linear-gradient(135deg,#b9c3d1 0 5px,#dde3ea 5px 10px); }
+  .cols { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; margin-bottom:26px; }
+  .lab { font-size:12.5px; color:#555; line-height:1.4; margin:0 0 8px; min-height:54px; }
+  .tag { display:inline-block; font-size:12px; font-weight:700; color:#fff; background:var(--ink); border-radius:6px; padding:1px 6px; margin-right:6px; }
+  .bline { position:relative; } .bline .mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); border-radius:1px; }
+
+  .r2 { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; gap:8px; } .r2 + .r2 { border-top:.5px solid var(--hair); }
+  .seg { display:flex; background:#e9e9ee; border-radius:9px; padding:2px; gap:2px; font-size:13px; } .seg span { padding:4px 9px; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+  .due { display:flex; align-items:center; gap:10px; padding:10px 14px; } .due + .due { border-top:.5px solid var(--hair); }
+  .dc { width:22px; height:22px; border-radius:50%; border:1.5px solid #c7c7cc; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; }
+  .dc.ok { background:var(--green); border-color:var(--green); color:#fff; }
+
+  .ic2 { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .bud { padding:10px 14px; } .bud + .bud { border-top:.5px solid var(--hair); }
+  .bud .top { display:flex; align-items:center; gap:10px; } .bud .nm { flex:1; font-size:15.5px; } .bud .per { font-size:11px; font-weight:700; color:var(--tint); background:#e6f0ff; border-radius:6px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
+  .bud .amt2 { text-align:right; font-variant-numeric:tabular-nums; font-size:14.5px; } .bud .amt2 small { display:block; font-size:12px; color:var(--ink3); }
+  .bud .meter { margin:8px 0 3px 40px; } .bud .sub2 { margin-left:40px; font-size:12.5px; color:var(--ink3); line-height:1.4; }
+  .segw { display:flex; background:#e3e3e8; border-radius:9px; padding:2px; gap:2px; font-size:13.5px; margin:0 0 12px; } .segw span { flex:1; text-align:center; padding:6px 0; border-radius:7px; } .segw .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+</style></head><body>
+<h1>C · Budget typed by how it repeats, watched by the month</h1>
+<p class="sub">Each budget is typed the way it really comes: Rp 100.000 a week, Rp 50.000 a day, Rp 1.000.000 every 3 weeks, Rp 2.000.000 a month. The Budget page stays monthly: a month’s budget is the amount × how many times it comes up in that month. Over or not is judged for the month. New parts outlined in orange. Invented figures.</p>
+<div class="cols">
+ <div class="col"><p class="cap"><b>1</b>Setting a budget</p><p class="lab">Budget gets <b>Repeats: Day / Week / Month</b> and <b>Every</b> (1 week, 3 weeks …), like a bill.</p><div class="phone"><div class="bar"><span class="l">Cancel</span><b>Pocket money</b><span class="r">Save</span></div><div class="grp"><div class="r2"><span>Budget</span><span class="amt">Rp 100.000</span></div><div class="r2 new"><span>Repeats</span><span class="seg"><span>Day</span><span class="on">Week</span><span>Month</span></span></div><div class="r2 new"><span>Every</span><span class="v">1 week ›</span></div></div><p class="ft">Weeks start on Monday. November has 5 Mondays, so its budget is Rp 500.000; December has 4, so Rp 400.000.</p></div></div>
+ <div class="col"><p class="cap"><b>2</b>Budget · November</p><p class="lab">Each row says how its month was worked out. Electricity’s two top-ups are its budget, so it is not over.</p><div class="phone"><div class="bar"><span class="l">‹ Oct</span><b>Budget</b><span class="r">Edit</span></div><div class="hero"><div class="k">NOVEMBER · LEFT TO SPEND</div><div class="big">Rp 1.540.000</div><div class="s">of Rp 6.000.000 · 5 days left</div></div><div class="hd">SPENDING</div><div class="grp"><div class="bud"><div class="top"><span class="ic2" style="background:#e8eefc">🪙</span><span class="nm">Pocket money</span><span class="amt2">Rp 100.000<small>left of 500.000</small></span></div><div class="meter"><i style="width:80%;background:var(--green)"></i></div><div class="sub2">100.000 a week × 5 weeks</div></div><div class="bud"><div class="top"><span class="ic2" style="background:#fde9d9">☕</span><span class="nm">Cafe</span><span class="amt2">Rp 290.000<small>left of 1.500.000</small></span></div><div class="meter"><i style="width:81%;background:var(--green)"></i></div><div class="sub2">50.000 a day × 30 days</div></div><div class="bud"><div class="top"><span class="ic2" style="background:#fff4d6">⚡</span><span class="nm">Electricity</span><span class="amt2">Rp 0<small>left of 2.000.000</small></span></div><div class="meter"><i style="width:100%;background:var(--green)"></i></div><div class="sub2">1.000.000 every 3 weeks × 2 (3, 24 Nov)</div></div><div class="bud"><div class="top"><span class="ic2" style="background:#fde3e0">🍽</span><span class="nm">Eating out</span><span class="amt2">Rp 1.150.000<small>left of 2.000.000</small></span></div><div class="meter"><i style="width:43%;background:var(--green)"></i></div><div class="sub2">2.000.000 a month</div></div></div></div></div>
+ <div class="col"><p class="cap"><b>3</b>Budget · December</p><p class="lab">The same budgets give different months: 4 Mondays, 31 days, one top-up due.</p><div class="phone"><div class="bar"><span class="l">‹ Nov</span><b>Budget</b><span class="r">Jan ›</span></div><div class="hero"><div class="k">DECEMBER · BUDGET</div><div class="big">Rp 4.950.000</div><div class="s">nothing spent yet</div></div><div class="hd">SPENDING</div><div class="grp"><div class="bud"><div class="top"><span class="ic2" style="background:#e8eefc">🪙</span><span class="nm">Pocket money</span><span class="amt2">Rp 400.000<small>left of 400.000</small></span></div><div class="meter"><i style="width:0%;background:var(--green)"></i></div><div class="sub2">100.000 a week × 4 weeks</div></div><div class="bud"><div class="top"><span class="ic2" style="background:#fde9d9">☕</span><span class="nm">Cafe</span><span class="amt2">Rp 1.550.000<small>left of 1.550.000</small></span></div><div class="meter"><i style="width:0%;background:var(--green)"></i></div><div class="sub2">50.000 a day × 31 days</div></div><div class="bud"><div class="top"><span class="ic2" style="background:#fff4d6">⚡</span><span class="nm">Electricity</span><span class="amt2">Rp 1.000.000<small>left of 1.000.000</small></span></div><div class="meter"><i style="width:0%;background:var(--green)"></i></div><div class="sub2">1.000.000 every 3 weeks × 1 (15 Dec)</div></div><div class="bud"><div class="top"><span class="ic2" style="background:#fde3e0">🍽</span><span class="nm">Eating out</span><span class="amt2">Rp 2.000.000<small>left of 2.000.000</small></span></div><div class="meter"><i style="width:0%;background:var(--green)"></i></div><div class="sub2">2.000.000 a month</div></div></div></div></div>
+</div>
+<p class="sub">A bill that repeats every 3 weeks and the Electricity budget use the same dates, so they agree.</p>
+</body></html>
