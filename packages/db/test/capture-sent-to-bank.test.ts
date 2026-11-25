@@ -57,6 +57,20 @@ describe('money a wallet sent to a bank account', () => {
     expect(drafts.every((d) => d.kind === 'transfer')).toBe(true);
   });
 
+  it('reads a bank whose name is two words: CIMB NIAGA, stored either way', async () => {
+    for (const bank of ['CIMB Niaga', 'Bank CIMB Niaga']) {
+      const { database, ws, wallet, opened } = await setup([
+        { name: 'Everyday', bank: 'Bank Mandiri' },
+        { name: 'Xtra', bank },
+      ]);
+      await ingestCaptures(database, ws, [sent('CIMB NIAGA RANI KUSUMA DEWI')], { today: '2026-11-25' });
+      const [draft] = await listDrafts(database, ws);
+      expect(draft).toMatchObject({ kind: 'transfer', accountId: wallet.id, toAccountId: opened[1]!.id, amountMinor: 200_000 });
+      current?.executor.close();
+      current = undefined;
+    }
+  });
+
   it('leaves the destination blank when two current accounts are at that bank', async () => {
     const { database, ws, wallet } = await setup([
       { name: 'Everyday', bank: 'Bank Mandiri' },
