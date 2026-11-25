@@ -434,3 +434,31 @@ test('money back on the card can be marked settled before the app, so it does no
   await expect(page.getByTestId('statement-paid-off')).toHaveCount(0);
   await expect(refund.getByRole('button', { name: 'Mark Hotel Mulia refund already settled' })).toBeVisible();
 });
+
+test('ticked purchases are paid off at once from the select bar, and Undo puts them back', async ({ page }) => {
+  await setUp(page);
+  await buy(page, 'Toko Buah Contoh', '412300', TODAY);
+  await buy(page, 'Bioskop Contoh', '120000', TODAY);
+  await buy(page, 'Parkir Contoh', '15000', TODAY);
+  await openStatement(page);
+  await expect(page.getByTestId('statement-total')).toContainText('547.300');
+
+  await page.getByLabel('Pay Toko Buah Contoh').check();
+  await page.getByLabel('Pay Bioskop Contoh').check();
+  const bar = page.getByTestId('statement-select-bar');
+  await bar.getByRole('button', { name: 'Paid off', exact: true }).click();
+
+  // Both are paid off: no box to tick any more, the bar goes, and the card owes only the parking.
+  await expect(bar).toHaveCount(0);
+  await expect(page.getByLabel('Pay Toko Buah Contoh')).toHaveCount(0);
+  await expect(page.getByLabel('Pay Bioskop Contoh')).toHaveCount(0);
+  await expect(page.getByLabel('Pay Parkir Contoh')).not.toBeChecked();
+  await expect(page.getByTestId('statement-total')).toContainText('15.000');
+  const toast = page.getByTestId('statement-paid-off-toast');
+  await expect(toast).toContainText('2 purchases paid off');
+
+  await toast.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByLabel('Pay Toko Buah Contoh')).toBeVisible();
+  await expect(page.getByLabel('Pay Bioskop Contoh')).toBeVisible();
+  await expect(page.getByTestId('statement-total')).toContainText('547.300');
+});

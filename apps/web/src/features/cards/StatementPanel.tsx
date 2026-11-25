@@ -9,7 +9,7 @@ import { usePhone } from '../../app/use-phone';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { ToastCard } from '../../ui/UndoToast';
+import { ToastCard, UndoToast } from '../../ui/UndoToast';
 import { InsetGroup, InsetRow, Panel } from '../../ui/native';
 import { ActionRow, EARLIER, GlyphButton, Line, StepperRow, SUBTITLE, TITLE } from './rows';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
@@ -179,6 +179,46 @@ export function StatementPanel({
   // Ticking a plan's instalment ticks it and every one before it, as its Paid list does.
   const markPaidOff = (line: StatementLine) =>
     void run(() => (planRow(line) ? setPlanPaidSoFar(database, ws, line.instalment!.planId, line.instalment!.number) : setSettledBeforeApp(database, ws, line.transactionId, true)));
+
+  /*
+   * Paid off for every ticked purchase at once (owner, 25 Nov 2026): the select bar's ✓ beside Pay. It marks what one
+   * row's swipe would — a purchase settled before the app, a plan's instalment ticked with every one before it — and
+   * ticked rows already paid cannot be ticked, so there is nothing to take back here but this. Undo puts them back.
+   */
+  const [paidUndo, setPaidUndo] = useState<{ text: string; purchases: string[]; plans: { planId: string; was: number }[] } | null>(null);
+  function markChosenPaidOff(targets: StatementLine[]) {
+    if (targets.length === 0) return;
+    const purchases = targets.filter((line) => !planRow(line)).map((line) => line.transactionId);
+    const plans = new Map<string, { to: number; was: number }>();
+    for (const line of targets.filter(planRow)) {
+      const plan = line.instalment!;
+      const seen = plans.get(plan.planId);
+      plans.set(plan.planId, { to: Math.max(seen?.to ?? 0, plan.number), was: plan.paidSoFar ?? 0 });
+    }
+    let done = false;
+    void run(async () => {
+      for (const id of purchases) await setSettledBeforeApp(database, ws, id, true);
+      for (const [planId, plan] of plans) await setPlanPaidSoFar(database, ws, planId, plan.to);
+      done = true;
+    }).then(() => {
+      if (!done) return;
+      setSelected(new Set());
+      setPaidUndo({
+        text: `${targets.length} ${targets.length === 1 ? 'purchase' : 'purchases'} paid off`,
+        purchases,
+        plans: [...plans].map(([planId, plan]) => ({ planId, was: plan.was })),
+      });
+    });
+  }
+  const undoPaidOff = () => {
+    const undo = paidUndo;
+    setPaidUndo(null);
+    if (!undo) return;
+    void run(async () => {
+      for (const id of undo.purchases) await setSettledBeforeApp(database, ws, id, false);
+      for (const plan of undo.plans) await setPlanPaidSoFar(database, ws, plan.planId, plan.was);
+    });
+  };
 
   async function run(work: () => Promise<unknown>) {
     setError(null);
@@ -880,6 +920,11 @@ export function StatementPanel({
             Pay as the card's own Pay glyph, a circle matching Clear: the name stays for screen readers. It opens the
             same "Pay credit card" screen as the card's Pay, the ticked purchases listed under it (owner, 17 Nov 2026).
           */}
+          {chosen.some(settleable) && (
+            <button type="button" aria-label="Paid off" disabled={busy} onClick={() => markChosenPaidOff(chosen.filter(settleable))} className={`${SELECT_CIRCLE} text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]`}>
+              <CircleCheck size={20} aria-hidden />
+            </button>
+          )}
           <button type="button" aria-label="Pay" disabled={busy} onClick={() => void navigate(statementPayLink(card.id, cycle, today, chosen.map((line) => line.transactionId)))} className={`${SELECT_CIRCLE} text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]`}>
             <Banknote size={20} aria-hidden />
           </button>
@@ -888,6 +933,7 @@ export function StatementPanel({
 
       <ErrorBox error={error ?? statement.error} />
       {noteShown && note && <ToastCard text={note} />}
+      {paidUndo && <UndoToast icon="paid" testId="statement-paid-off-toast" text={paidUndo.text} onUndo={undoPaidOff} onDone={() => setPaidUndo(null)} />}
     </div>
   );
 }
