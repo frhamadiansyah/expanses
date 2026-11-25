@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { type CoverCharge, type CoverCredit, coverOldestFirst, coverStatement, type PoolLine } from '../src/statement/cover';
+import { uuidv7, uuidv7Ms } from '../src/ids';
+import { type ChargeCover, type CoverCharge, type CoverCredit, coverOldestFirst, coverStatement, type PoolLine, RECORDED_TOGETHER_MS, recordedRanks } from '../src/statement/cover';
 
 // Invented figures throughout.
 const charge = (key: string, on: string, amountMinor: number, settled = false): CoverCharge => ({ key, on, amountMinor, settled });
@@ -151,5 +152,168 @@ describe('one statement’s cover, from the card’s pool lines', () => {
         expect([...cover.values()].every((c) => c.whole)).toBe(true);
       }
     }
+  });
+});
+
+// When each line was recorded, as its id's time: invented minutes on an invented day.
+const MIN = 60_000;
+const T0 = Date.UTC(2026, 10, 24, 9, 0, 0);
+const rec = (key: string, statementOn: string, poolMinor: number, minute: number | null): PoolLine => ({ key, statementOn, poolMinor, recordedMs: minute === null ? null : T0 + minute * MIN });
+const NOV = { start: '2026-10-21', end: '2026-11-20' };
+const DEC = { start: '2026-11-21', end: '2026-12-20' };
+
+describe('a payment pays first what was on the card when it was recorded', () => {
+  it('the owner’s case: purchases recorded after the payment, though older, leave its cover with the three it paid', () => {
+    const lines = [
+      rec('a', '2026-11-23', 400_000, 0),
+      rec('b', '2026-11-23', 350_000, 1),
+      rec('c', '2026-11-23', 250_000, 2),
+      rec('pay', '2026-11-24', -1_000_000, 10),
+      // Recorded a day later, dated before the three.
+      rec('old-1', '2026-11-22', 120_000, 24 * 60),
+      rec('old-2', '2026-11-22', 80_000, 24 * 60 + 3),
+    ];
+    const cover = coverStatement({ lines, cycle: DEC, today: '2026-11-25' });
+    for (const key of ['a', 'b', 'c']) expect(cover.get(key)).toMatchObject({ whole: true, leftMinor: 0, credit: { key: 'pay' }, credits: 1 });
+    for (const key of ['old-1', 'old-2']) expect(cover.get(key)).toMatchObject({ whole: false, coveredMinor: 0, credit: null });
+    expect(cover.get('old-1')!.leftMinor).toBe(120_000);
+  });
+
+  it('what is over of a payment goes on to the charges recorded after it, oldest first', () => {
+    const lines = [
+      rec('a', '2026-11-23', 600_000, 0),
+      rec('pay', '2026-11-24', -800_000, 5),
+      rec('later-new', '2026-11-22', 150_000, 60),
+      rec('later-old', '2026-11-21', 100_000, 90),
+    ];
+    const cover = coverStatement({ lines, cycle: DEC, today: '2026-11-26' });
+    expect(cover.get('a')).toMatchObject({ whole: true, credit: { key: 'pay' } });
+    // Rp 200.000 over: the older of the two recorded after it first, whole, then Rp 100.000 of the newer.
+    expect(cover.get('later-old')).toMatchObject({ whole: true, coveredMinor: 100_000, credit: { key: 'pay' } });
+    expect(cover.get('later-new')).toMatchObject({ whole: false, coveredMinor: 100_000, leftMinor: 50_000 });
+  });
+
+  it('rows recorded together (a paste, a statement check) count as recorded together: the payment covers its purchases', () => {
+    // A newer purchase was on the card already; the paste holds the payment first, then its purchases, seconds apart.
+    const at = (minute: number, seconds: number) => minute + seconds / 60;
+    const lines = [
+      rec('before', '2026-11-25', 200_000, 0),
+      rec('pay', '2026-11-24', -500_000, at(30, 0)),
+      rec('p1', '2026-11-23', 200_000, at(30, 1)),
+      rec('p2', '2026-11-21', 300_000, at(30, 3)),
+    ];
+    const cover = coverStatement({ lines, cycle: DEC, today: '2026-11-26' });
+    // One run of rows a few seconds apart: all on the card for the payment, oldest first by date.
+    expect(cover.get('p2')).toMatchObject({ whole: true, credit: { key: 'pay' } });
+    expect(cover.get('p1')).toMatchObject({ whole: true, credit: { key: 'pay' } });
+    expect(cover.get('before')).toMatchObject({ coveredMinor: 0 });
+  });
+
+  it('a row recorded well after the run is not part of it', () => {
+    const lines = [rec('pay', '2026-11-24', -300_000, 0), rec('p1', '2026-11-23', 300_000, 0.05), rec('late', '2026-11-22', 300_000, 2)];
+    const cover = coverStatement({ lines, cycle: DEC, today: '2026-11-25' });
+    expect(cover.get('p1')).toMatchObject({ whole: true, credit: { key: 'pay' } });
+    expect(cover.get('late')).toMatchObject({ coveredMinor: 0 });
+  });
+
+  it('a second payment pays what was on the card when it was recorded before what came after it', () => {
+    const lines = [
+      rec('a', '2026-11-22', 500_000, 0),
+      rec('pay-1', '2026-11-23', -300_000, 10),
+      rec('b', '2026-11-25', 400_000, 20),
+      rec('pay-2', '2026-11-26', -400_000, 30),
+      rec('c', '2026-11-21', 200_000, 40),
+    ];
+    const cover = coverStatement({ lines, cycle: DEC, today: '2026-11-27' });
+    // Pay 1 pays Rp 300.000 of A; pay 2 the Rp 200.000 left of A, then Rp 200.000 of B; C, recorded last, nothing.
+    expect(cover.get('a')).toMatchObject({ whole: true, credit: { key: 'pay-2' }, credits: 2 });
+    expect(cover.get('b')).toMatchObject({ coveredMinor: 200_000, leftMinor: 200_000 });
+    expect(cover.get('c')).toMatchObject({ coveredMinor: 0 });
+  });
+
+  it('a payment recorded before its purchases covers them, as one recorded after would', () => {
+    const lines = [rec('pay', '2026-11-24', -500_000, 0), rec('x', '2026-11-25', 200_000, 60), rec('y', '2026-11-22', 300_000, 120)];
+    const cover = coverStatement({ lines, cycle: DEC, today: '2026-11-26' });
+    expect(cover.get('x')).toMatchObject({ whole: true, credit: { key: 'pay' } });
+    expect(cover.get('y')).toMatchObject({ whole: true, credit: { key: 'pay' } });
+  });
+
+  it('only the payments that reach the statement draw the line: one that paid the older bill does not', () => {
+    // Pay-old (recorded between X and Y) cleared what was owed before November; the closing payment covers both, by date.
+    const lines = [
+      rec('before', '2026-10-15', 400_000, 0),
+      rec('x', '2026-11-05', 200_000, 10),
+      rec('pay-old', '2026-11-06', -400_000, 20),
+      rec('y', '2026-11-01', 300_000, 30),
+      rec('pay-nov', '2026-11-25', -300_000, 40),
+    ];
+    const cover = coverStatement({ lines, cycle: NOV, today: '2026-11-26' });
+    expect(cover.get('y')).toMatchObject({ whole: true, credit: { key: 'pay-nov' } });
+    expect(cover.get('x')).toMatchObject({ coveredMinor: 0 });
+  });
+
+  it('a row whose id carries no record time counts as on the card all along', () => {
+    const lines = [rec('pay', '2026-11-24', -100_000, 10), rec('timeless', '2026-11-23', 100_000, null), rec('later', '2026-11-22', 100_000, 20)];
+    const cover = coverStatement({ lines, cycle: DEC, today: '2026-11-25' });
+    expect(cover.get('timeless')).toMatchObject({ whole: true });
+    expect(cover.get('later')).toMatchObject({ coveredMinor: 0 });
+  });
+
+  it('whatever the record order, the covered and the left add up to the same figures as by date alone', () => {
+    for (let seed = 1; seed <= 300; seed += 1) {
+      let r = seed;
+      const rand = (n: number) => {
+        r = (r * 1_103_515_245 + 12_345) % 2_147_483_648;
+        return r % n;
+      };
+      const lines: PoolLine[] = [];
+      for (let i = 0; i < 2 + rand(8); i += 1) {
+        const credit = rand(3) === 0;
+        const day = `2026-${rand(2) === 0 ? '10' : '11'}-${String(1 + rand(28)).padStart(2, '0')}`;
+        lines.push(rec(`l${i}`, day, (credit ? -1 : 1) * (1 + rand(50)) * 10_000, rand(4) === 0 ? null : rand(600)));
+      }
+      for (const cycle of [NOV, { start: '2026-09-21', end: '2026-10-20' }]) {
+        const byRecord = coverStatement({ lines, cycle, today: '2026-11-28' });
+        const byDate = coverStatement({ lines: lines.map(({ recordedMs: _, ...line }) => line), cycle, today: '2026-11-28' });
+        const total = (m: Map<string, { coveredMinor: number; leftMinor: number }>) => [...m.values()].reduce((s, c) => [s[0]! + c.coveredMinor, s[1]! + c.leftMinor], [0, 0]);
+        expect([...byRecord.keys()].sort()).toEqual([...byDate.keys()].sort());
+        expect(total(byRecord)).toEqual(total(byDate));
+      }
+    }
+  });
+
+  it('with every line recorded in date order, the cover is exactly what the dates alone give', () => {
+    const lines = [
+      rec('old', '2026-09-02', 500_000, 0),
+      rec('market', '2026-10-02', 412_000, 10),
+      rec('pay-a', '2026-10-05', -700_000, 20),
+      rec('ride', '2026-10-06', 185_000, 30),
+      rec('shop', '2026-10-09', 649_000, 40),
+      rec('pay-b', '2026-10-25', -600_000, 50),
+      rec('dinner', '2026-10-27', 280_000, 60),
+      rec('pay-c', '2026-11-10', -400_000, 70),
+    ];
+    for (const cycle of [{ start: '2026-08-21', end: '2026-09-20' }, { start: '2026-09-21', end: '2026-10-20' }, NOV]) {
+      const plain = (m: Map<string, ChargeCover>) => [...m].map(([key, c]) => [key, c.coveredMinor, c.leftMinor, c.whole, c.credit?.key ?? null, c.credits]);
+      const byDate = coverStatement({ lines: lines.map(({ recordedMs: _, ...line }) => line), cycle, today: '2026-11-12' });
+      expect(plain(coverStatement({ lines, cycle, today: '2026-11-12' }))).toEqual(plain(byDate));
+    }
+  });
+});
+
+describe('when a line was recorded', () => {
+  it('reads the millisecond a UUIDv7 was made at, and nothing from any other id', () => {
+    const at = Date.UTC(2026, 10, 24, 9, 15, 30, 123);
+    expect(uuidv7Ms(uuidv7(at))).toBe(at);
+    // A v5 id (named by what it is for) and a v4 id carry no time.
+    expect(uuidv7Ms('9b2f1c3e-4a5d-5e6f-8a7b-0c1d2e3f4a5b')).toBeNull();
+    expect(uuidv7Ms('9b2f1c3e-4a5d-4e6f-8a7b-0c1d2e3f4a5b')).toBeNull();
+    expect(uuidv7Ms('not-an-id')).toBeNull();
+  });
+
+  it('ranks rows a few seconds apart as one run, and a row after a longer gap as the next', () => {
+    const ranks = recordedRanks([10_000, 0, 4_000, 8_500, 30_000, 34_999, 39_000, 44_001]);
+    expect([0, 4_000, 8_500, 10_000, 30_000, 34_999, 39_000, 44_001].map((t) => ranks.get(t))).toEqual([0, 0, 0, 0, 1, 1, 1, 2]);
+    expect(recordedRanks([0, RECORDED_TOGETHER_MS + 1]).get(RECORDED_TOGETHER_MS + 1)).toBe(1);
   });
 });

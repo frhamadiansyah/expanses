@@ -1,4 +1,4 @@
-import { coverStatement, type Cycle, installmentSchedule, nextStatementStart, type PoolLine, statementCycleFor, transferLines } from '@expanses/core';
+import { coverStatement, type Cycle, installmentSchedule, nextStatementStart, type PoolLine, statementCycleFor, transferLines, uuidv7Ms } from '@expanses/core';
 import { cardOpeningOfTx, PLAN_OWED_REF } from './plan-owed';
 import { cardInstallments } from '../schema-loans';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -423,7 +423,7 @@ export async function cardStatements(database: Database, ws: WorkspaceContext, c
   if (!card) throw new StatementError('NOT_FOUND', 'That card is not in this workspace');
   if (cycles.length === 0) return [];
   const all = await withFeeReversals(database, ws, await billedLines(database.db, ws, cardAccountId));
-  const pool = poolLinesOf(all);
+  const pool = poolLinesOf(all, await recordedTimesOf(database.db, ws, cardAccountId));
   return cycles.map((cycle) => statementOf(all, pool, cycle, today, card.currency ?? ws.baseCurrency));
 }
 
@@ -462,8 +462,11 @@ function statementOf(all: StatementLine[], pool: readonly PoolLine[], cycle: Cyc
  * only ever pays for those); a purchase or refund marked paid off before the app, and its balancing settlement, which
  * offsets only its own purchase whichever statement it falls on. What a payment paid beyond the purchases it settled is
  * an ordinary credit, as is any payment that settled none.
+ *
+ * Each line carries when it was first recorded (`recordedTimesOf`), which decides what a payment pays first; an
+ * instalment row, when its plan was recorded.
  */
-function poolLinesOf(all: readonly StatementLine[]): PoolLine[] {
+function poolLinesOf(all: readonly StatementLine[], recorded: ReadonlyMap<string, number | null>): PoolLine[] {
   const settledBy = new Map<string, number>();
   // What the settled purchases count, not their price: one converted to a plan since counts nothing, so its payment is
   // an ordinary credit again and covers the plan's instalments, which are what the card now bills.
@@ -472,8 +475,42 @@ function poolLinesOf(all: readonly StatementLine[]): PoolLine[] {
     let poolMinor = line.countedMinor;
     if (line.balancing || line.paidOff || line.paidBy) poolMinor = 0;
     else if (line.countedMinor < 0 && settledBy.has(line.transactionId)) poolMinor = Math.min(0, line.countedMinor + settledBy.get(line.transactionId)!);
-    return { key: line.key, statementOn: line.statementOn, poolMinor };
+    const recordedMs = line.instalment ? uuidv7Ms(line.instalment.planId) : (recorded.get(line.transactionId) ?? null);
+    return { key: line.key, statementOn: line.statementOn, poolMinor, recordedMs };
   });
+}
+
+/**
+ * When each of the card's transactions was first recorded, by transaction id, in milliseconds: the time in the id it
+ * was first written under, the same on every device. Not `created_at`, which is the time a row was written on the
+ * device holding it (household sync writes its own copy) and is a new time on every edit. An edit is a new row that
+ * replaces the old one, so the time is read from the first row of its `replaces_transaction_id` chain. A purchase
+ * synced across a household keeps one id on every phone, its lineage's (`sync_lineage`): that id is preferred, so a
+ * copy written here under a local id (a remapped one) still reads the time it was first recorded at. Null when the id
+ * carries no time (a v5 id the app named by what it is for): such a line counts as on the card all along.
+ */
+async function recordedTimesOf(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<Map<string, number | null>> {
+  const onCard = sql`SELECT e.transaction_id FROM entries e WHERE e.account_id = ${cardAccountId}`;
+  const chain = await db.values<[string, string, number]>(sql`
+    WITH RECURSIVE chain(start, id, prev, depth) AS (
+      SELECT t.id, t.id, t.replaces_transaction_id, 0 FROM transactions t
+      WHERE t.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND t.id IN (${onCard})
+      UNION ALL
+      SELECT c.start, p.id, p.replaces_transaction_id, c.depth + 1 FROM chain c JOIN transactions p ON p.id = c.prev WHERE c.depth < 500
+    )
+    SELECT start, id, depth FROM chain`);
+  const root = new Map<string, { id: string; depth: number }>();
+  for (const [start, id, depth] of chain) if (!root.has(start) || Number(depth) > root.get(start)!.depth) root.set(start, { id, depth: Number(depth) });
+  // A database stopped before household sharing (0056) has no lineages to read.
+  const shared = (await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sync_lineage'`)).length > 0;
+  const lineages = shared ? await db.values<[string, string]>(sql`SELECT head_transaction_id, lineage_id FROM sync_lineage WHERE head_transaction_id IN (${onCard})`) : [];
+  const lineageOf = new Map(lineages.map(([head, lineageId]) => [head, lineageId]));
+  const out = new Map<string, number | null>();
+  for (const [id, first] of root) {
+    const lineage = lineageOf.get(id);
+    out.set(id, (lineage ? uuidv7Ms(lineage) : null) ?? uuidv7Ms(first.id));
+  }
+  return out;
 }
 
 /** What the card's payments cover of one statement's charges, oldest first: one answer for the statement and `payCardPurchases`. */
@@ -525,7 +562,7 @@ async function cardPlanStatuses(db: Db, ws: WorkspaceContext, cardAccountId: str
   const statementDay = terms?.statementDay ?? 1;
   const all = await billedLines(db, ws, cardAccountId);
   const keys = new Set(all.map((line) => line.key));
-  const pool = poolLinesOf(all);
+  const pool = poolLinesOf(all, await recordedTimesOf(db, ws, cardAccountId));
   const covers = new Map<string, Record<string, StatementCover>>();
   const out = new Map<string, PlanInstalmentStatus[]>();
   for (const plan of plans) {
@@ -633,7 +670,7 @@ export async function payCardPurchases(
       .where(and(eq(cardTerms.accountId, input.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
     const today = input.today ?? input.occurredOn;
     // What the card's payments cover right now, statement by statement, the way the statement worked it out.
-    const pool = poolLinesOf(all);
+    const pool = poolLinesOf(all, await recordedTimesOf(tx, ws, input.cardAccountId));
     const covers = new Map<string, Record<string, StatementCover>>();
     const coverOf = (line: StatementLine) => {
       if (terms?.statementDay == null) return undefined;
