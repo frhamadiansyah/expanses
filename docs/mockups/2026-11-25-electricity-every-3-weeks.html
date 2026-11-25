@@ -1,0 +1,84 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Electricity every 3 weeks</title><style>
+  :root { --ink:#1c1c1e; --ink2:#3c3c43; --ink3:#8e8e93; --hair:#e5e5ea; --ground:#f2f2f7; --tint:#007aff; --green:#248a3d; --red:#c0392b; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:15px -apple-system, system-ui, sans-serif; background:#e5e5ea; color:var(--ink); }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:#555; margin:0 0 18px; max-width:1240px; line-height:1.4; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; }
+  .col { width:320px; }
+  .cap { font-weight:700; margin:0 0 3px; font-size:14px; } .cap b { display:inline-block; width:20px; height:20px; border-radius:6px; background:var(--ink); color:#fff; text-align:center; line-height:20px; font-size:12px; margin-right:6px; }
+  .note { font-size:12.5px; color:#555; margin:0 0 8px; min-height:70px; line-height:1.4; }
+  .phone { background:var(--ground); border-radius:26px; padding:10px 12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .bar { display:flex; justify-content:space-between; align-items:center; margin:4px 4px 12px; font-size:16px; } .bar .l, .bar .r { color:var(--tint); font-size:15px; } .bar b { font-weight:600; }
+  .hd { font-size:12px; letter-spacing:.05em; color:var(--ink3); margin:12px 14px 6px; font-weight:600; }
+  .grp { background:#fff; border-radius:12px; overflow:hidden; margin-bottom:12px; }
+  .r { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; gap:8px; min-height:44px; }
+  .r + .r { border-top:.5px solid var(--hair); }
+  .v { color:var(--ink3); white-space:nowrap; font-size:15px; } .chev::after { content:" ›"; color:#c7c7cc; }
+  .tick { display:flex; align-items:center; gap:10px; }
+  .c { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .c.on { background:var(--tint); color:#fff; } .c svg { width:12px; height:12px; }
+  .tt .n { font-size:16px; } .tt .s { font-size:12.5px; color:var(--ink3); }
+  .amt { font-variant-numeric:tabular-nums; }
+  .sw { width:44px; height:26px; border-radius:13px; background:#34c759; position:relative; flex-shrink:0; } .sw::after { content:""; position:absolute; right:2px; top:2px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+  .new { box-shadow:inset 0 0 0 2px #ff9f0a; }
+  .ft { font-size:12.5px; color:var(--ink3); margin:-6px 14px 12px; line-height:1.35; }
+  .act { color:var(--tint); justify-content:center; font-weight:600; }
+  .tx { display:flex; align-items:center; gap:10px; padding:10px 12px; }
+  .tx + .tx { border-top:.5px solid var(--hair); }
+  .ic { width:36px; height:36px; border-radius:50%; background:#e9ebef; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#56607a; font-size:15px; }
+  .grow { flex:1; min-width:0; } .grow .n { font-size:16px; } .grow .s { font-size:12.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pill { font-size:12px; font-weight:600; color:var(--green); background:#e5f5e9; border-radius:9px; padding:2px 8px; white-space:nowrap; }
+  .tot { background:#fff; border-radius:11px; padding:12px 16px; margin-bottom:12px; }
+  .tot .t { display:flex; justify-content:space-between; align-items:baseline; } .tot .t span:first-child { color:var(--ink3); } .tot .t span:last-child { font-size:22px; font-weight:600; }
+  .split { display:flex; gap:2px; height:8px; border-radius:4px; overflow:hidden; margin-top:10px; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:8px; }
+  .flag { display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:#ff9f0a; border-radius:8px; padding:1px 6px; margin-left:6px; vertical-align:1px; }
+
+  .row { display:flex; gap:18px; align-items:flex-start; margin-bottom:28px; }
+  .lead { width:250px; flex-shrink:0; } .lead h2 { font-size:17px; margin:0 0 6px; display:flex; align-items:center; gap:8px; }
+  .lead h2 b { display:inline-block; min-width:24px; height:24px; border-radius:7px; background:var(--ink); color:#fff; text-align:center; line-height:24px; font-size:13px; padding:0 5px; }
+  .lead p { font-size:13px; color:#444; line-height:1.45; margin:0 0 8px; }
+  .lead .pro { color:var(--green); } .lead .con { color:#a05a00; }
+  .hero { background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+  .hero .k { font-size:11.5px; letter-spacing:.06em; color:var(--ink3); font-weight:600; }
+  .hero .big { font-size:26px; font-weight:700; margin:2px 0 0; font-variant-numeric:tabular-nums; }
+  .hero .s { font-size:13px; color:var(--ink3); margin-top:2px; }
+  .chip { display:inline-block; font-size:11.5px; font-weight:600; border-radius:9px; padding:2px 8px; white-space:nowrap; }
+  .chip.g { color:var(--green); background:#e5f5e9; } .chip.o { color:#a05a00; background:#fff1dc; } .chip.gy { color:var(--ink3); background:#efeff4; }
+  .meter { height:8px; border-radius:4px; background:#e5e5ea; overflow:hidden; margin:8px 0 4px; display:flex; }
+  .meter i { display:block; height:100%; }
+  .mo { padding:10px 14px; } .mo + .mo { border-top:.5px solid var(--hair); }
+  .mo .top { display:flex; justify-content:space-between; align-items:baseline; gap:10px; } .mo .top .amt { white-space:nowrap; } .mo .top .n { font-size:16px; font-weight:600; }
+  .mo .sub2 { font-size:12.5px; color:var(--ink3); margin-top:2px; line-height:1.4; }
+  .est { font-style:italic; color:var(--ink3); }
+  .cf .tx .n { font-size:15px; }
+
+  .stripe { background:repeating-linear-gradient(135deg,#b9c3d1 0 5px,#dde3ea 5px 10px); }
+  .cols { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; margin-bottom:26px; }
+  .lab { font-size:12.5px; color:#555; line-height:1.4; margin:0 0 8px; min-height:54px; }
+  .tag { display:inline-block; font-size:12px; font-weight:700; color:#fff; background:var(--ink); border-radius:6px; padding:1px 6px; margin-right:6px; }
+  .bline { position:relative; } .bline .mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); border-radius:1px; }
+
+  .r2 { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; gap:8px; } .r2 + .r2 { border-top:.5px solid var(--hair); }
+  .seg { display:flex; background:#e9e9ee; border-radius:9px; padding:2px; gap:2px; font-size:13px; } .seg span { padding:4px 9px; border-radius:7px; } .seg .on { background:#fff; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+  .due { display:flex; align-items:center; gap:10px; padding:10px 14px; } .due + .due { border-top:.5px solid var(--hair); }
+  .dc { width:22px; height:22px; border-radius:50%; border:1.5px solid #c7c7cc; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; }
+  .dc.ok { background:var(--green); border-color:var(--green); color:#fff; }
+</style></head><body>
+<h1>Electricity token as a bill every 3 weeks</h1>
+<p class="sub">Rp 1.000.000 every 3 weeks: 3 Nov, 24 Nov, 15 Dec, 5 Jan, 26 Jan … Some months have two top-ups, some one. Bills today repeat monthly, yearly or every few months, never by weeks. This joins A (each top-up shows in Cashflow on the day it was bought) with a schedule the Budget can follow. New parts outlined in orange. Invented figures.</p>
+<div class="cols">
+ <div class="col"><p class="cap"><b>1</b>Edit bill: repeats by weeks</p><p class="lab">Repeats gets <b>Weeks</b>, then Every 3 weeks.</p><div class="phone"><div class="bar"><span class="l">Cancel</span><b>Electricity</b><span class="r">Save</span></div>
+<div class="grp"><div class="r2"><span>Amount</span><span class="amt">Rp 1.000.000</span></div>
+<div class="r2 new"><span>Repeats</span><span class="seg"><span>Monthly</span><span class="on">Weeks</span><span>Yearly</span></span></div>
+<div class="r2 new"><span>Every</span><span class="v">3 weeks ›</span></div>
+<div class="r2"><span>Category</span><span class="v">Electricity ›</span></div></div>
+<p class="ft">Next one is counted from the last top-up, so buying early or late moves the rest with it.</p></div></div>
+ <div class="col"><p class="cap"><b>2</b>The bill</p><p class="lab">Each top-up has its own date. The figure a month is worked out (≈ 1.448.000).</p><div class="phone"><div class="bar"><span class="l">‹ Bills</span><b>Electricity</b><span class="r">Edit</span></div>
+<div class="hero new"><div class="k">EVERY 3 WEEKS</div><div class="big">Rp 1.000.000</div><div class="s">≈ Rp 1.448.000 a month · next 15 Dec</div></div>
+<div class="hd">TOP-UPS</div><div class="grp"><div class="due"><span class="dc "></span><div class="grow" style="flex:1"><div style="font-size:15px">Tue, 5 Jan</div><div class="sub2" style="font-size:12px;color:var(--ink3)">3 weeks after 15 Dec</div></div><span class="amt">Rp 1.000.000</span></div><div class="due"><span class="dc "></span><div class="grow" style="flex:1"><div style="font-size:15px">Tue, 15 Dec</div><div class="sub2" style="font-size:12px;color:var(--ink3)">Due · in 20 days</div></div><span class="amt">Rp 1.000.000</span></div><div class="due"><span class="dc ok">✓</span><div class="grow" style="flex:1"><div style="font-size:15px">Tue, 24 Nov</div><div class="sub2" style="font-size:12px;color:var(--ink3)">Paid · Bank Contoh</div></div><span class="amt">Rp 1.000.000</span></div><div class="due"><span class="dc ok">✓</span><div class="grow" style="flex:1"><div style="font-size:15px">Tue, 3 Nov</div><div class="sub2" style="font-size:12px;color:var(--ink3)">Paid · Bank Contoh</div></div><span class="amt">Rp 1.000.000</span></div></div>
+<p class="ft">Each top-up links to its own date, so November takes two. No “paid twice”.</p></div></div>
+ <div class="col"><p class="cap"><b>D1</b>Budget = top-ups due that month</p><p class="lab">November expects two, so 2.000.000 is on budget; December expects one.</p><div class="phone" style="padding-top:12px"><div class="hd">BUDGET · ELECTRICITY</div><div class="grp"><div class="mo"><div class="top"><span class="n">November</span><span class="amt">Rp 2.000.000 <span class="chip g">On budget</span></span></div><div class="meter bline"><i style="width:100%;background:var(--green)"></i></div><div class="sub2">Budget 2.000.000 · 2 top-ups due (3, 24 Nov)</div></div><div class="mo"><div class="top"><span class="n">December</span><span class="amt">Rp 0 </span></div><div class="meter bline"><i style="width:0%;background:var(--green)"></i></div><div class="sub2">Budget 1.000.000 · 1 top-up due (15 Dec)</div></div><div class="mo"><div class="top"><span class="n">January</span><span class="amt">Rp 0 </span></div><div class="meter bline"><i style="width:0%;background:var(--green)"></i></div><div class="sub2">Budget 2.000.000 · 2 top-ups due (5, 26 Jan)</div></div></div><p class="ft">The month’s budget is the top-ups due in it. Over only when more is bought than is due.</p></div></div>
+ <div class="col"><p class="cap"><b>D2</b>Budget evened out</p><p class="lab">The same 1.448.000 every month; a two-top-up month shows the extra as bought ahead (Budget option 1).</p><div class="phone" style="padding-top:12px"><div class="hd">BUDGET · ELECTRICITY · ≈ 1.448.000 A MONTH</div><div class="grp"><div class="mo"><div class="top"><span class="n">November</span><span class="amt">Rp 2.000.000 <span class="chip g">Not over</span></span></div><div class="meter bline"><i style="width:72.4%;background:var(--green)"></i><i class="stripe" style="width:27.6%"></i><span class="mark" style="left:72.4%"></span></div><div class="sub2">Budget 1.448.000 · <b>552.000 bought ahead</b> (striped)</div></div><div class="mo"><div class="top"><span class="n">December</span><span class="amt">Rp 1.000.000 <span class="chip g">On track</span></span></div><div class="meter bline"><i style="width:50%;background:var(--green)"></i><i class="stripe" style="width:22.4%;opacity:.45"></i><span class="mark" style="left:72.4%"></span></div><div class="sub2">Budget 1.448.000 · 552.000 ahead from November covers the rest</div></div></div><p class="ft">Every month gets the same budget: 1.000.000 × 52 weeks ÷ 3 ÷ 12. Extra in a two-top-up month is bought ahead.</p></div></div>
+</div>
+</body></html>
