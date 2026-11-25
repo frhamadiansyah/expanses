@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAsset } from './asset-page';
 import { openSettings } from './accounts';
-import { bbcaAt, expectBrokerBalance, openBroker, openBrokerSettings } from './listed-trade';
+import { bbcaAt, expectBrokerBalance, openBroker, openBrokerSettings, RDN_BANK } from './listed-trade';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -122,7 +122,8 @@ test('a broker’s fees are set on its cash account, and the Buy sheet works fro
   await page.getByLabel('Minimum fee per day', { exact: true }).click();
   // Saved as the row is left: the page read again (back, and in again) shows it once the save has landed.
   await expect(async () => {
-    await page.getByRole('button', { name: 'Stockbit Sekuritas', exact: true }).click();
+    // Back to the account's page, which is titled by its custodian bank.
+    await page.getByRole('button', { name: RDN_BANK, exact: true }).click();
     await openSettings(page);
     await expect(page.getByLabel('Buy fee %', { exact: true })).toHaveValue('0,19', { timeout: 1_000 });
   }).toPass();

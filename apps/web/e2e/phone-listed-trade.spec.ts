@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openSettings } from './accounts';
-import { bbcaAt, expectBrokerBalance, openBroker, openBrokerSettings } from './listed-trade';
+import { bbcaAt, expectBrokerBalance, openBroker, openBrokerSettings, RDN_BANK } from './listed-trade';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -46,7 +46,8 @@ test('phone: a sell of more lots than are held is refused, and a broker’s fees
   await page.getByLabel('Buy fee %', { exact: true }).click();
   // Saved as the row is left: the page read again (back, and in again) shows it once the save has landed.
   await expect(async () => {
-    await page.getByRole('button', { name: 'Mandiri Sekuritas', exact: true }).click();
+    // Back to the account's page, which is titled by its custodian bank.
+    await page.getByRole('button', { name: RDN_BANK, exact: true }).click();
     await openSettings(page);
     await expect(page.getByLabel('Sell fee %', { exact: true })).toHaveValue('0,3', { timeout: 1_000 });
   }).toPass();

@@ -5,12 +5,15 @@ import { openDrawers } from './drawers';
 import { routeYahoo, yahooAnswered } from './listed-prices';
 import { addHoldingFlow } from './securities';
 
+/** The custodian bank every broker here keeps its cash at, which Assets and the account's page call it by. */
+export const RDN_BANK = 'CIMB Niaga';
+
 /** A broker's cash account through Add account, with money in it. */
 export async function openBroker(page: Page, broker: string, balance: string) {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: /^Fund account/ }).click();
   await page.getByLabel('Broker', { exact: true }).pressSequentially(broker);
-  await page.getByLabel('Custodian', { exact: true }).pressSequentially('CIMB Niaga');
+  await page.getByLabel('Custodian', { exact: true }).pressSequentially(RDN_BANK);
   await page.getByLabel('Current balance', { exact: true }).pressSequentially(balance);
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
@@ -27,12 +30,19 @@ export async function bbcaAt(page: Page, broker: string) {
   await expect(page.getByText('Rp 6.150.000').first()).toBeVisible();
 }
 
-/** The broker's cash account's own page, from the Assets list. */
+/**
+ * The broker's cash account's own page, from the Assets list: listed by its custodian bank, and — when two brokers
+ * keep their cash at that bank — told apart by the broker on the line under it.
+ */
 async function openBrokerPage(page: Page, broker: string) {
   await page.goto('/net-worth/assets');
   await openDrawers(page);
-  await page.getByRole('link', { name: new RegExp(`^${broker}`) }).first().click();
-  await expect(page.getByRole('heading', { name: broker })).toBeVisible();
+  const rows = page.getByRole('link', { name: new RegExp(`^${RDN_BANK}`) });
+  await expect(rows.first()).toBeVisible();
+  await ((await rows.count()) > 1 ? rows.filter({ hasText: broker }) : rows).first().click();
+  await expect(page.getByRole('heading', { name: RDN_BANK })).toBeVisible();
+  await showBalance(page);
+  await expect(page.getByTestId('balance-card')).toContainText(`Broker · ${broker}`);
 }
 
 /** What the broker's cash account holds now, on its page. */

@@ -183,7 +183,9 @@ async function openMoneyAccount(page: Page, o: NewAccount) {
     await expect(page).toHaveURL(/\/net-worth\/assets$/);
     /* The asset list folds its rows into a drawer per kind, and opens with them closed. */
     await openDrawers(page);
-    await expect(page.getByRole('link', { name: new RegExp(`^${o.shown ?? o.name}`) })).toBeVisible();
+    // A fund account with its custodian bank named is listed by that bank (owner, 25 Nov).
+    const listedAs = o.shown ?? (o.subtype === 'fund' && o.bank ? o.bank : o.name);
+    await expect(page.getByRole('link', { name: new RegExp(`^${listedAs}`) })).toBeVisible();
     return;
   }
   /* Money kept for spending is a card on Wallet, where the form lands once the write is done. */

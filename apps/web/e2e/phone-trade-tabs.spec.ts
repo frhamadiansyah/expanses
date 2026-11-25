@@ -3,7 +3,7 @@ import { openAccount } from './accounts';
 import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { chooseInvestment } from './add-transaction';
 import { openDrawers } from './drawers';
-import { bbcaAt, openBroker } from './listed-trade';
+import { bbcaAt, openBroker, RDN_BANK } from './listed-trade';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -79,13 +79,13 @@ test('phone: a share kept at a broker pays from, and is paid into, that broker o
   const form = page.getByRole('form', { name: 'Trade' });
   await form.getByRole('radio', { name: 'Buy' }).click();
   await chooseInvestment(form, 'BBCA · Stockbit Sekuritas');
-  // The broker's cash is already chosen: nothing to pick.
-  await expect(form.getByLabel('Payment method')).toContainText('Stockbit Sekuritas');
+  // The broker's cash is already chosen: nothing to pick. As money it is named by its custodian bank.
+  await expect(form.getByLabel('Payment method')).toContainText(RDN_BANK);
   // A holding with no broker lets it go: the Stockbit cash does not stay stuck on Paid with.
   await chooseInvestment(form, 'Antam gold bars');
-  await expect(form.getByLabel('Payment method')).not.toContainText('Stockbit Sekuritas');
+  await expect(form.getByLabel('Payment method')).not.toContainText(RDN_BANK);
   await chooseInvestment(form, 'BBCA · Stockbit Sekuritas');
-  await expect(form.getByLabel('Payment method')).toContainText('Stockbit Sekuritas');
+  await expect(form.getByLabel('Payment method')).toContainText(RDN_BANK);
   await form.getByRole('radio', { name: 'Sell' }).click();
-  await expect(form.getByLabel('Received into')).toContainText('Stockbit Sekuritas');
+  await expect(form.getByLabel('Received into')).toContainText(RDN_BANK);
 });
