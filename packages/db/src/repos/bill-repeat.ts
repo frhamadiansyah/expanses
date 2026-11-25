@@ -1,3 +1,4 @@
+import { WEEKS_EVERY_MAX, WEEKS_EVERY_MIN } from '@expanses/core';
 import { type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
@@ -25,7 +26,7 @@ export async function billRepeatExists(db: Db): Promise<boolean> {
 }
 
 /** Whether this database has `repeat_every` (0102). A database stopped at 0099-0101 still saves yearly bills. */
-async function billRepeatEveryExists(db: Db): Promise<boolean> {
+export async function billRepeatEveryExists(db: Db): Promise<boolean> {
   if (everySeen.has(db)) return true;
   const rows = await db.values<[number]>(sql`SELECT 1 FROM pragma_table_info('expense_templates') WHERE name = 'repeat_every'`);
   if (rows.length === 0) return false;
@@ -34,13 +35,21 @@ async function billRepeatEveryExists(db: Db): Promise<boolean> {
 }
 
 export interface BillRepeatFacts {
-  /** 'yearly' or 'months'; a monthly bill is not in the map. */
-  repeat: 'yearly' | 'months';
-  /** 1-12: a yearly bill's month, or the month an every-few-months bill's first occurrence falls in. */
-  month: number;
-  /** The gap in months for 'months'; null for yearly. */
+  /** 'yearly', 'months' or 'weeks'; a monthly bill is not in the map. */
+  repeat: 'yearly' | 'months' | 'weeks';
+  /** 1-12: a yearly bill's month, or the month an every-few-months bill's first occurrence falls in. Null for 'weeks'. */
+  month: number | null;
+  /** The gap in months for 'months', in weeks for 'weeks' (1-8); null for yearly. */
   every: number | null;
 }
+
+/*
+ * 'weeks' (2026-11-25): a bill that comes out every few weeks — `repeat_every` is then the gap in WEEKS (1 to 8) and
+ * `repeat_month` is null; its first due date is its window's first month on its day (`weeklyStartOn`). No new column:
+ * the value is new, so a build before WEEKLY_BILLS_MIN_APP_VERSION would read the bill as monthly. It never gets one —
+ * a shared workspace takes it only once every other phone in it says that version (`saveExpenseTemplate`), and a linked
+ * device on an older build holds every change from this data version (migration 0128) until it updates.
+ */
 
 /** Each non-monthly bill's repeat by id; a monthly bill is not in the map. */
 export async function billRepeats(db: Db, ws: WorkspaceContext): Promise<Map<string, BillRepeatFacts>> {
@@ -52,6 +61,13 @@ export async function billRepeats(db: Db, ws: WorkspaceContext): Promise<Map<str
       : sql`SELECT id, repeat, repeat_month, NULL FROM expense_templates WHERE workspace_id = ${ws.workspaceId} AND repeat = 'yearly' AND repeat_month BETWEEN 1 AND 12`,
   );
   const map = new Map<string, BillRepeatFacts>();
+  if (hasEvery) {
+    // Every few weeks: a gap of 1 to 8 weeks, else monthly rather than a guessed gap.
+    const weekly = await db.values<[string, number]>(
+      sql`SELECT id, repeat_every FROM expense_templates WHERE workspace_id = ${ws.workspaceId} AND repeat = 'weeks' AND repeat_every BETWEEN ${WEEKS_EVERY_MIN} AND ${WEEKS_EVERY_MAX}`,
+    );
+    for (const [id, every] of weekly) map.set(id, { repeat: 'weeks', month: null, every: Number(every) });
+  }
   for (const [id, repeat, month, every] of rows) {
     // A 'months' bill without a usable gap reads as monthly rather than guessing one.
     if (repeat === 'months' && !(every != null && Number(every) >= 2 && Number(every) <= 11)) continue;

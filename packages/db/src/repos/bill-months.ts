@@ -32,12 +32,19 @@ export async function billPausesExist(db: Db): Promise<boolean> {
 export const BILL_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**
+ * What `bill_payments.bill_month` may hold: a bill's month (YYYY-MM), or — for a bill that repeats every few weeks
+ * (2026-11-25) — the day the payment was made (YYYY-MM-DD). The repos say which a bill takes; the ledger and sync take either.
+ */
+export const BILL_KEY = /^\d{4}-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?$/;
+
+/**
  * The day a transaction counts on in a monthly spending figure. A bill payment made outside the month whose bill it
  * settles counts on that bill's out day in that month (clamped to the month's end); everything else, including a
  * bill paid inside its own month, counts on the day it happened. The row read is the payment's own bill's (its
  * template_id), so this is one row at most and never multiplies the entries it is asked about. A purchase merely linked
  * to a month afterwards (no template_id of its own) stays where it was spent, and so does one payment that settled
- * bills of different months (0127): there is no one month to move it to.
+ * bills of different months (0127): there is no one month to move it to. So does a weekly bill's payment, keyed by its
+ * own day (2026-11-25): it counts on the day it was made.
  */
 export const attributedOn = (startDay: MonthStartDay = 1): SQL => {
   // The bill's out day in its bill month, clamped to the month's end.
@@ -60,6 +67,7 @@ export const attributedOn = (startDay: MonthStartDay = 1): SQL => {
   FROM bill_payments bp JOIN expense_templates et ON et.id = bp.template_id
   WHERE bp.transaction_id = ${transactions.id}
     AND bp.template_id = ${transactions.templateId}
+    AND length(bp.bill_month) = 7
     AND NOT EXISTS (SELECT 1 FROM bill_payments other WHERE other.transaction_id = bp.transaction_id AND other.bill_month <> bp.bill_month)
 ), ${transactions.occurredOn})`;
 };

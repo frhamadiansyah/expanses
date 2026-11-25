@@ -82,3 +82,19 @@ export const PLAN_SPREAD_MIN_APP_VERSION = '0.5.6';
  * Ship order: every build that says 0.5.7 must contain migration 0127.
  */
 export const SEVERAL_BILLS_MIN_APP_VERSION = '0.5.7';
+
+/**
+ * The first app version that reads a bill that repeats every few weeks (2026-11-25): the bill's `repeat` is 'weeks'
+ * with `repeatEvery` in weeks, and each of its payments is keyed by its day ('YYYY-MM-DD') where every other bill's is
+ * keyed by its month. An older build would read the bill as monthly, and would refuse such a payment's day as a bill
+ * month (INVALID_BILL_MONTH, skipped): the purchase would be missing on that phone. So a bill is set to repeat by weeks
+ * in a shared workspace only while every other phone in it says this version or later (`saveExpenseTemplate`, refused
+ * with WEEKS_PHONES_BEHIND, naming them), and a linked device on an older build holds every change of this data
+ * version (migration 0128) until it updates.
+ *
+ * Ship order: every build that says 0.5.8 must contain migration 0128 and bills by weeks.
+ *
+ * Left open, as for the Debts & savings marks: a phone on an older build that joins a shared workspace after one of its
+ * bills went weekly skips that bill's payments until it updates. Shared books hold two phones today.
+ */
+export const WEEKLY_BILLS_MIN_APP_VERSION = '0.5.8';

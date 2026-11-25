@@ -1,4 +1,4 @@
-import { formatMinor, monthName, type PostingLine, uuidv7 } from '@expanses/core';
+import { dayMonth, formatMinor, monthName, type PostingLine, uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
@@ -328,12 +328,17 @@ async function lineOf(db: Db, ws: WorkspaceContext, event: AuditEvent, undone: R
     const month = String(event.payload.billMonth ?? '');
     const [bill] = await db.values<[string]>(sql`SELECT name FROM expense_templates WHERE id = ${templateId}`);
     const v = await versionOf(db, ws, event.entityId);
-    const when = /^\d{4}-\d{2}$/.test(month) ? `${monthName(month, 'long')} ${month.slice(0, 4)}` : 'that month';
+    // A weekly bill's payment is keyed by its day (2026-11-25): paid twice on that day.
+    const when = /^\d{4}-\d{2}$/.test(month)
+      ? `for ${monthName(month, 'long')} ${month.slice(0, 4)}`
+      : /^\d{4}-\d{2}-\d{2}$/.test(month)
+        ? `on ${dayMonth(month)} ${month.slice(0, 4)}`
+        : 'for that month';
     return {
       ...base,
       kind: 'other',
       group: 'transactions',
-      title: `${bill?.[0] ?? 'A bill'} was paid twice for ${when}`,
+      title: `${bill?.[0] ?? 'A bill'} was paid twice ${when}`,
       subtitle: `The earlier payment keeps it${v ? `; ${v.description || 'the other'} no longer pays it` : ''}`,
       who: null,
       state: 'cannot',

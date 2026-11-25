@@ -377,6 +377,7 @@ export {
   withPlan,
 } from './bills/sinking';
 export { type BillToMatch, type LineToMatch, matchBillsToLines } from './bills/match-lines';
+export { addDaysIso, BILL_DAY_KEY, isWeeksEvery, WEEKS_EVERY_MAX, WEEKS_EVERY_MIN, weeklyDueDatesBetween, weeklyMonthlyMinor, weeklyNextDue, weeklyRepeat, weeklyStartOn } from './bills/weeks';
 export { formatLots, lotsOf, unitsFromLots } from './assets/units';
 export { type GoldPriceChoice, GRAMS_PER_TROY_OUNCE, gramPriceMicroFromOunce, type PriceSource, wantsWorldPrice } from './assets/world-gold';
 export {
