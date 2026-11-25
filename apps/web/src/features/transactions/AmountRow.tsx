@@ -1,3 +1,4 @@
+import { KEYPAD_TYPING_ATTR } from '../../app/keypad-dock';
 import { Camera, Globe, Percent, X } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -129,7 +130,15 @@ function MoneyField({
        * the most-pressed control on the card. `self-stretch` gives the button its row's height and the inner
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
-      <button type="button" aria-label={label} aria-invalid={invalid || undefined} onClick={onKeypad} disabled={disabled} className={cx(className, 'flex items-center self-stretch', end ? 'justify-end text-right' : 'text-left')}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-invalid={invalid || undefined}
+        // The figure the dock is typing into: what a sheet scrolls clear of the keys (app/keypad-dock.ts).
+        {...{ [KEYPAD_TYPING_ATTR]: typing ? '' : undefined }}
+        onClick={onKeypad}
+        disabled={disabled}
+        className={cx(className, 'flex items-center self-stretch', end ? 'justify-end text-right' : 'text-left')}>
         {/* Nothing typed yet: the cursor stands before the placeholder's first letter, as in any empty field, not after the word. */}
         {typing && !value && <span aria-hidden data-testid="typing-mark" className="ph-caret" style={{ marginLeft: 0, marginRight: -1 }} />}
         <span className="min-w-0 truncate">{value ? amountFace(value, currency, refund, fractional) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>

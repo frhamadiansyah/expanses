@@ -1,6 +1,7 @@
 import { expect, type Locator, test } from '@playwright/test';
 import { fillFigure } from './add-transaction';
 import { goldAtPrice } from './gold-trade';
+import { pickTradeCash } from './trades';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -25,6 +26,8 @@ test('phone: the brand’s bar sizes ride over the keyboard while Grams is typed
   await fillFigure(sheet, 'Total paid', '9850000');
   await expect(strip).toHaveCount(0);
   await expect(sheet.getByLabel('Total paid', { exact: true })).toHaveText('9.850.000');
+  // No account is chosen for her until one has been used (owner, 25 Nov 2026): picked here once.
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   await page.getByRole('button', { name: 'Record buy' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('asset-grid')).toContainText('17 g');
@@ -38,6 +41,8 @@ test('phone: All sells every gram, down to 0 g, and more than is held is refused
   await expect(page.getByRole('button', { name: 'Record sell' })).toBeDisabled();
   await sheet.getByRole('button', { name: 'All', exact: true }).click();
   await fillFigure(sheet, 'Received', '22000000');
+  // No account is chosen for her until one has been used (owner, 25 Nov 2026): picked here once.
+  await pickTradeCash(page, sheet, 'Received into', 'BCA');
   await expect(page.getByTestId('gold-gain')).toContainText('−Rp 500.000');
   await page.getByRole('button', { name: 'Record sell' }).click();
   await expect(sheet).toHaveCount(0);
@@ -49,6 +54,8 @@ test('phone: every row of the sheet reads at one size, and the details open unde
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const sheet = page.getByRole('dialog');
   const size = (node: Locator) => node.evaluate((element) => getComputedStyle(element).fontSize);
+  // No account is chosen for her until one has been used (owner, 25 Nov 2026): picked here once.
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   // Trade's rows, read as Expense's: Paid with's account, the total, the holding's name and Grams, all one size on a phone.
   const grams = sheet.getByLabel('Grams', { exact: true });
   expect(await size(grams)).toBe('17px');

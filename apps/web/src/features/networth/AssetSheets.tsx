@@ -10,7 +10,9 @@ import { InsetGroup, InsetRow, TextRow } from '../../ui/native';
 import { useGoals } from '../goals/queries';
 import { assetKindTile } from '../ownables/catalogue-view';
 import { unitWord } from '../transactions/buy-rows';
-import { useAssetProfiles, usePositions } from './queries';
+import { useHoldingLinks } from '../investments/queries';
+import { useAssetProfiles, usePositions, useTrades } from './queries';
+import { tradeCashDefault } from './trade-cash-default';
 import { TradeForm } from './TradeForm';
 import type { TradeDraft } from './trade-form';
 
@@ -172,9 +174,27 @@ export function TradeSheet({
   // The cash side of a trade: a buy is paid from money, a broker's cash included, or a credit card (the form hides the
   // card on a sale); the account an edited trade already names is always kept.
   const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => canTradeCashWith(account, 'buy') || account.id === editing?.cashAccountId);
+  /*
+   * A new buy, sale or payment with no account handed in starts where the holding's own Buy sheet would (owner, 25 Nov
+   * 2026): the account the holding is linked to (a bond's Institution, a share's broker), else the account its last buy
+   * or sell used. When neither names one the form keeps its first account — an empty account here means a past trade,
+   * not "pick one".
+   */
+  const trades = useTrades(holding.accountId);
+  const links = useHoldingLinks();
+  const tradeKind = initial.kind ?? 'buy';
+  const startsOn =
+    editing || initial.cashAccountId !== undefined || tradeKind === 'unit_change'
+      ? null
+      : tradeCashDefault({
+          choices: moneyHolders(accounts.data ?? []).filter((account) => canTradeCashWith(account, tradeKind === 'buy' ? 'buy' : 'sell')),
+          linkedId: (links.data ?? []).find((link) => link.accountId === holding.accountId)?.brokerAccountId ?? null,
+          trades: trades.data ?? [],
+        });
   const Glyph = assetKindTile('invest', (accounts.data ?? []).find((account) => account.id === holding.accountId)?.subtype ?? '');
   const unitLabel = holding.unitLabel ?? unitWord((profiles.data ?? []).find((profile) => profile.accountId === holding.accountId)?.unitKind);
-  const loaded = accounts.isSuccess && positions.isSuccess;
+  // The trades and profiles are waited for too: the form reads its first account once, as it opens.
+  const loaded = accounts.isSuccess && positions.isSuccess && trades.isSuccess && profiles.isSuccess && links.isSuccess;
   return (
     <Sheet
       grouped
@@ -191,7 +211,7 @@ export function TradeSheet({
           cashAccounts={cashAccounts}
           positions={positions.data ?? {}}
           editing={editing}
-          initial={{ accountId: holding.accountId, ...initial }}
+          initial={{ accountId: holding.accountId, ...(startsOn ? { cashAccountId: startsOn } : {}), ...initial }}
           templateId={templateId}
           onSaved={onClose}
           formRef={formRef}

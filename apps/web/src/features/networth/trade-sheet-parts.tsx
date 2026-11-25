@@ -143,15 +143,20 @@ export function ResultRow({
   );
 }
 
-/** The accounts money can come from or go to, as the full form offers them, and the one chosen now. */
-export function useCashSide(defaultId: string | null, kind: 'buy' | 'sell' = 'sell') {
+/**
+ * The accounts money can come from or go to, as the full form offers them, and the one chosen now: the one picked, else
+ * the one `defaultOf` names among them (a holding's sheet: `tradeCashDefault`), else none — the row then asks for it.
+ * Never the first account by itself: a wrong account chosen silently was worse than asking once (owner, 25 Nov 2026).
+ */
+export function useCashSide(defaultOf: string | null | ((choices: readonly AccountRow[]) => string | null), kind: 'buy' | 'sell' = 'sell') {
   const accounts = useAccounts();
   // A buy may also be charged to a credit card, as the full Buy form allows (`canTradeCashWith`).
   const choices: AccountRow[] = moneyHolders(accounts.data ?? []).filter((account) => canTradeCashWith(account, kind));
   const [picked, setPicked] = useState('');
   // Owned before the app: recorded against Opening Balances, so no account's balance moves (an empty cash account).
   const [past, setPast] = useState(false);
-  const chosen = picked || (defaultId && choices.some((a) => a.id === defaultId) ? defaultId : '') || choices[0]?.id || '';
+  const defaultId = typeof defaultOf === 'function' ? defaultOf(choices) : defaultOf;
+  const chosen = picked || (defaultId && choices.some((a) => a.id === defaultId) ? defaultId : '');
   const cashAccountId = past ? '' : chosen;
   const cashAccount = past ? undefined : choices.find((account) => account.id === cashAccountId);
   return {

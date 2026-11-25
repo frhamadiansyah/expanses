@@ -5,6 +5,7 @@ import { type CreateAccountInput, createAccountTx } from './accounts';
 import { type AcquiredDate, saveAcquiredTx } from './asset-acquired';
 import { type SaveAssetProfileInput, saveAssetProfileTx } from './assets';
 import { recordValuationTx } from './prices';
+import { linkHoldingTx } from './securities';
 import { type RecordTradeInput, type TradeResult, writeTradeTx } from './trades';
 
 export interface OpenAssetInput {
@@ -19,6 +20,8 @@ export interface OpenAssetInput {
   trades: readonly Omit<RecordTradeInput, 'accountId'>[];
   /** A first estimate of what it is worth now. */
   valuation?: { asOf: string; valueMinor: number; basis: ValuationBasis } | null;
+  /** A fund's or bond's Institution picked as a broker's cash account (owner, 25 Nov 2026): linked as it is opened. */
+  heldAtAccountId?: string | null;
 }
 
 /**
@@ -31,6 +34,7 @@ export function openAsset(database: Database, ws: WorkspaceContext, input: OpenA
     const account = await createAccountTx(tx, ws, input.account);
     await saveAssetProfileTx(tx, ws, { ...input.profile, accountId: account.id });
     if (input.acquired) await saveAcquiredTx(tx, ws, account.id, input.acquired);
+    if (input.heldAtAccountId) await linkHoldingTx(tx, ws, { accountId: account.id, brokerAccountId: input.heldAtAccountId });
     const trades: TradeResult[] = [];
     for (const trade of input.trades) trades.push(await writeTradeTx(tx, ws, { ...trade, accountId: account.id }, null));
     if (input.valuation) await recordValuationTx(tx, ws, { accountId: account.id, ...input.valuation });

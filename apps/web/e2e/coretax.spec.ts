@@ -3,7 +3,7 @@ import { openAccount, openSettings, walletCard } from './accounts';
 import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { openAssets, openDrawers } from './drawers';
 import { forgetRates } from './pockets';
-import { openShortTrade, recordShortTrade } from './trades';
+import { openShortTrade, pickTradeCash, recordShortTrade } from './trades';
 
 /** Accounts created by these tests are opened today, so this year is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -127,6 +127,8 @@ test('freezing keeps the figures when a trade is backdated into the year afterwa
   await sheet.getByLabel('Date').fill(`${YEAR}-08-02`);
   await sheet.getByLabel('Grams', { exact: true }).fill('5');
   await sheet.getByLabel('Total paid', { exact: true }).pressSequentially('9300000');
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA Tahapan');
   await recordShortTrade(page, 'buy');
 
   await page.goto('/tax-report');

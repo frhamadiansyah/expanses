@@ -1,4 +1,4 @@
-import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, fundPlaceMatches, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, type UnitKind } from '@expanses/core';
+import { type AssetKind, assetItemOfCode, CASH_ITEMS, formatMinor, formatUnits, isoDate, lastNMonths, minorToMajorString, monthOf, isIdxListing, presetFor, type UnitKind } from '@expanses/core';
 import { type AssetValueRow, couponOn, deleteTrade, deleteValuation, type ValuationWithNote, switchOf, type TradeRow } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ArrowDownLeft, ArrowLeftRight, ChartLine, Info, Minus, MoreVertical, Plus, RotateCw, Settings, SquarePen } from 'lucide-react';
@@ -14,6 +14,7 @@ import {
   InsetGroup,
   InsetRow,
   Panel,
+  PickerRow,
   PushedTitle,
   ReadOnlyRow,
   ROW_PAD_X,
@@ -39,7 +40,7 @@ import { SwitchSheet } from './SwitchSheet';
 import { GoldChartSheet } from './GoldChartSheet';
 import { GoldTradeSheet } from './GoldTradeSheet';
 import { ASSET_TILES } from '../ownables/catalogue-view';
-import { SuggestRow } from '../ownables/CashAccountForm';
+import { InstitutionSheet } from './InstitutionSheet';
 import { PriceSheet, TradeActionsSheet, TradeSheet, ValueSheet } from './AssetSheets';
 import { ReinvestedSheet, TradeGoalsSheet } from './TradeTagSheets';
 import { BASIS_LABELS, UNIT_LABELS } from './labels';
@@ -82,7 +83,8 @@ type Sheet =
   | { kind: 'goals'; trade: TradeRow }
   | { kind: 'reinvested'; trade: TradeRow }
   | { kind: 'switch'; editing: { out: TradeRow; into: TradeRow } | null }
-  | { kind: 'new-broker' };
+  | { kind: 'new-broker' }
+  | { kind: 'institution' };
 
 /**
  * `/net-worth/assets/$accountId` — one page for everything owned that is not money: priced things (gold, shares, a
@@ -146,8 +148,6 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   // What the last change to a recorded trade did, said over the page: a goal kept, a payment marked, a trade deleted.
   const [notice, setNotice] = useState('');
   const [all, setAll] = useState(false);
-  // An Institution being typed; null once it is saved, when the row reads the saved name again.
-  const [placeDraft, setPlaceDraft] = useState<string | null>(null);
 
   const kind = profile.data?.assetKind ?? null;
   /** A listed share: its ticker, broker and custodian are changed in its Settings, not shown here. */
@@ -196,6 +196,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
   // Where a fund or bond is held: an institution's name, kept as its Nama institusi (0082).
   const institutions = institutionChoices(everyAccount, profiles.data ?? []);
   const heldName = profile.data?.coretaxFields.inst?.trim() ?? '';
+  // The broker's cash a fund's or bond's Institution links to, when it does (holding_links.broker_account_id).
+  const heldAccount = (kind === 'fund' || kind === 'bond') && brokerId ? everyAccount.find((row) => row.id === brokerId) : undefined;
   const holding = { accountId, name: value.name, currency, byMoney };
   const nameOf = (id: string) => everyAccount.find((row) => row.id === id)?.name ?? 'another fund';
   const unitLabel = unitKind ? UNIT_LABELS[unitKind] : 'units';
@@ -580,23 +582,18 @@ function AssetBody({ value }: { value: AssetValueRow }) {
               search={{ link: accountId }}
             />
           ) : null,
-          // A fund or a bond is held at an institution — a bank, a broker, a fund app — never inside one of its accounts:
-          // the institution's name, typed with the names already used and (in rupiah) the places that sell funds and
-          // bonds offered above the keyboard, is its Nama institusi.
+          // A fund or a bond is held at an institution (owner, 25 Nov 2026): a broker's cash account it links to — its
+          // Buy and Sell start there, and the tax report names it — or a place with no account, typed by name. Never a
+          // bank, savings or wallet account.
           kind === 'fund' || kind === 'bond' ? (
             profile.data ? (
-              <SuggestRow
-                key={`held-${heldName}`}
+              <PickerRow
+                key="held"
+                testId="institution-row"
                 label="Institution"
-                stripLabel="Institutions"
-                value={placeDraft ?? heldName}
-                onChange={setPlaceDraft}
-                onCommit={(name) => {
-                  setPlaceDraft(null);
-                  void stock.placeName(profile.data!, name);
-                }}
+                value={heldAccount?.name ?? (heldName || null)}
                 placeholder="Not set"
-                offers={(typed) => fundPlaceMatches(typed, institutions, ws.baseCurrency === 'IDR')}
+                onOpen={() => setSheet({ kind: 'institution' })}
               />
             ) : null
           ) : null,
@@ -632,7 +629,8 @@ function AssetBody({ value }: { value: AssetValueRow }) {
             </SelectRow>
           ) : null,
           // The broker's cash is held by a custodian bank: buying takes it from there, and selling puts it back.
-          rdnBank && !isShare ? <InsetRow key="cash" title="Custodian" value={rdnBank} chevron={false} /> : null,
+          // A fund's or bond's broker is its Institution: its custodian bank is not shown there, so it never reads as held at a bank.
+          rdnBank && !isShare && kind !== 'fund' && kind !== 'bond' ? <InsetRow key="cash" title="Custodian" value={rdnBank} chevron={false} /> : null,
           boughtWith ? (
             <InsetRow key="loan" title="Loan" value={`${boughtWith.lenderName} · See the loan`} to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} />
           ) : null,
@@ -666,6 +664,21 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           onClose={() => setSheet(null)}
         />
       )}
+      {sheet?.kind === 'institution' && profile.data && (
+        <InstitutionSheet
+          brokers={stock.brokers}
+          linkedId={heldAccount?.id ?? null}
+          bankOf={(id) => (profiles.data ?? []).find((row) => row.accountId === id)?.coretaxFields.inst?.trim() || null}
+          typedName={heldName}
+          places={institutions}
+          local={ws.baseCurrency === 'IDR'}
+          onPick={(choice) => {
+            setSheet(null);
+            void stock.heldAt(profile.data!, choice);
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet?.kind === 'new-broker' && <NewBrokerSheet onSave={(name) => void stock.newBroker(name).then(() => setSheet(null))} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'listed-trade' && idxShare && (
         <ListedTradeSheet
@@ -685,7 +698,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
           icon={<KindGlyph size={16} aria-hidden />}
           lastPrice={latestPrice}
           position={position}
-          defaultCashId={brokerId}
+          linkedCashId={brokerId}
           onClose={() => setSheet(null)}
           byMoney={byMoney ? { valueMinor: value.valueMinor } : null}
         />

@@ -20,6 +20,18 @@ const endOf = (taxYear: number) => `${taxYear}-12-31`;
 const DEBT_CODE_BY_SUBTYPE: Record<string, string> = { credit_card: '102', loan: '101', payable: '109' };
 
 /**
+ * A holding's tax fields with its Nama institusi from the account it is linked to. A fund or a bond links its
+ * Institution to a broker's cash account (owner, 25 Nov 2026): the row then names that account, by its own name — the
+ * broker — as it is today, whatever name was typed before; a broker cash account's own Nama institusi is its custodian
+ * bank, not where the fund is held. A share's typed name stands, the broker filling only a field left empty.
+ */
+function heldAtFields(fields: Record<string, string>, brokerName: string | null, assetKind: string | undefined): Record<string, string> {
+  if (!brokerName) return fields;
+  if (assetKind === 'fund' || assetKind === 'bond' || !fields.inst?.trim()) return { ...fields, inst: brokerName };
+  return fields;
+}
+
+/**
  * Everything the harta and utang rows need, read from the ledger on 31 December of the tax year.
  * Nothing here decides what to report — that is the rows' work; this only gathers the figures.
  */
@@ -114,9 +126,10 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
         priceMicro,
         // Harga perolehan is historical rupiah (Pasal 10): a foreign holding's buys at their own days' rates, never today's.
         byYear: foreign ? (costs.positions[value.accountId]?.byYear ?? {}) : position.byYear,
-        // The institution a holding is kept at is its broker: the fund account names it. What the owner typed on
-        // the holding itself still stands; the broker only fills a field left empty.
-        fields: brokerName && !fields.inst?.trim() ? { ...fields, inst: brokerName } : fields,
+        // The institution a holding is kept at is its broker: the fund account names it. A share's typed name still
+        // stands, the broker only filling a field left empty; a fund's or bond's Institution linked to the account is
+        // that account, by its name as it is now (`heldAtFields`).
+        fields: heldAtFields(fields, brokerName, profile?.assetKind),
         ...(foreign
           ? {
               // Only buys on or before 31 December of the report year: the note counts what the year's figure holds.
@@ -152,7 +165,7 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
         priceMicro: 0,
         byYear,
         valueMinor: value.valueMinor,
-        fields: brokerName && !fields.inst?.trim() ? { ...fields, inst: brokerName } : fields,
+        fields: heldAtFields(fields, brokerName, profile?.assetKind),
         ...(foreign
           ? {
               purchases: trades

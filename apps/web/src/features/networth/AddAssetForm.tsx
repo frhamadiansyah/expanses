@@ -19,6 +19,10 @@ import { CardPointsBox } from './trade-sheet-parts';
 import { tradeRatesForSave } from './trade-money';
 import { useShareOnAdd } from '../sharing/ShareWithHousehold';
 import { SuggestRow } from '../ownables/CashAccountForm';
+import { brokerChoices } from '../investments/add-holding';
+import { type InstitutionChoice, InstitutionSheet } from './InstitutionSheet';
+import { institutionChoices } from './institutions';
+import { useAssetProfiles } from './queries';
 
 /** Everything the five families name, so what is left over in `ASSET_ITEMS` is the legacy entry alone. */
 const IN_A_FAMILY = new Set(ASSET_FAMILIES.flatMap((family) => family.items.map((item) => item.id)));
@@ -63,6 +67,14 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
   const [paying, setPaying] = useState(false);
   const [dayRates, setDayRates] = useState<Record<string, string>>({});
   const form = useRef<HTMLFormElement>(null);
+  // A fund's or bond's Institution, picked as on its page (owner, 25 Nov 2026): a broker's cash it links to, a place
+  // typed by name, or none — and the sheet it is picked in.
+  const [held, setHeld] = useState<InstitutionChoice>(null);
+  const [pickingPlace, setPickingPlace] = useState(false);
+  const profiles = useAssetProfiles();
+  const brokers = brokerChoices(accounts);
+  const heldAccount = held && 'accountId' in held ? accounts.find((account) => account.id === held.accountId) : undefined;
+  const heldName = held === null ? '' : 'accountId' in held ? (heldAccount?.name ?? '') : held.name;
 
   const change = (patch: Partial<NewAssetDraft>) => setDraft((current) => ({ ...current, ...patch }));
   /** A different thing, or the same thing valued the other way: either one starts its own fields over. */
@@ -77,6 +89,7 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
   const buying = needsPurchases(draft.itemId, draft.typedInstead);
   const legacyCash = draft.itemId === 'cash';
   const buyingNow = buying && draft.when === 'new';
+  const heldItem = item.behaviour.opens === 'holding' && (item.behaviour.assetKind === 'fund' || item.behaviour.assetKind === 'bond');
 
   // New purchase: what paid, as Trade's Buy offers it — the same list, cards included — and what that asks of the buy.
   const moneyOptions = tradeMoneyChoices(accounts, 'buy', draft.buy.moneyId);
@@ -160,7 +173,9 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
             openedOn: plan.account.openedOn,
             openingRateToBase,
           },
-          profile: plan.profile,
+          // The Institution's name is the tax report's Nama institusi; a broker's cash picked is linked too.
+          profile: heldItem && heldName ? { ...plan.profile, coretaxFields: { inst: heldName } } : plan.profile,
+          heldAtAccountId: heldItem ? (heldAccount?.id ?? null) : null,
           acquired: plan.acquired,
           trades,
           valuation: plan.valuation,
@@ -268,6 +283,9 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
         ) : (
           <TextRow label="Name" value={draft.name} onChange={(e) => change({ name: e.target.value })} placeholder="Required" required />
         )}
+        {heldItem ? (
+          <PickerRow label="Institution" value={heldName || null} placeholder="Not set" onOpen={() => setPickingPlace(true)} testId="institution-row" />
+        ) : null}
         {canType ? (
           <SwitchRow label="I'd rather type what it is worth" checked={draft.typedInstead} onChange={(checked) => retarget(draft.itemId, checked)} />
         ) : null}
@@ -406,6 +424,26 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
       ) : null}
 
       <ErrorBox error={error} />
+      {pickingPlace && (
+        <InstitutionSheet
+          brokers={brokers}
+          linkedId={heldAccount?.id ?? null}
+          bankOf={(id) => (profiles.data ?? []).find((row) => row.accountId === id)?.coretaxFields.inst?.trim() || null}
+          typedName={held && 'name' in held ? held.name : ''}
+          places={institutionChoices(accounts, profiles.data ?? [])}
+          local={ws.baseCurrency === 'IDR'}
+          onPick={(choice) => {
+            setPickingPlace(false);
+            setHeld(choice);
+            // A broker's cash picked is where a new purchase is paid from, unless an account was already picked. It is
+            // offered then even when it is not kept for spending, as an account already chosen always is (`canPayWith`).
+            if (choice && 'accountId' in choice && !draft.buy.moneyId) {
+              setBuy({ moneyId: choice.accountId, charged: '', spendCategoryId: '', mcc: '' });
+            }
+          }}
+          onClose={() => setPickingPlace(false)}
+        />
+      )}
       {paying && (
         <PaymentSheet
           title="Payment method"

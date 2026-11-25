@@ -1,4 +1,6 @@
 import { X } from 'lucide-react';
+import { useLayoutEffect, useRef } from 'react';
+import { setKeypadDock } from '../../app/keypad-dock';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../../ui';
@@ -53,6 +55,26 @@ export function Keypad({
   label?: string;
 }) {
   const phone = usePhone();
+  const dock = useRef<HTMLDivElement>(null);
+
+  /*
+   * How tall the dock stands, told to the sheet it opens in (app/keypad-dock.ts): the browser does not count it as a
+   * keyboard, so without this a sheet at half height left the figure being typed under the keys. Measured as drawn,
+   * and again if it changes height (a currency with a comma key has the same rows; a label makes the header taller).
+   */
+  useLayoutEffect(() => {
+    const here = dock.current;
+    if (!phone || !here) return;
+    const key = Symbol('keypad');
+    const measure = () => setKeypadDock(key, window.innerHeight - here.getBoundingClientRect().top);
+    measure();
+    const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    watch?.observe(here);
+    return () => {
+      watch?.disconnect();
+      setKeypadDock(key, 0);
+    };
+  }, [phone]);
 
   // Called before the early return, so the hook order is the same whichever screen this is on, and enabled
   // only on a phone: a dock that is not drawn must not take Escape from the sheet it would have sat in.
@@ -75,6 +97,7 @@ export function Keypad({
       <div className="fixed inset-0 z-30" onClick={onClose} role="presentation" />
       {/* B1's dock: rounded key tiles on the surface, the operators and DONE in the app's green. */}
       <div
+        ref={dock}
         data-testid="keypad"
         className="fixed inset-x-0 bottom-0 z-40 border-t-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-surface)] px-2 pb-[calc(12px+env(safe-area-inset-bottom))]"
         role="group"

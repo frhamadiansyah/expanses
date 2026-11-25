@@ -6,6 +6,8 @@ import { Sheet } from '../../app/Sheet';
 import { useApp } from '../../app/context';
 import { canTradeCashWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts } from '../../lib/queries';
+import { useTrades } from './queries';
+import { tradeCashDefault } from './trade-cash-default';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { dayLabel } from './asset-page';
@@ -71,7 +73,10 @@ export function ListedTradeSheet({
   const [picked, setPicked] = useState('');
   // Owned before the app: recorded against Opening Balances, so neither the broker's cash nor any account moves.
   const [past, setPast] = useState(false);
-  const cashAccountId = past ? '' : (brokerAccountId ?? (picked || cashChoices[0]?.id || ''));
+  // The broker's cash when one is named; else the account picked, else the one the last buy or sell used, else none —
+  // never the first account by itself (owner, 25 Nov 2026).
+  const trades = useTrades(holding.accountId);
+  const cashAccountId = past ? '' : (brokerAccountId ?? (picked || tradeCashDefault({ choices: cashChoices, trades: trades.data ?? [] }) || ''));
   const cashAccount = past ? undefined : (accounts.data ?? []).find((account) => account.id === cashAccountId);
 
   const fees = useBrokerFees(brokerAccountId);
@@ -164,6 +169,11 @@ export function ListedTradeSheet({
         />
         {!brokerAccountId && !past ? (
           <SelectRow label={kind === 'buy' ? 'Paid from' : 'Paid into'} value={cashAccountId} onChange={(e) => setPicked(e.target.value)}>
+            {cashAccountId === '' ? (
+              <option value="" disabled>
+                Account
+              </option>
+            ) : null}
             {cashChoices.map((account) => (
               <option key={account.id} value={account.id}>
                 {accountChoiceName(account)}

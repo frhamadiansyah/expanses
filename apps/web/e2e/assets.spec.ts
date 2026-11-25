@@ -4,6 +4,7 @@ import { openNewAsset, fillDay, pastPurchase } from './add-asset';
 import { addTransfer } from './add-transaction';
 import { addPriced, openAsset } from './asset-page';
 import { openDrawers } from './drawers';
+import { pickTradeCash } from './trades';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -53,6 +54,8 @@ test('buys, sells, and works out the gain at average cost', async ({ page }) => 
   await openGoldSheet(page, 'Buy');
   await page.getByLabel('Grams', { exact: true }).fill('2');
   await page.getByLabel('Total paid', { exact: true }).pressSequentially('3980000');
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, page.getByRole('dialog'), 'Payment method', 'BCA Tahapan');
   await page.getByRole('button', { name: 'Record buy', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -144,6 +147,8 @@ test('sends trade edits to the holding’s page instead of the transaction form'
   await openGoldSheet(page, 'Buy');
   await page.getByLabel('Grams', { exact: true }).fill('2');
   await page.getByLabel('Total paid', { exact: true }).pressSequentially('3980000');
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, page.getByRole('dialog'), 'Payment method', 'BCA Tahapan');
   await page.getByRole('button', { name: 'Record buy', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 

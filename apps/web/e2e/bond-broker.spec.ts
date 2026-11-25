@@ -2,9 +2,10 @@ import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { fillDay, openNewAsset, pastPurchase } from './add-asset';
 import { openDrawers } from './drawers';
+import { institutionRow, setInstitution } from './fund-trade';
 import { addHoldingFlow } from './securities';
 
-test('a government bond is held at a bank as readily as at a broker, or at a place typed by name', async ({ page }) => {
+test('a government bond held at a bank names the bank under Other place, its tax Nama institusi', async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '1000000' });
   await openNewAsset(page, 'Government bonds');
@@ -19,20 +20,16 @@ test('a government bond is held at a bank as readily as at a broker, or at a pla
 
   // Held at, not Broker: banks sell bonds too.
   await expect(page.getByLabel('Broker', { exact: true })).toHaveCount(0);
-  const held = page.getByLabel('Institution', { exact: true });
-  await held.fill('Bank BCA');
-  await held.blur();
-  await expect(held).toHaveValue('Bank BCA');
+  // A bank has no account a bond links to: its name is typed under Other place.
+  await setInstitution(page, { other: 'Bank BCA' });
   // Held at a bank, that bank is the tax report's Nama institusi: one name, kept once.
   await page.getByRole('main').getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Institution', exact: true })).toHaveValue('Bank BCA');
   await page.goBack();
 
-  await held.fill('Bank Mandiri');
-  await held.blur();
-  await expect(held).toHaveValue('Bank Mandiri');
+  await setInstitution(page, { other: 'Bank Mandiri' });
   await page.reload();
-  await expect(held).toHaveValue('Bank Mandiri');
+  await expect(institutionRow(page)).toContainText('Bank Mandiri');
 });
 
 test('a share’s Broker row opens a broker not yet in the app, by name, and keeps the share there', async ({ page }) => {

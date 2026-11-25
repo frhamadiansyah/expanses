@@ -157,21 +157,19 @@ export async function linkHoldingTx(
       .from(accounts)
       .where(and(eq(accounts.id, brokerAccountId), eq(accounts.workspaceId, ws.workspaceId), isNull(accounts.archivedAt)));
     if (!broker) throw new AssetError('Broker account not found in this workspace');
-    /* The owner's ruling: a broker is its cash account, subtype `fund`. A mutual fund is also held at a bank or a fund
-       app (spec 2026-10-19-fund-by-amount, "Held at"), so a fund may name a bank, a savings or a digital-wallet
-       account as well. A pocket is its parent's money in one currency, so the parent is the place and the pocket
-       never is. */
+    /* The owner's ruling: a broker is its cash account, subtype `fund`. A fund's or a bond's Institution links only to
+       one of those too (owner, 25 Nov 2026): a fund must never look linked to a bank, savings or wallet account, so a
+       place with no account of its own (a fund app, a bank's counter) stays a typed name. A pocket is its parent's
+       money in one currency, so the parent is the place and the pocket never is. */
     const [profile] = await tx
       .select({ assetKind: assetProfiles.assetKind })
       .from(assetProfiles)
       .where(and(eq(assetProfiles.accountId, input.accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
-    // A fund or a bond is sold by banks as well as brokers, so either is held at any of those places; a share is kept at a broker.
-    const heldAnywhere = profile?.assetKind === 'fund' || profile?.assetKind === 'bond';
-    const places: readonly string[] = heldAnywhere ? HELD_AT_SUBTYPES : ['fund'];
-    if (broker.kind !== 'asset' || !places.includes(broker.subtype)) {
+    const fundOrBond = profile?.assetKind === 'fund' || profile?.assetKind === 'bond';
+    if (broker.kind !== 'asset' || broker.subtype !== 'fund') {
       throw new AssetError(
-        heldAnywhere
-          ? 'It is held at a broker, a bank or a fund app — choose one of those accounts'
+        fundOrBond
+          ? 'An Institution links to a broker’s cash account only; another place is typed by name'
           : 'A broker is the cash account kept there — choose a fund account',
       );
     }
@@ -238,8 +236,11 @@ export async function linkHoldingTx(
 }
 
 /** The same, recording the security first when it is handed as a new one. One database transaction. */
-/** The accounts a mutual fund or a bond can be held at: a broker's cash, a bank, a savings account or a fund app's wallet. */
-export const HELD_AT_SUBTYPES: readonly string[] = ['fund', 'bank', 'savings', 'ewallet'];
+/**
+ * The accounts a mutual fund or a bond can be linked to as its Institution: a broker's cash only (owner, 25 Nov 2026).
+ * Anywhere else it is held — a fund app, a bank — is a typed name, never a bank, savings or wallet account.
+ */
+export const HELD_AT_SUBTYPES: readonly string[] = ['fund'];
 
 /**
  * The same fund at two places (spec 2026-10-19-fund-by-amount): this holding joins `otherAccountId` under one fund —
@@ -493,11 +494,11 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
 }
 
 /**
- * A fund or a bond is held at an institution — a bank, a broker, a fund app — not inside one of its accounts. A holding
- * still linked to an account from before is given that account's institution as its Nama institusi (the bank name the
- * account keeps, else its own name; a broker's cash by the broker's name, since its own field names the custodian bank),
- * and the link is let go. A name already typed on the holding stays. Run on open: once nothing is linked, it does
- * nothing. A share keeps its broker's cash account, where its money is. Answers how many were moved.
+ * A fund or a bond is never linked to a bank, savings or wallet account: its Institution is a broker's cash account
+ * (owner, 25 Nov 2026) or a typed name. A holding still linked to one of those from before is given that account's
+ * institution as its Nama institusi (the bank name the account keeps, else its own name), and the link is let go. A
+ * name already typed on the holding stays. A link to a broker's cash stays as it is. Run on open: once nothing is linked
+ * that way, it does nothing. A share keeps its broker's cash account, where its money is. Answers how many were moved.
  */
 export async function moveHeldAtToInstitutions(database: Database, ws: WorkspaceContext): Promise<number> {
   if (!(await securityTablesExist(database.db))) return 0;
@@ -508,7 +509,7 @@ export async function moveHeldAtToInstitutions(database: Database, ws: Workspace
       JOIN asset_profiles p ON p.account_id = l.account_id
       JOIN accounts a ON a.id = l.broker_account_id
       LEFT JOIN asset_profiles bp ON bp.account_id = a.id
-      WHERE l.workspace_id = ${ws.workspaceId} AND l.broker_account_id IS NOT NULL AND p.asset_kind IN ('fund', 'bond')`);
+      WHERE l.workspace_id = ${ws.workspaceId} AND l.broker_account_id IS NOT NULL AND p.asset_kind IN ('fund', 'bond') AND a.subtype <> 'fund'`);
     const fieldsOf = (json: string | null): Record<string, string> => {
       try {
         const parsed = JSON.parse(json ?? '{}') as unknown;
@@ -517,15 +518,59 @@ export async function moveHeldAtToInstitutions(database: Database, ws: Workspace
         return {};
       }
     };
-    for (const [accountId, json, subtype, name, brokerJson] of linked) {
+    for (const [accountId, json, , name, brokerJson] of linked) {
       const fields = fieldsOf(json);
       if (!fields.inst?.trim()) {
-        const place = subtype === 'fund' ? name : fieldsOf(brokerJson).inst?.trim() || name;
+        const place = fieldsOf(brokerJson).inst?.trim() || name;
         await tx.run(sql`UPDATE asset_profiles SET coretax_fields_json = ${JSON.stringify({ ...fields, inst: place })} WHERE account_id = ${accountId}`);
       }
       await tx.run(sql`UPDATE holding_links SET broker_account_id = NULL WHERE account_id = ${accountId}`);
       markAccountDirtyTx(tx, accountId);
     }
     return linked.length;
+  });
+}
+
+/** The mark migration 0131 leaves: link each typed Institution that names one broker's cash, once. */
+const LINK_INSTITUTIONS_MARK = 'upkeep.fund_institution_links';
+
+/**
+ * Once, after migration 0131 (owner, 25 Nov 2026): each fund or bond whose typed Institution names exactly one open
+ * broker cash account here — either name holding the other, whatever the case ("Mandiri Sekuritas" and a broker's cash
+ * called that) — is linked to it. The typed name is left as it was. A holding already linked, or one that is the same
+ * fund as another holding (a shared security, whose pair at one broker must stay one holding), is left alone; a name
+ * matching none or several stays a typed name. Every workspace at once. Answers how many were linked.
+ */
+export async function linkFundInstitutionsOnce(database: Database): Promise<number> {
+  const marked = await database.db.values(sql`SELECT 1 FROM settings WHERE key = ${LINK_INSTITUTIONS_MARK}`);
+  if (marked.length === 0) return 0;
+  if (!(await securityTablesExist(database.db))) {
+    await database.db.run(sql`DELETE FROM settings WHERE key = ${LINK_INSTITUTIONS_MARK}`);
+    return 0;
+  }
+  return database.transaction(async (tx) => {
+    const named = sql`(instr(lower(trim(b.name)), lower(trim(json_extract(p.coretax_fields_json, '$.inst')))) > 0
+      OR instr(lower(trim(json_extract(p.coretax_fields_json, '$.inst'))), lower(trim(b.name))) > 0)`;
+    const brokers = sql`accounts b WHERE b.workspace_id = p.workspace_id AND b.kind = 'asset' AND b.subtype = 'fund'
+      AND b.parent_id IS NULL AND b.archived_at IS NULL AND trim(b.name) <> '' AND ${named}`;
+    const found = await tx.values<[string, string, string]>(sql`
+      SELECT p.account_id, p.workspace_id, (SELECT b.id FROM ${brokers})
+      FROM asset_profiles p
+      JOIN accounts h ON h.id = p.account_id AND h.workspace_id = p.workspace_id
+      WHERE p.asset_kind IN ('fund', 'bond') AND h.kind = 'asset' AND h.subtype = 'investment'
+        AND json_valid(p.coretax_fields_json)
+        AND trim(coalesce(json_extract(p.coretax_fields_json, '$.inst'), '')) <> ''
+        AND (SELECT count(*) FROM ${brokers}) = 1
+        AND NOT EXISTS (SELECT 1 FROM holding_links l WHERE l.account_id = p.account_id AND (l.broker_account_id IS NOT NULL OR l.security_id IS NOT NULL))`);
+    const now = new Date().toISOString();
+    for (const [accountId, workspaceId, brokerId] of found) {
+      await tx
+        .insert(holdingLinks)
+        .values({ accountId, workspaceId, securityId: null, brokerAccountId: brokerId, createdAt: now })
+        .onConflictDoUpdate({ target: holdingLinks.accountId, set: { brokerAccountId: brokerId } });
+      markAccountDirtyTx(tx, accountId); // joint net worth §9, as a link made by hand marks it
+    }
+    await tx.run(sql`DELETE FROM settings WHERE key = ${LINK_INSTITUTIONS_MARK}`);
+    return found.length;
   });
 }

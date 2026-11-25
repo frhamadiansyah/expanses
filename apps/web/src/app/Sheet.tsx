@@ -2,6 +2,7 @@ import { Check, ChevronLeft, Plus, Search, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { type PointerEvent, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useKeyboardInset } from '../ui/native/KeyboardStrip';
+import { KEYPAD_TYPING_ATTR, useKeypadDock } from './keypad-dock';
 import { type Detent, landing } from './sheet-detents';
 import { usePhone } from './use-phone';
 import { useEscape } from './use-escape';
@@ -209,6 +210,40 @@ export function Sheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyboard]);
 
+  /*
+   * The phone's keypad is the app's own keyboard, and the browser does not count it as one: the visual viewport stays
+   * whole while it is up, so `keyboard` reads 0. In a sheet at half height the dock then covered the amount it typed
+   * into. So the sheet makes the same room for the dock (app/keypad-dock.ts): it stands at large, its rows run on under
+   * the keys, and the figure being typed is scrolled clear of the dock's top. Measured against the dock itself, not
+   * with `scrollIntoView`, which counts a row as in view while it sits under a fixed dock; and again once the sheet
+   * has finished growing to large, which moves the row.
+   */
+  const dock = useKeypadDock();
+  useEffect(() => {
+    const here = panel.current;
+    if (dock === 0 || !here) return;
+    const clear = () => {
+      const field = here.querySelector(`[${KEYPAD_TYPING_ATTR}]`);
+      if (!(field instanceof HTMLElement)) return;
+      const row = field.getBoundingClientRect();
+      const top = window.innerHeight - dock;
+      // A little air between the row and the keys, as iOS leaves above its own keyboard.
+      const covered = row.bottom + 12 - top;
+      if (covered > 0) here.scrollTop += covered;
+      // Never scrolled up past the sheet's own top either.
+      const above = here.getBoundingClientRect().top + 8 - row.top;
+      if (above > 0) here.scrollTop -= above;
+    };
+    const frame = requestAnimationFrame(clear);
+    const settled = window.setTimeout(clear, 340);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settled);
+    };
+  }, [dock]);
+  /** What covers the foot of the screen: the keyboard, or the keypad in its place. */
+  const covered = Math.max(keyboard, dock);
+
   useEscape(onClose);
 
   /*
@@ -313,9 +348,9 @@ export function Sheet({
            * scrolled above it. Lifting the whole sheet onto the keyboard instead left a band of the page behind showing
            * between the two whenever the measured keyboard ran taller than the one drawn.
            */
-          paddingBottom: riding ? `calc(1rem + ${BELOW_KEYBOARD}px)` : keyboard > 0 ? `calc(1rem + ${keyboard}px)` : 'calc(1rem + env(safe-area-inset-bottom))',
-          // With the keyboard up a sheet with detents stands at large, so what it holds has room above the keys.
-          ...(detents ? { height: dragged ?? (detent === 'large' || keyboard > 0 ? '92dvh' : '50dvh') } : {}),
+          paddingBottom: riding ? `calc(1rem + ${BELOW_KEYBOARD}px)` : covered > 0 ? `calc(1rem + ${covered}px)` : 'calc(1rem + env(safe-area-inset-bottom))',
+          // With the keyboard (or the keypad) up a sheet with detents stands at large, so what it holds has room above the keys.
+          ...(detents ? { height: dragged ?? (detent === 'large' || covered > 0 ? '92dvh' : '50dvh') } : {}),
         }}
         data-detent={detents ? detent : undefined}
       >

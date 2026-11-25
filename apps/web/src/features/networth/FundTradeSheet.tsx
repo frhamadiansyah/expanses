@@ -12,6 +12,8 @@ import { TradeHoldingRow, TradeMoneyRow } from '../transactions/TradeRows';
 import { currencyFlag } from '../transactions/tx-form';
 import { keepsAll } from './sell-all';
 import { typedAmount } from './trade-form';
+import { useTrades } from './queries';
+import { tradeCashDefault } from './trade-cash-default';
 import { CashSheet, ResultRow, SheetTradeDetails, signedMinor, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 const BUY_INFO =
@@ -34,7 +36,7 @@ export function FundTradeSheet({
   icon,
   lastPrice,
   position,
-  defaultCashId,
+  linkedCashId,
   onClose,
   byMoney = null,
 }: {
@@ -43,8 +45,11 @@ export function FundTradeSheet({
   icon: ReactNode;
   lastPrice: { priceMicro: number; onDate: string } | null;
   position: Position | undefined;
-  /** The account the fund's money normally comes from and goes to: the broker or fund app it is kept at. */
-  defaultCashId: string | null;
+  /**
+   * The broker's cash the fund's Institution links to, if it does: where the sheet starts, else the account the fund's
+   * last buy or sell used, else none (`tradeCashDefault`).
+   */
+  linkedCashId: string | null;
   onClose: () => void;
   /**
    * A fund tracked by money (spec 2026-10-19-fund-by-amount): what it is worth now. Buy and sell are amounts alone, no
@@ -58,7 +63,8 @@ export function FundTradeSheet({
   const [all, setAll] = useState(false);
   const [occurredOn, setOccurredOn] = useState(today);
   const [picking, setPicking] = useState(false);
-  const side = useCashSide(defaultCashId, kind);
+  const trades = useTrades(holding.accountId);
+  const side = useCashSide((choices) => tradeCashDefault({ choices, linkedId: linkedCashId, trades: trades.data ?? [] }), kind);
   const heldMicro = position?.unitsMicro ?? 0;
   const priceMicro = lastPrice?.priceMicro ?? null;
   const amountMinor = typedMinor(amount, currency);

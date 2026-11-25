@@ -11,6 +11,8 @@ import { DateRow } from '../transactions/CardRows';
 import { FormRows } from '../transactions/FormRow';
 import { TradeHoldingRow, TradeMoneyRow, TradeUnitsRow } from '../transactions/TradeRows';
 import { currencyFlag } from '../transactions/tx-form';
+import { useTrades } from './queries';
+import { tradeCashDefault } from './trade-cash-default';
 import { CashSheet, ResultRow, SheetTradeDetails, signedMinor, typedMinor, useCashSide, useTradeDetails, useTradeSave } from './trade-sheet-parts';
 
 /**
@@ -43,7 +45,9 @@ export function GoldTradeSheet({
   const [occurredOn, setOccurredOn] = useState(today);
   const [picking, setPicking] = useState(false);
   const [typingGrams, setTypingGrams] = useState(false);
-  const side = useCashSide(null, kind);
+  // The account the last buy or sell used, else none to pick from: never the first account by itself.
+  const trades = useTrades(holding.accountId);
+  const side = useCashSide((choices) => tradeCashDefault({ choices, trades: trades.data ?? [] }), kind);
   const heldMicro = position?.unitsMicro ?? 0;
   const moneyMinor = typedMinor(money, currency);
   const typed = typedGramsMicro(grams);

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { FUND, fundByMoney } from './fund-trade';
+import { pickTradeCash } from './trades';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -13,6 +14,9 @@ test('Buy a fund by amount: no NAV, no units, and the value grows by the amount'
   // The fund, fixed and named alone; a fund bought by money has no units row.
   await expect(page.getByTestId('trade-holding')).toHaveText(FUND);
   await expect(sheet.getByLabel('Units', { exact: true })).toHaveCount(0);
+  // Nothing is chosen until an account has been used for this fund (owner, 25 Nov 2026).
+  await expect(sheet.getByRole('button', { name: /^Payment method/ })).not.toContainText('BCA');
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   await expect(sheet.getByRole('button', { name: /^Payment method/ })).toContainText('BCA');
   await expect(page.getByRole('button', { name: 'Record buy' })).toBeDisabled();
   await sheet.getByLabel('Amount', { exact: true }).pressSequentially('500000');
@@ -34,6 +38,8 @@ test('a fee typed in the details is put in with the amount: Money in grows by bo
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const sheet = page.getByRole('dialog');
   await sheet.getByLabel('Amount', { exact: true }).pressSequentially('500000');
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, sheet, 'Payment method', 'BCA');
   await sheet.getByRole('button', { name: 'Add more details' }).click();
   // A buy's details: the Fee; Tax withheld is a sell's.
   await expect(sheet.getByLabel('Tax withheld', { exact: true })).toHaveCount(0);
@@ -48,6 +54,8 @@ test('Sell half the value: half the money comes out, the rest is gain; never mor
   await fundByMoney(page);
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   await page.getByRole('dialog').getByLabel('Amount', { exact: true }).pressSequentially('500000');
+  // Nothing is chosen for her until an account has been used for this holding (owner, 25 Nov 2026): picked once.
+  await pickTradeCash(page, page.getByRole('dialog'), 'Payment method', 'BCA');
   await page.getByRole('button', { name: 'Record buy' }).click();
 
   await page.getByRole('button', { name: 'Sell', exact: true }).click();
