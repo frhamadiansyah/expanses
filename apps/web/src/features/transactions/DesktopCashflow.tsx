@@ -3,8 +3,8 @@ import { categoryTree, formatMinor, isUncategorisedKey, monthName, parseLooseDat
 import { type AccountRow, categoryTotalsIn, type DraftRow, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChartColumn, ChevronLeft, ChevronRight, Equal, FileText, Inbox, PieChart, Plus, Repeat, Search, X } from 'lucide-react';
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChartColumn, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, Equal, FileText, Inbox, PieChart, Plus, Repeat, Search, X } from 'lucide-react';
+import { type CSSProperties, Fragment, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
@@ -21,7 +21,7 @@ import { DESK_COLUMNS, DESK_GRID, type RowOptions } from './QuickRowEditor';
 import { cellCorner, cellLook, cellMarks, type CellPick } from './cell-look';
 import { ColumnHead, type ColumnSort, SORT_WORDS } from './ColumnHead';
 import { stickyHead, useFits, useStuck } from './sticky-head';
-import { type AmountFilter, amountFilterOn, NO_AMOUNT_FILTER, sumFigures, totalFoot, withinAmount } from './table-figures';
+import { type AmountFilter, amountFilterOn, figureText, NO_AMOUNT_FILTER, sumFigures, totalFoot, withinAmount } from './table-figures';
 import type { CellColumn } from './cell-range';
 import { useCashflowCells } from './cashflow-cells';
 import { type AddPaidChoice, addPaidChoices, fillAddedPaid, forgetMark, guessHint, keepMarks, learnFromSaved, paidHint, pendingPaidLabel, pendingPaidOf, readMarks, rowsLine, unknownLinks, unknownLinksLine } from './paste-categories';
@@ -31,6 +31,10 @@ import { UndoToast } from '../../ui/UndoToast';
 import { usePeekDoubleClick } from '../../ui/native/peek-double-click';
 import { ReceiptPeek, ReceiptRowMenu } from './ReceiptPeek';
 import { TableMenu, type TableMenuItem } from './TableMenu';
+import { FindBar, type FindState, foundCellsStyle, Marked, NO_FIND } from './FindBar';
+import { findRows, replaceAssignments } from './find-replace';
+import { GROUP_CHOICES, type GroupBy, groupRows } from './group-rows';
+import { HeadPopover, MenuItem, MenuLabel } from './ColumnHead';
 import { copyToClipboard, pasteFromClipboard } from './clipboard';
 import { useUndoKeys, useUndoStack } from './undo-stack';
 import { useSpendingTrend } from './SpendingTrend';
@@ -384,7 +388,22 @@ export function DesktopCashflow({
   // not picked, not peeked, not counted in its Total — until it is taken off.
   const [amountFilter, setAmountFilter] = useState<AmountFilter>(NO_AMOUNT_FILTER);
   const amountOn = amountFilterOn(amountFilter);
-  const rows = amountOn ? listedRows.filter((row) => withinAmount(deskAmount(row).minor, row.currency, amountFilter)) : listedRows;
+  const filtered = amountOn ? listedRows.filter((row) => withinAmount(deskAmount(row).minor, row.currency, amountFilter)) : listedRows;
+  // Group by (owner 2026-11-25, the table's ⋯ menu): the rows in their groups, a folded group's rows out of the table.
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
+  const groupKeyOf = (row: ListRow): { key: string; label: string } => {
+    if (groupBy === 'day') return { key: row.date, label: row.date ? longDate(row.date) : 'No date' };
+    if (groupBy === 'paid') {
+      const text = [row.accountLabel, row.last4 ?? ''].filter(Boolean).join(' ');
+      return { key: text, label: text || 'No payment method' };
+    }
+    const kindLabel = helpers.kindLabel(row);
+    return kindLabel ? { key: `kind:${kindLabel}`, label: kindLabel } : { key: row.categoryId ?? '', label: row.categoryName ?? 'Uncategorised' };
+  };
+  const groups = groupBy === 'none' ? null : groupRows(filtered, groupBy, groupKeyOf, (row) => cashflowFigure(row, baseCurrency), baseCurrency, sort.key === 'date' && sort.dir === 'desc');
+  const foldKey = (key: string) => `${groupBy}:${key}`;
+  const rows = groups ? groups.flatMap((group) => (folded.has(foldKey(group.key)) ? [] : group.rows)) : filtered;
   const colourFor = useCategoryMarkColour();
   // Under a year the ring, Spent / Received / Left and the day bars leave not-monthly bills out, as the phone's do.
   const ring = useRing(kind, month, paidAccountId, notMonthly.out);
@@ -486,6 +505,13 @@ export function DesktopCashflow({
     if (shortcut === 'new' && !readOnly) {
       event.preventDefault();
       onAdd();
+      return;
+    }
+    // ⇧⌘H: Find and replace (Sheets' key), opened or its Find field taken.
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'h' && !covered) {
+      event.preventDefault();
+      setFinding((was) => was ?? NO_FIND);
+      document.querySelector<HTMLInputElement>('#find-words')?.focus();
       return;
     }
     if (shortcut === 'search') {
@@ -675,6 +701,20 @@ export function DesktopCashflow({
       if (one !== lookAt) dispatch({ type: 'open', id: lookAt });
     } else if (selection.ids.length > 0) dispatch({ type: 'close' });
   }, [look, lookAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Find and replace (owner 2026-11-25, ⇧⌘H or the ⋯ menu): the rows shown holding the words in the column looked in.
+  const [finding, setFinding] = useState<FindState | null>(null);
+  const findTexts = finding ? tableRows.map((row) => ({ id: row.id, text: cells.textOf(row, finding.field) })) : [];
+  const found = finding ? findRows(findTexts, finding.query) : [];
+  // Picked: the rows ⌘-clicked, and the rows of the blue cells.
+  const pickedRows = new Set([...selection.ids, ...(cells.active ? cells.picked : [])]);
+  // The cells found that cannot mark their words: a waiting row's Note (being typed in), every Category or Payment method.
+  const foundCells = finding ? found.filter((id) => finding.field !== 'description' || tableRows.find((row) => row.id === id)?.kind === 'draft').map((id) => ({ id, column: finding.field })) : [];
+  const replace = (only: 'picked' | 'all') => {
+    if (!finding) return;
+    const reach = findTexts.filter((row) => only === 'all' || pickedRows.has(row.id));
+    const assignments = replaceAssignments(reach, finding.field, finding.query, finding.replacement);
+    if (assignments.length > 0) cells.pasteCells(assignments);
+  };
   const guessOf = (id: string) => {
     const mark = marks[id];
     const hint = guessHint(mark);
@@ -806,6 +846,26 @@ export function DesktopCashflow({
     if (row.kind === 'draft' && !readOnly) items.push({ key: 'delete', label: 'Delete', keys: '⌫', danger: true, divided: true, onPick: () => void discardWaiting([row.id]) });
     return items.length > 0 ? <TableMenu x={at.x} y={at.y} items={items} onClose={close} /> : null;
   };
+  /** One of the month's rows: a draft finished in its own cells, the rest a row that opens the peek. */
+  const renderRow = (row: ListRow) =>
+    row.kind === 'draft' ? (
+      <li key={`d:${row.id}`} className="list-none">
+        <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={typedHandlers} desk={{ striped: false, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.cellPick(row.id)} />
+      </li>
+    ) : (
+      <DeskRow
+        key={`t:${row.id}`}
+        row={row}
+        selected={picked.has(row.id)}
+        pickedCell={cells.cellPick(row.id)}
+        findWords={finding?.field === 'description' ? finding.query : null}
+        today={today}
+        accounts={accounts}
+        helpers={helpers}
+        onOpen={(keys) => (peekable(row) ? dispatch(keys ? clickAction(row.id, keys, ids) : { type: 'open', id: row.id }) : !keys?.metaKey && !keys?.shiftKey && row.instalment ? helpers.openInstalment(row) : undefined)}
+        onEdit={() => (peekable(row) ? edit(row) : undefined)}
+      />
+    );
   const toast = recorded ? recordedToast(recorded.items.map((item) => item.month), recorded.skipped) : null;
   const at = selected ? peekIds.indexOf(selected.id) : -1;
   // A column's name sorts the table by it (owner 2026-11-25): its menu's two orders, the arrow after the name while on.
@@ -816,7 +876,7 @@ export function DesktopCashflow({
     onClearAll();
   };
   // Under the Amount column: the rows the table shows, and what they come to (owner 2026-11-25).
-  const foot = totalFoot(sumFigures([...rows, ...waiting].map((row) => cashflowFigure(row, baseCurrency)), baseCurrency));
+  const foot = totalFoot(sumFigures([...filtered, ...waiting].map((row) => cashflowFigure(row, baseCurrency)), baseCurrency));
   const periodNote = period?.kind === 'month' ? monthName(month, 'long') : periodLabel(month);
   // The column names stay on top while the month scrolls under them (owner 2026-11-25).
   const head = useStuck<HTMLDivElement>();
@@ -917,7 +977,7 @@ export function DesktopCashflow({
       </DeskBar>
       {/* The app's notices, under the title bar rather than above it. */}
       <DeskNotices />
-      <DeskTitle title="Cashflow" line={cashflowLine(periodLabel(month), recordedCount(rows), tickable.length)} />
+      <DeskTitle title="Cashflow" line={cashflowLine(periodLabel(month), recordedCount(filtered), tickable.length)} />
       {picking && <PeriodPicker value={month} years={yearsSince(first.data ?? null)} onPick={onMonth} onClose={() => setPicking(false)} />}
 
       {/*
@@ -1030,8 +1090,21 @@ export function DesktopCashflow({
                   {recordTickedLabel(ticked.length)}
                 </button>
               )}
+              <TableMore groupBy={groupBy} onGroupBy={setGroupBy} onFind={() => setFinding((was) => was ?? NO_FIND)} />
             </span>
           </h2>
+          {finding && (
+            <FindBar
+              state={finding}
+              onChange={setFinding}
+              found={found.length}
+              onPicked={found.filter((id) => pickedRows.has(id)).length}
+              readOnly={readOnly}
+              onReplace={(only) => replace(only)}
+              onClose={() => setFinding(null)}
+            />
+          )}
+          {finding && <style data-testid="found-cells">{foundCellsStyle(foundCells)}</style>}
           {cells.line}
           {/* Sideways scroll only when the window is narrower than the table: a box that scrolls would hold the sticky header in. */}
           <div ref={wide.ref} className={cx('px-[10px] pb-[6px]', wide.fits ? 'overflow-x-clip' : 'overflow-x-auto')}>
@@ -1080,25 +1153,31 @@ export function DesktopCashflow({
               {/* The month's rows as a list, each an item: a draft is finished in its own cells, the rest open the peek;
                   then the waiting rows (option E), oldest first by when they came in, just above the typing row. */}
               <ul aria-label="Transactions" {...cells.containerProps}>
-                {rows.map((row) =>
-                  row.kind === 'draft' ? (
-                    <li key={`d:${row.id}`} className="list-none">
-                      <EditableRow row={row} options={rowOptions} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={typedHandlers} desk={{ striped: false, tick: { off: unticked.has(row.id), onToggle: (shift) => toggleTick(row.id, shift) } }} guess={guessOf(row.id)} paidGuess={paidGuessOf(row.id)} paidPending={paidPendingOf(row)} pickedCell={cells.cellPick(row.id)} />
-                    </li>
-                  ) : (
-                    <DeskRow
-                      key={`t:${row.id}`}
-                      row={row}
-                      selected={picked.has(row.id)}
-                      pickedCell={cells.cellPick(row.id)}
-                      today={today}
-                      accounts={accounts}
-                      helpers={helpers}
-                      onOpen={(keys) => (peekable(row) ? dispatch(keys ? clickAction(row.id, keys, ids) : { type: 'open', id: row.id }) : !keys?.metaKey && !keys?.shiftKey && row.instalment ? helpers.openInstalment(row) : undefined)}
-                      onEdit={() => (peekable(row) ? edit(row) : undefined)}
-                    />
-                  ),
-                )}
+                {groups
+                  ? groups.map((group) => {
+                      const shut = folded.has(foldKey(group.key));
+                      return (
+                        <Fragment key={`g:${group.key}`}>
+                          <GroupHead
+                            label={group.label}
+                            icon={groupBy === 'category' && group.rows[0]?.categoryId && !helpers.kindLabel(group.rows[0]) ? icon(group.rows[0].categoryId) : null}
+                            count={group.rows.length}
+                            total={'mixed' in group.sum ? null : figureText(group.sum.minor, group.sum.currency)}
+                            folded={shut}
+                            onFold={() =>
+                              setFolded((was) => {
+                                const next = new Set(was);
+                                if (next.has(foldKey(group.key))) next.delete(foldKey(group.key));
+                                else next.add(foldKey(group.key));
+                                return next;
+                              })
+                            }
+                          />
+                          {!shut && group.rows.map(renderRow)}
+                        </Fragment>
+                      );
+                    })
+                  : rows.map(renderRow)}
                 {waiting.map((row) => (
                   <li key={`w:${row.id}`} className="list-none" data-testid="waiting-row">
                     <EditableRow
@@ -1227,6 +1306,7 @@ function DeskRow({
   row,
   selected,
   pickedCell,
+  findWords,
   today,
   accounts,
   helpers,
@@ -1237,6 +1317,8 @@ function DeskRow({
   selected: boolean;
   /** What its cells show of the blue cells (`useCellRange`, `cell-look`), if any. */
   pickedCell: CellPick | null;
+  /** Words Find and replace looks for in Note: marked where the note holds them. */
+  findWords?: string | null;
   today: string;
   accounts: readonly AccountRow[];
   helpers: DeskRowHelpers;
@@ -1317,7 +1399,7 @@ function DeskRow({
       </span>
       <span {...cell('description')} className={cx('flex min-w-0 items-center gap-1.5 px-2 py-[5px]', row.deleted && 'line-through', blue('description'))}>
         {cellCorner('description', pickedCell)}
-        <span className="truncate">{row.description || <span className={grey}>{category ?? kindLabel ?? 'No note'}</span>}</span>
+        <span className="truncate">{row.description ? findWords ? <Marked text={row.description} query={findWords} /> : row.description : <span className={grey}>{category ?? kindLabel ?? 'No note'}</span>}</span>
         {row.instalment && (
           <span data-testid="instalment-pill" className={cx('shrink-0 rounded-full px-[6px] text-[11px] tabular-nums', solid ? 'bg-white/20' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]')}>
             {row.instalment.number} of {row.instalment.of}
@@ -1380,6 +1462,79 @@ function DeskRow({
       </span>
       {/* The last column is the typing row's Record: a recorded row opens its peek on a click instead. */}
       <span />
+    </li>
+  );
+}
+
+/** The table's ⋯ (owner 2026-11-25): Group by — None, Category, Payment method, Day — and Find and replace. */
+function TableMore({ groupBy, onGroupBy, onFind }: { groupBy: GroupBy; onGroupBy: (by: GroupBy) => void; onFind: () => void }) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={anchor}
+        type="button"
+        aria-label="More for the table"
+        aria-expanded={open}
+        title="Group by, Find and replace"
+        onClick={() => setOpen((was) => !was)}
+        className={cx('flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full text-[var(--mk-ink-2)] hover:bg-[var(--mk-pill)]', (open || groupBy !== 'none') && 'bg-[var(--mk-pill)] text-[var(--mk-ink)]')}
+      >
+        <Ellipsis size={16} strokeWidth={2.2} aria-hidden />
+      </button>
+      {open && (
+        <HeadPopover anchor={anchor.current} label="Table menu" onClose={() => setOpen(false)} width={210} tight>
+          <div role="menu" aria-label="Group by">
+            <MenuLabel>Group by</MenuLabel>
+            {GROUP_CHOICES.map((choice) => (
+              <MenuItem
+                key={choice.value}
+                on={groupBy === choice.value}
+                onClick={() => {
+                  onGroupBy(choice.value);
+                  setOpen(false);
+                }}
+              >
+                {choice.label}
+              </MenuItem>
+            ))}
+          </div>
+          <div className="mt-[4px] border-t border-[var(--mk-line)] pt-[4px] text-[13px]">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onFind();
+              }}
+              className="flex w-full items-center justify-between gap-[16px] rounded-[8px] px-[8px] py-[5px] text-left whitespace-nowrap font-normal hover:bg-[var(--mk-pill)]"
+            >
+              Find and replace…<span className="text-[12px] text-[var(--mk-ink-2)]">⇧⌘H</span>
+            </button>
+          </div>
+        </HeadPopover>
+      )}
+    </>
+  );
+}
+
+/** A group's head (Group by): its name, folding the group on a click, how many rows, and what they come to. */
+function GroupHead({ label, icon, count, total, folded, onFold }: { label: string; icon: ReactNode; count: number; total: string | null; folded: boolean; onFold: () => void }) {
+  return (
+    <li data-testid="group-head" className="flex min-h-[36px] list-none items-center gap-[8px] border-b border-[var(--mk-line)] bg-[var(--mk-pill)] px-[10px] text-[13px]">
+      <button type="button" aria-expanded={!folded} onClick={onFold} className="flex min-w-0 items-center gap-[8px] rounded-[6px] py-[4px] pr-[6px] font-semibold text-[var(--mk-ink)]">
+        <ChevronDown size={13} strokeWidth={2.4} aria-hidden className={cx('shrink-0 text-[var(--mk-ink-2)] transition-transform', folded && '-rotate-90')} />
+        {icon}
+        <span className="truncate">{label}</span>
+        <span data-testid="group-count" className="rounded-full bg-[var(--mk-card)] px-[7px] text-[11.5px] font-semibold text-[var(--mk-ink-2)] tabular-nums">
+          {count}
+        </span>
+      </button>
+      {total && (
+        <b data-testid="group-total" className="ml-auto pr-[8px] font-bold text-[var(--mk-ink)] tabular-nums">
+          {total}
+        </b>
+      )}
     </li>
   );
 }

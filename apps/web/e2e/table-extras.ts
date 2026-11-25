@@ -13,14 +13,15 @@ export async function pasteRows(page: Page, lines: readonly string[]) {
     data.setData('text/plain', plain);
     input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
   }, lines.join('\n'));
-  await expect(page.getByTestId('not-recorded-row')).toHaveCount(lines.length);
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(lines.length, { timeout: 15_000 });
 }
 
 /** Records every waiting row at once (the header's Record N). */
 export async function recordAll(page: Page, count: number) {
   await page.getByTestId('record-ticked').click();
-  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
-  await expect(page.getByTestId('transaction-row')).toHaveCount(count);
+  // Each row is recorded in turn: a long paste takes a while on a busy machine.
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0, { timeout: 20_000 });
+  await expect(page.getByTestId('transaction-row')).toHaveCount(count, { timeout: 10_000 });
 }
 
 export const cellOf = (row: Locator, column: string) => row.locator(`[data-cell="${column}"]`);

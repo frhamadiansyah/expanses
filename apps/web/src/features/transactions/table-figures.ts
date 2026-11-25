@@ -79,3 +79,8 @@ export function amountFilterText(filter: AmountFilter, currency: string): string
   };
   return [filter.over.trim() && `Over ${read(filter.over)}`, filter.under.trim() && `Under ${read(filter.under)}`].filter(Boolean).join(' · ');
 }
+
+/** A block picked across columns (owner 2026-11-25): "3 rows × 2 columns · ⌘C copies · ⌘V pastes". */
+export function blockLine(rows: number, columns: number): string {
+  return `${rows} ${rows === 1 ? 'row' : 'rows'} × ${columns} columns · ⌘C copies · ⌘V pastes`;
+}

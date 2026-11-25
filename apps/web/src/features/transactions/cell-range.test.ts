@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CellColumn, type CellTarget, cellsText, columnPick, jumpPick, stretchTo, changeLine, extendRange, fillReach, isCellColumn, movePick, rowAtHeight, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick, togglePick } from './cell-range';
+import { blockText, type CellColumn, type CellTarget, cellsText, columnPick, gridAssignments, pastedGrid, rangeColumns, stretchColumns, jumpPick, stretchTo, changeLine, extendRange, fillReach, isCellColumn, movePick, rowAtHeight, pasteAssignments, pastedLines, planChange, rangeIds, rangeKey, startRange, stretchPick, togglePick } from './cell-range';
 
 const IDS = ['a', 'b', 'c', 'd', 'e'];
 
@@ -13,9 +13,16 @@ describe('a range of cells', () => {
     expect(rangeIds(null, IDS)).toEqual([]);
   });
 
-  it('starts again in another column rather than reaching across', () => {
-    expect(extendRange(extendRange(startRange('category', 'a'), 'category', 'c'), 'paid', 'd')).toEqual({ column: 'paid', anchor: 'd', focus: 'd' });
+  it('reaches across into another column as a block (owner 2026-11-25), and starts at a cell when nothing is picked', () => {
+    const block = extendRange(extendRange(startRange('category', 'a'), 'category', 'c'), 'paid', 'd');
+    expect(block).toEqual({ column: 'category', anchor: 'a', focus: 'd', toColumn: 'paid' });
+    expect(rangeIds(block, IDS)).toEqual(['a', 'b', 'c', 'd']);
+    expect(rangeColumns(block)).toEqual(['category', 'paid']);
+    // Back in its own column: one column again.
+    expect(rangeColumns(extendRange(block, 'category', 'b'))).toEqual(['category']);
     expect(extendRange(null, 'paid', 'b')).toEqual({ column: 'paid', anchor: 'b', focus: 'b' });
+    // Leftwards too, the block's columns in the table's order.
+    expect(rangeColumns({ column: 'amount', anchor: 'a', focus: 'a', toColumn: 'description' })).toEqual(['description', 'category', 'paid', 'amount']);
   });
 
   it('shrinks to its anchor when the far row has left the table, and goes with its anchor', () => {
@@ -139,7 +146,8 @@ describe('keys on a range', () => {
     expect(rangeKey(key('Tab', { shiftKey: true }), false)).toBe('left');
     expect(rangeKey(key('ArrowUp', { shiftKey: true }), false)).toBe('more up');
     expect(rangeKey(key('ArrowDown', { shiftKey: true }), false)).toBe('more down');
-    expect(rangeKey(key('ArrowLeft', { shiftKey: true }), false)).toBeNull();
+    expect(rangeKey(key('ArrowLeft', { shiftKey: true }), false)).toBe('more left');
+    expect(rangeKey(key('ArrowRight', { shiftKey: true }), false)).toBe('more right');
     for (const typed of ['a', 'G', '4', '-', 'é']) expect(rangeKey(key(typed), false)).toBe('type');
     expect(rangeKey(key('R', { shiftKey: true }), false)).toBe('type');
     for (const other of ['Dead', 'F5', 'Shift', 'Meta']) expect(rangeKey(key(other), false)).toBeNull();
@@ -276,5 +284,50 @@ describe('⌘-click on picked cells', () => {
     const apart = togglePick(startRange('amount', 'a'), IDS, 'amount', 'c')!;
     expect(rangeIds(stretchPick(apart, IDS, 1), IDS)).toEqual(['a', 'b', 'c', 'd']);
     expect(rangeIds(extendRange(apart, 'amount', 'e'), IDS)).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+});
+
+describe('a block across columns (owner 2026-11-25)', () => {
+  const COLUMNS: CellColumn[] = ['date', 'description', 'category', 'paid', 'amount'];
+
+  it('⇧→ and ⇧← move its far column along the row, the rows kept; back to its first column, one column again', () => {
+    const run = { column: 'category' as const, anchor: 'a', focus: 'c' };
+    const wide = stretchColumns(run, COLUMNS, 1);
+    expect(wide).toEqual({ ...run, toColumn: 'paid' });
+    expect(rangeIds(wide, IDS)).toEqual(['a', 'b', 'c']);
+    expect(stretchColumns(stretchColumns(wide, COLUMNS, 1), COLUMNS, 1)).toEqual({ ...run, toColumn: 'amount' });
+    expect(stretchColumns(wide, COLUMNS, -1)).toEqual(run);
+    expect(rangeColumns(stretchColumns(run, COLUMNS, -1))).toEqual(['description', 'category']);
+    // ⇧↓ after ⇧→ keeps the block's columns.
+    expect(stretchPick(wide, IDS, 1)).toEqual({ ...run, focus: 'd', toColumn: 'paid' });
+  });
+
+  it('copies as a little table: a row per line, a tab between cells', () => {
+    expect(blockText([['Ride hailing', 'Bank Contoh'], ['Takeaways', 'Dompet\tContoh']])).toBe('Ride hailing\tBank Contoh\nTakeaways\tDompet Contoh');
+    expect(blockText([['Kopi'], ['Teh']])).toBe(cellsText(['Kopi', 'Teh']));
+  });
+
+  it('reads a paste as rows of cells, the closing blank line dropped', () => {
+    expect(pastedGrid('Ride hailing\tBank Contoh\r\nTakeaways\tGoPay\n')).toEqual([
+      ['Ride hailing', 'Bank Contoh'],
+      ['Takeaways', 'GoPay'],
+    ]);
+    expect(pastedGrid('\n\t\n')).toEqual([]);
+  });
+
+  it('lays a paste from the block’s top-left cell: across as many columns as it has, down the rows picked', () => {
+    const grid = pastedGrid('Ride hailing\tBank Contoh\nTakeaways\tGoPay\nGroceries\tCash');
+    // One column picked, a two-column paste: both columns fill.
+    expect(gridAssignments(['b', 'c'], ['category'], COLUMNS, grid)).toEqual([
+      { id: 'b', column: 'category', text: 'Ride hailing' },
+      { id: 'b', column: 'paid', text: 'Bank Contoh' },
+      { id: 'c', column: 'category', text: 'Takeaways' },
+      { id: 'c', column: 'paid', text: 'GoPay' },
+    ]);
+    // Never past the row's last column.
+    expect(gridAssignments(['a'], ['amount'], COLUMNS, [['1', '2']])).toEqual([{ id: 'a', column: 'amount', text: '1' }]);
+    // One value fills every picked cell of the block.
+    expect(gridAssignments(['a', 'b'], ['category', 'paid'], COLUMNS, [['Kopi']])).toHaveLength(4);
+    expect(gridAssignments([], ['category'], COLUMNS, grid)).toEqual([]);
   });
 });

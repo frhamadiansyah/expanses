@@ -13,10 +13,12 @@ import type { CellColumn } from './cell-range';
 
 /** What a row's cells are to show of the blue cells: its picked one and where it sits in the block, its copied one. */
 export interface CellPick {
-  /** The column of the row's picked cell, if one is. */
+  /** The column of the row's picked cell (a block's first), if one is. */
   column: CellColumn | null;
-  /** The column of the row's cell copied from, while cells are picked. */
-  copied: CellColumn | null;
+  /** Every column the row has picked: one, or a block's (owner 2026-11-25), in the table's order. */
+  columns: readonly CellColumn[];
+  /** The columns of the row's cells copied from, while cells are picked. */
+  copied: readonly CellColumn[];
   /** Several cells are picked: this one is part of a block. */
   many: boolean;
   /** The block's first and last cell, which close it at the top and the bottom. */
@@ -41,6 +43,18 @@ const BLOCK = {
   bottom: 'relative self-stretch content-center rounded-none! bg-[var(--mk-cell-range)] shadow-[inset_2px_0_0_var(--mk-blue),inset_-2px_0_0_var(--mk-blue),inset_0_-2px_0_var(--mk-blue)]',
   both: 'relative self-stretch content-center rounded-[6px]! bg-[var(--mk-cell-range)] shadow-[inset_0_0_0_2px_var(--mk-blue)]',
 } as const;
+/**
+ * A cell of a block across columns (owner 2026-11-25): the deeper pale blue, edged only where the block ends — its first
+ * and last column, its top and bottom row — so the block reads as one rectangle. Each edge is its own shadow, given by
+ * the side it is on.
+ */
+const ACROSS = 'relative self-stretch content-center rounded-none! bg-[var(--mk-cell-range)] [box-shadow:var(--el,0_0_#0000),var(--er,0_0_#0000),var(--et,0_0_#0000),var(--eb,0_0_#0000)]';
+const EDGE = {
+  left: '[--el:inset_2px_0_0_var(--mk-blue)]',
+  right: '[--er:inset_-2px_0_0_var(--mk-blue)]',
+  top: '[--et:inset_0_2px_0_var(--mk-blue)]',
+  bottom: '[--eb:inset_0_-2px_0_var(--mk-blue)]',
+} as const;
 /** The cell copied from: a dashed line just inside its edge. */
 const COPIED = 'outline-2 outline-dashed -outline-offset-[5px] outline-[var(--mk-blue)]';
 
@@ -57,16 +71,32 @@ const SQUARE =
 /** The classes for one cell of a row. */
 export function cellLook(column: CellColumn, pick: CellPick | null | undefined): string | false {
   if (!pick) return false;
-  const picked = pick.column === column;
-  const look = !picked ? '' : !pick.many ? ONE : BLOCK[pick.top && pick.bottom ? 'both' : pick.top ? 'top' : pick.bottom ? 'bottom' : 'middle'];
+  const picked = pick.columns.includes(column);
+  const across = pick.columns.length > 1;
+  const look = !picked
+    ? ''
+    : across
+      ? [
+          ACROSS,
+          column === pick.columns[0] && EDGE.left,
+          column === pick.columns[pick.columns.length - 1] && EDGE.right,
+          pick.top && EDGE.top,
+          pick.bottom && EDGE.bottom,
+        ]
+          .filter(Boolean)
+          .join(' ')
+      : !pick.many
+        ? ONE
+        : BLOCK[pick.top && pick.bottom ? 'both' : pick.top ? 'top' : pick.bottom ? 'bottom' : 'middle'];
   const reach = pick.reach && pick.column === null && column === pick.reachColumn ? REACH[pick.reach] : '';
-  const copied = pick.copied === column ? COPIED : '';
+  const copied = pick.copied.includes(column) ? COPIED : '';
   return [look, reach, copied].filter(Boolean).join(' ') || false;
 }
 
 /** What a cell holds besides its own: the fill square, on the blue's last cell. Pressed, `useCellRange` takes it. */
 export function cellCorner(column: CellColumn, pick: CellPick | null | undefined): ReactNode {
-  if (!pick?.corner || pick.column !== column) return null;
+  // One column's blue only: a block has no fill square.
+  if (!pick?.corner || pick.columns.length !== 1 || pick.column !== column) return null;
   return <span data-fill-square aria-hidden title="Drag down to fill" className={SQUARE} />;
 }
 
@@ -75,8 +105,8 @@ export function cellMarks(column: CellColumn, row: string, pick: CellPick | null
   return {
     'data-cell': column,
     'data-cell-row': row,
-    'data-picked': pick?.column === column || undefined,
-    'data-copied': pick?.copied === column || undefined,
+    'data-picked': pick?.columns.includes(column) || undefined,
+    'data-copied': pick?.copied.includes(column) || undefined,
     'data-reach': (!!pick?.reach && pick.reachColumn === column) || undefined,
   };
 }

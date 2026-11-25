@@ -1,14 +1,14 @@
 import { groupedMajorString, isoDate, parseLooseAmount, parseLooseDate } from '@expanses/core';
 import type { AccountRow, CardRow, DraftEdit, DraftRow } from '@expanses/db';
 import { type ReactNode, useRef, useState } from 'react';
-import { type CellChange, type CellColumn, type CellTarget, changeLine, planChange, type SkipReason } from '../transactions/cell-range';
+import { blockText, type CellAssignment, type CellChange, type CellColumn, type CellTarget, changeLine, planChange, type SkipReason } from '../transactions/cell-range';
 import { rememberedCategory } from '../transactions/paste-categories';
 import { buildRowOptions } from '../transactions/QuickRowEditor';
 import { type QuickValues, shortDate } from '../transactions/quick-row';
 import { useCellRange } from '../transactions/useCellRange';
 import type { UndoStack } from '../transactions/undo-stack';
 import { CellBulkField } from '../transactions/CellBulkField';
-import { draftFigure, sumFigures, sumLine } from '../transactions/table-figures';
+import { blockLine, draftFigure, sumFigures, sumLine } from '../transactions/table-figures';
 import { effectiveCategory } from './capture-view';
 import { paidWithOf } from './review-desk-model';
 
@@ -178,7 +178,7 @@ export function useReviewCells({
   }
 
   async function apply(
-    column: CellColumn,
+    columns: readonly CellColumn[],
     picked: readonly string[],
     next: (cells: ReviewCells, draft: DraftRow) => ReviewCells | null,
     opts: { clearing?: boolean; kind?: DraftRow['kind'] | null } = {},
@@ -186,7 +186,9 @@ export function useReviewCells({
     const drafts = picked.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
     const targets = drafts.map((draft): CellTarget<ReviewCells> => {
       const target = targetOf(draft);
-      const why = target.refusal ? null : (unfit(draft, column, opts.kind ?? null) ?? (opts.clearing && column === 'date' ? 'no empty date' : null));
+      const why = target.refusal
+        ? null
+        : (columns.map((column) => unfit(draft, column, opts.kind ?? null)).find(Boolean) ?? (opts.clearing && columns.includes('date') ? 'no empty date' : null));
       return why ? { ...target, values: null, refusal: why } : target;
     });
     const plan = planChange(targets, (cells, id) => next(cells, byId.get(id)!), same);
@@ -274,6 +276,32 @@ export function useReviewCells({
     setNote(null);
   }
 
+  /**
+   * Words put into cells, as a paste puts them (a paste, one value typed for several, Find and replace): each row's
+   * cells in one change, a cell whose words do not fit it left as it was (the row skipped when none fit). A category
+   * typed or pasted is read among spending's.
+   */
+  function pasteCells(assignments: readonly CellAssignment[]) {
+    const byRow = new Map<string, CellAssignment[]>();
+    for (const one of assignments) byRow.set(one.id, [...(byRow.get(one.id) ?? []), one]);
+    const columns = [...new Set(assignments.map((one) => one.column))];
+    void apply(
+      columns,
+      [...byRow.keys()],
+      (cells, draft) => {
+        let fitted = 0;
+        const after = (byRow.get(draft.id) ?? []).reduce((now, { column, text }) => {
+          const next = withText(draft, now, column, text);
+          if (!next) return now;
+          fitted++;
+          return next;
+        }, cells);
+        return fitted > 0 ? after : null;
+      },
+      { kind: 'expense' },
+    );
+  }
+
   const range = useCellRange({
     ids,
     // Review picks no rows with ⌘-click: there it picks cells, next to each other or not.
@@ -287,24 +315,17 @@ export function useReviewCells({
       setNote(null);
       onStart();
     },
-    copyText: (column, picked) => picked.map((id) => textOf(byId.get(id)!, column)).join('\n'),
-    onPaste: (column, assignments) => {
-      const texts = new Map(assignments.map(({ id, text }) => [id, text]));
-      // A category typed or pasted is read among spending's (`resolveCategory`).
-      void apply(
-        column,
-        assignments.map(({ id }) => id),
-        (cells, draft) => withText(draft, cells, column, texts.get(draft.id) ?? ''),
-        { kind: 'expense' },
-      );
-    },
-    onFill: (column, picked) => {
+    copyText: (columns, picked) => blockText(picked.map((id) => columns.map((column) => textOf(byId.get(id)!, column)))),
+    onPaste: (assignments) => pasteCells(assignments),
+    onFill: (columns, picked) => {
       const top = byId.get(picked[0]!);
       if (!top) return;
-      const from = fieldsOf(cellsOf(top), column);
-      void apply(column, picked.slice(1), (cells) => ({ ...cells, ...from }), { kind: top.kind });
+      // Each column filled down from its own top cell, in one change.
+      const from = Object.assign({}, ...columns.map((column) => fieldsOf(cellsOf(top), column))) as Partial<ReviewCells>;
+      void apply(columns, picked.slice(1), (cells) => ({ ...cells, ...from }), { kind: top.kind });
     },
-    onClear: (column, picked) => void apply(column, picked, (cells, draft) => withText(draft, cells, column, ''), { clearing: true }),
+    onClear: (columns, picked) =>
+      void apply(columns, picked, (cells, draft) => columns.reduce<ReviewCells | null>((now, column) => (now ? withText(draft, now, column, '') : null), cells), { clearing: true }),
     onPick: (column, picked) => {
       if (column === 'category' || column === 'paid') setPicking({ column, ids: [...picked] });
     },
@@ -321,12 +342,12 @@ export function useReviewCells({
         onCategory: (categoryId: string) => {
           const ids = picking.ids;
           setPicking(null);
-          void apply('category', ids, (cells) => ({ ...cells, categoryAccountId: categoryId }), { kind: first?.kind ?? 'expense' });
+          void apply(['category'], ids, (cells) => ({ ...cells, categoryAccountId: categoryId }), { kind: first?.kind ?? 'expense' });
         },
         onAccount: (accountId: string, cardId: string | null) => {
           const ids = picking.ids;
           setPicking(null);
-          void apply('paid', ids, (cells) => ({ ...cells, accountId, cardId }));
+          void apply(['paid'], ids, (cells) => ({ ...cells, accountId, cardId }));
         },
       }
     : null;
@@ -344,7 +365,9 @@ export function useReviewCells({
   // Several Amount cells: what they add up to, as a sheet says it (owner 2026-11-25).
   const hint = !range.active
     ? null
-    : range.picked.length === 1
+    : range.columns.length > 1
+      ? blockLine(range.picked.length, range.columns.length)
+      : range.picked.length === 1
       ? '1 cell · ⌘C copies · ⌘V pastes · arrows move · ⇧↓ picks more · Esc lets go'
       : range.range?.column === 'amount'
         ? `${sumLine(sumFigures(range.picked.flatMap((id) => (byId.has(id) ? [draftFigure(byId.get(id)!)] : [])), rows[0]?.currency ?? 'IDR'))} · ⌘C copies`
@@ -353,5 +376,5 @@ export function useReviewCells({
   // A letter typed on several picked cells: one value for them all (`CellBulkField`).
   const bulkField: ReactNode = range.bulk ? <CellBulkField key={range.bulk.ids.join(',')} bulk={range.bulk} onDone={range.submitBulk} onCancel={range.cancelBulk} /> : null;
 
-  return { ...range, busy, line, hint, choose, bulkField, saveRow };
+  return { ...range, busy, line, hint, choose, bulkField, saveRow, pasteCells };
 }

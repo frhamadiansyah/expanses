@@ -24,6 +24,20 @@ export interface CellRange {
   anchor: string;
   focus: string;
   ids?: readonly string[];
+  /**
+   * A block across columns (owner 2026-11-25, as Sheets): the far column a drag or ⇧→ reached, the block running from
+   * `column` to it in the table's order. Absent for one column.
+   */
+  toColumn?: CellColumn;
+}
+
+/** The columns a range covers, in the table's order: its own, or every one from its column to the far one. */
+export function rangeColumns(range: CellRange | null): CellColumn[] {
+  if (!range) return [];
+  if (!range.toColumn || range.toColumn === range.column) return [range.column];
+  const from = CELL_COLUMNS.indexOf(range.column);
+  const to = CELL_COLUMNS.indexOf(range.toColumn);
+  return CELL_COLUMNS.slice(Math.min(from, to), Math.max(from, to) + 1);
 }
 
 export const isCellColumn = (value: string | undefined | null): value is CellColumn => !!value && (CELL_COLUMNS as readonly string[]).includes(value);
@@ -48,7 +62,22 @@ export function startRange(column: CellColumn, id: string): CellRange {
 }
 
 export function extendRange(range: CellRange | null, column: CellColumn, id: string): CellRange {
-  return range && range.column === column ? { column, anchor: range.anchor, focus: id } : startRange(column, id);
+  if (!range) return startRange(column, id);
+  // In another column, a block from the cell first picked to this one (owner 2026-11-25).
+  return column === range.column ? { column, anchor: range.anchor, focus: id } : { column: range.column, anchor: range.anchor, focus: id, toColumn: column };
+}
+
+/**
+ * ⇧→ or ⇧← on blue cells (owner 2026-11-25): the block's far column moves one along the columns the row shows
+ * (`columns`, in its order), the rows kept; back to the first column, one column again. Never past either end.
+ */
+export function stretchColumns(range: CellRange, columns: readonly CellColumn[], by: -1 | 1): CellRange {
+  const far = range.toColumn ?? range.column;
+  const at = columns.indexOf(far);
+  if (at < 0) return range;
+  const next = columns[Math.min(Math.max(at + by, 0), columns.length - 1)]!;
+  const { ids: _apart, toColumn: _far, ...run } = range;
+  return next === range.column ? run : { ...run, toColumn: next };
 }
 
 /**
@@ -56,7 +85,7 @@ export function extendRange(range: CellRange | null, column: CellColumn, id: str
  * cells need not be next to each other); in another column it starts again there. Null when the last one is taken out.
  */
 export function togglePick(range: CellRange | null, ids: readonly string[], column: CellColumn, id: string): CellRange | null {
-  if (!range || range.column !== column) return startRange(column, id);
+  if (!range || range.column !== column || range.toColumn) return startRange(column, id);
   const now = rangeIds(range, ids);
   const next = now.includes(id) ? now.filter((one) => one !== id) : ids.filter((one) => one === id || now.includes(one));
   if (next.length === 0) return null;
@@ -66,6 +95,39 @@ export function togglePick(range: CellRange | null, ids: readonly string[], colu
 /** Cells copied: one per line, as a sheet's column pastes — a tab or line break inside a cell read as a space. */
 export function cellsText(texts: readonly string[]): string {
   return texts.map((text) => text.replace(/[\t\r\n]+/g, ' ').trim()).join('\n');
+}
+
+/** A block copied (owner 2026-11-25): a row per line, its cells apart by tabs — what Sheets and Notion paste as a table. */
+export function blockText(rows: readonly (readonly string[])[]): string {
+  return rows.map((cells) => cells.map((text) => text.replace(/[\t\r\n]+/g, ' ').trim()).join('\t')).join('\n');
+}
+
+/** A paste read as a block: a row per line, a cell per tab; the blank line a copy ends with dropped. Nothing but blanks is none. */
+export function pastedGrid(text: string): string[][] {
+  const rows = text.replace(/\r\n?/g, '\n').split('\n').map((line) => line.split('\t').map((cell) => cell.trim()));
+  while (rows.length > 0 && rows[rows.length - 1]!.every((cell) => cell === '')) rows.pop();
+  return rows.some((row) => row.some(Boolean)) ? rows : [];
+}
+
+/** One cell a paste fills: the row, the column, the words. */
+export interface CellAssignment {
+  id: string;
+  column: CellColumn;
+  text: string;
+}
+
+/**
+ * Which cells a paste fills (owner 2026-11-25): one value fills every picked cell; otherwise the paste is laid from the
+ * picked block's top-left cell — down the picked rows (stopping at their end, as one column always did) and across as
+ * many columns as it has, from the block's first column on (`columns`, the table's from there), so a two-column copy
+ * fills two columns at once.
+ */
+export function gridAssignments(picked: readonly string[], pickedColumns: readonly CellColumn[], columns: readonly CellColumn[], grid: readonly (readonly string[])[]): CellAssignment[] {
+  if (picked.length === 0 || grid.length === 0 || pickedColumns.length === 0) return [];
+  if (grid.length === 1 && grid[0]!.length === 1) return picked.flatMap((id) => pickedColumns.map((column) => ({ id, column, text: grid[0]![0]! })));
+  const from = columns.indexOf(pickedColumns[0]!);
+  const across = from < 0 ? [pickedColumns[0]!] : columns.slice(from);
+  return picked.slice(0, grid.length).flatMap((id, i) => grid[i]!.slice(0, across.length).map((text, j) => ({ id, column: across[j]!, text })));
 }
 
 /**
@@ -170,7 +232,7 @@ export function changeLine(changed: number, skipped: readonly { reason: SkipReas
  * the cell; ⌘Return records the rows the picked cells are in. Typing in a field asks for nothing — the field's own keys
  * are its own.
  */
-export type RangeKey = 'fill' | 'clear' | 'pick' | 'close' | 'record' | PickMove | 'more up' | 'more down' | 'type' | 'look' | PickJump | 'more first' | 'more last' | 'column' | null;
+export type RangeKey = 'fill' | 'clear' | 'pick' | 'close' | 'record' | PickMove | 'more up' | 'more down' | 'more left' | 'more right' | 'type' | 'look' | PickJump | 'more first' | 'more last' | 'column' | null;
 
 export type PickMove = 'up' | 'down' | 'left' | 'right';
 
@@ -210,11 +272,11 @@ export function rangeKey(event: { key: string; metaKey: boolean; ctrlKey: boolea
       return event.shiftKey ? 'more up' : 'up';
     case 'ArrowDown':
       return event.shiftKey ? 'more down' : 'down';
-    // The blue stretches down one column only: ⇧← and ⇧→ ask for nothing.
+    // ⇧← and ⇧→ stretch the blue across the columns: a block (owner 2026-11-25).
     case 'ArrowLeft':
-      return event.shiftKey ? null : 'left';
+      return event.shiftKey ? 'more left' : 'left';
     case 'ArrowRight':
-      return event.shiftKey ? null : 'right';
+      return event.shiftKey ? 'more right' : 'right';
     case 'Tab':
       return event.shiftKey ? 'left' : 'right';
   }
@@ -238,14 +300,14 @@ export function jumpPick(range: CellRange, ids: readonly string[], columns: read
 /** ⇧⌘↑ ⇧⌘↓: the far end to the column's first or last row, the cell first picked staying. */
 export function stretchTo(range: CellRange, ids: readonly string[], end: 'first' | 'last'): CellRange {
   const id = end === 'first' ? ids[0] : ids[ids.length - 1];
-  return id ? { column: range.column, anchor: range.anchor, focus: id } : range;
+  return id ? { column: range.column, anchor: range.anchor, focus: id, ...(range.toColumn ? { toColumn: range.toColumn } : {}) } : range;
 }
 
 /** ⌘A: every cell of the column, the rows the table shows. */
 export function columnPick(range: CellRange, ids: readonly string[]): CellRange {
   const first = ids[0];
   const last = ids[ids.length - 1];
-  return first && last ? { column: range.column, anchor: first, focus: last } : range;
+  return first && last ? { column: range.column, anchor: first, focus: last, ...(range.toColumn ? { toColumn: range.toColumn } : {}) } : range;
 }
 
 /**
@@ -255,12 +317,14 @@ export function columnPick(range: CellRange, ids: readonly string[]): CellRange 
  */
 export function movePick(range: CellRange, ids: readonly string[], columns: readonly CellColumn[], move: PickMove): CellRange {
   const row = ids.indexOf(range.focus);
+  // From a block, the arrows go on from its far corner: the row last reached, the column last reached.
+  const far = range.toColumn ?? range.column;
   if (move === 'up' || move === 'down') {
     const next = ids[Math.min(Math.max(row + (move === 'up' ? -1 : 1), 0), ids.length - 1)];
-    return startRange(range.column, row < 0 || !next ? range.focus : next);
+    return startRange(far, row < 0 || !next ? range.focus : next);
   }
-  const at = columns.indexOf(range.column);
-  const column = at < 0 ? range.column : (columns[Math.min(Math.max(at + (move === 'left' ? -1 : 1), 0), columns.length - 1)] ?? range.column);
+  const at = columns.indexOf(far);
+  const column = at < 0 ? far : (columns[Math.min(Math.max(at + (move === 'left' ? -1 : 1), 0), columns.length - 1)] ?? far);
   return startRange(column, range.focus);
 }
 
@@ -268,8 +332,8 @@ export function movePick(range: CellRange, ids: readonly string[], columns: read
 export function stretchPick(range: CellRange, ids: readonly string[], by: -1 | 1): CellRange {
   const row = ids.indexOf(range.focus);
   const next = row < 0 ? undefined : ids[Math.min(Math.max(row + by, 0), ids.length - 1)];
-  // Cells ⌘-clicked apart become one run again: from the first picked to the far end, moved.
-  return next ? { column: range.column, anchor: range.anchor, focus: next } : range;
+  // Cells ⌘-clicked apart become one run again: from the first picked to the far end, moved. A block keeps its columns.
+  return next ? { column: range.column, anchor: range.anchor, focus: next, ...(range.toColumn ? { toColumn: range.toColumn } : {}) } : range;
 }
 
 /**

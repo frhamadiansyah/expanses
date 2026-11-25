@@ -1,6 +1,6 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import type { CellPick } from './cell-look';
-import { type CellColumn, type CellRange, columnPick, extendRange, fillReach, isCellColumn, jumpPick, movePick, pasteAssignments, pastedLines, rangeIds, rangeKey, rowAtHeight, startRange, stretchPick, stretchTo, togglePick } from './cell-range';
+import { type CellAssignment, type CellColumn, type CellRange, columnPick, extendRange, fillReach, gridAssignments, isCellColumn, jumpPick, movePick, pastedGrid, rangeColumns, rangeIds, rangeKey, rowAtHeight, startRange, stretchColumns, stretchPick, stretchTo, togglePick } from './cell-range';
 
 /**
  * The blue cells of a Mac table (`cell-range`): which cells are picked, and the mouse and keys that pick and use them.
@@ -42,10 +42,13 @@ export function useCellRange({
   shiftExtends: (range: CellRange, picked: readonly string[]) => boolean;
   /** Called as cells are picked: the row selection and its peek step aside. */
   onStart?: () => void;
-  copyText: (column: CellColumn, ids: readonly string[]) => string;
-  onPaste: (column: CellColumn, assignments: { id: string; text: string }[]) => void;
-  onFill: (column: CellColumn, ids: readonly string[]) => void;
-  onClear: (column: CellColumn, ids: readonly string[]) => void;
+  /** The picked cells' words, a row per line and a tab between columns (one column: a cell per line). */
+  copyText: (columns: readonly CellColumn[], ids: readonly string[]) => string;
+  /** A paste (or one value typed for several): each cell it fills, in one change. */
+  onPaste: (assignments: CellAssignment[]) => void;
+  /** ⌘D or the fill square: each column filled down from its top cell, in one change. */
+  onFill: (columns: readonly CellColumn[], ids: readonly string[]) => void;
+  onClear: (columns: readonly CellColumn[], ids: readonly string[]) => void;
   /** Return or a double-click on Category or Paid with cells (Return on one with no field to type in): the usual picker, its choice for them all. */
   onPick: (column: CellColumn, ids: readonly string[]) => void;
   enabled?: boolean;
@@ -68,13 +71,14 @@ export function useCellRange({
   /** Whether the range is picked (blue), not just the cell last clicked. */
   const [held, setHeld] = useState(false);
   /** The cells ⌘C copied from, dashed until a paste or Esc. */
-  const [copied, setCopied] = useState<{ column: CellColumn; ids: string[] } | null>(null);
+  const [copied, setCopied] = useState<{ columns: CellColumn[]; ids: string[] } | null>(null);
   /**
    * A letter typed with several cells picked: one value for them all, in a small field over the cells (`CellBulkField`),
    * begun with that letter. Return puts it into every one by the paste's path; Esc lets it go.
    */
   const [bulk, setBulk] = useState<{ column: CellColumn; ids: string[]; typed: string } | null>(null);
   const picked = rangeIds(range, ids);
+  const columns = rangeColumns(range);
   const active = enabled && range !== null && picked.length > 0 && held;
   const container = useRef<HTMLElement | null>(null);
   const sink = useRef<HTMLTextAreaElement | null>(null);
@@ -126,6 +130,12 @@ export function useCellRange({
     const id = el?.dataset.cellRow;
     return el && isCellColumn(column) && id ? { column, id, el } : null;
   };
+  /** The columns a row shows, in its order: where a paste of several columns goes across. */
+  const rowColumns = (id: string): CellColumn[] =>
+    [...(container.current?.querySelectorAll<HTMLElement>('[data-cell]') ?? [])]
+      .filter((el) => el.dataset.cellRow === id)
+      .map((el) => el.dataset.cell)
+      .filter(isCellColumn);
   const cellEl = (column: CellColumn, id: string) =>
     [...(container.current?.querySelectorAll<HTMLElement>('[data-cell]') ?? [])].find((el) => el.dataset.cell === column && el.dataset.cellRow === id) ?? null;
   /** The keyboard rests on the hidden box once cells are blue, its words selected for ⌘C. */
@@ -159,7 +169,7 @@ export function useCellRange({
     // Nothing is ever typed into it: what lands there (a paste no cell took) is put back.
     box.addEventListener('input', () => {
       const { active: on, range: r, picked: cells } = now.current;
-      box.value = on && r ? now.current.copyText(r.column, cells) : '';
+      box.value = on && r ? now.current.copyText(rangeColumns(r), cells) : '';
       box.select();
     });
     document.body.appendChild(box);
@@ -171,7 +181,7 @@ export function useCellRange({
   }, [enabled]);
 
   // The box holds what the blue cells say, selected, so the web view's own Copy copies them too.
-  const text = active && range ? copyText(range.column, picked) : '';
+  const text = active && range ? copyText(columns, picked) : '';
   useEffect(() => {
     const box = sink.current;
     if (!box) return;
@@ -199,7 +209,7 @@ export function useCellRange({
       endFill();
       if (cells.length === 0) return;
       // As ⌘D: the top blue cell's value into every cell below it, by the table's own fill; the whole run stays blue.
-      now.current.onFill(filling.column, [...filling.block, ...cells]);
+      now.current.onFill([filling.column], [...filling.block, ...cells]);
       hold({ column: filling.column, anchor: filling.block[0]!, focus: cells[cells.length - 1]! });
     };
     /** The fill square dragged: the row under the pointer, read down its column, sets how far it reaches. */
@@ -297,6 +307,7 @@ export function useCellRange({
         cellEl(next.column, next.focus)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
         rest();
       };
+      const block = rangeColumns(r);
       const columnsOf = (id: string) =>
         [...(container.current?.querySelectorAll<HTMLElement>('[data-cell]') ?? [])]
           .filter((el) => el.dataset.cellRow === id)
@@ -331,10 +342,14 @@ export function useCellRange({
           return;
         }
         case 'fill':
-          if (cells.length >= 2) now.current.onFill(r.column, cells);
+          if (cells.length >= 2) now.current.onFill(block, cells);
           return;
         case 'clear':
-          now.current.onClear(r.column, cells);
+          now.current.onClear(block, cells);
+          return;
+        case 'more left':
+        case 'more right':
+          show(stretchColumns(r, columnsOf(r.focus), asked === 'more left' ? -1 : 1));
           return;
         case 'up':
         case 'down':
@@ -347,12 +362,15 @@ export function useCellRange({
           show(stretchPick(r, rows, asked === 'more up' ? -1 : 1));
           return;
         case 'type':
+          // A block across columns takes no typing: copy, paste, fill and clear only.
+          if (block.length > 1) return;
           // Several cells: one value for them all, begun with the letter. One: the letter types in the cell, in place of
           // what it held (a sheet's way), when it has a field.
           if (cells.length >= 2) setBulk({ column: r.column, ids: [...cells], typed: event.key });
           else typeIn(r.column, r.focus, event.key);
           return;
         case 'pick':
+          if (block.length > 1) return;
           if (cells.length === 1) {
             if (typeIn(r.column, r.focus, null)) return;
           }
@@ -363,22 +381,22 @@ export function useCellRange({
     const copy = (event: ClipboardEvent) => {
       const { active: on, range: r, picked: cells } = now.current;
       if (!on || !r || typingIn(event.target) || covered()) return;
-      event.clipboardData?.setData('text/plain', now.current.copyText(r.column, cells));
+      event.clipboardData?.setData('text/plain', now.current.copyText(rangeColumns(r), cells));
       // From the hidden box, its own copy stands: it holds these words, selected, and the Mac app's web view puts on
       // the clipboard what was selected but not what a page sets (seen in a Mac build, 24 Nov 2026). From anywhere
       // else (nothing focused, in a browser), the words set here are the copy.
       if (event.target !== sink.current) event.preventDefault();
-      setCopied({ column: r.column, ids: [...cells] });
+      setCopied({ columns: rangeColumns(r), ids: [...cells] });
     };
     const paste = (event: ClipboardEvent) => {
       const { active: on, range: r, picked: cells } = now.current;
       // Into the picked cells only: a row merely clicked (its peek open) is never pasted over.
       if (!on || !r || typingIn(event.target) || covered()) return;
       event.preventDefault();
-      const lines = pastedLines(event.clipboardData?.getData('text/plain') ?? '');
-      if (lines.length === 0) return;
+      const assignments = gridAssignments(cells, rangeColumns(r), rowColumns(cells[0]!), pastedGrid(event.clipboardData?.getData('text/plain') ?? ''));
+      if (assignments.length === 0) return;
       setCopied(null);
-      now.current.onPaste(r.column, pasteAssignments(cells, lines));
+      now.current.onPaste(assignments);
     };
     // A cell's field taking the keyboard while cells are picked (Tab into it, or a field focused by the page): typing
     // there now, so the blue lets go, and Esc or Return in it pick it again.
@@ -440,7 +458,8 @@ export function useCellRange({
       }
       const { column, id } = cell;
       const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
-      if (event.shiftKey && plain && range && range.column === column && (active || shiftExtends(range, picked))) {
+      // ⇧-click: the range's far end there — in another column, a block (owner 2026-11-25).
+      if (event.shiftKey && plain && range && (active || (range.column === column && shiftExtends(range, picked)))) {
         event.preventDefault();
         swallowClick.current = true;
         hold(extendRange(range, column, id));
@@ -469,7 +488,7 @@ export function useCellRange({
         return;
       }
       // A press inside several blue cells keeps them, for a double-click to ask for one choice; a single click lets them go.
-      if (active && picked.length >= 2 && range?.column === column && picked.includes(id)) {
+      if (active && picked.length >= 2 && columns.length === 1 && range?.column === column && picked.includes(id)) {
         event.preventDefault();
         swallowClick.current = true;
         pressedInRange.current = { column, id };
@@ -482,13 +501,14 @@ export function useCellRange({
       const held = drag.current;
       if (!held || (event.buttons & 1) === 0) return;
       const cell = cellOf(event.target);
-      if (!cell || cell.column !== held.column || (cell.id === held.anchor && !held.moved)) return;
+      if (!cell || (cell.id === held.anchor && cell.column === held.column && !held.moved)) return;
       event.preventDefault();
       if (!held.moved) {
         held.moved = true;
         begin();
       }
-      hold({ column: held.column, anchor: held.anchor, focus: cell.id });
+      // Across columns too: a block from the cell pressed to the one under the pointer (owner 2026-11-25).
+      hold({ column: held.column, anchor: held.anchor, focus: cell.id, ...(cell.column !== held.column ? { toColumn: cell.column } : {}) });
     },
     onClickCapture: (event: ReactMouseEvent) => {
       if (!swallowClick.current) return;
@@ -524,7 +544,7 @@ export function useCellRange({
     },
     onDoubleClickCapture: (event: ReactMouseEvent) => {
       const cell = cellOf(event.target);
-      if (!active || picked.length < 2 || !range || !cell || cell.column !== range.column || !picked.includes(cell.id)) return;
+      if (!active || picked.length < 2 || columns.length > 1 || !range || !cell || cell.column !== range.column || !picked.includes(cell.id)) return;
       event.stopPropagation();
       event.preventDefault();
       clearSettle();
@@ -539,13 +559,14 @@ export function useCellRange({
   const cellPick = (id: string): CellPick | null => {
     if (!active || !range) return null;
     const at = picked.indexOf(id);
-    const copiedHere = copied && copied.ids.includes(id) ? copied.column : null;
+    const copiedHere = copied && copied.ids.includes(id) ? copied.columns : [];
     const reached = reach.indexOf(id);
-    if (at < 0 && !copiedHere && reached < 0) return null;
+    if (at < 0 && copiedHere.length === 0 && reached < 0) return null;
     return {
-      column: at < 0 ? null : range.column,
+      column: at < 0 ? null : (columns[0] ?? range.column),
+      columns: at < 0 ? [] : columns,
       copied: copiedHere,
-      many: picked.length >= 2,
+      many: picked.length >= 2 || columns.length > 1,
       // A block's ends are where the row above (below) is not picked: cells ⌘-clicked apart are each closed off.
       top: at >= 0 && !picked.includes(ids[ids.indexOf(id) - 1] ?? ''),
       bottom: at >= 0 && !picked.includes(ids[ids.indexOf(id) + 1] ?? ''),
@@ -570,7 +591,7 @@ export function useCellRange({
       rest();
       if (!asked || !text.trim()) return;
       setCopied(null);
-      onPaste(asked.column, pasteAssignments(asked.ids, [text.trim()]));
+      onPaste(asked.ids.map((id) => ({ id, column: asked.column, text: text.trim() })));
     },
     cancelBulk: () => {
       setBulk(null);
@@ -578,18 +599,20 @@ export function useCellRange({
     },
     clear: letGo,
     /** The picked cells' words, as ⌘C copies them (the menu's Copy). */
-    copied: () => (active && range ? copyText(range.column, picked) : ''),
+    copied: () => (active && range ? copyText(columns, picked) : ''),
     /** The menu's Copy done: the cells copied from are dashed, as after ⌘C. */
     markCopied: () => {
-      if (active && range) setCopied({ column: range.column, ids: [...picked] });
+      if (active && range) setCopied({ columns, ids: [...picked] });
     },
     /** Words pasted into the picked cells, as ⌘V pastes them (the menu's Paste). */
     pasteText: (text: string) => {
       if (!active || !range) return;
-      const lines = pastedLines(text);
-      if (lines.length === 0) return;
+      const assignments = gridAssignments(picked, columns, rowColumns(picked[0]!), pastedGrid(text));
+      if (assignments.length === 0) return;
       setCopied(null);
-      onPaste(range.column, pasteAssignments(picked, lines));
+      onPaste(assignments);
     },
+    /** The columns picked: one, or a block's. */
+    columns,
   };
 }

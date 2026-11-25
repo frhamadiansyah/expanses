@@ -6,7 +6,7 @@ import { moneyHolders } from '../../lib/queries';
 import { useCards } from '../cards/card-queries';
 import { CategoryPicker } from './CategoryPicker';
 import { CellBulkField } from './CellBulkField';
-import { type CellChange, type CellColumn, type CellTarget, changeLine, planChange, type SkipReason } from './cell-range';
+import { blockText, type CellAssignment, type CellChange, type CellColumn, type CellTarget, CELL_COLUMNS, changeLine, planChange, type SkipReason } from './cell-range';
 import type { ListRow } from './list-model';
 import { rememberedCategory, rememberedPaid } from './paste-categories';
 import { PaymentSheet } from './PaymentSheet';
@@ -16,7 +16,7 @@ import type { TableHandlers } from './TransactionsTable';
 import { useCellRange } from './useCellRange';
 import type { UndoStack } from './undo-stack';
 import { cashflowFigure } from './cashflow-desk-model';
-import { sumFigures, sumLine } from './table-figures';
+import { blockLine, sumFigures, sumLine } from './table-figures';
 
 /*
  * Mac Cashflow's blue cells (`cell-range`, owner 2026-11-18): a range down Date, Note, Category, Paid with or Amount,
@@ -27,6 +27,10 @@ import { sumFigures, sumLine } from './table-figures';
  */
 
 const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof QuickValues)[]).every((key) => a[key] === b[key]);
+
+/** How many cells the rows' changes changed: a block's row counts each column it changed. */
+const cellCount = (changes: readonly CellChange<QuickValues>[]) =>
+  changes.reduce((sum, change) => sum + Math.max(1, CELL_COLUMNS.filter((column) => JSON.stringify(fieldsOf(change.before, column)) !== JSON.stringify(fieldsOf(change.after, column))).length), 0);
 
 /** The fields a column's cell holds. */
 function fieldsOf(values: QuickValues, column: CellColumn): Partial<QuickValues> {
@@ -182,7 +186,7 @@ export function useCashflowCells({
       landed();
     }
     if (saved.size === 0) stack.drop(entry);
-    setNote({ text: changeLine(saved.size, [...plan.skipped, ...failed]), entry: saved.size > 0 ? entry : null });
+    setNote({ text: changeLine(cellCount([...saved]), [...plan.skipped, ...failed]), entry: saved.size > 0 ? entry : null });
   }
 
   /**
@@ -202,6 +206,30 @@ export function useCashflowCells({
     setNote(null);
   }
 
+  /**
+   * Words put into cells, as a paste puts them (a paste, one value typed for several, Find and replace): each row's
+   * cells in one change, a cell whose words do not fit it left as it was (the row skipped when none fit).
+   */
+  function pasteCells(assignments: readonly CellAssignment[]) {
+    const byRow = new Map<string, CellAssignment[]>();
+    for (const one of assignments) byRow.set(one.id, [...(byRow.get(one.id) ?? []), one]);
+    void apply([...byRow.keys()], (values, id) => {
+      let fitted = 0;
+      const after = (byRow.get(id) ?? []).reduce((now, { column, text }) => {
+        // An empty line pasted over a recorded row's cell leaves it as it is: only a draft's is cleared.
+        if (!text.trim() && !byId.get(id)?.draft) {
+          fitted++;
+          return now;
+        }
+        const next = withText(now, column, text);
+        if (!next) return now;
+        fitted++;
+        return next;
+      }, values);
+      return fitted > 0 ? after : null;
+    });
+  }
+
   const cells = useCellRange({
     ids,
     // One rule for the whole table (Record many, owner 2026-11-18): ⇧-click picks rows — recorded and waiting alike,
@@ -212,28 +240,21 @@ export function useCashflowCells({
       setNote(null);
       onStart();
     },
-    copyText: (column, picked) => picked.map((id) => textOf(byId.get(id)!, column)).join('\n'),
-    onPaste: (column, assignments) => {
-      const texts = new Map(assignments.map(({ id, text }) => [id, text]));
-      void apply(
-        assignments.map(({ id }) => id),
-        (values, id) => {
-          const text = texts.get(id) ?? '';
-          // An empty line pasted over a recorded row's cell leaves it as it is: only a draft's is cleared.
-          if (!text.trim() && !byId.get(id)?.draft) return values;
-          return withText(values, column, text);
-        },
-      );
-    },
-    onFill: (column, picked) => {
+    copyText: (columns, picked) => blockText(picked.map((id) => columns.map((column) => textOf(byId.get(id)!, column)))),
+    onPaste: (assignments) => pasteCells(assignments),
+    onFill: (columns, picked) => {
       const top = byId.get(picked[0]!);
       if (!top) return;
       const target = targetOf(top);
-      const from = target.values ? fieldsOf(target.values, column) : null;
-      const text = textOf(top, column);
-      void apply(picked.slice(1), (values) => (from ? { ...values, ...from } : withText(values, column, text)));
+      // Each column filled down from its own top cell, in one change.
+      void apply(picked.slice(1), (values) =>
+        columns.reduce<QuickValues | null>((now, column) => {
+          if (!now) return null;
+          return target.values ? { ...now, ...fieldsOf(target.values, column) } : withText(now, column, textOf(top, column));
+        }, values),
+      );
     },
-    onClear: (column, picked) => void apply(picked, (values) => withText(values, column, ''), { clearing: true }),
+    onClear: (columns, picked) => void apply(picked, (values) => columns.reduce<QuickValues | null>((now, column) => (now ? withText(now, column, '') : null), values), { clearing: true }),
     onPick: (column, picked) => {
       if (column === 'category' || column === 'paid') setPicking({ column, ids: [...picked] });
     },
@@ -286,7 +307,9 @@ export function useCashflowCells({
   // Several Amount cells: what they add up to, as a sheet says it (owner 2026-11-25).
   const hint = !cells.active
     ? null
-    : cells.picked.length === 1
+    : cells.columns.length > 1
+      ? blockLine(cells.picked.length, cells.columns.length)
+      : cells.picked.length === 1
       ? '1 cell · ⌘C copies · ⌘V pastes · arrows move · ⇧↓ picks more · Return types · Esc lets go'
       : cells.range?.column === 'amount'
         ? `${sumLine(sumFigures(cells.picked.flatMap((id) => (byId.has(id) ? [cashflowFigure(byId.get(id)!, baseCurrency)] : [])), baseCurrency))} · ⌘C copies`
@@ -300,5 +323,5 @@ export function useCashflowCells({
     </>
   );
 
-  return { ...cells, busy, line, picker, hint };
+  return { ...cells, busy, line, picker, hint, pasteCells, textOf };
 }
