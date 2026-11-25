@@ -482,6 +482,7 @@ const WORDS_FOR_CUT: WordList = {
   notDirection: [],
   promo: [],
   transaction: [],
+  sent: [],
   notName: [],
   balance: [],
   amountLabels: [],

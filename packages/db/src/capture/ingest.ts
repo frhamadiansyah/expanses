@@ -10,12 +10,13 @@ import { numberColumnExists } from '../repos/cards';
  * Nothing leaves the phone: this is the database's own copy of what was captured, and the words it was read with are
  * files in the package.
  */
-import { capturedDayOf, exponentOf, namesCard, type RawCapture, type Reading, uuidv7, wholeFromHundredths, WORDS } from '@expanses/core';
+import { capturedDayOf, exponentOf, namesCard, opensWithBankName, type RawCapture, type Reading, uuidv7, wholeFromHundredths, WORDS } from '@expanses/core';
 import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { insertDraftRow, type NewDraft } from '../repos/drafts';
 import { eventModeForCaptureTx } from '../repos/event-mode';
+import { accountBanksTx } from '../repos/accounts';
 import { capturedCategoryFromHistory } from '../repos/entry';
 import { accounts, transactions, workspaces } from '../schema';
 import { cards } from '../schema-cards';
@@ -182,6 +183,48 @@ async function remembered(tx: Db, ws: WorkspaceContext, description: string, mer
   return capturedCategoryFromHistory(tx, ws, name, kind);
 }
 
+/** Whether a word of `words` stands in the text on its own: "dikirim" in "udah dikirim ke", never inside another word. */
+function saysAnyOf(text: string, words: readonly string[]): boolean {
+  const lower = text.toLowerCase();
+  return words.some((word) => new RegExp(`(^|[^\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}])`, 'u').test(lower));
+}
+
+/**
+ * Money sent to one of the owner's own bank accounts: "Rp200.000 udah dikirim ke MANDIRI RANI KUSUMA" from a wallet.
+ *
+ * One plain rule. The capture says money was sent ("dikirim", "transfer", "sent"), and the recipient it names opens with
+ * the bank of a current account the owner keeps in that currency. Then it is a transfer, to that account when it is
+ * the only such one at that bank; with two or more there it is a transfer whose destination is left for the owner to
+ * pick. A recipient at a bank the owner keeps no current account at is somebody else's, and stays money spent.
+ */
+async function sentToOwnBank(
+  tx: Db,
+  workspaceId: string,
+  capture: RawCapture,
+  reading: Reading,
+  currency: string,
+  fromAccountId: string | null,
+): Promise<{ toAccountId: string | null } | null> {
+  if (reading.type.value !== 'spent') return null;
+  const recipient = reading.name?.value?.trim();
+  if (!recipient) return null;
+  const text = [capture.title, capture.body, ...capture.lines.map((line) => line.text)].filter(Boolean).join('\n');
+  if (!saysAnyOf(text, WORDS.sent)) return null;
+  const current = await tx
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, workspaceId), eq(accounts.kind, 'asset'), eq(accounts.subtype, 'bank'), eq(accounts.currency, currency), isNull(accounts.archivedAt)));
+  const candidates = current.filter((row) => row.id !== fromAccountId);
+  if (candidates.length === 0) return null;
+  const banks = await accountBanksTx(tx, candidates.map((row) => row.id));
+  const there = candidates.filter((row) => {
+    const bank = banks.get(row.id);
+    return bank !== undefined && opensWithBankName(recipient, bank);
+  });
+  if (there.length === 0) return null;
+  return { toAccountId: there.length === 1 ? there[0]!.id : null };
+}
+
 /**
  * What one capture becomes, in the draft's own terms.
  *
@@ -232,7 +275,9 @@ export async function planDraft(
           ? read.minor * 10 ** exponentOf(currency)
           : read.minor;
   const printed = reading.occurredAt?.value ?? null;
-  const kind = type === 'topup' ? 'transfer' : type === 'spent' ? 'expense' : 'income';
+  // Sent from this account to one of the owner's own at a bank: a transfer, not spending. A card's purchase never is one.
+  const sent = card === null ? await sentToOwnBank(tx, workspace.workspaceId, capture, reading, currency, account?.id ?? null) : null;
+  const kind = type === 'topup' || sent ? 'transfer' : type === 'spent' ? 'expense' : 'income';
   const description = descriptionOf(capture, source, reading, throughApp);
 
   return {
@@ -250,7 +295,7 @@ export async function planDraft(
       accountId: type === 'topup' ? (card?.id ?? null) : (account?.id ?? null),
       // The card that paid, when the digits named one: Review opens on it rather than on the card's plain account.
       cardId: kind === 'expense' && card ? card.cardId : null,
-      toAccountId: type === 'topup' ? (learned?.id ?? null) : null,
+      toAccountId: type === 'topup' ? (learned?.id ?? null) : (sent?.toAccountId ?? null),
       categoryAccountId: kind === 'transfer' ? null : await remembered(tx, workspace, description, reading.name?.value ?? null, kind),
       sourceId: source.id,
       captureIds: [capture.id],

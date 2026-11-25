@@ -56,6 +56,12 @@ export const CORPUS: readonly CorpusCase[] = [
     'Transfer Rp250.000 ke BUDI SANTOSO berhasil. Saldo Rp1.750.000',
     { skipped: null, amount: { minor: 250_000, currency: 'IDR' }, type: 'spent', name: 'BUDI SANTOSO' },
   ),
+  note(
+    'wallet transfer to a bank account, the bank before the name',
+    'Rp200.000 udah dikirim ke MANDIRI RANI KUSUMA DEWI.',
+    { skipped: null, amount: { minor: 200_000, currency: 'IDR' }, type: 'spent', name: 'MANDIRI RANI KUSUMA DEWI' },
+    'Transfer berhasil',
+  ),
   note('QRIS payment', 'Pembayaran QRIS Rp45.500 ke WARUNG KOPI berhasil', {
     skipped: null,
     amount: { minor: 45_500, currency: 'IDR' },
