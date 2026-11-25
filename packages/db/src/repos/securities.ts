@@ -530,3 +530,47 @@ export async function moveHeldAtToInstitutions(database: Database, ws: Workspace
     return linked.length;
   });
 }
+
+/** The mark migration 0131 leaves: link each typed Institution that names one broker's cash, once. */
+const LINK_INSTITUTIONS_MARK = 'upkeep.fund_institution_links';
+
+/**
+ * Once, after migration 0131 (owner, 25 Nov 2026): each fund or bond whose typed Institution names exactly one open
+ * broker cash account here — either name holding the other, whatever the case ("Mandiri Sekuritas" and a broker's cash
+ * called that) — is linked to it. The typed name is left as it was. A holding already linked, or one that is the same
+ * fund as another holding (a shared security, whose pair at one broker must stay one holding), is left alone; a name
+ * matching none or several stays a typed name. Every workspace at once. Answers how many were linked.
+ */
+export async function linkFundInstitutionsOnce(database: Database): Promise<number> {
+  const marked = await database.db.values(sql`SELECT 1 FROM settings WHERE key = ${LINK_INSTITUTIONS_MARK}`);
+  if (marked.length === 0) return 0;
+  if (!(await securityTablesExist(database.db))) {
+    await database.db.run(sql`DELETE FROM settings WHERE key = ${LINK_INSTITUTIONS_MARK}`);
+    return 0;
+  }
+  return database.transaction(async (tx) => {
+    const named = sql`(instr(lower(trim(b.name)), lower(trim(json_extract(p.coretax_fields_json, '$.inst')))) > 0
+      OR instr(lower(trim(json_extract(p.coretax_fields_json, '$.inst'))), lower(trim(b.name))) > 0)`;
+    const brokers = sql`accounts b WHERE b.workspace_id = p.workspace_id AND b.kind = 'asset' AND b.subtype = 'fund'
+      AND b.parent_id IS NULL AND b.archived_at IS NULL AND trim(b.name) <> '' AND ${named}`;
+    const found = await tx.values<[string, string, string]>(sql`
+      SELECT p.account_id, p.workspace_id, (SELECT b.id FROM ${brokers})
+      FROM asset_profiles p
+      JOIN accounts h ON h.id = p.account_id AND h.workspace_id = p.workspace_id
+      WHERE p.asset_kind IN ('fund', 'bond') AND h.kind = 'asset' AND h.subtype = 'investment'
+        AND json_valid(p.coretax_fields_json)
+        AND trim(coalesce(json_extract(p.coretax_fields_json, '$.inst'), '')) <> ''
+        AND (SELECT count(*) FROM ${brokers}) = 1
+        AND NOT EXISTS (SELECT 1 FROM holding_links l WHERE l.account_id = p.account_id AND (l.broker_account_id IS NOT NULL OR l.security_id IS NOT NULL))`);
+    const now = new Date().toISOString();
+    for (const [accountId, workspaceId, brokerId] of found) {
+      await tx
+        .insert(holdingLinks)
+        .values({ accountId, workspaceId, securityId: null, brokerAccountId: brokerId, createdAt: now })
+        .onConflictDoUpdate({ target: holdingLinks.accountId, set: { brokerAccountId: brokerId } });
+      markAccountDirtyTx(tx, accountId); // joint net worth §9, as a link made by hand marks it
+    }
+    await tx.run(sql`DELETE FROM settings WHERE key = ${LINK_INSTITUTIONS_MARK}`);
+    return found.length;
+  });
+}

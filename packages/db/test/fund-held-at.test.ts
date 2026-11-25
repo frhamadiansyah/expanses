@@ -7,6 +7,7 @@ import {
   createDatabase,
   createWorkspace,
   type Database,
+  linkFundInstitutionsOnce,
   linkHolding,
   listAssetProfiles,
   listHoldingLinks,
@@ -149,7 +150,7 @@ describe('held at an institution, never at a bank account', () => {
   });
 });
 
-describe('migration 0131: a typed Institution naming one broker’s cash is linked to it', () => {
+describe('after migration 0131: a typed Institution naming one broker’s cash is linked to it, once', () => {
   it('links a name matching exactly one broker cash account, either way round and whatever the case; leaves the rest typed', async () => {
     const old = createDatabase(createNodeExecutor());
     await migrate(old, MIGRATIONS.filter((m) => m.version < 131));
@@ -175,6 +176,9 @@ describe('migration 0131: a typed Institution naming one broker’s cash is link
     await linkHolding(old, w, { accountId: linked.id, brokerAccountId: broker.id });
 
     await migrate(old);
+    expect(await linkFundInstitutionsOnce(old)).toBe(2);
+    // Once: the mark is gone, so a later open (after Other place or None) links nothing again.
+    expect(await linkFundInstitutionsOnce(old)).toBe(0);
     const links = await listHoldingLinks(old, w);
     const of = (id: string) => links.find((l) => l.accountId === id)?.brokerAccountId ?? null;
     expect(of(exact.id)).toBe(lain.id);

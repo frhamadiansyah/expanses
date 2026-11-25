@@ -14,7 +14,6 @@ import {
   ensureCategoryKeys,
   ensureDefaultCategorySets,
   expireDueEntries,
-  linkHolding,
   listAccounts,
   listWorkspaces,
   moveHeldAtToInstitutions,
@@ -125,12 +124,13 @@ async function ownerData(): Promise<{ database: Database; ws: WorkspaceContext }
     inputsJson: JSON.stringify({ feeTodayMinor: 70_000_000, startsInYears: 8, yearsOfStudy: 2, feeInflationBps: 900 }),
   });
 
-  // A fund linked to a bank account: the open moves it onto the bank's institution by name.
+  // A fund linked to a bank account, as an older build left it (a fund links only to a broker's cash now): the open
+  // moves it onto the bank's institution by name.
   const fundBank = await createAccount(database, ws, { name: 'Test savings', kind: 'asset', subtype: 'bank', currency: 'IDR' });
   await saveAssetProfile(database, ws, { accountId: fundBank.id, assetKind: 'cash', coretaxFields: { inst: 'Test Bank' } });
   const fund = await createAccount(database, ws, { name: 'Test money market', kind: 'asset', subtype: 'investment', currency: 'IDR' });
   await saveAssetProfile(database, ws, { accountId: fund.id, assetKind: 'fund' });
-  await linkHolding(database, ws, { accountId: fund.id, brokerAccountId: fundBank.id });
+  await database.db.run(sql`INSERT INTO holding_links (account_id, workspace_id, security_id, broker_account_id, created_at) VALUES (${fund.id}, ${ws.workspaceId}, NULL, ${fundBank.id}, '2026-01-10T08:00:00.000Z')`);
 
   // A workspace made before default category sets existed: the open gives it its sets.
   await database.db.run(sql`DELETE FROM book_category_sets`);

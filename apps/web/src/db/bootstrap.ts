@@ -9,6 +9,7 @@ import {
   ensureCategoryKeys,
   ensureDefaultCategorySets,
   retireDefaultSetCategories,
+  linkFundInstitutionsOnce,
   moveHeldAtToInstitutions,
   pairBeforeAppFees,
   inBook,
@@ -159,8 +160,10 @@ export async function openAppDb(
   try {
     await ensureDefaultCategorySets(database, ws);
     await retireDefaultSetCategories(database, ws);
-    // Funds and bonds held at an institution rather than inside one of its accounts: links from before become names.
+    // Funds and bonds held at a bank account from before: those links become names. A link to a broker's cash stays.
     await moveHeldAtToInstitutions(database, ws);
+    // Once after 0131: a typed Institution naming exactly one broker's cash is linked to it (owner, 25 Nov 2026).
+    await linkFundInstitutionsOnce(database);
   } catch (error) {
     console.warn('Default category sets could not be added; trying again at the next open', error);
   }

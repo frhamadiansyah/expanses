@@ -44,7 +44,8 @@ export async function setInstitution(page: Page, place: { broker: string } | { o
     return;
   }
   if ('broker' in place) {
-    await sheet.getByRole('button', { name: place.broker, exact: true }).click();
+    // Named by the account, with its RDN bank under it when it has one.
+    await sheet.getByRole('button', { name: new RegExp(`^${place.broker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }).first().click();
     await expect(institutionRow(page)).toContainText(place.broker);
     return;
   }

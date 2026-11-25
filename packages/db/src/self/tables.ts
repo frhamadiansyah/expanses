@@ -230,6 +230,8 @@ const SETTINGS_PREFIXES: readonly (readonly [string, SelfClass])[] = [
   ['repair.', 'seat'],
   // this install's own
   ['sync.', 'device'],
+  // a one-off upkeep a migration asks this install's open to do on its own copy (0131)
+  ['upkeep.', 'device'],
   ['last_backup_at', 'device'],
   ['icloud_backup', 'device'],
   ['fx.recalc_failures', 'device'],
