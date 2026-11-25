@@ -1,4 +1,4 @@
-export { uuidv7 } from './ids';
+export { uuidv7, uuidv7Ms } from './ids';
 export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild, FORMER_DEFAULT_NAMES, ON_DEMAND_CATEGORY_KEYS } from './categories/defaults';
 export { MCC_NAMES, type MccMatch, mccName, searchMccs } from './mcc/codes';
 export { BUSINESS_CATEGORIES, type BusinessCategory } from './categories/business';
@@ -692,7 +692,7 @@ export { type ChargeKind } from './capture/receipt-words';
 export { allocateByWeights, type ReceiptShares, splitReceipt, type SplitCharge, type SplitItem } from './debts/receipt-split';
 export { type Anchor, type CaptureKind, type CaptureLine, type Field, type MoveType, type RawCapture, type ReadAmount, type Reading, type Template, type WordList } from './capture/types';
 export { WORDS } from './capture/words';
-export { type ChargeCover, type CoverCharge, type CoverCredit, coverOldestFirst, coverStatement, type PoolLine } from './statement/cover';
+export { type ChargeCover, type CoverCharge, type CoverCredit, coverOldestFirst, coverStatement, type PoolLine, RECORDED_TOGETHER_MS, recordedRanks } from './statement/cover';
 export { type Candidate, looksLikeRefund, type MatchOptions, type MatchResult, matchStatement, type RowOutcome } from './statement/match';
 export { categoryKeyOf, merchantKeyOf, readStatement } from './statement/read';
 export { type ListReading, type ListRow, readTransactionList } from './statement/list';
