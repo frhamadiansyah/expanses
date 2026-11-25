@@ -12,7 +12,7 @@ export type FindField = 'description' | 'category' | 'paid';
 export const FIND_FIELDS: readonly { value: FindField; label: string }[] = [
   { value: 'description', label: 'Note' },
   { value: 'category', label: 'Category' },
-  { value: 'paid', label: 'Payment method' },
+  { value: 'paid', label: 'Paid with' },
 ];
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

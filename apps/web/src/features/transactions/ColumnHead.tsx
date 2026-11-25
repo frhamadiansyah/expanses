@@ -214,20 +214,23 @@ export function ColumnHead({
   const on = amount ? amountFilterOn(amount.filter) : false;
   const arrow = sortArrow(sort.dir);
   return (
-    <span ref={anchor} className={cx('inline-flex max-w-full', align === 'right' && 'justify-end')}>
+    <span ref={anchor} className={cx('flex max-w-full min-w-0', align === 'right' && 'justify-end')}>
       {on && amount ? (
-        <OnHead name={name} text={`${arrow.trim() ? `${arrow.trim()} ` : ''}${amountFilterText(amount.filter, amount.currency)}`} onOpen={() => setOpen((was) => !was)} onClear={() => amount.onChange(NO_AMOUNT_FILTER)} />
+        <OnHead name={name} text={amountFilterText(amount.filter, amount.currency)} onOpen={() => setOpen((was) => !was)} onClear={() => amount.onChange(NO_AMOUNT_FILTER)} />
       ) : (
         <button
           type="button"
           onClick={() => setOpen((was) => !was)}
           aria-expanded={open}
           aria-sort={sort.dir === 'desc' ? 'descending' : sort.dir === 'asc' ? 'ascending' : undefined}
-          className={cx(HEAD, align === 'right' && '-mr-[8px] ml-0', open && 'bg-[var(--mk-pill)] text-[var(--mk-ink)]')}
+          className={cx(HEAD, 'max-w-full min-w-0', align === 'right' && '-mr-[8px] ml-0', open && 'bg-[var(--mk-pill)] text-[var(--mk-ink)]')}
         >
-          {name}
-          {arrow}
-          {chevron && <ChevronDown size={13} strokeWidth={2.4} aria-hidden className="opacity-70" />}
+          {/* A narrow column (the peek open) cuts the name short rather than running into the next. */}
+          <span className="min-w-0 truncate">
+            {name}
+            {arrow}
+          </span>
+          {chevron && <ChevronDown size={13} strokeWidth={2.4} aria-hidden className="shrink-0 opacity-70" />}
         </button>
       )}
       {open && (

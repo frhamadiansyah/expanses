@@ -11,7 +11,7 @@ export type GroupBy = 'none' | 'category' | 'paid' | 'day';
 export const GROUP_CHOICES: readonly { value: GroupBy; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'category', label: 'Category' },
-  { value: 'paid', label: 'Payment method' },
+  { value: 'paid', label: 'Paid with' },
   { value: 'day', label: 'Day' },
 ];
 

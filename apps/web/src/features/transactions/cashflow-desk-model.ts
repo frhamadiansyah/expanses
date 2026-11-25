@@ -229,7 +229,7 @@ export function sortDesk(rows: readonly ListRow[], sort: Sort): ListRow[] {
 /** The box header's grey note on the order the table reads in. */
 export function orderNote(sort: Sort): string {
   if (sort.key === 'description' || sort.key === 'category' || sort.key === 'paid') {
-    const name = sort.key === 'description' ? 'Note' : sort.key === 'category' ? 'Category' : 'Payment method';
+    const name = sort.key === 'description' ? 'Note' : sort.key === 'category' ? 'Category' : 'Paid with';
     return `${name} ${sort.dir === 'asc' ? 'A→Z' : 'Z→A'} · new rows at the bottom`;
   }
   if (sort.key === 'amount') return `${sort.dir === 'asc' ? 'smallest' : 'largest'} at the top · new rows at the bottom`;

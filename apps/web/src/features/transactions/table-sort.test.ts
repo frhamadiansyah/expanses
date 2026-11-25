@@ -32,7 +32,7 @@ describe('a column’s name sorts the table', () => {
 
   it('says the order in the box header', () => {
     expect(orderNote({ key: 'description', dir: 'asc' })).toBe('Note A→Z · new rows at the bottom');
-    expect(orderNote({ key: 'paid', dir: 'desc' })).toBe('Payment method Z→A · new rows at the bottom');
+    expect(orderNote({ key: 'paid', dir: 'desc' })).toBe('Paid with Z→A · new rows at the bottom');
   });
 });
 

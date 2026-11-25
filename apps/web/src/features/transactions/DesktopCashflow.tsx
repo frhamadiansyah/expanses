@@ -1106,8 +1106,12 @@ export function DesktopCashflow({
           )}
           {finding && <style data-testid="found-cells">{foundCellsStyle(foundCells)}</style>}
           {cells.line}
-          {/* Sideways scroll only when the window is narrower than the table: a box that scrolls would hold the sticky header in. */}
-          <div ref={wide.ref} className={cx('px-[10px] pb-[6px]', wide.fits ? 'overflow-x-clip' : 'overflow-x-auto')}>
+          {/* Sideways scroll only when the window is narrower than the table: a box that scrolls would hold the sticky header
+              in, so then (the peek open on a small window) the header does not stick. */}
+          <div
+            ref={wide.ref}
+            className={cx('px-[10px] pb-[6px]', wide.fits ? 'overflow-x-clip' : 'overflow-x-auto')}
+          >
             <div
               className={cx(
                 'text-[13.5px]',
@@ -1118,7 +1122,7 @@ export function DesktopCashflow({
                 '[&_[data-testid=typing-row]]:border-t-0 [&_[data-testid=typing-row]_[data-quick-row]]:py-[4px]',
               )}
             >
-              <div ref={head.ref} data-testid="table-head" className={cx(DESK_GRID, 'border-b border-[var(--mk-line)] px-0.5 text-[12.5px] font-semibold text-[var(--mk-ink-2)]', stickyHead(head.stuck))}>
+              <div ref={head.ref} data-testid="table-head" className={cx(DESK_GRID, 'border-b border-[var(--mk-line)] px-0.5 text-[12.5px] font-semibold text-[var(--mk-ink-2)]', wide.fits && stickyHead(head.stuck))}>
                 <span />
                 <span className="min-w-0 px-2 py-[6px]">
                   <ColumnHead name="Date" sort={sortOf('date', SORT_WORDS.date)} />
@@ -1130,7 +1134,7 @@ export function DesktopCashflow({
                   <ColumnHead name="Category" chevron sort={sortOf('category', SORT_WORDS.words)} />
                 </span>
                 <span className="min-w-0 px-2 py-[6px]">
-                  <ColumnHead name="Payment method" chevron sort={sortOf('paid', SORT_WORDS.words)} />
+                  <ColumnHead name="Paid with" chevron sort={sortOf('paid', SORT_WORDS.words)} />
                 </span>
                 <span className="min-w-0 px-2 py-[6px] text-right">
                   <ColumnHead name="Amount" align="right" chevron sort={sortOf('amount', SORT_WORDS.amount)} amount={{ filter: amountFilter, currency: baseCurrency, onChange: setAmountFilter }} />
@@ -1531,7 +1535,7 @@ function GroupHead({ label, icon, count, total, folded, onFold }: { label: strin
         </span>
       </button>
       {total && (
-        <b data-testid="group-total" className="ml-auto pr-[8px] font-bold text-[var(--mk-ink)] tabular-nums">
+        <b data-testid="group-total" className="ml-auto pr-[calc(var(--desk-last,4.5rem)+6px)] font-bold text-[var(--mk-ink)] tabular-nums">
           {total}
         </b>
       )}
