@@ -111,7 +111,7 @@ test('Pay opens “Pay credit card”: From to choose, To fixed on the card, the
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('1.000.000');
   await cardPage(page, 'Statement');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
-  await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel stay' })).toContainText(/2\.000\.000 covered, Rp\s1\.000\.000 left/);
+  await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel stay' })).toContainText(/Rp\s1\.000\.000 left/);
 });
 
 test('a transfer between two own accounts still edits on “Edit transaction”, with its tabs and a To to change', async ({ page }) => {

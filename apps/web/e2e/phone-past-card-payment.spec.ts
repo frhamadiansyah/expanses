@@ -64,7 +64,7 @@ test('Pay credit card dated before the bank was added: a ✓ on the bank says so
   // Today's is 21 Nov – 20 Dec; the purchase is two statements back, on 21 Sep – 20 Oct.
   await page.getByRole('button', { name: 'Earlier statement' }).click();
   await page.getByRole('button', { name: 'Earlier statement' }).click();
-  await expect(page.getByTestId('statement-line').filter({ hasText: 'Toko Contoh' })).toContainText(/1\.710\.000 covered, Rp\s1\.260\.000 left/);
+  await expect(page.getByTestId('statement-line').filter({ hasText: 'Toko Contoh' })).toContainText(/Rp\s1\.260\.000 left/);
 
   // The bank is as it was added.
   await page.goto('/wallet');

@@ -127,6 +127,7 @@ import selfSync from '../migrations/0126_self_sync.sql?raw';
 import billPaymentsSeveral from '../migrations/0127_bill_payments_several.sql?raw';
 import billRepeatWeeks from '../migrations/0128_bill_repeat_weeks.sql?raw';
 import budgetRepeat from '../migrations/0129_budget_repeat.sql?raw';
+import cardPartPayments from '../migrations/0130_card_part_payments.sql?raw';
 import fundInstitutionLinks from '../migrations/0131_fund_institution_links.sql?raw';
 import type { Database } from './database';
 import { dropSelfTriggers, installSelfCapture, selfCaptureOn } from './self/triggers';
@@ -266,7 +267,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 127, name: 'bill_payments_several', sql: billPaymentsSeveral },
   { version: 128, name: 'bill_repeat_weeks', sql: billRepeatWeeks },
   { version: 129, name: 'budget_repeat', sql: budgetRepeat },
-  // 130 is kept for the card part payments branch (fix/pay-one-amount, 0130_card_part_payments).
+  { version: 130, name: 'card_part_payments', sql: cardPartPayments },
   { version: 131, name: 'fund_institution_links', sql: fundInstitutionLinks },
 ];
 

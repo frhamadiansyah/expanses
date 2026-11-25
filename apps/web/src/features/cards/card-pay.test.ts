@@ -22,7 +22,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { doorOfForm, spendingDoor } from '../goals/set-aside-question';
 import { ratesForSave } from '../transactions/tx-save';
 import { emptyForm, extraRows, formFromTransaction, formToPost, seeded } from '../transactions/tx-form';
-import { CARD_PAY_NOTE, CARD_PAY_OMITS, cardPayFrom, offersTransferGoal, cardPayLink, cardPaySeed, isCardPayment, statementPayChoice, statementPayInput, statementPayLink, statementPaySeed } from './card-pay';
+import { CARD_PAY_NOTE, CARD_PAY_OMITS, cardPayFrom, offersTransferGoal, cardPayLink, cardPaySeed, isCardPayment, statementPayChoice, statementPayFixed, statementPayInput, statementPayLink, statementPayNote, statementPaySeed } from './card-pay';
 import { statementCover } from './statement-cover';
 
 /*
@@ -270,7 +270,7 @@ async function newStatementInput(s: SetUp, ids: readonly string[], paidOn: strin
   const draft = { ...emptyForm(s.ws.bookId ?? '', paidOn), mode: 'transfer' as const, ...seeded(statementPaySeed(s.visa.id, purchases, 'IDR'), s.accounts), moneyId: s.bank.id };
   // The screen's own check passes first: From, To and the figure make a plain transfer.
   expect(formToPost(draft, s.accounts).kind).toBe('post');
-  return { draft, purchases, input: statementPayInput({ cardAccountId: s.visa.id, purchases, today: TODAY }, draft, setAside) };
+  return { draft, purchases, input: statementPayInput({ cardAccountId: s.visa.id, purchases, today: TODAY, currency: 'IDR' }, draft, setAside) };
 }
 
 const idsOf = async (s: SetUp, ...names: string[]) => {
@@ -335,7 +335,7 @@ describe('the statement’s Pay, now the Pay credit card screen, saves exactly w
     expect(doorOfForm(draft, post, s.accounts, () => true)).toEqual(spendingDoor(s.bank.id, 412_000 + 649_000));
     // The answer given is passed on as given.
     const choice = { goalId: 'g' } as unknown as SetAsideChoice;
-    expect(statementPayInput({ cardAccountId: s.visa.id, purchases: [], today: TODAY }, draft, choice).setAside).toBe(choice);
+    expect(statementPayInput({ cardAccountId: s.visa.id, purchases: [], today: TODAY, currency: 'IDR' }, draft, choice).setAside).toBe(choice);
   });
 
   it('opens with From empty, To the card, the total of what is left and the note; the address names the purchases and the statement', async () => {
@@ -349,7 +349,37 @@ describe('the statement’s Pay, now the Pay credit card screen, saves exactly w
       search: { pay: 'card-1', purchases: 'a,b', start: '2026-07-21', end: '2026-08-20', today: TODAY },
     });
     // A note cleared by hand is sent as it is: the ledger then names the payment after the card, as the sheet's did.
-    expect(statementPayInput({ cardAccountId: 'card-1', purchases, today: TODAY }, { moneyId: 'bank', occurredOn: TODAY, description: '' }, null).description).toBe('');
+    expect(statementPayInput({ cardAccountId: 'card-1', purchases, today: TODAY, currency: 'IDR' }, { moneyId: 'bank', occurredOn: TODAY, description: '', amount: '480000' }, null).description).toBe('');
+  });
+});
+
+describe('one purchase ticked: its amount can be typed (owner, 25 Nov 2026)', () => {
+  const one = [{ transactionId: 'a', description: 'Toko Sepatu Contoh', owedMinor: 450_000, leftMinor: 450_000 }];
+  const two = [...one, { transactionId: 'b', description: 'Toko Contoh', owedMinor: 80_000, leftMinor: 80_000 }];
+  const input = (purchases: typeof two, amount: string) =>
+    statementPayInput({ cardAccountId: 'card-1', purchases, today: TODAY, currency: 'IDR' }, { moneyId: 'bank', occurredOn: TODAY, description: CARD_PAY_NOTE, amount }, null);
+
+  it('unfixes the amount for one purchase only', () => {
+    expect(statementPayFixed(one)).toBe(false);
+    expect(statementPayFixed(two)).toBe(true);
+  });
+
+  it('says what less and more do, and nothing at what is left or with nothing typed', () => {
+    expect(statementPayNote(one, '300000', 'IDR')).toMatch(/^Toko Sepatu Contoh: Rp\s150\.000 left to pay$/);
+    expect(statementPayNote(one, '500000', 'IDR')).toMatch(/^Rp\s50\.000 extra goes to the card’s other purchases$/);
+    expect(statementPayNote(one, '450000', 'IDR')).toBeNull();
+    expect(statementPayNote(one, '', 'IDR')).toBeNull();
+    expect(statementPayNote(two, '300000', 'IDR')).toBeNull();
+    for (const amount of ['300000', '500000']) expect(statementPayNote(one, amount, 'IDR')).not.toMatch(/\byou(r)?\b/i);
+  });
+
+  it('sends the typed amount for one purchase, and the very call of before at what is left, or with several', () => {
+    expect(input(one, '300000').payMinor).toBe(300_000);
+    expect(input(one, '250000+250000').payMinor).toBe(500_000);
+    expect(input(one, '450000')).not.toHaveProperty('payMinor');
+    expect(input(two, '300000')).not.toHaveProperty('payMinor');
+    const { payMinor: _less, ...rest } = input(one, '300000');
+    expect(rest).toEqual(input(one, '450000'));
   });
 });
 

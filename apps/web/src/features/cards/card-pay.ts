@@ -1,4 +1,4 @@
-import { type Cycle, minorToMajorString } from '@expanses/core';
+import { type Cycle, evaluateAmount, formatMinor, minorToMajorString } from '@expanses/core';
 import type { AccountRow, CardStatement, payCardPurchases, SetAsideChoice, TransactionView } from '@expanses/db';
 import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { classify } from '../transactions/classify';
@@ -106,15 +106,50 @@ export function statementPaySeed(cardId: string, purchases: readonly StatementPa
   return { toId: cardId, description: CARD_PAY_NOTE, amount: minorToMajorString(totalMinor, currency) };
 }
 
+/*
+ * One purchase ticked, its own amount (owner, 25 Nov 2026): the Amount can be typed. Less than what is left of it pays
+ * part of it, and it keeps the rest to pay; more pays it, and the extra is an ordinary card payment. Several ticked:
+ * their total, fixed, as before.
+ */
+
+/** Whether the Pay screen's amount is the ticked purchases' total and not a control: unless exactly one is ticked. */
+export const statementPayFixed = (purchases: readonly StatementPayPurchase[]) => purchases.length !== 1;
+
+/** The amount as typed, in minor units, when the screen lets it be typed (one purchase) and it reads; otherwise null. */
+export function statementPayTyped(purchases: readonly StatementPayPurchase[], amount: string, currency: string): number | null {
+  if (statementPayFixed(purchases)) return null;
+  try {
+    const minor = evaluateAmount(amount, currency);
+    return minor !== null && minor > 0 ? minor : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The line under the purchase when its amount was typed: "Toko …: Rp 150.000 left to pay" for less, "Rp 50.000 extra
+ * goes to the card’s other purchases" for more, nothing at what is left of it or with nothing typed.
+ */
+export function statementPayNote(purchases: readonly StatementPayPurchase[], amount: string, currency: string): string | null {
+  const typed = statementPayTyped(purchases, amount, currency);
+  const one = purchases[0];
+  if (typed === null || !one || typed === one.leftMinor) return null;
+  return typed < one.leftMinor
+    ? `${one.description}: ${formatMinor(one.leftMinor - typed, currency)} left to pay`
+    : `${formatMinor(typed - one.leftMinor, currency)} extra goes to the card’s other purchases`;
+}
+
 /**
  * The `payCardPurchases` call Save makes: the sheet's own (the card, From, the day, the purchases, what is left of any
  * covered in part, the day the statement was read, the set-aside answer), with the screen's note as the description.
+ * One purchase with an amount typed other than what is left of it adds that amount (`payMinor`).
  */
 export function statementPayInput(
-  o: { cardAccountId: string; purchases: readonly StatementPayPurchase[]; today: string },
-  draft: Pick<FormDraft, 'moneyId' | 'occurredOn' | 'description'>,
+  o: { cardAccountId: string; purchases: readonly StatementPayPurchase[]; today: string; currency: string },
+  draft: Pick<FormDraft, 'moneyId' | 'occurredOn' | 'description' | 'amount'>,
   setAside: SetAsideChoice | null,
 ): Parameters<typeof payCardPurchases>[2] & { amountsMinor: Record<string, number>; description: string } {
+  const typed = statementPayTyped(o.purchases, draft.amount, o.currency);
   return {
     cardAccountId: o.cardAccountId,
     fromAccountId: draft.moneyId,
@@ -126,5 +161,6 @@ export function statementPayInput(
     today: o.today,
     setAside,
     description: draft.description,
+    ...(typed !== null && typed !== o.purchases[0]!.leftMinor ? { payMinor: typed } : {}),
   };
 }

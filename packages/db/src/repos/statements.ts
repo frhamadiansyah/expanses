@@ -5,7 +5,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, transactions } from '../schema';
-import { cardPostings, cardSettlements } from '../schema-cards';
+import { cardPartPayments, cardPostings, cardSettlements } from '../schema-cards';
 import { cardTerms } from '../schema-points';
 import { splitBooksOfMany } from './book-splits';
 import { listInstallmentsTx } from './installments';
@@ -75,6 +75,11 @@ export interface StatementLine {
   paidBy: { transactionId: string; paidOn: string } | null;
   /** For a payment: how many purchases were ticked off when it was made. Zero for everything else. */
   settles: number;
+  /**
+   * For a payment that paid part of one purchase (0130): that purchase's transaction id. Of the payment, as much as the
+   * purchase still charged went to it; anything over is an ordinary card payment (`poolLinesOf`).
+   */
+  paysPartOf?: string;
   /** A purchase recorded as already paid off before the app: its balancing settlement stands beside it. */
   paidOff: boolean;
   /**
@@ -181,6 +186,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
     for (const [transactionId, name] of parts) partNames.set(transactionId, [...(partNames.get(transactionId) ?? []), name]);
   }
   const settled = new Set(rows.flatMap((row) => (row[12]?.startsWith(BEFORE_APP) ? [row[12].slice(BEFORE_APP.length)] : [])));
+  const partOf = await partPaymentsOf(db, ws, cardAccountId);
   // The fee rows the app added for fees reversed before the app, and their settlements: they net to nothing on the card.
   const feePairs = new Set(rows.flatMap((row) => (row[12]?.startsWith(FEE_BEFORE_APP_REF) ? [row[0]] : [])));
   const netsNothing = (id: string, ref: string | null) => feePairs.has(id) || (ref?.startsWith(BEFORE_APP) === true && feePairs.has(ref.slice(BEFORE_APP.length)));
@@ -202,6 +208,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       originalAmountMinor: originalAmount === null ? null : Number(originalAmount),
       paidBy: paymentId && paidOn ? { transactionId: paymentId, paidOn } : null,
       settles: Number(settles),
+      ...(partOf.has(transactionId) ? { paysPartOf: partOf.get(transactionId)! } : {}),
       paidOff: settled.has(transactionId),
       balancing: (ref?.startsWith(BEFORE_APP) || ref?.startsWith(PLAN_OWED_REF)) ?? false,
       ...(ref?.startsWith(PLAN_OWED_REF) ? { owedOf: ref.slice(PLAN_OWED_REF.length) } : {}),
@@ -210,6 +217,17 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       ...(feePairs.has(transactionId) ? { feeSettled: true as const } : {}),
     }))
     .sort((a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId));
+}
+
+/**
+ * Which purchase each of the card's payments that paid part of one was for (0130), by payment id. None before 0130 ran.
+ */
+async function partPaymentsOf(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<Map<string, string>> {
+  if ((await db.values(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'card_part_payments'`)).length === 0) return new Map();
+  const rows = await db.values<[string, string]>(sql`
+    SELECT payment_transaction_id, purchase_transaction_id FROM card_part_payments
+    WHERE workspace_id = ${ws.workspaceId} AND payment_transaction_id IN (SELECT e.transaction_id FROM entries e WHERE e.account_id = ${cardAccountId})`);
+  return new Map(rows);
 }
 
 /**
@@ -427,7 +445,7 @@ export async function cardStatements(database: Database, ws: WorkspaceContext, c
   return cycles.map((cycle) => statementOf(all, pool, cycle, today, card.currency ?? ws.baseCurrency));
 }
 
-function statementOf(all: StatementLine[], pool: readonly PoolLine[], cycle: Cycle, today: string, currency: string): CardStatement {
+function statementOf(all: StatementLine[], pool: CardPool, cycle: Cycle, today: string, currency: string): CardStatement {
   // Everything here is in billed terms: an instalment plan counts a month at a time, not its whole price at once.
   const sum = (lines: StatementLine[]) => lines.reduce((total, line) => total + line.countedMinor, 0);
 
@@ -456,6 +474,23 @@ function statementOf(all: StatementLine[], pool: readonly PoolLine[], cycle: Cyc
   };
 }
 
+/** What the payments that paid part of one purchase (0130) paid of it. */
+interface PartsPaid {
+  /** The purchase's line key and statement date. */
+  key: string;
+  statementOn: string;
+  paidMinor: number;
+  /** Those payments' line keys, in the order they paid. */
+  payments: string[];
+}
+
+/** The card's lines as the cover pool counts them (`poolLinesOf`), and what payments for part of a purchase paid of each. */
+interface CardPool {
+  lines: PoolLine[];
+  /** By the purchase's transaction id; only purchases not settled since. */
+  parts: ReadonlyMap<string, PartsPaid>;
+}
+
 /**
  * The card's lines as the cover pool counts them. Whatever is settled on its own gives and takes nothing: a purchase
  * paid one by one, and of its payment as much as paid for the purchases it settled (a payment that settled purchases
@@ -463,21 +498,55 @@ function statementOf(all: StatementLine[], pool: readonly PoolLine[], cycle: Cyc
  * offsets only its own purchase whichever statement it falls on. What a payment paid beyond the purchases it settled is
  * an ordinary credit, as is any payment that settled none.
  *
+ * A payment for part of one purchase (`paysPartOf`, 0130) pays that purchase first: as much of it as the purchase still
+ * charges, after any such payments recorded before it, comes off both, and only the rest of the purchase is left to the
+ * card's other payments. What it paid beyond that is an ordinary credit. A purchase paid off before the app, or turned
+ * into a plan (it counts nothing), takes nothing from it. A purchase such payments paid part of and a payment then
+ * settled is settled for what they had left of it.
+ *
  * Each line carries when it was first recorded (`recordedTimesOf`), which decides what a payment pays first; an
  * instalment row, when its plan was recorded.
  */
-function poolLinesOf(all: readonly StatementLine[], recorded: ReadonlyMap<string, number | null>): PoolLine[] {
+function poolLinesOf(all: readonly StatementLine[], recorded: ReadonlyMap<string, number | null>): CardPool {
+  const purchases = new Map(all.filter((line) => !line.instalment).map((line) => [line.transactionId, line]));
+  const recordedOf = (line: StatementLine) => (line.instalment ? uuidv7Ms(line.instalment.planId) : (recorded.get(line.transactionId) ?? null));
+  // Payments for part of a purchase, in the order they were recorded (unknown first), then by date.
+  const partPayments = all
+    .filter((line) => line.paysPartOf && !line.instalment && line.countedMinor < 0)
+    .sort((a, b) => (recordedOf(a) ?? -1) - (recordedOf(b) ?? -1) || a.statementOn.localeCompare(b.statementOn) || a.key.localeCompare(b.key));
+  const parts = new Map<string, PartsPaid>();
+  const partOf = new Map<string, number>();
+  for (const payment of partPayments) {
+    const purchase = purchases.get(payment.paysPartOf!);
+    if (!purchase || purchase.countedMinor <= 0 || purchase.balancing || purchase.paidOff) continue;
+    const paid = parts.get(purchase.transactionId) ?? { key: purchase.key, statementOn: purchase.statementOn, paidMinor: 0, payments: [] };
+    const take = Math.min(-payment.countedMinor, purchase.countedMinor - paid.paidMinor);
+    if (take <= 0) continue;
+    paid.paidMinor += take;
+    paid.payments.push(payment.key);
+    parts.set(purchase.transactionId, paid);
+    partOf.set(payment.transactionId, take);
+  }
+  const partsPaid = (line: StatementLine) => (line.instalment ? 0 : (parts.get(line.transactionId)?.paidMinor ?? 0));
+
   const settledBy = new Map<string, number>();
   // What the settled purchases count, not their price: one converted to a plan since counts nothing, so its payment is
-  // an ordinary credit again and covers the plan's instalments, which are what the card now bills.
-  for (const line of all) if (line.paidBy && !line.instalment) settledBy.set(line.paidBy.transactionId, (settledBy.get(line.paidBy.transactionId) ?? 0) + line.countedMinor);
-  return all.map((line) => {
+  // an ordinary credit again and covers the plan's instalments, which are what the card now bills. Of a purchase paid
+  // in part first, only what those payments left of it.
+  for (const line of all) {
+    if (line.paidBy && !line.instalment) settledBy.set(line.paidBy.transactionId, (settledBy.get(line.paidBy.transactionId) ?? 0) + Math.max(0, line.countedMinor - partsPaid(line)));
+  }
+  const lines = all.map((line) => {
     let poolMinor = line.countedMinor;
     if (line.balancing || line.paidOff || line.paidBy) poolMinor = 0;
-    else if (line.countedMinor < 0 && settledBy.has(line.transactionId)) poolMinor = Math.min(0, line.countedMinor + settledBy.get(line.transactionId)!);
-    const recordedMs = line.instalment ? uuidv7Ms(line.instalment.planId) : (recorded.get(line.transactionId) ?? null);
-    return { key: line.key, statementOn: line.statementOn, poolMinor, recordedMs };
+    else if (line.countedMinor > 0) poolMinor = line.countedMinor - partsPaid(line);
+    else if (line.countedMinor < 0 && (settledBy.has(line.transactionId) || partOf.has(line.transactionId))) {
+      poolMinor = Math.min(0, line.countedMinor + (settledBy.get(line.transactionId) ?? 0) + (partOf.get(line.transactionId) ?? 0));
+    }
+    return { key: line.key, statementOn: line.statementOn, poolMinor, recordedMs: recordedOf(line) };
   });
+  // A purchase a payment then settled shows paid by that payment, as any settled purchase does.
+  return { lines, parts: new Map([...parts].filter(([id]) => !purchases.get(id)!.paidBy)) };
 }
 
 /**
@@ -513,11 +582,23 @@ async function recordedTimesOf(db: Db, ws: WorkspaceContext, cardAccountId: stri
   return out;
 }
 
-/** What the card's payments cover of one statement's charges, oldest first: one answer for the statement and `payCardPurchases`. */
-function statementCoverOf(pool: readonly PoolLine[], cycle: Cycle, today: string): Record<string, StatementCover> {
+/**
+ * What the card's payments cover of one statement's charges, oldest first: one answer for the statement and
+ * `payCardPurchases`. A purchase payments paid part of (0130) counts what they paid as covered, then what the card's
+ * other payments cover of its rest; paid to the last rupiah by such payments alone, the latest of them completed it.
+ */
+function statementCoverOf(pool: CardPool, cycle: Cycle, today: string): Record<string, StatementCover> {
   const out: Record<string, StatementCover> = {};
-  for (const [key, c] of coverStatement({ lines: pool, cycle, today })) {
+  for (const [key, c] of coverStatement({ lines: pool.lines, cycle, today })) {
     out[key] = { coveredMinor: c.coveredMinor, leftMinor: c.leftMinor, whole: c.whole, creditKey: c.credit?.key ?? null, credits: c.credits };
+  }
+  for (const part of pool.parts.values()) {
+    if (part.statementOn < cycle.start || part.statementOn > cycle.end) continue;
+    const rest = out[part.key];
+    const last = part.payments[part.payments.length - 1]!;
+    out[part.key] = rest
+      ? { coveredMinor: part.paidMinor + rest.coveredMinor, leftMinor: rest.leftMinor, whole: rest.whole, creditKey: rest.coveredMinor > 0 ? rest.creditKey : last, credits: part.payments.length + rest.credits }
+      : { coveredMinor: part.paidMinor, leftMinor: 0, whole: true, creditKey: last, credits: part.payments.length };
   }
   return out;
 }
@@ -632,6 +713,11 @@ export async function postingDates(database: Database, ws: WorkspaceContext, tra
  * Pays chosen card purchases now, before their statement: one transfer from a bank account to the card for
  * their total, remembered as paying exactly those purchases. A purchase a payment already partly covers (the
  * statement's oldest-first cover) is paid for what is left of it, given in `amountsMinor`; never more than it charged.
+ *
+ * One purchase may be paid with an amount of its own (`payMinor`; owner, 25 Nov 2026). Less than what is left of it
+ * pays part of it: the payment is remembered as paying part of that purchase (0130), which keeps the rest to pay, and
+ * the purchase is never settled by it. More pays it as the call would without the amount, and what is over is an
+ * ordinary card payment, covering the card's other purchases (`poolLinesOf`).
  */
 export async function payCardPurchases(
   database: Database,
@@ -648,10 +734,19 @@ export async function payCardPurchases(
     description?: string;
     /** Which goal the money came out of, when it took more than was free (spec §4.4). */
     setAside?: SetAsideChoice | null;
+    /**
+     * What the payment is, as typed, when exactly one purchase is paid: less than what is left of it pays part of it,
+     * more pays it and the rest goes to the card's other purchases. Not given: what is left of the purchases.
+     */
+    payMinor?: number;
   },
 ): Promise<string> {
   const ids = [...new Set(input.purchaseTransactionIds)];
   if (ids.length === 0) throw new StatementError('NOTHING_TO_PAY', 'Choose the purchases to pay');
+  if (input.payMinor !== undefined) {
+    if (ids.length !== 1) throw new StatementError('INVALID_AMOUNT', 'An amount of its own pays one purchase at a time');
+    if (!Number.isInteger(input.payMinor) || input.payMinor <= 0) throw new StatementError('INVALID_AMOUNT', 'Pay more than nothing');
+  }
   return database.transaction(async (tx) => {
     const found = await tx
       .select({ id: accounts.id, currency: accounts.currency, name: accounts.name })
@@ -679,7 +774,9 @@ export async function payCardPurchases(
       return covers.get(cycle.start)![line.key];
     };
     let totalMinor = 0;
-    // Only a purchase paid whole is settled by the payment; one paid for what was left stays covered by payments.
+    // Only a purchase this payment pays all that is left of is settled by it; one partly covered by the card's other
+    // payments, paid for what they left, stays covered by payments. Of a purchase paid in part before, what is left is
+    // what those payments left of it: paying that settles it.
     const settles: string[] = [];
     for (const id of ids) {
       const line = lines.get(id);
@@ -692,9 +789,16 @@ export async function payCardPurchases(
       const cover = coverOf(line);
       if (cover?.whole) throw new StatementError('STALE_AMOUNT', 'Already covered by a payment. Open the statement again.');
       if (cover && amountMinor > cover.leftMinor) throw new StatementError('STALE_AMOUNT', 'Already partly covered by a payment. Open the statement again.');
-      if (amountMinor === line.owedMinor) settles.push(id);
+      const ownMinor = line.owedMinor - (pool.parts.get(id)?.paidMinor ?? 0);
+      if (amountMinor > ownMinor) throw new StatementError('STALE_AMOUNT', 'Already partly paid. Open the statement again.');
+      if (amountMinor === ownMinor) settles.push(id);
       totalMinor += amountMinor;
     }
+    // One purchase, an amount of its own: less pays part of it and settles nothing; more is the call as it was, the
+    // rest an ordinary payment.
+    const partOf = input.payMinor !== undefined && input.payMinor < totalMinor ? ids[0]! : null;
+    if (partOf) settles.length = 0;
+    if (input.payMinor !== undefined) totalMinor = input.payMinor;
 
     const paymentId = await postTransactionTx(tx, ws, {
       occurredOn: input.occurredOn,
@@ -712,6 +816,7 @@ export async function payCardPurchases(
         .values({ purchaseTransactionId: id, paymentTransactionId: paymentId, workspaceId: ws.workspaceId })
         .onConflictDoUpdate({ target: cardSettlements.purchaseTransactionId, set: { paymentTransactionId: paymentId } });
     }
+    if (partOf) await tx.insert(cardPartPayments).values({ paymentTransactionId: paymentId, purchaseTransactionId: partOf, workspaceId: ws.workspaceId });
     return paymentId;
   });
 }

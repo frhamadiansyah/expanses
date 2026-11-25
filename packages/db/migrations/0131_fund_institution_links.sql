@@ -7,8 +7,6 @@
    left as it was. A holding already linked, or one that is the same fund as another holding (a shared security, whose
    pair at one broker must stay one holding), is left alone. A name matching none or several stays a typed name.
 
-   Migration 0129 is followed by 0131: 0130 is kept for the card part payments branch.
-
    This version also exists so a linked device on an older build (Link my devices, 0126) holds every change made from
    it until it updates: an older build lets go of a fund's link to any account each time it opens
    (`moveHeldAtToInstitutions`), and would send that back. holding_links is not shared with a household book. */
