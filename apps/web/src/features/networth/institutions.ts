@@ -1,4 +1,5 @@
 import type { AccountRow, AssetProfileRow } from '@expanses/db';
+import { brokerNameOf } from '../../lib/account-name';
 
 /** The money accounts an institution is named by: a bank, savings, a deposit, a broker's cash. */
 const AT_AN_INSTITUTION = new Set(['bank', 'savings', 'time_deposit', 'fund']);
@@ -10,8 +11,8 @@ const NAMED_BY_ITSELF = new Set(['fund']);
  * The institution a money account is at: its bank's name as the account keeps it (the kas row's Nama institusi), else
  * its own name. A broker's cash is named by its broker — its institution field names the custodian bank instead.
  */
-export function institutionOf(account: Pick<AccountRow, 'name' | 'subtype'>, profile: Pick<AssetProfileRow, 'coretaxFields'> | undefined): string {
-  if (account.subtype === 'fund') return account.name;
+export function institutionOf(account: Pick<AccountRow, 'name' | 'subtype' | 'typedName'>, profile: Pick<AssetProfileRow, 'coretaxFields'> | undefined): string {
+  if (account.subtype === 'fund') return brokerNameOf(account);
   return profile?.coretaxFields.inst?.trim() || account.name;
 }
 
@@ -26,7 +27,7 @@ export function institutionChoices(accounts: readonly AccountRow[], profiles: re
   const names = [
     ...accounts
       .filter((a) => a.kind === 'asset' && AT_AN_INSTITUTION.has(a.subtype) && a.parentId === null && a.archivedAt === null)
-      .map((a) => (NAMED_BY_ITSELF.has(a.subtype) ? a.name : (profileOf.get(a.id)?.coretaxFields.inst?.trim() ?? ''))),
+      .map((a) => (NAMED_BY_ITSELF.has(a.subtype) ? brokerNameOf(a) : (profileOf.get(a.id)?.coretaxFields.inst?.trim() ?? ''))),
     ...profiles.filter((p) => p.assetKind === 'fund' || p.assetKind === 'bond').map((p) => p.coretaxFields.inst?.trim() ?? ''),
   ].filter((name) => name !== '');
   const byKey = new Map<string, string>();

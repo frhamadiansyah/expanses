@@ -272,7 +272,8 @@ export function PaymentSheet({
               <Marked text={name} typed={search} />
             </span>
             <span aria-hidden className="tabular shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
-              {[option.last4 ? `···· ${option.last4}` : null, option.holderName, account?.currency].filter(Boolean).join(' · ')}
+              {/* Two brokers' cash at one custodian bank read alike: each says its broker here (`tellApart`). */}
+              {[option.last4 ? `···· ${option.last4}` : null, option.holderName, account?.tellApart, account?.currency].filter(Boolean).join(' · ')}
             </span>
           </span>
         </button>
@@ -298,7 +299,9 @@ export function PaymentSheet({
           {lead(assetKindTile('liquid', row.parent.subtype), false, isOpen)}
           <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
             <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{row.parent.name}</span>
-            {row.last4 ? <span aria-hidden className="tabular shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">{`···· ${row.last4}`}</span> : null}
+            {row.last4 || row.parent.tellApart ? (
+              <span aria-hidden className="tabular shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">{[row.last4 ? `···· ${row.last4}` : null, row.parent.tellApart].filter(Boolean).join(' · ')}</span>
+            ) : null}
             <span aria-hidden className={cx('w-[12px] shrink-0 text-center text-[17px] leading-none text-[var(--ph-chevron)] transition-transform', isOpen && 'rotate-90')}>
               {'›'}
             </span>

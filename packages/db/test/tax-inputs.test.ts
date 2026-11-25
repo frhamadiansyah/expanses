@@ -243,6 +243,26 @@ describe('the code a money account files under', () => {
     expect(codeOf('other_cash')).toBe('0109');
   });
 
+  it('names a broker\'s cash by its custodian bank, and a holding there by its broker', async () => {
+    const broker = await createAccount(database, ws, { name: 'Sekuritas Contoh', kind: 'asset', subtype: 'fund', currency: 'IDR', openingBalanceMinor: 7_250_000, openedOn: '2026-01-01' });
+    await saveAssetProfile(database, ws, { accountId: broker.id, assetKind: 'cash', coretaxFields: { inst: 'Bank Kustodian' } });
+    const plain = await createAccount(database, ws, { name: 'Broker Tanpa Bank', kind: 'asset', subtype: 'fund', currency: 'IDR', openingBalanceMinor: 1_300_000, openedOn: '2026-01-01' });
+    const shares = await createAccount(database, ws, { name: 'TLKM · Sekuritas Contoh', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+    await saveAssetProfile(database, ws, { accountId: shares.id, assetKind: 'stock' });
+    await recordTrade(database, ws, { accountId: shares.id, kind: 'buy', occurredOn: '2026-02-03', unitsMicro: 300 * 1_000_000, grossMinor: 1_170_000, feeMinor: 0, taxMinor: 0, cashAccountId: null });
+    await upsertPrice(database, ws, { accountId: shares.id, onDate: '2026-12-30', priceMicro: 3_950_000_000 });
+    await linkHolding(database, ws, { accountId: shares.id, brokerAccountId: broker.id });
+
+    const inputs = await coretaxInputsFor(database, ws, YEAR);
+    expect(inputs.cash.find((row) => row.accountId === broker.id)).toMatchObject({ name: 'Bank Kustodian (RDN)', fields: { inst: 'Bank Kustodian' } });
+    // No custodian named: called by its broker, as before.
+    expect(inputs.cash.find((row) => row.accountId === plain.id)!.name).toBe('Broker Tanpa Bank');
+    // A bank's own cash row is left as it was.
+    expect(inputs.cash.find((row) => row.accountId === bca.id)!.name).toBe('BCA Tahapan');
+    expect(inputs.holdings.find((row) => row.accountId === shares.id)).toMatchObject({ fields: { inst: 'Sekuritas Contoh' } });
+    expect(inputs.holdings.find((row) => row.accountId === shares.id)!.name).toContain('Sekuritas Contoh');
+  });
+
   it('never overrules a code the owner did choose', async () => {
     const wallet = await createAccount(database, ws, { name: 'GoPay', kind: 'asset', subtype: 'ewallet', currency: 'IDR', openingBalanceMinor: 500_000, openedOn: '2026-01-01' });
     await saveAssetProfile(database, ws, { accountId: wallet.id, assetKind: 'cash', coretaxSection: 'kas', coretaxCode: '0109' });

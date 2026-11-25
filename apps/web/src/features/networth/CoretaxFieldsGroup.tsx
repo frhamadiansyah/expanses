@@ -37,6 +37,7 @@ export function CoretaxFieldsGroup({
   lead = [],
   tail = [],
   hide = [],
+  labels = {},
 }: {
   profile: AssetProfileRow;
   section: CoretaxSection;
@@ -51,6 +52,8 @@ export function CoretaxFieldsGroup({
   tail?: ReactElement[];
   /** Fields asked for elsewhere on the page (a bank account's number): not drawn, and never written from here. */
   hide?: readonly string[];
+  /** A field called something of its own here, by key: a fund account's number is its RDN's. */
+  labels?: Record<string, string>;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -58,6 +61,7 @@ export function CoretaxFieldsGroup({
   const [error, setError] = useState<unknown>(null);
 
   const problems = validateCoretaxFields(section, fields);
+  const labelOf = (key: string, fallback: string) => labels[key] ?? ENGLISH[section][key] ?? fallback;
   // The row just kept, said to a screen reader (and waited on by tests): nothing shows, the row already reads it.
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -106,10 +110,10 @@ export function CoretaxFieldsGroup({
         return (
           <TextRow
             key={field.key}
-            label={ENGLISH[section][field.key] ?? field.label}
+            label={labelOf(field.key, field.label)}
             value={fields[field.key] ?? ''}
             onChange={(e) => setFields({ ...fields, [field.key]: e.target.value })}
-            onBlur={() => void save(ENGLISH[section][field.key] ?? field.label)}
+            onBlur={() => void save(labelOf(field.key, field.label))}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             inputMode={field.kind === 'number' || field.kind === 'npwp' ? 'numeric' : undefined}
             placeholder={fallbacks[field.key]?.value ?? (field.kind === 'country' ? 'Country code' : 'Not set')}

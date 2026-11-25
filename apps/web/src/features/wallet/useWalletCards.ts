@@ -3,6 +3,7 @@ import { formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, pocketParentIds } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
+import { accountKindLine } from '../../lib/account-name';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { groupedFigure, type WalletCard } from '../../ui/native';
@@ -137,7 +138,7 @@ export function useWalletCards(open: { cardId?: string; accountId?: string } = {
       face: face ?? undefined,
       figure: figure.text,
       figureLabel: figure.setAside ? 'Free to spend' : 'Balance',
-      subtitle: parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, pool ?? book).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
+      subtitle: parents.has(account.id) ? `${accountKindLine(account)} · ${pocketCount(pocketsOf(account.id, pool ?? book).length)}` : `${accountKindLine(account)} · ${account.currency}`,
       to: '/accounts/$accountId' as const,
       params: { accountId: account.id },
       label: account.name,

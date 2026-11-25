@@ -41,6 +41,11 @@ export interface AssetRow {
   owner?: string;
   /** Another member's shared item (`accountId` is its itemId): it opens their item's page, read-only. */
   received?: boolean;
+  /**
+   * The line under a name another row shares: two brokers' cash at one custodian bank both read "CIMB Niaga", so each
+   * says its broker, "Mirae Sekuritas", under the drawer that already says "Fund account". Absent on every other row.
+   */
+  kindLine?: string;
 }
 
 export interface AssetGroup {
@@ -73,7 +78,14 @@ export interface AssetDrawer {
 const isSold = (value: AssetValueRow) =>
   value.everSold !== false && ((value.mode === 'market' && value.unitsMicro === 0) || (value.mode === 'amount' && value.valueMinor === 0 && value.costMinor === 0));
 
-function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: boolean, subtype: AccountRow['subtype']): AssetRow {
+/**
+ * The line telling a row apart from another of the same name, when the names list (`withShownNames`) gave it words: the
+ * broker alone. Assets already folds the row under its kind ("Fund account"), and on a phone's row the kind said again
+ * in front pushed the broker — the one word that tells the two apart — past the end of the line.
+ */
+const kindLineOf = (_subtype: AccountRow['subtype'], tellApart: string | undefined) => (tellApart ? { kindLine: tellApart } : {});
+
+function toRow(value: AssetValueRow & { tellApart?: string }, profile: AssetProfileRow | undefined, due: boolean, subtype: AccountRow['subtype']): AssetRow {
   /*
    * The code beside the name comes from the asset's own profile, and — for money owed to you — from the debt's, which
    * is the only place it was ever written. A code the catalogue knows names its own table, so no second read is needed
@@ -101,11 +113,12 @@ function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: 
     kind: kindOf(value.coretaxCode, value.accountId, subtype),
     section: sectionOf(value.coretaxCode, subtype),
     person: value.person,
+    ...kindLineOf(subtype, value.tellApart),
   };
 }
 
 export interface AssetGrouping {
-  accounts: readonly Pick<AccountRow, 'id' | 'name' | 'parentId' | 'kind' | 'subtype'>[];
+  accounts: readonly Pick<AccountRow, 'id' | 'name' | 'parentId' | 'kind' | 'subtype' | 'tellApart'>[];
   baseCurrency: string;
   ratesToBase: Readonly<Record<string, number>>;
   /** The deposits with a proposal waiting (spec §7). Every other caller leaves it out, and nothing is due. */
@@ -202,6 +215,7 @@ export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[]
       kind: kindOf(null, parentId, parentSubtype),
       section: sectionOf(null, parentSubtype),
       person: null,
+      ...kindLineOf(parentSubtype, byId.get(parentId)?.tellApart),
     });
   }
 
@@ -233,7 +247,8 @@ export const staleRows = (groups: AssetGroup[]): AssetRow[] => groups.flatMap((g
 export function rowSubtitle(row: AssetRow): string {
   // Only what asks for attention. How a figure is worked out and the Indonesian tax code belong to the asset's own
   // page and the tax report, not to every row of a list read in any country.
-  return [row.stale && !row.sold ? 'Update price' : null, row.sold ? 'Sold' : null, row.due ? 'Due' : null]
+  // And the one thing that tells two rows of the same name apart, when another row shares it.
+  return [row.kindLine ?? null, row.stale && !row.sold ? 'Update price' : null, row.sold ? 'Sold' : null, row.due ? 'Due' : null]
     .filter(Boolean)
     .join(' · ');
 }

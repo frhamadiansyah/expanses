@@ -1,6 +1,7 @@
 import { type AssetProfileRow, changeShare, HELD_AT_SUBTYPES, linkHolding, sameFundAs, saveAssetProfile, openBroker } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { asBroker } from '../../lib/account-name';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { brokerChoices } from '../investments/add-holding';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
@@ -24,7 +25,8 @@ export function useStockAndBroker(accountId: string, opts: { share?: boolean } =
   const accounts = useAccounts().data ?? [];
   const brokers = brokerChoices(accounts);
   // Where a fund can be held: a broker's cash, a bank, a savings account or a fund app — never a pocket.
-  const places = accounts.filter((a) => a.kind === 'asset' && HELD_AT_SUBTYPES.includes(a.subtype) && a.parentId === null && a.archivedAt === null);
+  // A broker among them is named by the broker, not by the bank its cash is shown by among money (`asBroker`).
+  const places = accounts.filter((a) => a.kind === 'asset' && HELD_AT_SUBTYPES.includes(a.subtype) && a.parentId === null && a.archivedAt === null).map(asBroker);
   // The other holdings of the same fund: those linked to its security.
   const samePlaces = link?.securityId ? links.filter((l) => l.securityId === link.securityId && l.accountId !== accountId).map((l) => l.accountId) : [];
   const [error, setError] = useState<unknown>(null);

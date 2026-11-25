@@ -16,6 +16,7 @@ import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { memberName, useAssetProfiles, useAssetValues, useJointSheet, useNetWorthSeries, useOwnedTogether, useOwnerRings, useSheet } from './queries';
 import { buyChoices } from '../transactions/buy-in-form';
 import { figureOf, jointSeries, ownerRing, receivedPocketAccounts, sheetOwnerOf } from './joint-rows';
+import { withCustodianNames } from '../../lib/account-name';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 import { useActiveNetWorthGroup } from '../sharing/net-worth-queries';
 import { keepLastFigures, lastFigures } from './last-figures';
@@ -368,6 +369,7 @@ export function OverviewPage() {
   };
   const months = lastNMonths(monthOf(today), SPAN_MONTHS[span]);
   const sheetInputs = useSheet();
+  const accountsForNames = useAccounts();
   /*
    * With one tax ID the page is the household's (§8.2, D12): the other's shared items join this phone's own rows in the
    * same drawers, the figure and its line are the household's, and each row's ring says whose it is. Separate, or no
@@ -410,7 +412,10 @@ export function OverviewPage() {
   // The hero is today's figure, so only today's missing rates hide it; an earlier month's hides that month's point.
   const sheetMissing = joint ? joint.missing : (sheetInputs.data?.missing ?? []);
   const unchartable = [...new Set(points.flatMap((point) => point.missing))].sort();
-  const sheet = joint ? balanceSheet(joint.assets, joint.liabilities) : balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
+  const readSheet = joint ? balanceSheet(joint.assets, joint.liabilities) : balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
+  // A broker's cash is named by its custodian bank here too, as on Assets and in every list of money (owner, 25 Nov).
+  const shownAccountRows = accountsForNames.data ?? [];
+  const sheet = { ...readSheet, assetGroups: readSheet.assetGroups.map((group) => ({ ...group, rows: withCustodianNames(group.rows, shownAccountRows) })) };
   // The partner's accounts with pockets fold to one row each, as this phone's own do: the row is the account's.
   const theirPockets = joint ? receivedPocketAccounts(joint.received, joint.rows, ws.baseCurrency) : { pockets: new Map(), parents: new Map() };
   const owners = new Map([...(joint?.rows ?? []), ...theirPockets.parents.values()].map((row) => [row.accountId, row]));

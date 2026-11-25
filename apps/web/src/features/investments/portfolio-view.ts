@@ -1,5 +1,6 @@
 import { type AssetKind, formatMinor, gainBps, percentShares, portfolioSummary, type PortfolioSummary, type Position, sumToBase, unitsValueMinor } from '@expanses/core';
 import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, SecurityRow } from '@expanses/db';
+import { brokerNameOf } from '../../lib/account-name';
 
 export const NO_BROKER = 'none';
 /** The key of a place a fund or bond is held at by name: an institution, not an account (0082). */
@@ -119,7 +120,7 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
       securityId: link?.securityId ?? null,
       brokerAccountId,
       // A fund or a bond is held at an institution by name (0082); a share at its broker's cash account.
-      brokerName: brokerAccountId ? (accountOf.get(brokerAccountId)?.name ?? 'Broker') : (placeOf.get(value.accountId) ?? 'No broker named'),
+      brokerName: brokerAccountId ? ((accountOf.get(brokerAccountId) ? brokerNameOf(accountOf.get(brokerAccountId)!) : 'Broker')) : (placeOf.get(value.accountId) ?? 'No broker named'),
       place: brokerAccountId ? null : (placeOf.get(value.accountId) ?? null),
       currency: value.currency,
       unitsMicro: value.unitsMicro ?? 0,

@@ -28,6 +28,7 @@ import { alreadySetAside, alreadySetAsideText, DUE_DAYS, dueDefaults, dueSheetFo
 import { setAsideHint } from './goal-cards';
 import { setAsideOf, setAsideOn } from './goal-actions';
 import { useEarmarks, useGoalDues, useGoalPlans, useSetAsideViews } from './queries';
+import { accountChoiceName } from '../../lib/account-name';
 
 /** What a tap on a month leaves behind: the light Undo bar's words, its icon, and how to take it back. */
 export interface DueToast {
@@ -145,7 +146,7 @@ export function DueGroup({ due, goalName }: { due: ReturnType<typeof useDueForm>
               <SelectRow key="from" label={form.mode === 'transfer' ? 'From' : 'In'} value={form.accountId ?? ''} onChange={(e) => set({ accountId: e.target.value })}>
                 {accounts.map((account) => (
                   <option key={account.id} value={account.id}>
-                    {account.name}
+                    {accountChoiceName(account)}
                   </option>
                 ))}
               </SelectRow>,
@@ -156,7 +157,7 @@ export function DueGroup({ due, goalName }: { due: ReturnType<typeof useDueForm>
                         .filter((account) => account.id !== form.accountId)
                         .map((account) => (
                           <option key={account.id} value={account.id}>
-                            {account.name}
+                            {accountChoiceName(account)}
                           </option>
                         ))}
                     </SelectRow>,
@@ -287,7 +288,7 @@ export function GoalMonthSheet({ goal, month, onClose, onDone }: { goal: DueGoal
         <SelectRow label={month.mode === 'transfer' ? 'From' : 'In'} value={from?.id ?? ''} onChange={(e) => setFromId(e.target.value)}>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
-              {account.name}
+              {accountChoiceName(account)}
             </option>
           ))}
         </SelectRow>
@@ -295,7 +296,7 @@ export function GoalMonthSheet({ goal, month, onClose, onDone }: { goal: DueGoal
           <SelectRow label="To" value={to?.id ?? ''} onChange={(e) => setToId(e.target.value)}>
             {toChoices.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name}
+                {accountChoiceName(account)}
               </option>
             ))}
           </SelectRow>

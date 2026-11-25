@@ -13,6 +13,7 @@ import { useBrokerFees } from './BrokerFeesGroup';
 import { feeRowText, lotsText, workedOut } from './listed-trade-model';
 import { AmountRow, FeeRow, FigureRow, GoalBox, ReadRow, RecordRow, StepBar, TapRow } from './listed-trade-parts';
 import { CardPointsBox, useTradeDetails, useTradeSave } from './trade-sheet-parts';
+import { accountChoiceName } from '../../lib/account-name';
 
 /** IDX trades in lots of 100 shares. */
 const IDX_LOT = 100;
@@ -165,7 +166,7 @@ export function ListedTradeSheet({
           <SelectRow label={kind === 'buy' ? 'Paid from' : 'Paid into'} value={cashAccountId} onChange={(e) => setPicked(e.target.value)}>
             {cashChoices.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name}
+                {accountChoiceName(account)}
               </option>
             ))}
           </SelectRow>

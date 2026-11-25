@@ -55,6 +55,7 @@ import { AdjustBalanceForm } from './AdjustBalanceForm';
 import { adjustTitle } from './adjust-model';
 import { MONEY_IN, MoneyInForm, type MoneyInMode } from './MoneyInForm';
 import { BalanceCard } from './BalanceCard';
+import { brokerNameOf } from '../../lib/account-name';
 import { BalanceHero } from './BalanceHero';
 import { balanceSeries, type DayBalance, pocketsSeries } from './balance-series';
 import { currencyName, parentActionKeys, parentTotal, pocketsOf } from './pockets';
@@ -195,9 +196,10 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
           series={series}
           testId="balance-card"
           corner={<CurrencyFlag currency={account.currency!} ring={ownRing} />}
-          /* A broker's cash is read by the bank it sits at: the broker is already the page's name. The currency
-             is the flag in the corner, so the line names only where the money is and what kind of account. */
-          caption={account.subtype === 'fund' && inst ? `Custodian · ${inst}` : [inst, typeLabel].filter(Boolean).join(' · ')}
+          /* A broker's cash is titled by the bank it sits at, as every list of money names it, so the line says whose
+             cash it is: its broker (owner, 25 Nov). The currency is the flag in the corner, so any other account's
+             line names only where the money is and what kind of account. */
+          caption={account.subtype === 'fund' ? `Broker · ${brokerNameOf(parent ?? account)}` : [inst, typeLabel].filter(Boolean).join(' · ')}
           foreign={foreign ? <ForeignLine currency={account.currency!} minor={minor} rates={rates.data} /> : undefined}
         />
       )}
@@ -219,7 +221,8 @@ function AccountBody({ account, parent, pockets }: { account: AccountRow; parent
       ) : deposit ? (
         <MaturitySettings accountId={account.id} currency={account.currency!} />
       ) : account.subtype === 'fund' ? (
-        <HeldAtBroker brokerAccountId={account.id} />
+        // The page is titled by the custodian bank, so what the broker keeps is headed by the broker's own name.
+        <HeldAtBroker brokerAccountId={account.id} header={`Held at ${brokerNameOf(account)}`} />
       ) : null}
 
       <Recent accountId={account.id} accountIds={pockets ? pocketIds : [account.id]} />

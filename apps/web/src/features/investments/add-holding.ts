@@ -2,6 +2,7 @@ import { formatUnits, parseMajor, parsePriceMicro, parseUnits, unitsFromLots, un
 import type { ListedSecurity } from '@expanses/catalog';
 import type { AccountRow, AddHoldingInput, NewSecurity, SecurityRow } from '@expanses/db';
 import { withCharged } from '../networth/trade-money';
+import { asBroker } from '../../lib/account-name';
 
 export type Picked = { kind: 'held'; security: SecurityRow } | { kind: 'listed'; security: ListedSecurity } | { kind: 'named'; security: NewSecurity };
 
@@ -54,7 +55,8 @@ export function newPurchaseMoney(brokerChoice: string, brokers: readonly { id: s
 
 /** The owner's ruling: a broker is its cash account, subtype `fund` — and a pocket's parent, never the pocket. */
 export function brokerChoices(accounts: readonly AccountRow[]): AccountRow[] {
-  return accounts.filter((a) => a.kind === 'asset' && a.subtype === 'fund' && a.parentId === null && a.archivedAt === null);
+  // Named by the broker, never by the custodian bank the same account is shown by among money (`asBroker`).
+  return accounts.filter((a) => a.kind === 'asset' && a.subtype === 'fund' && a.parentId === null && a.archivedAt === null).map(asBroker);
 }
 
 export function namedSecurity(d: NameDraft): NewSecurity {

@@ -176,3 +176,15 @@ describe('a deposit with something due', () => {
     expect(rowSubtitle(rows.find((row) => row.accountId === 'bca')!)).toBe('');
   });
 });
+
+describe('two brokers whose cash sits at one custodian bank', () => {
+  it('names the broker under each, and nothing under a row of its own name', () => {
+    const named = [
+      { ...value({ accountId: 'mirae', name: 'CIMB Niaga', planGroup: 'liquid', subtype: 'fund', mode: 'derived', valueMinor: 10_500_000 }), tellApart: 'Mirae Sekuritas' },
+      value({ accountId: 'stockbit', name: 'Bank Jago', planGroup: 'liquid', subtype: 'fund', mode: 'derived', valueMinor: 4_500_000 }),
+    ];
+    const rows = groupAssets(named, [], { accounts: [], baseCurrency: 'IDR', ratesToBase: {} }).flatMap((group) => group.rows);
+    expect(rowSubtitle(rows.find((row) => row.accountId === 'mirae')!)).toBe('Mirae Sekuritas');
+    expect(rowSubtitle(rows.find((row) => row.accountId === 'stockbit')!)).toBe('');
+  });
+});

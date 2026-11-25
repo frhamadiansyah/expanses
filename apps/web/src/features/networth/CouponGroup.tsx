@@ -7,6 +7,7 @@ import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/na
 import { errorHint } from './AssetSettings';
 import { institutionOf, sameInstitution } from './institutions';
 import { useAssetProfiles, useBondCoupons } from './queries';
+import { accountChoiceName } from '../../lib/account-name';
 
 const PAID: { perYear: CouponsPerYear; label: string }[] = [
   { perYear: 12, label: 'Monthly' },
@@ -137,7 +138,7 @@ function CouponRows({ accountId, saved, heldAt }: { accountId: string; saved: Bo
           <option value="">Not set</option>
           {places.map((place) => (
             <option key={place.id} value={place.id}>
-              {place.name}
+              {accountChoiceName(place)}
             </option>
           ))}
         </SelectRow>

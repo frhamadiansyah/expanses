@@ -8,7 +8,7 @@ import { useInvalidateAll, useAccounts, useResolveRates } from '../../lib/querie
 import { openingRateFor } from '../../lib/rates';
 import { Empty, ErrorBox } from '../../ui';
 import { DestructiveRow, InsetGroup, InsetRow, PickerRow, PushedTitle, ReadOnlyRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
-import { typedNameOf } from '../../lib/account-name';
+import { brokerNameOf, typedNameOf } from '../../lib/account-name';
 import { useBack } from '../../app/BackHeader';
 import { useHoldingLinks } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
@@ -18,6 +18,7 @@ import { SameFundGroup } from './SameFundGroup';
 import { PricesGroup } from './PricesGroup';
 import { MonthlyPlanGroup } from './MonthlyPlanGroup';
 import { SettingsNameRow } from '../accounts/SettingsNameRow';
+import { FundNamesGroup } from '../accounts/FundNamesGroup';
 import { AccountSettingsBox } from '../accounts/AccountSettingsBox';
 import { BrokerFeesGroup } from './BrokerFeesGroup';
 import { CoretaxFieldsGroup } from './CoretaxFieldsGroup';
@@ -85,6 +86,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
   const value = values.data?.find((row) => row.accountId === accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
   const money = account !== undefined && CASH_SUBTYPES.has(account.subtype);
+  // A broker's cash names its Broker and its Custodian bank in a box of their own, above the rest (owner, 25 Nov).
+  const fundNames = account?.subtype === 'fund' && account.parentId === null;
   // An account with pockets holds nothing itself, so it is no asset and has no value row: its settings are its name
   // and the way out, and its pockets' are their own.
   const parentMoney = money && value === undefined && !values.isPending;
@@ -230,7 +233,8 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
       <ErrorBox error={values.error ?? profile.error ?? stock.error} />
       {!value && !money && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
       {parentMoney && account && bankParent && <PocketedIdentityGroup accountId={accountId} subtype={account.subtype} />}
-      {parentMoney && !bankParent && (
+      {fundNames && <FundNamesGroup accountId={accountId} />}
+      {parentMoney && !bankParent && !fundNames && (
         <InsetGroup>
           <TextRow
             label="Name"
@@ -273,7 +277,7 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
           // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
           taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
           pocketed={Boolean(money && parentOfPocket)}
-          nameRow={identity ?? (money && parentOfPocket ? ([
+          nameRow={identity ?? (fundNames ? [] : money && parentOfPocket ? ([
             <PickerRow
               key="account"
               label="Account"
@@ -304,10 +308,13 @@ export function AssetSettingsPage({ accountId }: { accountId: string }) {
                     key={`fields-${accountId}`}
                     profile={profile.data ?? { ...profileDefaults('cash'), coretaxSection: 'kas', coretaxCode: cashCodeFor(account?.subtype), accountId, workspaceId: ws.workspaceId, updatedAt: '' }}
                     section={profile.data?.coretaxSection ?? 'kas'}
-                    fallbacks={heldAt ? { inst: { value: heldAt.name, from: heldFrom } } : undefined}
+                    // A holding at a broker is filed at the broker, never at the bank its cash is shown by among money.
+                    fallbacks={heldAt ? { inst: { value: brokerNameOf(heldAt), from: heldFrom } } : undefined}
                     lead={lead}
                     tail={tail}
-                    hide={account?.subtype === 'bank' || account?.subtype === 'savings' ? ['acct', 'inst'] : undefined}
+                    hide={account?.subtype === 'bank' || account?.subtype === 'savings' ? ['acct', 'inst'] : fundNames ? ['inst'] : undefined}
+                    // The tax group keeps the RDN's own details; its bank is the Custodian bank above.
+                    labels={fundNames ? { acct: 'RDN account number' } : undefined}
                   />
                 )
               : undefined

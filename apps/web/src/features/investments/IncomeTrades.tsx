@@ -5,6 +5,7 @@ import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Coins, Layers } from 'luci
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
+import { brokerNameOf } from '../../lib/account-name';
 import { cx, Money } from '../../ui';
 import { Figure, InsetGroup, InsetRow, type RecordColumn, RecordTable } from '../../ui/native';
 import { useGoals } from '../goals/queries';
@@ -65,7 +66,8 @@ export function useTradeBook() {
     // Where a holding is kept (its broker), for a trade that moved no cash of its own: an opening position.
     brokerName: (accountId: string) => {
       const broker = (links.data ?? []).find((link) => link.accountId === accountId)?.brokerAccountId;
-      return broker ? ((accounts.data ?? []).find((row) => row.id === broker)?.name ?? null) : null;
+      const account = broker ? (accounts.data ?? []).find((row) => row.id === broker) : undefined;
+      return account ? brokerNameOf(account) : null;
     },
     goalName: (goalId: string | null | undefined) => (goalId ? ((goals.data ?? []).find((goal) => goal.id === goalId)?.name ?? null) : null),
   };

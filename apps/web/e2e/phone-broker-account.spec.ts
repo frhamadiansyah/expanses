@@ -18,8 +18,9 @@ test('by thumb: the broker and the RDN bank are picked from what the keyboard of
   await expect(page).toHaveURL(/\/net-worth\/assets$/);
   await page.goto('/net-worth/assets');
   await openDrawers(page);
-  await page.getByRole('link', { name: /^Mirae Asset Sekuritas/ }).first().tap();
+  // Listed by the bank its cash is at, the broker under the balance (owner, 25 Nov).
+  await page.getByRole('link', { name: /^CIMB Niaga/ }).first().tap();
   await showBalance(page);
-  await expect(page.getByTestId('balance-card')).toContainText('Custodian · CIMB Niaga');
+  await expect(page.getByTestId('balance-card')).toContainText('Broker · Mirae Asset Sekuritas');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

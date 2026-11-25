@@ -3,6 +3,7 @@ import { useParams } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { useBalances } from '../../lib/queries';
+import { brokerNameOf } from '../../lib/account-name';
 import { cx, Empty, ErrorBox } from '../../ui';
 import { ApproxFigure, approxLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { type Destination, DesktopBand, InBase, InvestTable } from './InvestTable';
@@ -38,7 +39,7 @@ export function BrokerPage({ none = false }: { none?: boolean }) {
   const base = ws.baseCurrency;
   const model = view ? brokerPageModel({ view, key, accounts, balances: balances.data, base }) : null;
   if (!model) {
-    const name = none ? 'No broker named' : (accounts.find((a) => a.id === accountId)?.name ?? 'Broker');
+    const name = none ? 'No broker named' : (accounts.find((a) => a.id === accountId) ? brokerNameOf(accounts.find((a) => a.id === accountId)!) : 'Broker');
     return (
       <div className={SCREEN}>
         <LargeTitle title={name} {...BACK} oneLine />

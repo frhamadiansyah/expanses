@@ -9,10 +9,18 @@ import { INDONESIAN_BANKS } from '../coretax/banks';
  * form as issuer "BCA" and name "UnionPay"). Everything else is called by its own name alone:
  *  - a digital wallet or an electronic money card is called by its product (GoPay, Flazz), which already says whose
  *    it is; its institution, when one is typed, is the company behind it, not a word anyone calls it by;
- *  - a broker's cash is called by its broker, and a fund's or a bond's Held at is a name only, never a bank account's;
+ *  - a fund's or a bond's Held at is a name only, never a bank account's;
  *  - cash has no bank.
+ * A broker's cash (an RDN) is the one that goes by its bank alone: see `CUSTODIAN_NAMED_SUBTYPES`.
  */
 export const BANK_NAMED_SUBTYPES: readonly string[] = ['bank', 'savings', 'time_deposit', 'credit_card'];
+
+/**
+ * A broker's cash account (an RDN) has two names (owner, 25 Nov): its name is the broker's ("Mirae Sekuritas"), and its
+ * Nama institusi is the custodian bank the money sits at ("CIMB Niaga"). Where money is listed it is called by that
+ * bank alone; where a broker is meant — a stock's Broker, Investments, a holding's tax line — by its name.
+ */
+export const CUSTODIAN_NAMED_SUBTYPES: readonly string[] = ['fund'];
 
 /**
  * The entry on the bank list a stored bank is, however it was written: its full name or a short one ("Bank Central
@@ -65,9 +73,13 @@ export function opensWithBankName(name: string, bank: string): boolean {
  * The name an account is shown by. `bank` is the account's bank as stored (null or empty for none). A name that
  * already starts with its bank — "Mandiri Xpresi", "mandiri xpresi", "BCA Tahapan" at Bank Central Asia, an older
  * card saved whole as "BCA KrisFlyer" — is shown as typed, so the bank is never said twice.
+ *
+ * A broker's cash with its custodian bank named is shown as that bank, as written ("CIMB Niaga"), and a pocket of it as
+ * the bank and the pocket's currency ("CIMB Niaga · USD"); with none named, as its broker.
  */
-export function accountDisplayName(account: { name: string; subtype: string; bank?: string | null }): string {
+export function accountDisplayName(account: { name: string; subtype: string; bank?: string | null; parentId?: string | null; currency?: string | null }): string {
   const bank = account.bank?.trim();
+  if (bank && CUSTODIAN_NAMED_SUBTYPES.includes(account.subtype)) return account.parentId && account.currency ? `${bank} · ${account.currency}` : bank;
   if (!bank || !BANK_NAMED_SUBTYPES.includes(account.subtype)) return account.name;
   const name = account.name.trim();
   if (bankNameWords(bank).some((word) => opensWith(name, word))) return account.name;

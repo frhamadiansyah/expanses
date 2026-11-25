@@ -32,15 +32,17 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
 
   await page.goto('/net-worth/assets');
   await openDrawers(page);
-  await page.getByRole('link', { name: /^Stockbit Sekuritas/ }).first().click();
-  await expect(page.getByRole('heading', { name: 'Stockbit Sekuritas' })).toBeVisible();
+  // Among money it is the bank its cash is at; its page says the broker under the balance.
+  await page.getByRole('link', { name: /^CIMB Niaga/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'CIMB Niaga' })).toBeVisible();
   await showBalance(page);
-  await expect(page.getByTestId('balance-card')).toContainText('Custodian · CIMB Niaga');
+  await expect(page.getByTestId('balance-card')).toContainText('Broker · Stockbit Sekuritas');
+  await expect(page.getByText('Held at Stockbit Sekuritas', { exact: true })).toBeVisible();
   const held = page.getByTestId('broker-holding');
   await expect(held).toHaveCount(1);
   await expect(held).toContainText('BBRI');
   await expect(held).toContainText('5 lots');
-  // The broker is the title and the RDN bank is on the card, so Details doesn't say them again.
+  // The RDN bank is the title and the broker is on the card, so Details doesn't say them again.
   await expect(page.locator('section').filter({ hasText: 'Details' }).filter({ hasText: 'Custodian' })).toHaveCount(0);
 
   await held.click();
@@ -55,12 +57,13 @@ test('a fund account names its broker and its RDN bank, lists what the broker ke
   await expect(page.getByRole('main')).toContainText('CIMB Niaga');
   // Custodian taps through to the broker's own Settings, where its bank is named.
   await page.getByRole('button', { name: /Custodian/ }).click();
-  await expect(page.getByLabel('Bank or institution')).toHaveValue('CIMB Niaga');
+  await expect(page.getByLabel('Custodian bank', { exact: true })).toHaveValue('CIMB Niaga');
+  await expect(page.getByLabel('Broker', { exact: true })).toHaveValue('Stockbit Sekuritas');
 });
 
-test('a fund account opened by a walk is called by the broker it names', async ({ page }) => {
+test('a fund account opened by a walk is listed by its custodian bank, its broker under the balance', async ({ page }) => {
   await openAccount(page, { subtype: 'fund', name: 'Mirae Asset Sekuritas', bank: 'Bank Central Asia', balance: '1000000' });
-  await page.getByRole('link', { name: /^Mirae Asset Sekuritas/ }).first().click();
+  await page.getByRole('link', { name: /^Bank Central Asia/ }).first().click();
   await showBalance(page);
-  await expect(page.getByTestId('balance-card')).toContainText('Custodian · Bank Central Asia');
+  await expect(page.getByTestId('balance-card')).toContainText('Broker · Mirae Asset Sekuritas');
 });

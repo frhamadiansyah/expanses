@@ -1,4 +1,4 @@
-import { type AccountKind, BANK_NAMED_SUBTYPES, currencyInfo, openingBalanceLines, uuidv7 } from '@expanses/core';
+import { type AccountKind, BANK_NAMED_SUBTYPES, currencyInfo, CUSTODIAN_NAMED_SUBTYPES, openingBalanceLines, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -25,7 +25,8 @@ export type AccountRow = typeof accounts.$inferSelect & {
   /**
    * The bank an account at a bank is called by with its name ("Mandiri" in "Mandiri Xpresi"): the tax report's Nama
    * institusi as stored, for a current or saving account and a time deposit, and a credit card's issuer
-   * (`BANK_NAMED_SUBTYPES`); null for anything else, and for one with no bank named. An account with pockets keeps its bank on its pockets' profiles, so
+   * (`BANK_NAMED_SUBTYPES`), and a broker's cash's custodian bank (`CUSTODIAN_NAMED_SUBTYPES`, which it is shown by alone);
+   * null for anything else, and for one with no bank named. An account with pockets keeps its bank on its pockets' profiles, so
    * the account and every pocket read the first pocket's that names one. Filled by `listAccounts`, as `forSpending` is;
    * a screen prints it through `accountDisplayName` and never stores it in a name.
    */
@@ -36,6 +37,12 @@ export type AccountRow = typeof accounts.$inferSelect & {
    * Absent on a row straight from the database, whose `name` is the typed one.
    */
   typedName?: string;
+  /**
+   * What tells this account apart from another shown by the same name: two brokers' cash at one custodian bank both
+   * read "CIMB Niaga", so each carries its broker here, for the line under the name. Set by the app's account lists
+   * (`shownAccounts`) and only then; absent everywhere else.
+   */
+  tellApart?: string;
 };
 
 /** One row's "For spending" switch as stored: 0 off, anything else (1, or none at all) on. */
@@ -174,7 +181,8 @@ export async function listAccounts(
     .then(async (rows) => {
       const off = await spendingOffIdsTx(database.db, ws);
       const own = (id: string) => ({ forSpending: off.has(id) ? 0 : 1 });
-      const banks = await accountBanksTx(database.db, rows.filter((row) => row.kind !== 'income' && row.kind !== 'expense' && BANK_NAMED_SUBTYPES.includes(row.subtype)).map((row) => row.id));
+      const named = (row: (typeof rows)[number]) => BANK_NAMED_SUBTYPES.includes(row.subtype) || CUSTODIAN_NAMED_SUBTYPES.includes(row.subtype);
+      const banks = await accountBanksTx(database.db, rows.filter((row) => row.kind !== 'income' && row.kind !== 'expense' && named(row)).map((row) => row.id), { custodians: true });
       // A pocket reads the answer, its own switch and its account's together, so a pay-from list needs no parent.
       return rows.map((row) => ({
         ...row,
@@ -189,8 +197,12 @@ export async function listAccounts(
  * other kind, or with no bank named, is not in the map. A credit card's is its issuer (card_identity). A money
  * account and its pockets read one bank: the account's own profile's Nama institusi, else its first pocket's that
  * names one — so "Mandiri Xpresi" and "Mandiri Xpresi · USD" never disagree.
+ *
+ * With `custodians`, a broker's cash is read the same way, its Nama institusi being the custodian bank it is shown by
+ * where money is listed (`CUSTODIAN_NAMED_SUBTYPES`). Only the lists a screen reads ask for it: capture and the shared
+ * summaries keep reading banks alone.
  */
-export async function accountBanksTx(tx: Db, ids: readonly string[]): Promise<Map<string, string>> {
+export async function accountBanksTx(tx: Db, ids: readonly string[], opts: { custodians?: boolean } = {}): Promise<Map<string, string>> {
   const banks = new Map<string, string>();
   if (ids.length === 0) return banks;
   const listOf = (values: readonly string[]) => sql.join(values.map((value) => sql`${value}`), sql`, `);
@@ -200,7 +212,9 @@ export async function accountBanksTx(tx: Db, ids: readonly string[]): Promise<Ma
     const issuers = await tx.values<[string, string | null]>(sql`SELECT account_id, issuer FROM card_identity WHERE account_id IN (${listOf(cards)})`);
     for (const [id, issuer] of issuers) if (issuer?.trim()) banks.set(id, issuer.trim());
   }
-  const held = rows.filter(([, , kind, subtype]) => kind === 'asset' && subtype !== 'credit_card' && BANK_NAMED_SUBTYPES.includes(subtype));
+  const held = rows.filter(
+    ([, , kind, subtype]) => kind === 'asset' && subtype !== 'credit_card' && (BANK_NAMED_SUBTYPES.includes(subtype) || (opts.custodians === true && CUSTODIAN_NAMED_SUBTYPES.includes(subtype))),
+  );
   const groups = [...new Set(held.map(([id, parentId]) => parentId ?? id))];
   if (groups.length === 0) return banks;
   // The accounts' own profiles and their pockets', pockets in their account's order.

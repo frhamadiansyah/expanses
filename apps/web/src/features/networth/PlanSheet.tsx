@@ -10,6 +10,7 @@ import { DestructiveRow, InsetGroup, InsetRow, ReadOnlyRow, SelectRow, SwitchRow
 import { useGoals } from '../goals/queries';
 import { planFigure } from './monthly-plans';
 import { typedAmount } from './trade-form';
+import { accountChoiceName } from '../../lib/account-name';
 
 /** A day every month has. */
 const DAYS = Array.from({ length: 28 }, (_, i) => i + 1);
@@ -172,7 +173,7 @@ function PlanForm({
           <option value="">Choose an account</option>
           {cashAccounts.map((account) => (
             <option key={account.id} value={account.id}>
-              {account.name}
+              {accountChoiceName(account)}
             </option>
           ))}
         </SelectRow>

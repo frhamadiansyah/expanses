@@ -82,9 +82,12 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
     if (value.mode === 'derived') {
       if (balanceMinor <= 0) continue;
       // No code chosen: the kind of account decides it — a wallet files under 0105, a deposit under 0104.
+      // A broker's cash (an RDN) is the custodian bank's account in the owner's name: called by that bank, as every
+      // list of money calls it (owner, 25 Nov). With no bank named, by its broker as before.
+      const custodian = subtypeOf.get(value.accountId) === 'fund' ? fields.inst?.trim() : undefined;
       inputs.cash.push({
         accountId: value.accountId,
-        name: value.name,
+        name: custodian ? `${custodian} (RDN)` : value.name,
         code: code ?? cashCodeForSubtype(subtypeOf.get(value.accountId) ?? 'bank'),
         balanceMinor,
         currency: value.currency,
