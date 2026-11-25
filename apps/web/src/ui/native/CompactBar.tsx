@@ -70,6 +70,7 @@ export function CompactBar({
   backTo,
   backParams,
   backSearch,
+  backReplace,
   actions,
   overflow,
 }: {
@@ -79,6 +80,7 @@ export function CompactBar({
   backTo?: LinkProps['to'];
   backParams?: LinkProps['params'];
   backSearch?: LinkProps['search'];
+  backReplace?: boolean;
   actions: CornerAction[];
   overflow: CornerAction[];
 }) {
@@ -113,7 +115,7 @@ export function CompactBar({
         <div className="flex flex-1 items-center">
           {back &&
             (backTo ? (
-              <Link to={backTo} params={backParams} search={backSearch} tabIndex={-1} className={plain}>
+              <Link to={backTo} params={backParams} search={backSearch} replace={backReplace} tabIndex={-1} className={plain}>
                 <ChevronLeft size={24} aria-hidden />
               </Link>
             ) : (
