@@ -1,4 +1,4 @@
-import { monthName } from '@expanses/core';
+import { dayMonth, monthName } from '@expanses/core';
 import type { BillChoice } from '@expanses/db';
 import type { SplitBill, SplitRow } from './tx-form';
 
@@ -7,9 +7,9 @@ import type { SplitBill, SplitRow } from './tx-form';
  * Bill row. These are its rules, kept off the screen so they can be read and tested on their own.
  */
 
-/** "Mobile phone · Nov": a bill and its month, as a part names it. */
+/** "Mobile phone · Nov": a bill and its month, as a part names it; a bill by weeks by its day, "Electricity · 24 Nov". */
 export function billLabel(bill: Pick<SplitBill, 'billMonth'> & { name: string }): string {
-  return `${bill.name} · ${monthName(bill.billMonth, 'short')}`;
+  return `${bill.name} · ${bill.billMonth.length === 10 ? dayMonth(bill.billMonth) : monthName(bill.billMonth, 'short')}`;
 }
 
 const same = (a: Pick<SplitBill, 'templateId' | 'billMonth'>, b: Pick<SplitBill, 'templateId' | 'billMonth'>) => a.templateId === b.templateId && a.billMonth === b.billMonth;

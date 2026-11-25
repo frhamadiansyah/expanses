@@ -1,4 +1,4 @@
-import { billPill, type BillTone, convertMinor, dayMonth, minorToMajorString, monthName, monthYear, periodMonthOf, thisBillMonth } from '@expanses/core';
+import { BILL_DUE_SOON_DAYS, billPill, type BillTone, convertMinor, dayMonth, daysFrom, minorToMajorString, monthName, monthYear, periodMonthOf, thisBillMonth, weeklyMonthlyMinor } from '@expanses/core';
 import type { BookMoney, MemberPayer, MonthlyBill, PurchasePayer } from '@expanses/db';
 import type { Tone } from '../../ui/native/row';
 import { payerLine } from '../sharing/sharing-copy';
@@ -191,6 +191,8 @@ export function billAccountName(
 
 /** An older month's bill still owed is named by its month: older than this month's bill (`thisBillMonth`, "Month starts on"). */
 export function sublineOf(bill: MonthlyBill, accountName: string, today: string, monthStart = 1): string {
+  // A bill by weeks is keyed by its day, not a month: the day it is due is under its amount already.
+  if (bill.repeat === 'weeks') return accountName;
   return bill.billMonth < thisBillMonth(today, bill.dayOfMonth, monthStart) ? `${monthName(bill.billMonth, 'short')} bill · ${accountName}` : accountName;
 }
 
@@ -277,4 +279,35 @@ export function paidText(names: readonly string[]): string {
 /** The toast after a skip. Last month's or next month's bill is named, so the skip is not mistaken for this month's. */
 export function skippedText(name: string, month: string, today: string, thisMonth: string = today.slice(0, 7)): string {
   return month === thisMonth ? `Skipped ${name} this month` : `Skipped ${name}’s ${monthName(month, 'long')} bill`;
+}
+
+/* ---------------------------------------------- bills by weeks (2026-11-25) ---------------------------------------------- */
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** "Tue, 15 Dec": a weekly bill's date as its list names it. */
+export function weekdayDayMonth(date: string): string {
+  const day = new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)))).getUTCDay();
+  return `${WEEKDAYS[day]}, ${dayMonth(date)}`;
+}
+
+/** "3 weeks", or "1 week". */
+export const weeksWords = (n: number) => (n === 1 ? '1 week' : `${n} weeks`);
+
+/** Where a weekly bill's next due date stands on `today`: "Due · in 20 days", "Due today", "Overdue · 3 days". */
+export function weeklyDueWords(nextDue: string, today: string): { text: string; tone: Tone } {
+  const days = daysFrom(today, nextDue);
+  const plural = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
+  if (days < 0) return { text: `Overdue · ${plural(-days)}`, tone: 'alarm' };
+  if (days === 0) return { text: 'Due today', tone: 'warn' };
+  return { text: `Due · in ${plural(days)}`, tone: days <= BILL_DUE_SOON_DAYS ? 'warn' : 'ink-3' };
+}
+
+/**
+ * The line under a weekly bill's amount: "≈ Rp 1.448.000 a month · next 15 Dec" ("Amount varies · next 15 Dec"), or once
+ * that day has passed unpaid, "… · overdue since 15 Dec".
+ */
+export function weeklyHeroLine(amountMinor: number | null, everyWeeks: number, nextDue: string, money: (minor: number) => string, today: string): string {
+  const next = nextDue < today ? `overdue since ${dayMonth(nextDue)}` : `next ${dayMonth(nextDue)}`;
+  return amountMinor === null ? `Amount varies · ${next}` : `≈ ${money(weeklyMonthlyMinor(amountMinor, everyWeeks))} a month · ${next}`;
 }

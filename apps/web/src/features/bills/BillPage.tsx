@@ -1,8 +1,8 @@
-import { type BillWindow, dayMonth, formatMinor, isoDate, monthName, ordinal, periodicRepeat, yearlyRepeat } from '@expanses/core';
-import { paymentBills, RecurringError, resumeBill, skipBill, undoBillPayments, unlinkPurchaseFromBill, unskipBill } from '@expanses/db';
+import { type BillWindow, dayMonth, formatMinor, isoDate, monthName, ordinal, periodicRepeat, weeklyRepeat, yearlyRepeat } from '@expanses/core';
+import { type BillHistoryRow, paymentBills, RecurringError, resumeBill, skipBill, undoBillPayments, unlinkPurchaseFromBill, unskipBill, type WeeklySchedule } from '@expanses/db';
 import { undoPaymentQuestion } from './undo-payment';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Check, Pause, Pencil, Play, SkipForward } from 'lucide-react';
+import { Check, Circle, Pause, Pencil, Play, SkipForward } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -11,9 +11,9 @@ import { useFrom, useFromTransaction } from '../../app/from-search';
 import { moneyHolders, useAccounts, useInvalidateAll, useMemberPayers } from '../../lib/queries';
 import { cx, ErrorBox, Money } from '../../ui';
 import { UndoToast } from '../../ui/UndoToast';
-import { ActionButtons, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN } from '../../ui/native';
+import { ActionButtons, type GroupChild, InsetGroup, InsetRow, LargeTitle, Panel, PushedTitle, ReadOnlyRow, type RoundAction, SCREEN, toneClass } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { billCurrencyOf, heroLineOf, pillOf } from './bill-view';
+import { billCurrencyOf, heroLineOf, pillOf, weekdayDayMonth, weeklyDueWords, weeklyHeroLine, weeksWords } from './bill-view';
 import { usePaidFromLabels } from './PaidFromSheet';
 import { PauseSheet } from './PauseSheet';
 import { PaySheet } from './PaySheet';
@@ -96,6 +96,8 @@ export function BillPage({ billId }: { billId: string }) {
   if (!detail.data) return <ErrorBox error={detail.error} />;
 
   const { bill, history, bookName } = detail.data;
+  // A bill by weeks (2026-11-25): its own hero line and list of dates; no months to skip or pause.
+  const weeks = detail.data.weeks ?? null;
   const account = accounts.find((a) => a.id === bill.moneyAccountId);
   const currency = billCurrencyOf(bill, accounts, ws.baseCurrency);
   const hero = heroLineOf(bill, windowLine(bill.window));
@@ -132,7 +134,12 @@ export function BillPage({ billId }: { billId: string }) {
     }
   }
 
-  const actions: RoundAction[] = [
+  const actions: RoundAction[] = weeks
+    ? [
+        { key: 'pay', label: 'Pay', glyph: <Check size={20} aria-hidden />, run: () => setPaying(true) },
+        { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, to: '/bills/$billId/edit', params: { billId } },
+      ]
+    : [
     ...(actMonth
       ? [
           { key: 'pay', label: payLabel, glyph: <Check size={20} aria-hidden />, run: () => setPaying(true) },
@@ -159,14 +166,22 @@ export function BillPage({ billId }: { billId: string }) {
         <div className="flex items-center gap-[10px]">
           <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="row" />
           <p className="flex-1 text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">
-            {monthName(bill.billMonth, 'long')}
-            {bill.repeat !== 'monthly' && ` ${bill.billMonth.slice(0, 4)}`} bill
+            {weeks ? (
+              weeklyRepeat(weeks.everyWeeks)
+            ) : (
+              <>
+                {monthName(bill.billMonth, 'long')}
+                {bill.repeat !== 'monthly' && ` ${bill.billMonth.slice(0, 4)}`} bill
+              </>
+            )}
           </p>
         </div>
         {bill.amountMinor !== null ? (
           <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
             <Money minor={bill.amountMinor} currency={currency} />
           </p>
+        ) : weeks ? (
+          <p className="text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink-3)]">Amount varies</p>
         ) : (
           <p className="text-[26px] leading-[32px] font-bold tracking-[-0.02em] text-[var(--ph-ink-3)]">
             Amount varies
@@ -177,11 +192,17 @@ export function BillPage({ billId }: { billId: string }) {
             )}
           </p>
         )}
-        <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="bill-status">
-          {hero.lead && <span className={hero.tone === 'alarm' ? 'text-[var(--ph-alarm)]' : hero.tone === 'warn' ? 'text-[var(--ph-warn)]' : undefined}>{hero.lead}</span>}
-          {hero.lead && ' · '}
-          {hero.rest}
-        </p>
+        {weeks ? (
+          <p className="tabular text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="bill-status">
+            {weeklyHeroLine(bill.amountMinor, weeks.everyWeeks, weeks.nextDue, (minor) => formatMinor(minor, currency), today)}
+          </p>
+        ) : (
+          <p className="text-[13px] leading-[18px] text-[var(--ph-ink-3)]" data-testid="bill-status">
+            {hero.lead && <span className={hero.tone === 'alarm' ? 'text-[var(--ph-alarm)]' : hero.tone === 'warn' ? 'text-[var(--ph-warn)]' : undefined}>{hero.lead}</span>}
+            {hero.lead && ' · '}
+            {hero.rest}
+          </p>
+        )}
       </Panel>
 
       {justPaid && paidMonth && (
@@ -189,7 +210,7 @@ export function BillPage({ billId }: { billId: string }) {
           testId="just-paid"
           icon="paid"
           text={`Paid ${formatMinor(justPaid.amountMinor, currency)}`}
-          detail={`${justPaid.month !== bill.billMonth ? `${monthName(justPaid.month, 'long')} bill · ` : ''}${dayMonth(justPaid.paidOn)}`}
+          detail={weeks ? dayMonth(justPaid.paidOn) : `${justPaid.month !== bill.billMonth ? `${monthName(justPaid.month, 'long')} bill · ` : ''}${dayMonth(justPaid.paidOn)}`}
           onUndo={() => void undo()}
           onDone={() => setJustPaid(null)}
         />
@@ -201,7 +222,9 @@ export function BillPage({ billId }: { billId: string }) {
         <ReadOnlyRow
           label="Repeats"
           value={
-            bill.repeat === 'yearly'
+            weeks
+              ? weeklyRepeat(weeks.everyWeeks)
+              : bill.repeat === 'yearly'
               ? yearlyRepeat(bill.repeatMonth!, bill.dayOfMonth)
               : bill.repeat === 'months'
                 ? periodicRepeat(bill.repeatEvery!, bill.repeatMonth!, bill.dayOfMonth)
@@ -210,7 +233,7 @@ export function BillPage({ billId }: { billId: string }) {
         />
         {/* A yearly or every-few-months bill has the one date, the day it is due by. */}
         {bill.repeat === 'monthly' && <ReadOnlyRow label="Out on" value={`The ${ordinal(bill.dayOfMonth)}`} />}
-        <ReadOnlyRow
+        {!weeks && <ReadOnlyRow
           label="Due by"
           value={
             bill.repeat !== 'monthly'
@@ -219,7 +242,7 @@ export function BillPage({ billId }: { billId: string }) {
                 ? 'The bill date'
                 : `The ${ordinal(bill.payByDay)}`
           }
-        />
+        />}
         {bill.currency ? <ReadOnlyRow label="Currency" value={bill.currency} /> : null}
         <ReadOnlyRow label="Paid from" value={account ? paidName(account) : (memberPayers?.get(bill.moneyAccountId)?.name ?? '')} />
         <ReadOnlyRow label="Category" value={category?.name ?? ''} />
@@ -228,8 +251,26 @@ export function BillPage({ billId }: { billId: string }) {
 
       {bill.repeat !== 'monthly' && fund && <SinkingFundGroup fund={fund} />}
 
+      {weeks && (
+        <WeeklyDates
+          weeks={weeks}
+          history={history}
+          amountMinor={bill.amountMinor ?? bill.estimateMinor}
+          currency={currency}
+          today={today}
+          all={allHistory}
+          freshMonth={paidMonth?.month ?? null}
+          onAll={() => setAllHistory(true)}
+          accountName={(row) => {
+            const paidFrom = accounts.find((a) => a.id === row.paidFromAccountId);
+            return paidFrom ? paidName(paidFrom) : '';
+          }}
+          onOpen={(row) => setPaidOpen({ title: `${bill.name} · ${weekdayDayMonth(row.paidOn!)}`, month: row.month, payments: row.payments })}
+        />
+      )}
+
       {/* Nothing to show until a month has been paid, skipped or paused: no empty group, no placeholder. */}
-      {(history.some((row) => row.state === 'paid' || row.state === 'skipped' || row.state === 'paused') || (earlier?.months.length ?? 0) > 0) && (
+      {!weeks && (history.some((row) => row.state === 'paid' || row.state === 'skipped' || row.state === 'paused') || (earlier?.months.length ?? 0) > 0) && (
       <div data-testid="bill-history">
         <InsetGroup header="History">
           {[
@@ -413,6 +454,89 @@ function HistoryRow({ position, fresh, title, value, onOpen }: GroupChild & { fr
     // The wash sits on the wrapper: the row draws itself on a transparent ground, which would win over it.
     <div data-new={fresh} className={cx(fresh && 'bg-[var(--ph-tint-panel)]')}>
       <InsetRow position={position} title={title} value={value} valueTone="ink-2" onClick={onOpen} />
+    </div>
+  );
+}
+
+/**
+ * A bill by weeks' dates, newest first (owner's mockup, 25 Nov 2026): the one after next ("3 weeks after 15 Dec"), the
+ * next one and how far it is, then every payment, ticked, with the account that paid it. A payment opens to be opened,
+ * unlinked or undone, as a paid month does.
+ */
+function WeeklyDates({
+  weeks,
+  history,
+  amountMinor,
+  currency,
+  today,
+  all,
+  freshMonth,
+  onAll,
+  accountName,
+  onOpen,
+}: {
+  weeks: WeeklySchedule;
+  history: BillHistoryRow[];
+  amountMinor: number | null;
+  currency: string;
+  today: string;
+  all: boolean;
+  freshMonth: string | null;
+  onAll: () => void;
+  accountName: (row: BillHistoryRow) => string;
+  onOpen: (row: BillHistoryRow) => void;
+}) {
+  const due = weeklyDueWords(weeks.nextDue, today);
+  const expected = amountMinor === null ? undefined : <Money minor={amountMinor} currency={currency} />;
+  const paid = all ? history : history.filter((row, index) => index < HISTORY_SHOWN || row.month === freshMonth);
+  return (
+    <div data-testid="bill-dates">
+      <InsetGroup header="Dates">
+        {[
+          <InsetRow
+            key="after"
+            testId="bill-date-after"
+            icon={<Circle size={14} aria-hidden />}
+            title={weekdayDayMonth(weeks.afterNext)}
+            subtitle={`${weeksWords(weeks.everyWeeks)} after ${dayMonth(weeks.nextDue)}`}
+            value={expected}
+            chevron={false}
+          />,
+          <InsetRow
+            key="next"
+            testId="bill-date-next"
+            icon={<Circle size={14} aria-hidden />}
+            title={weekdayDayMonth(weeks.nextDue)}
+            subtitle={<span className={toneClass(due.tone)}>{due.text}</span>}
+            value={expected}
+            valueTone="ink"
+            chevron={false}
+          />,
+          ...paid.map((row) => (
+            <PaidDateRow key={row.month} fresh={freshMonth === row.month} row={row} accountName={accountName(row)} currency={currency} onOpen={() => onOpen(row)} />
+          )),
+          ...(history.length > paid.length ? [<InsetRow key="all" title="See all" label="See all" action onClick={onAll} />] : []),
+        ]}
+      </InsetGroup>
+    </div>
+  );
+}
+
+/** A payment of a bill by weeks: ticked, on its day, with what paid it. Just paid, it is washed in the tint as a fresh month is. */
+function PaidDateRow({ position, fresh, row, accountName, currency, onOpen }: GroupChild & { fresh: boolean; row: BillHistoryRow; accountName: string; currency: string; onOpen: () => void }) {
+  return (
+    <div data-new={fresh} className={cx(fresh && 'bg-[var(--ph-tint-panel)]')}>
+      <InsetRow
+        position={position}
+        testId="bill-date-paid"
+        icon={<Check size={15} strokeWidth={2.5} aria-hidden />}
+        iconColour="var(--ph-up-ink)"
+        title={weekdayDayMonth(row.paidOn!)}
+        subtitle={['Paid', accountName].filter(Boolean).join(' · ')}
+        value={<Money minor={row.paidMinor ?? 0} currency={row.paidCurrency ?? currency} />}
+        valueTone="ink-2"
+        onClick={onOpen}
+      />
     </div>
   );
 }

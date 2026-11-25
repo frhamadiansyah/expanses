@@ -53,7 +53,8 @@ export function thisBillMonth(today: string, outDay: number, startDay: MonthStar
   return startDay === 1 ? monthOf(today) : billMonthIn(periodMonthOf(today, startDay), outDay, startDay);
 }
 
-export type BillRepeat = 'monthly' | 'yearly' | 'months';
+/** 'weeks' (2026-11-25): every few weeks, counted from the latest payment (`bills/weeks.ts`). */
+export type BillRepeat = 'monthly' | 'yearly' | 'months' | 'weeks';
 
 /**
  * Whether a bill repeats less often than every month — "not monthly" (owner, 2026-11-18): once a year, or every 2 months

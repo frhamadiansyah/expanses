@@ -29,6 +29,14 @@ import {
   type MonthStartDay,
   uuidv7,
   yearlyListed,
+  BILL_DAY_KEY,
+  isWeeksEvery,
+  monthPeriod,
+  periodMonthOf,
+  weeklyDueDatesBetween,
+  weeklyNextDue,
+  weeklyStartOn,
+  addDaysIso,
 } from '@expanses/core';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -37,7 +45,8 @@ import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPauses, billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { billCurrencies, writeBillCurrency } from './bill-currency';
-import { type BillRepeatFacts, billRepeats, writeBillRepeat } from './bill-repeat';
+import { type BillRepeatFacts, billRepeatEveryExists, billRepeats, writeBillRepeat } from './bill-repeat';
+import { phonesBehindWeeklyBills } from '../sync/weekly-bills';
 import { fundRoom, fundShortMessage } from './sinking-actions';
 import { dropSinkingFund, getSinkingFund, moveSinkingFund, type SinkingFundRow, setSinkingCustom, writeSinkingFund, writeSinkingOpening, writeSinkingPlan } from './sinking-funds';
 import { sinkingFactsOf } from './sinking-views';
@@ -80,12 +89,13 @@ export interface ExpenseTemplateRow {
   currency: string | null;
   /**
    * 'yearly' for a bill owed once a year, in `repeatMonth` (0099); 'months' for one owed every `repeatEvery` months from
-   * the month `repeatMonth` (0102); 'monthly' for every other bill.
+   * the month `repeatMonth` (0102); 'weeks' for one due every `repeatEvery` weeks, counted from its latest payment
+   * (2026-11-25, `weeklyNextDue` in core); 'monthly' for every other bill.
    */
-  repeat: 'monthly' | 'yearly' | 'months';
-  /** 1-12: the month of the year a yearly bill comes out, or an every-few-months bill's first month; null when monthly. */
+  repeat: 'monthly' | 'yearly' | 'months' | 'weeks';
+  /** 1-12: the month of the year a yearly bill comes out, or an every-few-months bill's first month; null when monthly or weekly. */
   repeatMonth: number | null;
-  /** 2-11: months between occurrences of an every-few-months bill; null otherwise. */
+  /** 2-11: months between occurrences of an every-few-months bill; 1-8: weeks between a weekly bill's; null otherwise. */
   repeatEvery: number | null;
 }
 
@@ -103,10 +113,15 @@ export interface SaveExpenseTemplateInput {
   /** The bill's own currency; null follows the payer. Absent leaves an edited bill's as it was (a new bill follows). */
   currency?: string | null;
   /** How often it comes out. Absent leaves an edited bill's as it was (a new bill is monthly). */
-  repeat?: 'monthly' | 'yearly' | 'months';
+  repeat?: 'monthly' | 'yearly' | 'months' | 'weeks';
+  /**
+   * YYYY-MM-DD: a weekly bill's start, the day it is first due (required with repeat 'weeks'). Kept as its window's first
+   * month and its day of the month, which it replaces: `dayOfMonth` is then this date's day.
+   */
+  startsOn?: string;
   /** 1-12: required for a yearly or every-few-months bill (for the latter, the month of its first occurrence). */
   repeatMonth?: number | null;
-  /** 2-11: required for an every-few-months bill. */
+  /** 2-11: required for an every-few-months bill; 1-8 (weeks) for a weekly one. */
   repeatEvery?: number | null;
   /**
    * A yearly bill's sinking fund (0101): the account it is set aside in and the monthly figure (worked out from the
@@ -238,6 +253,12 @@ async function planFund(
 
 /** Adds or edits a recurring bill. */
 export async function saveExpenseTemplate(database: Database, ws: WorkspaceContext, input: SaveExpenseTemplateInput): Promise<string> {
+  if (input.repeat === 'weeks') {
+    if (!isWeeksEvery(input.repeatEvery)) throw new RecurringError('EVERY_RANGE', 'The weeks between must be a whole number from 1 to 8');
+    if (!(input.startsOn && BILL_DAY_KEY.test(input.startsOn))) throw new RecurringError('START_REQUIRED', 'Choose the day it starts');
+    // A weekly bill's start is kept as its first month and its day: the two fields every bill has. It has no pay-by day.
+    input = { ...input, dayOfMonth: Number(input.startsOn.slice(8, 10)), startsMonth: input.startsOn.slice(0, 7), payByDay: null };
+  }
   const name = input.name.trim();
   if (!name) throw new RecurringError('NAME_REQUIRED', 'A bill needs a name');
   if (!Number.isInteger(input.dayOfMonth) || input.dayOfMonth < 1 || input.dayOfMonth > 31) {
@@ -270,7 +291,7 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
   const id = input.id ?? uuidv7();
   // How it repeated before this save, so a change of repeat, month or day can move the first month it is owed for.
   const [before] = await database.db
-    .select({ dayOfMonth: expenseTemplates.dayOfMonth, amountMinor: expenseTemplates.amountMinor })
+    .select({ dayOfMonth: expenseTemplates.dayOfMonth, amountMinor: expenseTemplates.amountMinor, categoryAccountId: expenseTemplates.categoryAccountId })
     .from(expenseTemplates)
     .where(and(eq(expenseTemplates.id, id), eq(expenseTemplates.workspaceId, ws.workspaceId)));
   const beforeRepeat = (await billRepeats(database.db, ws)).get(id) ?? null;
@@ -282,11 +303,14 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
         ? { repeat: 'yearly', month: input.repeatMonth!, every: null }
         : input.repeat === 'months'
           ? { repeat: 'months', month: input.repeatMonth!, every: input.repeatEvery! }
-          : null;
+          : input.repeat === 'weeks'
+            ? { repeat: 'weeks', month: null, every: input.repeatEvery! }
+            : null;
   const yearlyMonth: number | null = repeatNow?.month ?? null;
   const sameRepeat = (repeatNow?.repeat ?? null) === (beforeRepeat?.repeat ?? null) && yearlyMonth === (beforeRepeat?.month ?? null) && (repeatNow?.every ?? null) === (beforeRepeat?.every ?? null);
   const today = isoDate();
-  const repeatChanged = Boolean(before) && (!sameRepeat || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth));
+  // A weekly bill saved with its start writes that start, whatever else changed: it is the one date it is counted from.
+  const repeatChanged = Boolean(before) && (!sameRepeat || (yearlyMonth !== null && before!.dayOfMonth !== input.dayOfMonth) || input.repeat === 'weeks');
   // The first occurrence on or after today, which an every-few-months bill counts its gaps from.
   const startsMonth = input.startsMonth ?? (yearlyMonth === null ? today.slice(0, 7) : nextOccurrenceMonth(today, yearlyMonth, input.dayOfMonth));
 
@@ -321,6 +345,16 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     const payer = await accountKind(tx, ws, input.moneyAccountId);
     if (payer !== 'asset' && payer !== 'liability') {
       throw new RecurringError('NOT_A_WALLET', 'A bill needs an account or a card to pay it');
+    }
+    // Every few weeks is a value an older build cannot read (WEEKLY_BILLS_MIN_APP_VERSION): a bill becomes weekly, or a
+    // weekly bill moves into a workspace, only while no other phone sharing that workspace is on one.
+    if (repeatNow?.repeat === 'weeks' && (beforeRepeat?.repeat !== 'weeks' || before?.categoryAccountId !== input.categoryAccountId)) {
+      if (!(await billRepeatEveryExists(tx))) throw new RecurringError('NO_WEEKS', 'This database cannot repeat a bill by weeks yet');
+      const owner = (await hasBooks(tx)) ? await bookOfCategory(tx, input.categoryAccountId) : null;
+      const behind = owner ? await phonesBehindWeeklyBills(tx, owner) : [];
+      if (behind.length > 0) {
+        throw new RecurringError('WEEKS_PHONES_BEHIND', `Update cicis on ${behind.join(' and ')} first: an older version cannot read a bill by weeks.`);
+      }
     }
 
     await withCapture(tx, [{ entity: 'bill', id }, { entity: 'bill_window', id }], async () => {
@@ -460,7 +494,21 @@ export async function committedByCategory(
       )
     : new Set<string>();
   const committed: Record<string, number> = {};
+  // A weekly bill (Budget D1, 2026-11-25) speaks for this month once for each of its due dates inside the month's dates:
+  // 1.000.000 every 3 weeks paid 3 and 24 Nov is 2.000.000 of November, and 1.000.000 of December (15 Dec).
+  const weekly = templates.filter((template) => template.repeat === 'weeks' && template.active && template.amountMinor !== null);
+  const weeklyFacts = weekly.length > 0 ? await billFacts(database, ws, weekly) : null;
+  const thisMonth = monthPeriod(periodMonthOf(today, startDay), startDay);
+  for (const template of weekly) {
+    const convert = template.currency ? (money.convertForeign ?? money.convert) : money.convert;
+    for (const due of weeklyDueDates(template, weeklyFacts!, thisMonth.from, thisMonth.to)) {
+      const amountMinor = convert(template.amountMinor!, template.currency ?? payers.get(template.moneyAccountId) ?? ws.baseCurrency, due);
+      if (amountMinor === null) continue;
+      committed[template.categoryAccountId] = (committed[template.categoryAccountId] ?? 0) + amountMinor;
+    }
+  }
   for (const template of templates) {
+    if (template.repeat === 'weeks') continue;
     if (!template.active || template.amountMinor === null || pausedNow.has(template.id)) continue;
     // A yearly or every-few-months bill is spoken for only in a month it comes out, and only once it has begun.
     const month = monthOfBillNow(template);
@@ -528,9 +576,22 @@ export interface BillHistoryRow {
 
 export interface BillDetail {
   bill: MonthlyBill;
+  /** Newest first. A weekly bill's is its payments, one row each, keyed by the day it was paid. */
   history: BillHistoryRow[];
   /** The workspace the bill's category is filed in; null on a database without books. */
   bookName: string | null;
+  /** A weekly bill's schedule (2026-11-25); absent for every other bill. */
+  weeks?: WeeklySchedule;
+}
+
+/** Where a weekly bill stands: its gap, its start, the next due date and the one after, and what it comes to a month. */
+export interface WeeklySchedule {
+  everyWeeks: number;
+  startOn: string;
+  /** N weeks after the latest payment; before any, the start (`weeklyNextDue`). */
+  nextDue: string;
+  /** N weeks after `nextDue`. */
+  afterNext: string;
 }
 
 interface PaymentFact {
@@ -729,6 +790,98 @@ function monthOfBill(template: ExpenseTemplateRow, facts: BillFacts, month: stri
 
 const paidMinorOf = (payment: PaymentFact | undefined) => (payment ? paidFigures(payment).paidMinor : null);
 
+/* ------------------------------------------------------------------------------------------------------------------
+ * Bills that repeat every few weeks (2026-11-25). Each payment is keyed by its own day, so a month holds as many as were
+ * made; the next one is due N weeks after the latest (core, bills/weeks.ts). None of the month machinery above — pay-by
+ * days, skips, pauses, owed months — applies to them.
+ * ------------------------------------------------------------------------------------------------------------------ */
+
+/** A weekly bill's start, gap and the days it was paid, as `weeklyNextDue` and `weeklyDueDatesBetween` read them. */
+function weeklyInputOf(template: ExpenseTemplateRow, facts: BillFacts) {
+  return {
+    startOn: weeklyStartOn(template.startsMonth, template.dayOfMonth),
+    everyWeeks: template.repeatEvery!,
+    paidOn: (facts.payments.get(template.id) ?? []).map((payment) => payment.occurredOn),
+  };
+}
+
+/** A weekly bill's due dates from `from` to `to`: the days it was paid, and the ones still to come. */
+function weeklyDueDates(template: ExpenseTemplateRow, facts: BillFacts, from: string, to: string): string[] {
+  return weeklyDueDatesBetween(weeklyInputOf(template, facts), from, to);
+}
+
+/** One day's window: a weekly bill is out and due the same day. */
+const dayWindow = (day: string): BillWindow => ({ month: day.slice(0, 7), opensOn: day, payBy: day });
+
+/** One payment of a weekly bill as a row of its history: paid, on its own day, keyed as it is kept. */
+function weeklyPaidRow(payment: PaymentFact): BillHistoryRow {
+  const paid = paidFigures(payment);
+  return {
+    month: payment.billMonth,
+    window: dayWindow(payment.occurredOn),
+    state: 'paid',
+    days: 0,
+    paidOn: payment.occurredOn,
+    ...paid,
+    paymentId: payment.transactionId,
+    paidFromAccountId: payment.payerAccountId,
+    payments: [{ id: payment.transactionId, paidMinor: paid.paidMinor, paidCurrency: paid.paidCurrency, linked: payment.linked }],
+  };
+}
+
+/** A due date of a weekly bill that has no payment: where it stands on `today`. */
+function weeklyDueRow(day: string, today: string): BillHistoryRow {
+  const window = dayWindow(day);
+  return { month: day, window, ...billStanding(window, today, null), paidOn: null, paidMinor: null, paidCurrency: null, chargedMinor: null, chargedCurrency: null, paymentId: null, paidFromAccountId: null, payments: [] };
+}
+
+/** A weekly bill's schedule on `today`. */
+function weeklyScheduleOf(template: ExpenseTemplateRow, facts: BillFacts): WeeklySchedule {
+  const input = weeklyInputOf(template, facts);
+  const nextDue = weeklyNextDue(input.startOn, input.everyWeeks, input.paidOn);
+  return { everyWeeks: input.everyWeeks, startOn: input.startOn, nextDue, afterNext: addDaysIso(nextDue, input.everyWeeks * 7) };
+}
+
+/**
+ * A weekly bill's row in the list: its next due date speaks for it (its key is that day). Once the next one falls after
+ * this month's end, the month is done with it: it reads as paid, for what the month's payments came to.
+ */
+function weeklyBillRow(template: ExpenseTemplateRow, facts: BillFacts, today: string): MonthlyBill {
+  const { nextDue } = weeklyScheduleOf(template, facts);
+  const thisMonth = periodMonthOf(today, facts.startDay);
+  const { from, to } = monthPeriod(thisMonth, facts.startDay);
+  const payments = facts.payments.get(template.id) ?? [];
+  const inMonth = payments.filter((payment) => payment.occurredOn >= from && payment.occurredOn <= to);
+  const done = nextDue > to && inMonth.length > 0;
+  const figures = inMonth.map(paidFigures);
+  // Added up when every payment is in the one money; else the latest one's figure, rather than two moneys added.
+  const oneMoney = figures.every((f) => f.paidCurrency === figures[0]?.paidCurrency && f.chargedCurrency === figures[0]?.chargedCurrency);
+  const total = (pick: (f: (typeof figures)[number]) => number | null) =>
+    figures.some((f) => pick(f) === null) ? null : figures.reduce((sum, f) => sum + pick(f)!, 0);
+  const latest = inMonth[0];
+  const window = dayWindow(nextDue);
+  return {
+    ...template,
+    billMonth: nextDue,
+    window,
+    ...(done ? { state: 'paid' as const, days: 0 } : billStanding(window, today, null)),
+    paidOn: done ? latest!.occurredOn : null,
+    paidMinor: done ? (oneMoney ? total((f) => f.paidMinor) : figures[0]!.paidMinor) : null,
+    paidCurrency: done ? figures[0]!.paidCurrency : null,
+    chargedMinor: done ? (oneMoney ? total((f) => f.chargedMinor) : figures[0]!.chargedMinor) : null,
+    chargedCurrency: done ? figures[0]!.chargedCurrency : null,
+    paymentId: done ? latest!.transactionId : null,
+    paidFromAccountId: done ? latest!.payerAccountId : null,
+    estimateMinor: template.amountMinor ?? paidMinorOf(payments[0]) ?? null,
+    payableMonths: [nextDue],
+    pausedUntil: null,
+    pauseFrom: thisMonth,
+  };
+}
+
+/** Whether a bill repeats every few weeks, by its row or by what `billRepeats` says of its id. */
+const isWeekly = (template: Pick<ExpenseTemplateRow, 'repeat'>) => template.repeat === 'weeks';
+
 function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string): MonthlyBill {
   const settled = settledOf(template, facts);
   const input = linkInput(template, facts, today);
@@ -754,13 +907,13 @@ function billRow(template: ExpenseTemplateRow, facts: BillFacts, today: string):
 export async function monthlyBills(database: Database, ws: WorkspaceContext, onDate: string): Promise<MonthlyBill[]> {
   // A yearly bill is owed only in its own month: the rest of the year it is not here (see `yearlyBills`), so no total,
   // budget or list that builds on this one counts it.
-  return (await allBills(database, ws, onDate)).filter((bill) => bill.repeat === 'monthly' || yearlyListed(bill, bill.window, onDate));
+  return (await allBills(database, ws, onDate)).filter((bill) => bill.repeat === 'monthly' || isWeekly(bill) || yearlyListed(bill, bill.window, onDate));
 }
 
 /** Every active yearly or every-few-months bill, listed or not, with its next occurrence: the page that keeps them reachable all year. */
 export async function yearlyBills(database: Database, ws: WorkspaceContext, onDate: string): Promise<MonthlyBill[]> {
   return (await allBills(database, ws, onDate))
-    .filter((bill) => bill.repeat !== 'monthly')
+    .filter((bill) => bill.repeat !== 'monthly' && !isWeekly(bill))
     .sort((a, b) => a.window.opensOn.localeCompare(b.window.opensOn) || a.name.localeCompare(b.name));
 }
 
@@ -768,7 +921,7 @@ async function allBills(database: Database, ws: WorkspaceContext, onDate: string
   const templates = (await listExpenseTemplates(database, ws)).filter((template) => template.active);
   const facts = await billFacts(database, ws, templates);
   return templates
-    .map((template) => billRow(template, facts, onDate))
+    .map((template) => (isWeekly(template) ? weeklyBillRow(template, facts, onDate) : billRow(template, facts, onDate)))
     .sort((a, b) => a.window.payBy.localeCompare(b.window.payBy) || a.name.localeCompare(b.name));
 }
 
@@ -797,18 +950,27 @@ export async function billsInMonth(
 ): Promise<BillMonthRow[]> {
   const startDay = opts.workspaceMonth ? await monthStartFor(database, ws) : 1;
   const billMonthOf = (template: ExpenseTemplateRow) => billMonthIn(month, template.dayOfMonth, startDay);
-  const templates = (await listExpenseTemplates(database, ws)).filter((template) => {
+  const live = (await listExpenseTemplates(database, ws)).filter((template) => template.active);
+  const templates = live.filter((template) => {
+    if (isWeekly(template)) return false;
     const own = billMonthOf(template);
-    return template.active && own >= template.startsMonth && isOwedMonth(own, template.repeatMonth, template.repeatEvery, template.startsMonth);
+    return own >= template.startsMonth && isOwedMonth(own, template.repeatMonth, template.repeatEvery, template.startsMonth);
   });
-  const facts = await billFacts(database, ws, templates);
-  return templates
-    .map((template) => ({
-      ...monthOfBill(template, facts, billMonthOf(template), today),
-      bill: template,
-      estimateMinor: template.amountMinor ?? paidMinorOf(facts.payments.get(template.id)?.[0]) ?? null,
-    }))
-    .sort((a, b) => a.window.payBy.localeCompare(b.window.payBy) || a.bill.name.localeCompare(b.bill.name));
+  const weekly = live.filter(isWeekly);
+  const facts = await billFacts(database, ws, [...templates, ...weekly]);
+  const estimateOf = (template: ExpenseTemplateRow) => template.amountMinor ?? paidMinorOf(facts.payments.get(template.id)?.[0]) ?? null;
+  // A weekly bill is in the month once for each of its due dates inside the month's dates: paid on that day, or not yet.
+  const { from, to } = monthPeriod(month, startDay);
+  const weeklyRows = weekly.flatMap((template) =>
+    weeklyDueDates(template, facts, from, to).map((day) => {
+      const payment = (facts.payments.get(template.id) ?? []).find((p) => p.occurredOn === day);
+      return { ...(payment ? weeklyPaidRow(payment) : weeklyDueRow(day, today)), bill: template, estimateMinor: estimateOf(template) };
+    }),
+  );
+  return [
+    ...templates.map((template) => ({ ...monthOfBill(template, facts, billMonthOf(template), today), bill: template, estimateMinor: estimateOf(template) })),
+    ...weeklyRows,
+  ].sort((a, b) => a.window.payBy.localeCompare(b.window.payBy) || a.bill.name.localeCompare(b.bill.name));
 }
 
 /** One bill with its months, newest first: every month paid or skipped, and every month since it was tracked. */
@@ -816,6 +978,11 @@ export async function billDetail(database: Database, ws: WorkspaceContext, templ
   const template = (await listExpenseTemplates(database, ws)).find((t) => t.id === templateId);
   if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
   const facts = await billFacts(database, ws, [template]);
+  if (isWeekly(template)) {
+    // Its payments, newest first, each on its own day; what is still to come is its schedule.
+    const history = (facts.payments.get(template.id) ?? []).map(weeklyPaidRow);
+    return { bill: weeklyBillRow(template, facts, onDate), history, bookName: await bookNameOf(database, ws, template), weeks: weeklyScheduleOf(template, facts) };
+  }
   // Paused months ahead are listed too, so the history says which months will not come.
   const yearlyMonth = template.repeatMonth;
   // A yearly bill has a month of history a year, never the eleven it was not owed in (a pause covers those too).
@@ -836,16 +1003,18 @@ export async function billDetail(database: Database, ws: WorkspaceContext, templ
     .slice(0, yearlyMonth === null ? 12 : 6)
     .map((month) => monthOfBill(template, facts, month, onDate));
 
-  let bookName: string | null = null;
-  if (await hasBooks(database.db)) {
-    const [row] = await database.db
-      .select({ name: books.name })
-      .from(bookCategories)
-      .innerJoin(books, eq(books.id, bookCategories.bookId))
-      .where(and(eq(bookCategories.workspaceId, ws.workspaceId), eq(bookCategories.categoryAccountId, template.categoryAccountId)));
-    bookName = row?.name ?? null;
-  }
-  return { bill: billRow(template, facts, onDate), history, bookName };
+  return { bill: billRow(template, facts, onDate), history, bookName: await bookNameOf(database, ws, template) };
+}
+
+/** The workspace a bill's category is filed in; null on a database without books. */
+async function bookNameOf(database: Database, ws: WorkspaceContext, template: ExpenseTemplateRow): Promise<string | null> {
+  if (!(await hasBooks(database.db))) return null;
+  const [row] = await database.db
+    .select({ name: books.name })
+    .from(bookCategories)
+    .innerJoin(books, eq(books.id, bookCategories.bookId))
+    .where(and(eq(bookCategories.workspaceId, ws.workspaceId), eq(bookCategories.categoryAccountId, template.categoryAccountId)));
+  return row?.name ?? null;
 }
 
 /** Bills that are out and unpaid on `onDate`: overdue, due soon, or open. */
@@ -855,6 +1024,8 @@ export async function dueExpenseTemplates(database: Database, ws: WorkspaceConte
 
 /** Marks this month's bill as deliberately unpaid, so it stops being owed. Skipping twice changes nothing. */
 export async function skipBill(database: Database, ws: WorkspaceContext, templateId: string, month: string): Promise<void> {
+  // A weekly bill has no month to skip: its next one waits for the next payment.
+  if ((await billRepeats(database.db, ws)).get(templateId)?.repeat === 'weeks') throw new RecurringError('WEEKS_NO_SKIP', 'A bill by weeks is not skipped: its next one waits for the next payment');
   await database.transaction((tx) =>
     withCapture(tx, { entity: 'bill_skip', id: `${templateId}|${month}` }, () =>
       tx
@@ -883,6 +1054,7 @@ export async function pauseBill(database: Database, ws: WorkspaceContext, templa
   if (!(await billPausesExist(database.db))) throw new RecurringError('NO_PAUSES', 'This database cannot pause a bill yet');
   const template = (await listExpenseTemplates(database, ws)).find((t) => t.id === templateId);
   if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
+  if (isWeekly(template)) throw new RecurringError('WEEKS_NO_PAUSE', 'A bill by weeks is not paused: its next one waits for the next payment');
   const facts = await billFacts(database, ws, [template]);
   const months = pausedMonths(pauseStart(today, settledOf(template, facts), thisBillMonth(today, template.dayOfMonth, facts.startDay)), until);
   if (months.length === 0) throw new RecurringError('PAUSE_RANGE', 'A bill comes back after the months it is paused for');
@@ -949,6 +1121,22 @@ export interface BillPaymentInput {
   payCardFromFund?: boolean;
 }
 
+/**
+ * The key a payment of a bill is kept under: a weekly bill's is the day it was paid (`paidOn`), whatever the screen
+ * asked for — its due dates move with its payments; every other bill's is the month asked for, which must be one.
+ */
+function paymentKey(repeat: BillRepeatFacts | undefined, asked: string, paidOn: string): string {
+  if (repeat?.repeat === 'weeks') {
+    if (!BILL_DAY_KEY.test(paidOn)) throw new RecurringError('MONTH_FORMAT', 'A day is written YYYY-MM-DD');
+    return paidOn;
+  }
+  if (!BILL_MONTH.test(asked)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  return asked;
+}
+
+/** Why a payment is refused as already made: for a month, or — a weekly bill's — for a day. */
+const alreadySettledWords = (name: string, key: string) => (BILL_DAY_KEY.test(key) ? `${name} is already paid on that day` : `${name} is already settled for that month`);
+
 async function isSettled(tx: Db, ws: WorkspaceContext, templateId: string, month: string): Promise<boolean> {
   const [skipped] = await tx
     .select({ month: billSkips.month })
@@ -979,16 +1167,18 @@ export function recordBillPayments(
 ): Promise<string[]> {
   return database.transaction(async (tx) => {
     const ids: string[] = [];
-    for (const payment of input.payments) {
-      if (!BILL_MONTH.test(payment.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
-      if (!(Number.isSafeInteger(payment.amountMinor) && payment.amountMinor > 0)) {
+    const repeats = await billRepeats(tx, ws);
+    for (const given of input.payments) {
+      if (!BILL_MONTH.test(given.billMonth) && !BILL_DAY_KEY.test(given.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+      if (!(Number.isSafeInteger(given.amountMinor) && given.amountMinor > 0)) {
         throw new RecurringError('AMOUNT_RANGE', 'Enter what the bill came to');
       }
       const [template] = await tx
         .select()
         .from(expenseTemplates)
-        .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, payment.templateId), sql`${expenseTemplates.archivedAt} IS NULL`));
+        .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, given.templateId), sql`${expenseTemplates.archivedAt} IS NULL`));
       if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
+      const payment = { ...given, billMonth: paymentKey(repeats.get(template.id), given.billMonth, input.paidOn) };
       const [wallet] = await tx
         .select({ id: accounts.id, name: accounts.name, kind: accounts.kind, currency: accounts.currency })
         .from(accounts)
@@ -997,7 +1187,7 @@ export function recordBillPayments(
         throw new RecurringError('NOT_A_WALLET', 'A bill is paid from an account or a card');
       }
       if (await isSettled(tx, ws, template.id, payment.billMonth)) {
-        throw new RecurringError('ALREADY_SETTLED', `${template.name} is already settled for that month`);
+        throw new RecurringError('ALREADY_SETTLED', alreadySettledWords(template.name, payment.billMonth));
       }
       const currency = wallet.currency ?? ws.baseCurrency;
       const billCurrency = (await billCurrencies(tx, ws)).get(template.id) ?? currency;
@@ -1083,20 +1273,22 @@ export function recordBillsAsOnePayment(
     if (!wallet || (wallet.kind !== 'asset' && wallet.kind !== 'liability')) throw new RecurringError('NOT_A_WALLET', 'A bill is paid from an account or a card');
     const currency = wallet.currency ?? ws.baseCurrency;
     const currencies = await billCurrencies(tx, ws);
+    const repeats = await billRepeats(tx, ws);
     const seen = new Set<string>();
     const bills: { template: typeof expenseTemplates.$inferSelect; payment: (typeof input.payments)[number] }[] = [];
-    for (const payment of input.payments) {
-      if (!BILL_MONTH.test(payment.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
-      if (!(Number.isSafeInteger(payment.amountMinor) && payment.amountMinor > 0)) throw new RecurringError('AMOUNT_RANGE', 'Enter what the bill came to');
-      const key = `${payment.templateId}|${payment.billMonth}`;
-      if (seen.has(key)) throw new RecurringError('ALREADY_SETTLED', 'A bill is paid once for a month');
-      seen.add(key);
+    for (const given of input.payments) {
+      if (!BILL_MONTH.test(given.billMonth) && !BILL_DAY_KEY.test(given.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+      if (!(Number.isSafeInteger(given.amountMinor) && given.amountMinor > 0)) throw new RecurringError('AMOUNT_RANGE', 'Enter what the bill came to');
       const [template] = await tx
         .select()
         .from(expenseTemplates)
-        .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, payment.templateId), sql`${expenseTemplates.archivedAt} IS NULL`));
+        .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, given.templateId), sql`${expenseTemplates.archivedAt} IS NULL`));
       if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
-      if (await isSettled(tx, ws, template.id, payment.billMonth)) throw new RecurringError('ALREADY_SETTLED', `${template.name} is already settled for that month`);
+      const payment = { ...given, billMonth: paymentKey(repeats.get(template.id), given.billMonth, input.paidOn) };
+      const key = `${payment.templateId}|${payment.billMonth}`;
+      if (seen.has(key)) throw new RecurringError('ALREADY_SETTLED', 'A bill is paid once for a month');
+      seen.add(key);
+      if (await isSettled(tx, ws, template.id, payment.billMonth)) throw new RecurringError('ALREADY_SETTLED', alreadySettledWords(template.name, payment.billMonth));
       if ((currencies.get(template.id) ?? currency) !== currency) {
         throw new RecurringError('ONE_PAYMENT_CURRENCY', `${template.name} is in ${currencies.get(template.id)}: One payment pays bills in ${currency} only`);
       }
@@ -1195,8 +1387,17 @@ export async function billLinkRefusal(
   ws: WorkspaceContext,
   input: { templateId: string; billMonth: string; today?: string },
 ): Promise<{ code: 'NOT_OWED' | 'MONTH_AHEAD' | 'SKIPPED' | 'PAUSED' | 'ALREADY_SETTLED'; message: string } | null> {
-  if (!BILL_MONTH.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  if (!BILL_MONTH.test(input.billMonth) && !BILL_DAY_KEY.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   const template = await liveTemplate(database, ws, input.templateId);
+  // A weekly bill takes a purchase on its own day, once a day: nothing else about the day is asked. Asked of a month
+  // (the purchases of a month, to link from), it refuses nothing: each is asked again by its day when linked.
+  if (isWeekly(template)) {
+    if (BILL_DAY_KEY.test(input.billMonth) && (await isSettled(database.db, ws, template.id, input.billMonth))) {
+      return { code: 'ALREADY_SETTLED', message: alreadySettledWords(template.name, input.billMonth) };
+    }
+    return null;
+  }
+  if (!BILL_MONTH.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   const facts = await billFacts(database, ws, [template]);
   const { billMonth } = input;
   if (!isOwedMonth(billMonth, template.repeatMonth, template.repeatEvery, template.startsMonth)) {
@@ -1246,6 +1447,11 @@ async function linkMonthsOf(database: Database, ws: WorkspaceContext, templates:
   const facts = await billFacts(database, ws, templates);
   return Object.fromEntries(
     templates.map((template) => {
+      // A weekly bill: the purchase's own day, asked only when that day is paid already.
+      if (isWeekly(template)) {
+        const paidThatDay = (facts.payments.get(template.id) ?? []).some((p) => p.billMonth === purchasedOn);
+        return [template.id, { month: purchasedOn, ask: paidThatDay, opensOn: purchasedOn }];
+      }
       const rules = linkInput(template, facts, today);
       const { month, ask } = linkChoice(purchasedOn, rules);
       // A month a link would be refused for (paid, skipped, paused, not out yet) is asked about too, so a list says so first.
@@ -1308,6 +1514,11 @@ export async function billChoicesForPurchase(
     const base = { templateId: template.id, name: template.name, categoryAccountId: template.categoryAccountId, amountMinor: template.amountMinor };
     const own = (facts.payments.get(template.id) ?? []).filter((p) => input.transactionId && p.transactionId === input.transactionId);
     for (const payment of own) out.push({ ...base, billMonth: payment.billMonth });
+    if (isWeekly(template)) {
+      // The purchase's own day, unless another payment holds it.
+      if (own.length === 0 && !(facts.payments.get(template.id) ?? []).some((p) => p.billMonth === input.purchasedOn)) out.push({ ...base, billMonth: input.purchasedOn });
+      continue;
+    }
     const rules = linkInput(template, facts, today);
     const { month } = linkChoice(input.purchasedOn, rules);
     if (own.some((p) => p.billMonth === month)) continue;
@@ -1320,9 +1531,10 @@ export async function billChoicesForPurchase(
 
 /** Links a purchase already recorded to one month of a bill, so that month reads as paid with the purchase's own date and amount. */
 export async function linkPurchaseToBill(database: Database, ws: WorkspaceContext, input: LinkPurchaseInput): Promise<void> {
-  const { templateId, billMonth, transactionId } = input;
-  if (!BILL_MONTH.test(billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  const { templateId, transactionId } = input;
+  if (!BILL_MONTH.test(input.billMonth) && !BILL_DAY_KEY.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   if (!(await billTablesExist(database.db))) throw new RecurringError('NO_LINKS', 'This database cannot link a purchase to a bill yet');
+  const billMonth = await linkKey(database, ws, input);
   const refusal = await billLinkRefusal(database, ws, { templateId, billMonth, today: input.today });
   if (refusal) throw new RecurringError(refusal.code, refusal.message);
   await database.transaction(async (tx) => {
@@ -1344,14 +1556,33 @@ export async function linkPurchaseToBill(database: Database, ws: WorkspaceContex
 }
 
 /**
+ * The key a link is kept under: for a weekly bill, the purchase's own day — whatever month or day the screen named;
+ * for every other bill, the month named, which must be one.
+ */
+async function linkKey(database: Database, ws: WorkspaceContext, input: LinkPurchaseInput): Promise<string> {
+  const repeat = (await billRepeats(database.db, ws)).get(input.templateId);
+  if (repeat?.repeat !== 'weeks') {
+    if (!BILL_MONTH.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+    return input.billMonth;
+  }
+  const [purchase] = await database.db
+    .select({ occurredOn: transactions.occurredOn })
+    .from(transactions)
+    .where(and(eq(transactions.id, input.transactionId), eq(transactions.workspaceId, ws.workspaceId)));
+  if (!purchase) throw new RecurringError('NOT_A_PURCHASE', 'That purchase is not here');
+  return purchase.occurredOn;
+}
+
+/**
  * Moves a purchase's link to another month or another bill, in one step: the month it settled is owed again and the new
  * one is paid by it, or neither changes (a refusal rolls both back). The same bill and month is no change at all, and a
  * purchase linked to nothing is simply linked. A payment Pay recorded is refused (NOT_LINKED): it is undone on its bill.
  */
 export async function relinkPurchaseToBill(database: Database, ws: WorkspaceContext, input: LinkPurchaseInput): Promise<void> {
-  const { templateId, billMonth, transactionId } = input;
-  if (!BILL_MONTH.test(billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  const { templateId, transactionId } = input;
+  if (!BILL_MONTH.test(input.billMonth) && !BILL_DAY_KEY.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   if (!(await billTablesExist(database.db))) throw new RecurringError('NO_LINKS', 'This database cannot link a purchase to a bill yet');
+  const billMonth = await linkKey(database, ws, input);
   const current = await billOfPurchase(database, ws, transactionId);
   if (!current) return linkPurchaseToBill(database, ws, input);
   if (!current.linked) throw new RecurringError('NOT_LINKED', 'That payment was recorded from the bill. Undo it there.');
@@ -1489,10 +1720,12 @@ async function categoryPurchases(database: Database, ws: WorkspaceContext, templ
 
 /** Purchases that could settle one month of a bill: in its category, dated in that month, not linked yet; newest first. */
 export async function billLinkCandidates(database: Database, ws: WorkspaceContext, input: { templateId: string; billMonth: string }): Promise<BillLinkCandidate[]> {
-  if (!BILL_MONTH.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  if (!BILL_MONTH.test(input.billMonth) && !BILL_DAY_KEY.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   if (!(await billTablesExist(database.db))) return [];
   const template = await liveTemplate(database, ws, input.templateId);
-  return categoryPurchases(database, ws, template, input.billMonth);
+  // A weekly bill's due day names a month too: the purchases in it, each linked on its own day.
+  if (!isWeekly(template) && !BILL_MONTH.test(input.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+  return categoryPurchases(database, ws, template, input.billMonth.slice(0, 7));
 }
 
 export interface BillEarlierMonth {
@@ -1522,6 +1755,8 @@ export async function billMonthsBefore(
   if (input.fromMonth !== undefined && !BILL_MONTH.test(input.fromMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   if (!(await billTablesExist(database.db))) return { months: [], nextFrom: null };
   const template = await liveTemplate(database, ws, input.templateId);
+  // A weekly bill has no months to link earlier purchases to: each is linked on its own day, from the Pay sheet.
+  if (isWeekly(template)) return { months: [], nextFrom: null };
   const facts = await billFacts(database, ws, [template]);
   const settled = settledOf(template, facts);
   const purchases = (await categoryPurchases(database, ws, template, null)).filter((p) => p.occurredOn.slice(0, 7) < template.startsMonth);

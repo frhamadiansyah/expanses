@@ -1,4 +1,5 @@
 import { settleTwicePaidBillsTx } from '../repos/bill-settle';
+import { BILL_KEY } from '../repos/bill-months';
 import { currencyInfo, type PostingLine, uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -989,7 +990,8 @@ async function applyBillLinkTx(tx: Db, ctx: BookContext, transactionId: string, 
   if (!row || row[0] !== null) return;
   const given = link && typeof link === 'object' ? (link as Record<string, unknown>) : null;
   const templateId = typeof given?.templateId === 'string' ? given.templateId : null;
-  const billMonth = typeof given?.billMonth === 'string' && /^\d{4}-\d{2}$/.test(given.billMonth) ? given.billMonth : null;
+  // A bill's month, or a weekly bill's day (2026-11-25, WEEKLY_BILLS_MIN_APP_VERSION).
+  const billMonth = typeof given?.billMonth === 'string' && BILL_KEY.test(given.billMonth) ? given.billMonth : null;
   // A purchase that settles several bills here (0127) whose first is the one named keeps the others: the link said is
   // what it already reads as, and the list is `severalBills`'s to change.
   const here = await tx.values<[string, string]>(sql`SELECT template_id, bill_month FROM bill_payments WHERE transaction_id = ${transactionId} ORDER BY bill_month, template_id`);
@@ -1028,7 +1030,7 @@ async function applySeveralBillsTx(tx: Db, ctx: BookContext, transactionId: stri
   for (const item of value) {
     const given = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
     const templateId = typeof given?.templateId === 'string' ? given.templateId : null;
-    const billMonth = typeof given?.billMonth === 'string' && /^\d{4}-\d{2}$/.test(given.billMonth) ? given.billMonth : null;
+    const billMonth = typeof given?.billMonth === 'string' && BILL_KEY.test(given.billMonth) ? given.billMonth : null;
     if (!templateId || !billMonth) continue;
     if ((await tx.values(sql`SELECT 1 FROM expense_templates WHERE id = ${templateId} AND workspace_id = ${ctx.ws.workspaceId}`)).length === 0) continue;
     wanted.push({ templateId, billMonth });

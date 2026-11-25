@@ -110,7 +110,7 @@ describe('migration 0127', () => {
     await older.db.run(sql`INSERT INTO self_pending (tbl, pk, cols) VALUES ('bill_payments', ${JSON.stringify([bought])}, '*'), ('bill_payments', '["gone"]', '-')`);
     const before = await older.db.values(sql`SELECT transaction_id, workspace_id, template_id, bill_month FROM bill_payments ORDER BY transaction_id`);
 
-    expect(await migrate(older)).toEqual([127]);
+    expect(await migrate(older, MIGRATIONS.filter((m) => m.version <= 127))).toEqual([127]);
 
     expect(await older.db.values(sql`SELECT transaction_id, workspace_id, template_id, bill_month FROM bill_payments ORDER BY transaction_id`)).toEqual(before);
     expect(await older.db.values(sql`SELECT name, pk FROM pragma_table_info('bill_payments') WHERE pk > 0 ORDER BY pk`)).toEqual([

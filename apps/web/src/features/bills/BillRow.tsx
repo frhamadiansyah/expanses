@@ -86,7 +86,8 @@ export function BillRow({
         enabled={!selecting && !settled}
         onSwipeRight={() => onPay(bill)}
         rightHint={{ label: 'Pay', icon: Banknote, tone: 'positive' }}
-        actions={[{ label: 'Skip', name: `Skip ${bill.name}`, icon: SkipForward, tone: 'neutral', onPress: () => onSkip(bill) }]}
+        // A bill by weeks is never skipped: its next one waits for the next payment.
+        actions={bill.repeat === 'weeks' ? [] : [{ label: 'Skip', name: `Skip ${bill.name}`, icon: SkipForward, tone: 'neutral', onPress: () => onSkip(bill) }]}
       >
         {(suppressClick) => (
           <button
@@ -167,7 +168,7 @@ export function BillRow({
                   Pay…
                 </button>
               )}
-              {!settled && (
+              {!settled && bill.repeat !== 'weeks' && (
                 <button type="button" role="menuitem" onClick={choose(() => onSkip(bill))} className={MENU_ITEM}>
                   Skip {monthName(bill.billMonth, 'short')} bill
                 </button>

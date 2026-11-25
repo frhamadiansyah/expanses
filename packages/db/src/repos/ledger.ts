@@ -10,7 +10,7 @@ import { checkDueCapTx, type DueCap, dueCapForEdit, relinkDueMonthTx } from './g
 import { transactionPointActuals } from '../schema-points';
 import { captureCardChangingTx, captureReorderingTx, captureVoidingTx, capturePostedTx, type PaidFrom, splitRefusalTx } from '../sync/capture';
 import { billPayments, expenseTemplates } from '../schema-recurring';
-import { BILL_MONTH, billTablesExist } from './bill-months';
+import { BILL_KEY, billTablesExist } from './bill-months';
 import { notMonthlyBillPaymentsOf } from './bill-repeat';
 import { dayOrderExists } from './day-order-column';
 import { debitTotal, exactExists, exactFitsPosting, exactForLinesTx, isExactFigure } from './exact-column';
@@ -402,7 +402,8 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, given: Pos
   }
   const mcc = input.mcc ?? null;
   if (mcc !== null && !isMcc(mcc)) throw new LedgerError('INVALID_MCC', `An MCC is four digits, got "${mcc}"`);
-  if (input.billMonth != null && !BILL_MONTH.test(input.billMonth)) {
+  // A bill's month, or a weekly bill's day (2026-11-25).
+  if (input.billMonth != null && !BILL_KEY.test(input.billMonth)) {
     throw new LedgerError('INVALID_BILL_MONTH', `A bill month is YYYY-MM, got "${input.billMonth}"`);
   }
   const exact = input.exactHundredths ?? null;
@@ -579,7 +580,7 @@ async function writeBillLinksTx(tx: Db, ws: WorkspaceContext, transactionId: str
     const key = `${link.templateId}|${link.billMonth}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (!BILL_MONTH.test(link.billMonth)) throw new LedgerError('INVALID_BILL_MONTH', 'A bill month is written YYYY-MM');
+    if (!BILL_KEY.test(link.billMonth)) throw new LedgerError('INVALID_BILL_MONTH', 'A bill month is written YYYY-MM');
     const [bill] = await tx
       .select({ id: expenseTemplates.id, name: expenseTemplates.name })
       .from(expenseTemplates)
