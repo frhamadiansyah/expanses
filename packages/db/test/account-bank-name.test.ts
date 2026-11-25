@@ -21,8 +21,8 @@ describe('an account at a bank names its bank', () => {
     const accounts = await byName();
     expect(accounts.get('Xpresi')?.bank).toBe('Bank Mandiri');
     expect(accounts.get('Six months')?.bank).toBe('Bank Jago');
-    // A broker's custodian is not a name it is called by, and a wallet has no bank.
-    expect(accounts.get('Stockbit Sekuritas')?.bank).toBeNull();
+    // A broker's custodian bank is what lists of money call it by (owner, 25 Nov); a wallet has no bank.
+    expect(accounts.get('Stockbit Sekuritas')?.bank).toBe('Bank Central Asia');
     expect(accounts.get('GoPay')?.bank).toBeNull();
     expect(accounts.get('Payroll')?.bank).toBeNull();
     // What is stored is untouched: the name as typed, the institution as picked.

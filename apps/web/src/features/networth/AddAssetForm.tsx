@@ -23,6 +23,7 @@ import { brokerChoices } from '../investments/add-holding';
 import { type InstitutionChoice, InstitutionSheet } from './InstitutionSheet';
 import { institutionChoices } from './institutions';
 import { useAssetProfiles } from './queries';
+import { brokerNameOf } from '../../lib/account-name';
 
 /** Everything the five families name, so what is left over in `ASSET_ITEMS` is the legacy entry alone. */
 const IN_A_FAMILY = new Set(ASSET_FAMILIES.flatMap((family) => family.items.map((item) => item.id)));
@@ -74,7 +75,8 @@ export function AddAssetForm({ onDone, itemId, onConfirm }: {
   const profiles = useAssetProfiles();
   const brokers = brokerChoices(accounts);
   const heldAccount = held && 'accountId' in held ? accounts.find((account) => account.id === held.accountId) : undefined;
-  const heldName = held === null ? '' : 'accountId' in held ? (heldAccount?.name ?? '') : held.name;
+  // A broker's cash is named by its broker here, never by the custodian bank it is listed by among money.
+  const heldName = held === null ? '' : 'accountId' in held ? (heldAccount ? brokerNameOf(heldAccount) : '') : held.name;
 
   const change = (patch: Partial<NewAssetDraft>) => setDraft((current) => ({ ...current, ...patch }));
   /** A different thing, or the same thing valued the other way: either one starts its own fields over. */

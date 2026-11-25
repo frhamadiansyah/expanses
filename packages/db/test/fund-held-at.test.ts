@@ -103,9 +103,10 @@ describe('where a fund is held', () => {
       ['Pasar Uang Contoh · A — Lain Sekuritas', 'Lain Sekuritas', 400_000],
     ].sort());
     const cash = (await coretaxInputsFor(database, ws, 2026)).cash.filter((row) => row.accountId === brokerA.id || row.accountId === brokerB.id);
+    // The broker's own cash row is the custodian bank's account (owner, 25 Nov): named by that bank.
     expect(cash.map((row) => [row.name, row.fields.inst]).sort()).toEqual([
-      ['Contoh Sekuritas', 'Bank Contoh'],
-      ['Lain Sekuritas', 'Bank Lain'],
+      ['Bank Contoh (RDN)', 'Bank Contoh'],
+      ['Bank Lain (RDN)', 'Bank Lain'],
     ]);
   });
 

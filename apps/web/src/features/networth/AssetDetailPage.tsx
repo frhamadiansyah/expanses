@@ -52,6 +52,7 @@ import { useGoldPriceChoice, useWorldGoldPrice } from './world-gold';
 import { listedChoiceOf, SOURCE_LABELS } from '../prices/price-sources';
 import { useSecurityPriceChoices } from '../prices/queries';
 import { useYahooClose } from '../prices/yahoo';
+import { brokerNameOf } from '../../lib/account-name';
 
 /** The kinds of money account: their own page is the account page, whichever list they were opened from. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -591,7 +592,7 @@ function AssetBody({ value }: { value: AssetValueRow }) {
                 key="held"
                 testId="institution-row"
                 label="Institution"
-                value={heldAccount?.name ?? (heldName || null)}
+                value={heldAccount ? brokerNameOf(heldAccount) : heldName || null}
                 placeholder="Not set"
                 onOpen={() => setSheet({ kind: 'institution' })}
               />

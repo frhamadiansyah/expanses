@@ -1,7 +1,7 @@
 import { type AssetProfileRow, changeShare, HELD_AT_SUBTYPES, linkHolding, sameFundAs, saveAssetProfile, openBroker } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { asBroker } from '../../lib/account-name';
+import { asBroker, brokerNameOf } from '../../lib/account-name';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { brokerChoices } from '../investments/add-holding';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
@@ -64,7 +64,9 @@ export function useStockAndBroker(accountId: string, opts: { share?: boolean } =
     run(async () => {
       const brokerAccountId = choice && 'accountId' in choice ? choice.accountId : null;
       if ((link?.brokerAccountId ?? null) !== brokerAccountId) await linkHolding(database, ws, { accountId, brokerAccountId });
-      const name = choice === null ? '' : 'accountId' in choice ? (accounts.find((a) => a.id === choice.accountId)?.name ?? '') : choice.name;
+      // Written as the broker's own name: a list of money calls the same account by its custodian bank (`brokerNameOf`).
+      const picked = choice && 'accountId' in choice ? accounts.find((a) => a.id === choice.accountId) : undefined;
+      const name = choice === null ? '' : 'accountId' in choice ? (picked ? brokerNameOf(picked) : '') : choice.name;
       await writePlace(profile, name);
     });
   async function writePlace(profile: AssetProfileRow, name: string) {

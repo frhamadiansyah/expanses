@@ -59,10 +59,16 @@ describe('an account is shown with its bank', () => {
     expect(accountDisplayName({ name: 'Nusa Voyager Travel', subtype: 'credit_card' })).toBe('Nusa Voyager Travel');
   });
 
-  it('never touches what is called by its product, its broker or its catalogue', () => {
+  it('calls a broker\'s cash by its custodian bank alone, a pocket with its currency, and by its broker with no bank named', () => {
+    expect(accountDisplayName({ name: 'Stockbit Sekuritas', subtype: 'fund', bank: 'Bank Central Asia' })).toBe('Bank Central Asia');
+    expect(accountDisplayName({ name: 'Stockbit Sekuritas · USD', subtype: 'fund', bank: 'Bank Central Asia', parentId: 'stockbit', currency: 'USD' })).toBe('Bank Central Asia · USD');
+    expect(accountDisplayName({ name: 'Stockbit Sekuritas', subtype: 'fund', bank: '  ' })).toBe('Stockbit Sekuritas');
+    expect(accountDisplayName({ name: 'Stockbit Sekuritas', subtype: 'fund' })).toBe('Stockbit Sekuritas');
+  });
+
+  it('never touches what is called by its product or its catalogue', () => {
     expect(accountDisplayName({ name: 'GoPay', subtype: 'ewallet', bank: 'Dompet Anak Bangsa' })).toBe('GoPay');
     expect(accountDisplayName({ name: 'Flazz', subtype: 'emoney', bank: 'Bank Central Asia' })).toBe('Flazz');
-    expect(accountDisplayName({ name: 'Stockbit Sekuritas', subtype: 'fund', bank: 'Bank Central Asia' })).toBe('Stockbit Sekuritas');
     // A fund's Held at is a name only: the fund keeps its own name.
     expect(accountDisplayName({ name: 'Sucorinvest Money Market', subtype: 'investment', bank: 'Bibit' })).toBe('Sucorinvest Money Market');
     expect(accountDisplayName({ name: 'KPR', subtype: 'loan', bank: 'Bank Tabungan Negara' })).toBe('KPR');
