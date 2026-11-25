@@ -34,6 +34,7 @@ export function CornerButton({
   to,
   params,
   search,
+  replace,
   children,
   destructive = false,
   disabled = false,
@@ -53,6 +54,8 @@ export function CornerButton({
   to?: LinkProps['to'];
   params?: LinkProps['params'];
   search?: LinkProps['search'];
+  /** The link takes this page's place in the history rather than adding a step after it. */
+  replace?: boolean;
   children: ReactNode;
   destructive?: boolean;
   /** An action that cannot work yet says so by being dimmed and refusing the tap, rather than by explaining after. */
@@ -72,7 +75,7 @@ export function CornerButton({
   );
   if (to && !disabled) {
     return (
-      <Link to={to} params={params} search={search} aria-label={label} data-testid={testId} className={shell} style={{ width: size, height: size }}>
+      <Link to={to} params={params} search={search} replace={replace} aria-label={label} data-testid={testId} className={shell} style={{ width: size, height: size }}>
         {children}
       </Link>
     );
@@ -437,6 +440,7 @@ export function PushedTitle({
   backTo,
   backParams,
   backSearch,
+  backReplace,
   actions = [],
   max,
   field,
@@ -450,6 +454,8 @@ export function PushedTitle({
   backTo?: LinkProps['to'];
   backParams?: LinkProps['params'];
   backSearch?: LinkProps['search'];
+  /** `backTo` takes this page's place in the history, so the page it goes back to is not a second step after this one. */
+  backReplace?: boolean;
   actions?: CornerAction[];
   /** How many corners this screen has. A wide screen has more; the phone has two. */
   max?: number;
@@ -481,6 +487,7 @@ export function PushedTitle({
           backTo={backTo}
           backParams={backParams}
           backSearch={backSearch}
+          backReplace={backReplace}
           actions={plan.inline}
           overflow={plan.overflow}
         />
@@ -492,7 +499,7 @@ export function PushedTitle({
         ) : (
           <>
             <div className="flex flex-1 items-center">
-              <CornerButton label={back} to={backTo} params={backParams} search={backSearch} onClick={backTo ? undefined : onBack}>
+              <CornerButton label={back} to={backTo} params={backParams} search={backSearch} replace={backReplace} onClick={backTo ? undefined : onBack}>
                 <ChevronLeft size={22} aria-hidden />
               </CornerButton>
             </div>

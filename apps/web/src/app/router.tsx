@@ -97,6 +97,7 @@ import { DuplicateTransactionRoute, EditTransactionRoute, NewTransactionRoute } 
 import { OneLinePage } from '../features/transactions/OneLinePage';
 import { newTransactionSearch } from '../features/transactions/new-search';
 import { statementSearch } from '../features/cards/statement-dates';
+import { trackOpeners } from './opened-from';
 import { MoneyFlowPage, moneyFlowSearch } from '../features/transactions/MoneyFlow';
 import { PasteListPage } from '../features/transactions/PasteListPage';
 import { ReceiptSplitPage } from '../features/transactions/ReceiptSplitPage';
@@ -613,6 +614,7 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({ routeTree });
 trackOrigin(router);
+trackOpeners(router);
 
 declare module '@tanstack/react-router' {
   interface Register {

@@ -128,7 +128,11 @@ export function CardScreen({
   back: string;
   /** Where ‹ goes when the page was opened with nothing behind it: a deep link, a reload. */
   fallback: LinkProps['to'];
-  /** An explicit target for ‹ with the card's id, for a page other pages link onward from (the Statement and its check), where history would loop. */
+  /**
+   * An explicit target for ‹ with the card's id, for a page other pages link onward from (the Statement and its check),
+   * where history would loop. It takes this page's place in the history, so the card it lands on is the card's own
+   * visit and the card's ✕ still goes straight back to what opened the card (owner, 25 Nov 2026).
+   */
   backTo?: { to: LinkProps['to']; cardId: string };
   actions?: CornerAction[];
   /** A search field that takes the whole bar while it is open, ‹ and name with it. */
@@ -145,6 +149,7 @@ export function CardScreen({
           onBack={goBack}
           backTo={backTo?.to}
           backParams={backTo ? { cardId: backTo.cardId } : undefined}
+          backReplace={backTo !== undefined}
           actions={actions} field={field} />
         <WideColumn>{children}</WideColumn>
       </div>

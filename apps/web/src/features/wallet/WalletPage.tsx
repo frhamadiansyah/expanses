@@ -6,6 +6,7 @@ import { Link, Outlet, useNavigate, useParams, useRouter } from '@tanstack/react
 import { ArrowUpDown, Award, Check, GalleryHorizontal, LayoutGrid, Layers, Plus, Settings, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { itemOf, stepsToOpener } from '../../app/opened-from';
 import { cx, Empty, Money } from '../../ui';
 import { CardStack, CornerButton, type CornerAction, heroFigure, InsetGroup, InsetRow, LargeTitle, Panel } from '../../ui/native';
 import { BalanceSpark } from '../accounts/BalanceSpark';
@@ -33,10 +34,6 @@ function Screen({ children }: { children: ReactNode }) {
     </div>
   );
 }
-
-/** Where the stack sits in the history, kept for as long as the reader stays in the wallet's pages. */
-let stackAt: number | null = null;
-let watching = false;
 
 /** How many days of history the Balance box's line is drawn over. */
 const SPARK_DAYS = 30;
@@ -238,27 +235,16 @@ export function WalletPage() {
    */
   const raised = openId !== undefined ? (wallet.find((card) => card.key === openId) ?? (aside?.key === openId ? aside : undefined)) : undefined;
   /*
-   * Opened from the stack, the way back is the history's own steps, so ✕ and Back are one gesture and the stack is
-   * where they land. Reached by a link from elsewhere — an account's row on Net worth — ✕ goes back there, as that
-   * page's own ‹ did; opened with nothing behind it (a deep link, a reload), it goes to the stack instead of out of
-   * the app. Where the stack was is the history's own index.
+   * ✕ goes back to whatever opened this card or account — the stack, an account's row on Net worth, the Debts list — in
+   * one step, however many of its own pages (its statement and the statement's ‹, a receipt from a statement line, the
+   * Pay screen) were walked in between (`opened-from.ts`). Opened with nothing behind it (a deep link, a reload), it
+   * goes to the stack instead of out of the app.
    */
-  const at = () => (router.history.location.state as { __TSR_index?: number }).__TSR_index ?? 0;
-  useEffect(() => {
-    if (openId === undefined) stackAt = at();
-    if (!watching) {
-      watching = true;
-      // A page the card opens (its statement) unmounts this one and back remounts it: the stack's place in the history
-      // is kept across that, and let go once the reader is anywhere that is not the wallet's or a card's own.
-      router.subscribe('onResolved', ({ toLocation }) => {
-        if (!/^\/(wallet|cards|accounts)(\/|$)/.test(toLocation.pathname)) stackAt = null;
-      });
-    }
-  });
   const close = () => {
-    const now = at();
-    if (stackAt !== null && now > stackAt) router.history.go(stackAt - now);
-    else if (stackAt === null && router.history.canGoBack()) router.history.back();
+    const { pathname, state } = router.history.location;
+    const item = itemOf(pathname);
+    const steps = item === null ? null : stepsToOpener(item, (state as { __TSR_index?: number }).__TSR_index ?? 0);
+    if (steps !== null) router.history.go(steps);
     else void navigate({ to: '/wallet' });
   };
   // Opening a card moves focus to its heading, so a reader lands on the card they chose.
