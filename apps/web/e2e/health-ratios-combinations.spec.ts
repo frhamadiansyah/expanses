@@ -193,6 +193,8 @@ test('row 8 — five units, and the total is the sum of the converted lines', as
   }
 });
 test('row 9 — a workspace that reads in dollars types and converts in cents', async ({ page }) => {
+  // A week is counted by the month's Mondays (Budget C): five in November 2026.
+  await page.clock.setSystemTime(new Date('2026-11-25T10:00:00'));
   await page.goto('/');
   await page.getByRole('link', { name: 'Account', exact: true }).click();
   await page.getByTestId('add-workspace').click();
@@ -209,12 +211,12 @@ test('row 9 — a workspace that reads in dollars types and converts in cents', 
   const { field, label } = await capField(screen, '— Groceries');
   await screen.getByLabel(`${label} every`).selectOption('weekly');
   await type(field, '10,00');
-  // 1.000 cents × 52 ÷ 12 = 4.333,3 → 4.333 cents.
-  await expect(screen.getByTestId('edit-budgeted')).toContainText('43,33');
+  // 1.000 cents × 5 Mondays = 5.000 cents.
+  await expect(screen.getByTestId('edit-budgeted')).toContainText('50,00');
   await page.getByRole('button', { name: 'Save budgets' }).click();
   await expect(page.getByTestId('budget-page')).toBeVisible();
   await budgetTab(page, 'Plan');
-  await expect(page.getByTestId('caps-total')).toContainText('43,33');
+  await expect(page.getByTestId('caps-total')).toContainText('50,00');
   const again = await openCapOf(page, '— Groceries');
   await expect(again.getByLabel('Cap', { exact: true })).toHaveValue('10,00');
   await expect(again.getByLabel('Every')).toHaveValue('weekly');
