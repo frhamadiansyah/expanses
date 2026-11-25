@@ -1,8 +1,8 @@
 import {
-  type BudgetFrequency,
   type BudgetLine,
   type CapNode,
   formatBp,
+  isoDate,
   outermostCapsTotal,
   parseMajor,
   parsePercentBp,
@@ -10,9 +10,9 @@ import {
   type ShareBasis,
   shareOfMinor,
 } from '@expanses/core';
-import type { BudgetChanges, BudgetRow } from '@expanses/db';
+import type { BudgetChanges, BudgetMonth, BudgetRow } from '@expanses/db';
 import { bareFigure } from '../networth/debt-rows';
-import { perMonthPreview } from './frequency-form';
+import { type BudgetUnit, perMonthPreview, repeatOfUnit, unitOf } from './frequency-form';
 import { type ShareBase, toAmount, toPercent } from './share-form';
 
 /** One field on the Edit budgets screen: a category, named as the list shows it, and where it sits in its tree. */
@@ -35,12 +35,15 @@ export interface EditGroup {
 /** What is typed in one row: the figure as typed, in its unit; `filled` when Fill from last month put it there. */
 export interface RowState {
   amount: string;
-  frequency: BudgetFrequency;
+  /** A unit, or every few weeks (Budget C). */
+  frequency: BudgetUnit;
   filled: boolean;
   /** Typed as an amount in its unit, or as a % (always a month's). */
   mode: 'amount' | 'share';
   /** What the row held before its last switch, while nothing has been typed since: switching back gives it back exactly. */
-  before?: { amount: string; frequency: BudgetFrequency; mode: 'amount' | 'share' } | null;
+  before?: { amount: string; frequency: BudgetUnit; mode: 'amount' | 'share' } | null;
+  /** YYYY-MM-DD: the day a stored budget every few weeks is counted from; a new one starts on the day it is saved. */
+  startsOn?: string | null;
 }
 
 export type EditState = Record<string, RowState>;
@@ -73,15 +76,25 @@ export function initialState(groups: readonly EditGroup[], budgets: readonly Bud
     const stored = byCategory.get(row.id);
     state[row.id] = stored?.share
       ? { amount: formatBp(stored.share.bp), frequency: 'monthly', filled: false, mode: 'share' }
-      : { amount: stored ? bareFigure(stored.amountAsSetMinor, currency) : '', frequency: stored?.frequency ?? 'monthly', filled: false, mode: 'amount' };
+      : {
+          amount: stored ? bareFigure(stored.amountAsSetMinor, currency) : '',
+          frequency: stored ? unitOf(stored.frequency, stored.everyWeeks) : 'monthly',
+          filled: false,
+          mode: 'amount',
+          ...(stored?.startsOn ? { startsOn: stored.startsOn } : {}),
+        };
   }
   return state;
 }
 
-/** What a row typed as an amount comes to a month, or null when it is empty, unreadable, nothing or a share. */
-export function monthlyOf(row: RowState | undefined, currency: string): number | null {
+/**
+ * What a row typed as an amount comes to in the month, or null when it is empty, unreadable, nothing or a share. A day or
+ * a week is counted in `month` (Budget C) when it is given, else read as its average month.
+ */
+export function monthlyOf(row: RowState | undefined, currency: string, month?: BudgetMonth | null, categoryId?: string): number | null {
   if (!row || row.mode === 'share') return null;
-  const minor = perMonthPreview(row.amount, row.frequency, currency);
+  const at = month && categoryId ? { month, categoryId, startsOn: row.startsOn ?? isoDate() } : null;
+  const minor = perMonthPreview(row.amount, row.frequency, currency, at);
   return minor !== null && minor > 0 ? minor : null;
 }
 
@@ -132,26 +145,26 @@ export function keptOf(groups: readonly EditGroup[], state: EditState, stored: S
 }
 
 /** Every row's month figure as typed, parents first (editGroups lists a parent before its children). */
-function figuresOf(groups: readonly EditGroup[], state: EditState, stored: Stored, takeHomeMinor: number, currency: string): Map<string, number> {
+function figuresOf(groups: readonly EditGroup[], state: EditState, stored: Stored, takeHomeMinor: number, currency: string, month?: BudgetMonth | null): Map<string, number> {
   const kept = keptOf(groups, state, stored);
   const figures = new Map<string, number>();
   for (const row of groups.flatMap((group) => group.rows)) {
     const typed = rowStateOf(state, row.id);
     const base = basisOfRow(row, figures, stored.budgets) === 'parent' ? figures.get(row.parentId!)! : takeHomeMinor;
-    const minor = kept.get(row.id) ?? (typed.mode === 'share' ? shareFigure(typed, base, currency) : monthlyOf(typed, currency));
+    const minor = kept.get(row.id) ?? (typed.mode === 'share' ? shareFigure(typed, base, currency) : monthlyOf(typed, currency, month, row.id));
     if (minor !== null) figures.set(row.id, minor);
   }
   return figures;
 }
 
 /** Every row's month figure as typed: a share resolved against the basis it has (see `basisOfRow`). */
-export function typedCaps(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored): Map<string, number> {
-  return figuresOf(editGroups(lines), state, stored, takeHomeMinor, currency);
+export function typedCaps(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored, month?: BudgetMonth | null): Map<string, number> {
+  return figuresOf(editGroups(lines), state, stored, takeHomeMinor, currency, month);
 }
 
 /** The Budgeted figure as typed so far, counted as the sheet counts it: the outermost cap in each branch. */
-export function liveCapsTotal(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored): number {
-  const figures = typedCaps(lines, state, takeHomeMinor, currency, stored);
+export function liveCapsTotal(lines: readonly BudgetLine[], state: EditState, takeHomeMinor: number, currency: string, stored: Stored, month?: BudgetMonth | null): number {
+  const figures = typedCaps(lines, state, takeHomeMinor, currency, stored, month);
   const node = (line: BudgetLine): CapNode => ({ capMinor: figures.get(line.id) ?? null, children: line.children.map(node) });
   return outermostCapsTotal(lines.map(node));
 }
@@ -224,7 +237,13 @@ export function changesOf(
       out.unreadable.push(row.id);
       continue;
     }
-    out.save.push({ categoryAccountId: row.id, amountMinor: minor, frequency: typed.frequency });
+    // Every few weeks takes its gap and the day it is counted from: the one it has, else the day it is saved.
+    const { frequency, everyWeeks } = repeatOfUnit(typed.frequency);
+    out.save.push(
+      everyWeeks === null
+        ? { categoryAccountId: row.id, amountMinor: minor, frequency }
+        : { categoryAccountId: row.id, amountMinor: minor, frequency, everyWeeks, startsOn: typed.startsOn ?? isoDate() },
+    );
   }
   return out;
 }
@@ -235,7 +254,7 @@ export function changesOf(
  * there is no exact way to say a month's figure a week or a year. Back to what the row held before the switch, with
  * nothing typed since (and, for an amount, its unit picked again), the figure comes back exactly as it was.
  */
-export function switchRow(row: RowState, next: 'share' | BudgetFrequency, base: ShareBase, currency: string): RowState {
+export function switchRow(row: RowState, next: 'share' | BudgetUnit, base: ShareBase, currency: string): RowState {
   if (next === 'share' && row.mode === 'share') return row;
   if (next !== 'share' && row.mode === 'amount') return { ...row, frequency: next, filled: false, before: null };
   const shown = { amount: row.amount, frequency: row.frequency, mode: row.mode };

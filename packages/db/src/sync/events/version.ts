@@ -98,3 +98,17 @@ export const SEVERAL_BILLS_MIN_APP_VERSION = '0.5.7';
  * bills went weekly skips that bill's payments until it updates. Shared books hold two phones today.
  */
 export const WEEKLY_BILLS_MIN_APP_VERSION = '0.5.8';
+
+/**
+ * The first app version that reads a budget by days or weeks the way Budget C counts it (2026-11-25): a month's budget
+ * is the amount × the days, the Mondays, or the dates N weeks apart in that month (budget_frequencies.every_weeks and
+ * starts_on, 0129). An older build would read a budget every 3 weeks as every week — three times the money — and a day
+ * or a week as its average month, so the two phones would judge the same month differently. So a budget is set to
+ * repeat by days or weeks in a shared workspace only while every other phone in it says this version or later
+ * (`saveBudget`, `saveBudgets`, refused with REPEAT_PHONES_BEHIND, naming them), and a linked device on an older build
+ * holds every change of this data version (migration 0129) until it updates.
+ *
+ * Ship order: 0.5.9. TestFlight 175 already went out as 0.5.8 with bills by weeks (0128) but without Budget C, so a
+ * phone saying 0.5.8 may not read it; every build that says 0.5.9 contains migration 0129 and Budget C.
+ */
+export const BUDGET_REPEAT_MIN_APP_VERSION = '0.5.9';

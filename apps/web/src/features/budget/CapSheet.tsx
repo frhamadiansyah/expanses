@@ -1,5 +1,5 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetLine, formatMinor, groupTypedAmount, parsePercentBp, roundUpToMajor, shareOfMinor } from '@expanses/core';
-import { type BudgetRow, clearBudgetOverride, removeBudget, saveBudget, setBudgetOverride } from '@expanses/db';
+import { type BudgetLine, formatMinor, groupTypedAmount, isCountedRepeat, parsePercentBp, roundUpToMajor, shareOfMinor } from '@expanses/core';
+import { type BudgetRow, clearBudgetOverride, followedBill, removeBudget, saveBudget, setBudgetOverride } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -7,10 +7,11 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SegmentedControl, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { bareFigure } from '../networth/debt-rows';
-import { FREQUENCY_WORDS, perMonthPreview } from './frequency-form';
+import { BUDGET_UNITS, type BudgetUnit, isWeeksUnit, perMonthPreview, repeatOfUnit, unitWord } from './frequency-form';
 import { FigureRow } from './budget-rows';
 import type { SpendHistory } from './budget-view';
-import { openForm, savedOf, setUnit, switchMode, switchMonth, takeFigure, typeFigure } from './cap-sheet-state';
+import { openForm, savedOf, setStart, setUnit, switchMode, switchMonth, takeFigure, typeFigure } from './cap-sheet-state';
+import { useBudgetMonth } from './queries';
 import { type Dependant, keptWarning, type ShareBase } from './share-form';
 
 /**
@@ -63,8 +64,15 @@ export function CapSheet({
   const [busy, setBusy] = useState(false);
 
   // An override is always a month's figure; only the plan is typed in the unit it is thought of in.
-  const unit: BudgetFrequency = thisMonthOnly ? 'monthly' : frequency;
-  const preview = perMonthPreview(amount, unit, currency);
+  const unit: BudgetUnit = thisMonthOnly ? 'monthly' : frequency;
+  // A day or a week is counted in the month on screen (Budget C): its days, Mondays or dates — a week on the dates of
+  // the category's bill by the same weeks, when it has one, and then no start of its own is asked for.
+  const calendar = useBudgetMonth(month).data ?? null;
+  const repeat = repeatOfUnit(unit);
+  const counted = isCountedRepeat(repeat);
+  const bill = calendar ? followedBill(calendar, categoryId, repeat) : undefined;
+  const preview = perMonthPreview(amount, unit, currency, calendar ? { month: calendar, categoryId, startsOn: form.startsOn } : null);
+  const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long' });
 
   // A % is always the plan's: this month's own figure is an amount.
   const sharing = mode === 'share' && !thisMonthOnly;
@@ -134,7 +142,7 @@ export function CapSheet({
           />
         </div>
       )}
-      <InsetGroup>
+      <InsetGroup footer={!thisMonthOnly && !sharing && bill ? <span data-testid="cap-follows-bill">{`Counted on the ${bill.name} bill's dates`}</span> : undefined}>
         {sharing ? (
           <TextRow
             key="share"
@@ -166,15 +174,18 @@ export function CapSheet({
           />
         )}
         {!thisMonthOnly && !sharing && (
-          <SelectRow label="Every" value={frequency} onChange={(e) => setForm(setUnit(form, e.target.value as BudgetFrequency))}>
-            {BUDGET_FREQUENCIES.map((key) => (
+          <SelectRow label="Every" value={frequency} onChange={(e) => setForm(setUnit(form, e.target.value as BudgetUnit))}>
+            {BUDGET_UNITS.map((key) => (
               <option key={key} value={key}>
-                {FREQUENCY_WORDS[key].every}
+                {unitWord(key)}
               </option>
             ))}
           </SelectRow>
         )}
-        {unit !== 'monthly' && <ReadOnlyRow label="Per month" value={preview === null ? null : formatMinor(preview, currency)} />}
+        {!thisMonthOnly && !sharing && isWeeksUnit(unit) && !bill && (
+          <TextRow label="Starts on" type="date" value={form.startsOn} onChange={(e) => setForm((was) => setStart(was, e.target.value))} />
+        )}
+        {unit !== 'monthly' && <ReadOnlyRow label={counted ? monthName : 'Per month'} value={preview === null ? null : formatMinor(preview, currency)} />}
         {/* Only a cap that exists can be changed for one month: there is nothing to override before it. */}
         {row && <SwitchRow label="Just this month" checked={thisMonthOnly} onChange={(on) => setForm((was) => switchMonth(was, on, row, base, currency))} />}
       </InsetGroup>

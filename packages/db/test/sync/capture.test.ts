@@ -188,7 +188,7 @@ describe('capture: rows edited in place', () => {
     const monthly = (await database.db.select({ amountMinor: budgets.amountMinor }).from(budgets))[0]!.amountMinor;
     expect(ops).toEqual([
       { entity: 'budget', id: budgetId, op: 'upsert', fields: { amountMinor: monthly } },
-      { entity: 'budget_frequency', id: budgetId, op: 'upsert', fields: { frequency: 'weekly', amountAsSetMinor: 700_000 } },
+      { entity: 'budget_frequency', id: budgetId, op: 'upsert', fields: { frequency: 'weekly', amountAsSetMinor: 700_000, everyWeeks: null, startsOn: null } },
     ]);
 
     await clearOutbox(database);

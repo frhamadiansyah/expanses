@@ -14,6 +14,8 @@ const budget = (categoryAccountId: string, amountAsSetMinor: number, frequency: 
   overridden: false,
   frequency,
   amountAsSetMinor,
+  everyWeeks: frequency === 'weekly' ? 1 : null,
+  startsOn: null,
   share: null,
 });
 
@@ -273,3 +275,20 @@ describe('clearing a parent whose %-children are left alone', () => {
   });
 });
 
+
+describe('a budget by days or weeks on Edit budgets (Budget C)', () => {
+  const month = { period: { from: '2026-11-01', to: '2026-11-30' }, bills: {} };
+
+  it('opens on its gap and start, counts the month, and saves both back', () => {
+    const groups = editGroups(lines);
+    const stored: BudgetRow = { ...budget('fun', 1_000_000, 'weekly'), everyWeeks: 3, startsOn: '2026-11-03' };
+    const initial = initialState(groups, [stored, budget('ride', 100_000, 'weekly')], 'IDR');
+    expect(initial.fun).toMatchObject({ amount: '1.000.000', frequency: 'weeks-3', startsOn: '2026-11-03' });
+    expect(initial.ride).toMatchObject({ frequency: 'weekly' });
+    // November: 3 and 24 Nov, 5 Mondays.
+    expect(typedCaps(lines, initial, 0, 'IDR', { initial, budgets: [] }, month).get('fun')).toBe(2_000_000);
+    expect(typedCaps(lines, initial, 0, 'IDR', { initial, budgets: [] }, month).get('ride')).toBe(500_000);
+    const state = { ...initial, fun: { ...initial.fun!, amount: '900.000' } };
+    expect(changesOf(groups, state, initial, [stored], 0, 'IDR').save).toEqual([{ categoryAccountId: 'fun', amountMinor: 900_000, frequency: 'weekly', everyWeeks: 3, startsOn: '2026-11-03' }]);
+  });
+});

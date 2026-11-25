@@ -14,6 +14,8 @@ const shareRow = (month?: number): BudgetRow => ({
   overridden: month !== undefined,
   frequency: 'monthly',
   amountAsSetMinor: 3_000_000,
+  everyWeeks: null,
+  startsOn: null,
   share: { basis: 'take-home', bp: 3000 },
 });
 
@@ -81,5 +83,22 @@ describe('Amount ↔ % on the sheet', () => {
   it('converts afresh once something was typed after the switch', () => {
     const share = switchMode(typeFigure(openForm(undefined, 'IDR'), '1.234.567'), 'share', base, 'IDR');
     expect(switchMode(typeFigure(share, '15'), 'amount', base, 'IDR').amount).toBe('1.500.000');
+  });
+});
+
+describe('a budget by days or weeks on the sheet (Budget C)', () => {
+  const weeks: BudgetRow = { ...shareRow(), share: null, frequency: 'weekly', everyWeeks: 3, startsOn: '2026-11-03', amountAsSetMinor: 1_000_000, planMinor: 2_000_000, amountMinor: 2_000_000, overridden: false };
+
+  it('opens on its gap and start, and saves them back', () => {
+    const form = openForm(weeks, 'IDR', '2026-11-25');
+    expect(form).toMatchObject({ amount: '1.000.000', frequency: 'weeks-3', startsOn: '2026-11-03' });
+    expect(savedOf(form, base, 'IDR')).toEqual({ kind: 'plan', plan: { amountMinor: 1_000_000, frequency: 'weekly', everyWeeks: 3, startsOn: '2026-11-03' } });
+  });
+
+  it('a new budget every few weeks starts on the day the sheet opened; every week and a day keep no start', () => {
+    const form = { ...typeFigure(openForm(undefined, 'IDR', '2026-11-25'), '100.000'), frequency: 'weeks-2' as const };
+    expect(savedOf(form, base, 'IDR')).toEqual({ kind: 'plan', plan: { amountMinor: 100_000, frequency: 'weekly', everyWeeks: 2, startsOn: '2026-11-25' } });
+    expect(savedOf({ ...form, frequency: 'weekly' }, base, 'IDR')).toEqual({ kind: 'plan', plan: { amountMinor: 100_000, frequency: 'weekly' } });
+    expect(savedOf({ ...form, frequency: 'daily' }, base, 'IDR')).toEqual({ kind: 'plan', plan: { amountMinor: 100_000, frequency: 'daily' } });
   });
 });

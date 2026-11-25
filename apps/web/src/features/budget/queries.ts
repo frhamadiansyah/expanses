@@ -1,5 +1,5 @@
 import { addMonths } from '@expanses/core';
-import { budgetSheetFor, committedByCategory, listBudgets } from '@expanses/db';
+import { budgetMonthOf, budgetSheetFor, committedByCategory, listBudgets } from '@expanses/db';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { historyOf } from './budget-view';
@@ -13,6 +13,12 @@ export function useBudgetSheet(month: string, enabled = true) {
 export function useBudgets(month: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['budgets', ws.workspaceId, ws.bookId ?? null, month], queryFn: () => listBudgets(database, ws, month) });
+}
+
+/** The days the month covers and the due dates of each bill by weeks in them: what a day or a week is counted against. */
+export function useBudgetMonth(month: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['budget-month', ws.workspaceId, ws.bookId ?? null, month], queryFn: () => budgetMonthOf(database, ws, month) });
 }
 
 /**

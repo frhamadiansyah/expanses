@@ -126,6 +126,7 @@ import exchangeFeeOnly from '../migrations/0125_exchange_fee_only.sql?raw';
 import selfSync from '../migrations/0126_self_sync.sql?raw';
 import billPaymentsSeveral from '../migrations/0127_bill_payments_several.sql?raw';
 import billRepeatWeeks from '../migrations/0128_bill_repeat_weeks.sql?raw';
+import budgetRepeat from '../migrations/0129_budget_repeat.sql?raw';
 import type { Database } from './database';
 import { dropSelfTriggers, installSelfCapture, selfCaptureOn } from './self/triggers';
 
@@ -263,6 +264,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 126, name: 'self_sync', sql: selfSync },
   { version: 127, name: 'bill_payments_several', sql: billPaymentsSeveral },
   { version: 128, name: 'bill_repeat_weeks', sql: billRepeatWeeks },
+  { version: 129, name: 'budget_repeat', sql: budgetRepeat },
 ];
 
 /** The highest version this build of the app knows how to produce. */

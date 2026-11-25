@@ -75,8 +75,31 @@ function Stacked({ minor, currency, under, warn = false }: { minor: number; curr
   );
 }
 
+/**
+ * Under a row's name: the bar, and for a budget by days or weeks (Budget C) first the short line saying how it repeats —
+ * "100.000 a week". Every other row keeps its bar alone, exactly as before.
+ */
+function UnderName({ repeat, bar }: { repeat?: string | null; bar: ReactNode }) {
+  if (!repeat) return bar;
+  return (
+    <>
+      <span className="block truncate" data-testid="budget-repeat">
+        {repeat}
+      </span>
+      <span className="mt-[4px] block">{bar}</span>
+    </>
+  );
+}
+
 /** A line past its cap: what it spent, and by how much it is over. */
-export function OverRow({ line, mark, currency, onOpen, position }: GroupChild & { line: BudgetLine; mark: Mark; currency: string; onOpen: () => void }) {
+export function OverRow({
+  line,
+  mark,
+  currency,
+  repeat,
+  onOpen,
+  position,
+}: GroupChild & { line: BudgetLine; mark: Mark; currency: string; repeat?: string | null; onOpen: () => void }) {
   return (
     <InsetRow
       position={position}
@@ -84,7 +107,7 @@ export function OverRow({ line, mark, currency, onOpen, position }: GroupChild &
       icon={mark.icon}
       iconColour={mark.colour}
       title={line.name}
-      subtitle={<UseBar share={2} />}
+      subtitle={<UnderName repeat={repeat} bar={<UseBar share={2} />} />}
       value={<Stacked minor={line.totalMinor} currency={currency} under={<>over by <Money minor={line.overMinor} currency={currency} /></>} warn />}
       valueTone="ink"
       chevron={false}
@@ -101,9 +124,10 @@ export function CappedRow({
   title,
   depth = 0,
   currency,
+  repeat,
   onOpen,
   position,
-}: GroupChild & { line: BudgetLine; mark: Mark | null; title?: string; depth?: number; currency: string; onOpen: () => void }) {
+}: GroupChild & { line: BudgetLine; mark: Mark | null; title?: string; depth?: number; currency: string; repeat?: string | null; onOpen: () => void }) {
   const cap = line.capMinor ?? 0;
   const share = cap > 0 ? line.totalMinor / cap : line.totalMinor > 0 ? 2 : 0;
   return (
@@ -114,7 +138,7 @@ export function CappedRow({
       icon={mark?.icon}
       iconColour={mark?.colour}
       title={title ?? line.name}
-      subtitle={<UseBar share={share} />}
+      subtitle={<UnderName repeat={repeat} bar={<UseBar share={share} />} />}
       value={<Stacked minor={cap - line.totalMinor} currency={currency} under={`left of ${bareFigure(cap, currency)}`} />}
       valueTone="ink"
       chevron={false}

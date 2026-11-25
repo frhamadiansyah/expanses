@@ -1,4 +1,4 @@
-import { BUDGET_FREQUENCIES, type BudgetFrequency, formatMinor, groupTypedAmount, isoDate, periodMonthOf } from '@expanses/core';
+import { formatMinor, groupTypedAmount, isoDate, periodMonthOf } from '@expanses/core';
 import { BudgetError, type BudgetRow, saveBudgets } from '@expanses/db';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Check, RotateCcw } from 'lucide-react';
@@ -12,11 +12,17 @@ import { useBooks, useMonthStart, useOpenBook } from '../workspaces/queries';
 import { useCategoryMarks } from './budget-rows';
 import type { SpendHistory } from './budget-view';
 import { basisOfRow, changesOf, editGroups, type EditRow, type EditState, fillFromLastMonth, initialState, isDirty, keptOf, liveCapsTotal, type RowState, rowStateOf, switchRow, typedCaps } from './edit-budgets-model';
-import { FREQUENCY_WORDS } from './frequency-form';
-import { useBudgets, useBudgetSheet, useSpendingHistory } from './queries';
+import { BUDGET_UNITS, type BudgetUnit, repeatOfUnit, unitWord } from './frequency-form';
+import { useBudgetMonth, useBudgets, useBudgetSheet, useSpendingHistory } from './queries';
 import { keptWarning, type ShareBase } from './share-form';
 
-const UNIT_SHORT: Record<BudgetFrequency, string> = { daily: '/day', weekly: '/wk', monthly: '/mo', quarterly: '/qtr', yearly: '/yr' };
+const UNIT_SHORT: Record<string, string> = { daily: '/day', weekly: '/wk', monthly: '/mo', quarterly: '/qtr', yearly: '/yr' };
+
+/** "/wk", or "/3wk" for every 3 weeks. */
+const unitShort = (unit: BudgetUnit) => {
+  const { everyWeeks } = repeatOfUnit(unit);
+  return everyWeeks === null ? UNIT_SHORT[unit]! : `/${everyWeeks}wk`;
+};
 
 /** Every budget of the month's tree on one screen: type down the list, Save once. Edits the plan, never one month alone. */
 export function EditBudgetsPage() {
@@ -33,6 +39,8 @@ export function EditBudgetsPage() {
   const ready = useBooks().isSuccess;
   const sheet = useBudgetSheet(month).data;
   const budgets = useBudgets(month).data;
+  // A day or a week is counted in this month's days (Budget C): the Budgeted figure says what the month will hold.
+  const calendar = useBudgetMonth(month).data ?? null;
   const history = useSpendingHistory(month, currency);
   const markOf = useCategoryMarks(useAccounts().data ?? []);
 
@@ -104,8 +112,8 @@ export function EditBudgetsPage() {
   const canFill = history !== null && order.some((id) => filled[id] !== state[id]);
 
   const stored = { initial: initial ?? {}, budgets: budgets ?? [] };
-  const budgeted = sheet ? liveCapsTotal(sheet.lines, state, takeHome, currency, stored) : 0;
-  const figures = sheet ? typedCaps(sheet.lines, state, takeHome, currency, stored) : new Map<string, number>();
+  const budgeted = sheet ? liveCapsTotal(sheet.lines, state, takeHome, currency, stored, calendar) : 0;
+  const figures = sheet ? typedCaps(sheet.lines, state, takeHome, currency, stored, calendar) : new Map<string, number>();
   const kept = keptOf(groups, state, stored);
   // What a row's % is of: the basis it was saved with while that is there, else the figure typed for its parent, or
   // take-home when its parent has none.
@@ -319,12 +327,12 @@ function BudgetField({
         <select
           aria-label={`${row.label} every`}
           value={share ? 'share' : value.frequency}
-          onChange={(e) => onChange(switchRow(value, e.target.value as 'share' | BudgetFrequency, base, currency))}
+          onChange={(e) => onChange(switchRow(value, e.target.value as 'share' | BudgetUnit, base, currency))}
           className="ph-focus h-[36px] w-[44px] shrink-0 appearance-none bg-transparent text-[13px] text-[var(--ph-ink-3)]"
         >
-          {BUDGET_FREQUENCIES.map((key) => (
-            <option key={key} value={key} aria-label={FREQUENCY_WORDS[key].every}>
-              {UNIT_SHORT[key]}
+          {BUDGET_UNITS.map((key) => (
+            <option key={key} value={key} aria-label={unitWord(key)}>
+              {unitShort(key)}
             </option>
           ))}
           <option value="share" disabled={shareDisabled} aria-label={`a % of ${base.label}`}>

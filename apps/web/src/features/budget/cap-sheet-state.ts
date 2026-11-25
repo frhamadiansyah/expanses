@@ -1,13 +1,15 @@
-import { type BudgetFrequency, formatBp, parseMajor, parsePercentBp, shareOfMinor } from '@expanses/core';
+import { formatBp, isoDate, parseMajor, parsePercentBp, shareOfMinor } from '@expanses/core';
 import type { BudgetRow, SaveBudgetInput } from '@expanses/db';
 import { bareFigure } from '../networth/debt-rows';
+import { type BudgetUnit, repeatOfUnit, unitOf } from './frequency-form';
 import { type ShareBase, toAmount, toPercent } from './share-form';
 
 /** What the field holds and what it is typed as: the part of the form a switch changes. */
 interface Shown {
   mode: 'amount' | 'share';
   amount: string;
-  frequency: BudgetFrequency;
+  /** What the plan is typed per: a unit, or every few weeks. */
+  frequency: BudgetUnit;
   thisMonthOnly: boolean;
 }
 
@@ -18,6 +20,8 @@ export interface CapForm extends Shown {
    * the month's Rp figure and the % control is hidden, and turning it off gives the plan back in its own mode.
    */
   mode: 'amount' | 'share';
+  /** YYYY-MM-DD: the day every few weeks is counted from — the budget's own, else the day the sheet opened. */
+  startsOn: string;
   /** Something was typed, picked or switched since the sheet opened. */
   touched: boolean;
   /** What was shown before the last switch, while nothing has been typed since: switching back gives it back exactly. */
@@ -35,12 +39,13 @@ function startingFigure(row: BudgetRow | undefined, thisMonthOnly: boolean, curr
 }
 
 /** The sheet as it opens on a category's budget, or on none. */
-export function openForm(row: BudgetRow | undefined, currency: string): CapForm {
+export function openForm(row: BudgetRow | undefined, currency: string, today: string = isoDate()): CapForm {
   const thisMonthOnly = Boolean(row?.overridden);
   return {
     mode: row?.share ? 'share' : 'amount',
     amount: startingFigure(row, thisMonthOnly, currency),
-    frequency: row?.frequency ?? 'monthly',
+    frequency: row ? unitOf(row.frequency, row.everyWeeks) : 'monthly',
+    startsOn: row?.startsOn ?? today,
     thisMonthOnly,
     touched: false,
     before: null,
@@ -85,8 +90,13 @@ export function typeFigure(form: CapForm, amount: string): CapForm {
 }
 
 /** The unit the plan is typed in. */
-export function setUnit(form: CapForm, frequency: BudgetFrequency): CapForm {
+export function setUnit(form: CapForm, frequency: BudgetUnit): CapForm {
   return { ...form, frequency, before: null };
+}
+
+/** The day every few weeks is counted from. */
+export function setStart(form: CapForm, startsOn: string): CapForm {
+  return { ...form, startsOn };
 }
 
 /**
@@ -112,5 +122,8 @@ export function savedOf(form: CapForm, base: ShareBase, currency: string): { kin
     return { kind: 'plan', plan: { amountMinor: shareOfMinor(base.minor, bp, currency), frequency: 'monthly', share: { basis: base.basis, bp } } };
   }
   const minor = parseMajor(form.amount, currency);
-  return form.thisMonthOnly ? { kind: 'month', amountMinor: minor } : { kind: 'plan', plan: { amountMinor: minor, frequency: form.frequency } };
+  if (form.thisMonthOnly) return { kind: 'month', amountMinor: minor };
+  const { frequency, everyWeeks } = repeatOfUnit(form.frequency);
+  // Every few weeks takes its gap and the day it is counted from; every other unit is kept exactly as before.
+  return { kind: 'plan', plan: everyWeeks === null ? { amountMinor: minor, frequency } : { amountMinor: minor, frequency, everyWeeks, startsOn: form.startsOn } };
 }

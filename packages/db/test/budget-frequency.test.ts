@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { isoDate } from '@expanses/core';
+import { sql } from 'drizzle-orm';
 import { categoryIdsByKey, createAccount, createBook, createDatabase, createWorkspace, inBook, listAccounts, listBudgets, migrate, MIGRATIONS, removeBudget, saveBudget, setBookBaseCurrency, setBudgetOverride, upsertRate } from '../src/index';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 import { setupDb } from './helpers';
 
+// September 2026 holds four Mondays (7, 14, 21, 28): a week's budget there is four of it (Budget C, 2026-11-25).
 const MONTH = '2026-09';
+
+/** What budgets.amount_minor keeps: the average month, for every reader that does not count a month's days. */
+const storedMonth = async (database: Parameters<typeof listBudgets>[0], categoryId: string) =>
+  (await database.db.values<[number]>(sql`SELECT amount_minor FROM budgets WHERE category_account_id = ${categoryId}`))[0]?.[0];
 let executor: NodeExecutor | undefined;
 afterEach(() => {
   executor?.close();
@@ -12,18 +18,20 @@ afterEach(() => {
 });
 
 describe('a budget typed in another unit', () => {
-  it('keeps the monthly figure for every reader, and what was typed beside it', async () => {
+  it('keeps the average month for every reader, and what was typed beside it; the month counts its Mondays', async () => {
     const { database, ws } = await setupDb();
     const groceries = (await categoryIdsByKey(database, ws))['household.groceries']!;
     await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 500_000, frequency: 'weekly' });
-    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_166_667, amountMinor: 2_166_667, frequency: 'weekly', amountAsSetMinor: 500_000 });
+    expect(await storedMonth(database, groceries)).toBe(2_166_667);
+    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_000_000, amountMinor: 2_000_000, frequency: 'weekly', amountAsSetMinor: 500_000, everyWeeks: 1, startsOn: null });
   });
 
   it('counts cents in a dollar workspace', async () => {
     const { database, ws } = await setupDb('USD');
     const groceries = (await categoryIdsByKey(database, ws))['household.groceries']!;
     await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 1_000, frequency: 'weekly' });
-    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 4_333, amountAsSetMinor: 1_000 });
+    expect(await storedMonth(database, groceries)).toBe(4_333);
+    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 4_000, amountAsSetMinor: 1_000 });
   });
 
   it('re-saving an existing monthly line as weekly stores the month worked out, not the figure as typed', async () => {
@@ -34,8 +42,9 @@ describe('a budget typed in another unit', () => {
 
     await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 500_000, frequency: 'weekly' });
     // The update branch must write the worked-out month, not the Rp 500.000 as typed: that would leave
-    // every cap reader thinking groceries costs Rp 500.000 a month, not Rp 2.166.667.
-    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_166_667, amountMinor: 2_166_667, frequency: 'weekly', amountAsSetMinor: 500_000 });
+    // every reader of the stored month thinking groceries costs Rp 500.000 a month, not Rp 2.166.667.
+    expect(await storedMonth(database, groceries)).toBe(2_166_667);
+    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_000_000, amountMinor: 2_000_000, frequency: 'weekly', amountAsSetMinor: 500_000 });
   });
 
   it('drops the unit when set monthly again', async () => {
@@ -66,7 +75,7 @@ describe('a budget typed in another unit', () => {
     const groceries = (await categoryIdsByKey(database, ws))['household.groceries']!;
     await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 500_000, frequency: 'weekly' });
     await setBudgetOverride(database, ws, { categoryAccountId: groceries, month: MONTH, amountMinor: 3_000_000 });
-    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_166_667, amountMinor: 3_000_000, overridden: true, frequency: 'weekly' });
+    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_000_000, amountMinor: 3_000_000, overridden: true, frequency: 'weekly' });
   });
 
   it('forgets the unit with the budget', async () => {
@@ -87,8 +96,10 @@ describe('a budget typed in another unit', () => {
     await saveBudget(database, book, { categoryAccountId: software.id, amountMinor: 500_000, frequency: 'weekly' });
     await upsertRate(database, { fromCurrency: 'IDR', toCurrency: 'SGD', onDate: isoDate(), rate: 0.000083, source: 'manual', sourceDate: isoDate() });
     await setBookBaseCurrency(database, ws, biz, 'SGD');
-    // Rp 500.000 at 0,000083 is S$41,50 a week; 4.150 cents × 52 ÷ 12 = 17.983,33 → 17.983 a month.
-    expect((await listBudgets(database, book, MONTH)).find((row) => row.categoryAccountId === software.id)).toMatchObject({ frequency: 'weekly', amountAsSetMinor: 4_150, planMinor: 17_983 });
+    // Rp 500.000 at 0,000083 is S$41,50 a week; 4.150 cents × 52 ÷ 12 = 17.983,33 → 17.983 the average month, and
+    // four Mondays make September 16.600.
+    expect(await storedMonth(database, software.id)).toBe(17_983);
+    expect((await listBudgets(database, book, MONTH)).find((row) => row.categoryAccountId === software.id)).toMatchObject({ frequency: 'weekly', amountAsSetMinor: 4_150, planMinor: 16_600 });
   });
 
   it('converts the amount as typed and works the month out from it, even where the two routes disagree', async () => {
@@ -105,10 +116,11 @@ describe('a budget typed in another unit', () => {
     await setBookBaseCurrency(database, ws, biz, 'IDR');
     // US$41,50 at 16.000 converts once to Rp 664.000, then 52 ÷ 12 gives Rp 2.877.333 a month. Converting the old
     // monthly figure (US$179,83 → 17.983 cents) directly instead would give Rp 2.877.280 — a different figure.
+    expect(await storedMonth(database, software.id)).toBe(2_877_333);
     expect((await listBudgets(database, book, MONTH)).find((row) => row.categoryAccountId === software.id)).toMatchObject({
       frequency: 'weekly',
       amountAsSetMinor: 664_000,
-      planMinor: 2_877_333,
+      planMinor: 2_656_000,
     });
   });
 

@@ -810,6 +810,32 @@ function weeklyDueDates(template: ExpenseTemplateRow, facts: BillFacts, from: st
   return weeklyDueDatesBetween(weeklyInputOf(template, facts), from, to);
 }
 
+/** A category's bill by weeks: its gap, and its due dates inside a budget month. */
+export interface WeeklyBillDates {
+  /** The bill's name, for the sheet that says a budget follows it. */
+  name: string;
+  everyWeeks: number;
+  dates: string[];
+}
+
+/**
+ * Each category's active bills by weeks, with their due dates from `from` to `to` (both included) — the days they were
+ * paid and the ones still due, as "Of it, bills" and the bill's own page count them. Budget C reads a budget by the
+ * same weeks on these dates, so the Electricity budget and the Electricity bill agree.
+ */
+export async function weeklyBillDatesIn(database: Database, ws: WorkspaceContext, from: string, to: string): Promise<Map<string, WeeklyBillDates[]>> {
+  const weekly = (await listExpenseTemplates(database, ws)).filter((template) => template.repeat === 'weeks' && template.active && template.repeatEvery !== null);
+  const out = new Map<string, WeeklyBillDates[]>();
+  if (weekly.length === 0) return out;
+  const facts = await billFacts(database, ws, weekly);
+  for (const template of weekly) {
+    const list = out.get(template.categoryAccountId) ?? [];
+    list.push({ name: template.name, everyWeeks: template.repeatEvery!, dates: weeklyDueDates(template, facts, from, to) });
+    out.set(template.categoryAccountId, list);
+  }
+  return out;
+}
+
 /** One day's window: a weekly bill is out and due the same day. */
 const dayWindow = (day: string): BillWindow => ({ month: day.slice(0, 7), opensOn: day, payBy: day });
 
