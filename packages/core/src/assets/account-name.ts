@@ -53,6 +53,15 @@ function opensWith(name: string, word: string): boolean {
 }
 
 /**
+ * Whether a name opens with a name `bank` goes by: "MANDIRI RANI KUSUMA" with Bank Mandiri, "BCA RANI" with Bank Central
+ * Asia — the way a wallet names the bank account it sent money to.
+ */
+export function opensWithBankName(name: string, bank: string): boolean {
+  const trimmed = name.trim();
+  return bankNameWords(bank).some((word) => opensWith(trimmed, word));
+}
+
+/**
  * The name an account is shown by. `bank` is the account's bank as stored (null or empty for none). A name that
  * already starts with its bank — "Mandiri Xpresi", "mandiri xpresi", "BCA Tahapan" at Bank Central Asia, an older
  * card saved whole as "BCA KrisFlyer" — is shown as typed, so the bank is never said twice.

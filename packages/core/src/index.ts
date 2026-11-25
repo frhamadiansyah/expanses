@@ -498,7 +498,7 @@ export {
 } from './coretax/review';
 export { csvColumns, toReportCsv } from './coretax/export';
 export { bankMatches, INDONESIAN_BANKS, type IndonesianBank } from './coretax/banks';
-export { accountDisplayName, BANK_NAMED_SUBTYPES, bankNameWords, shortBankName } from './assets/account-name';
+export { accountDisplayName, BANK_NAMED_SUBTYPES, bankNameWords, opensWithBankName, shortBankName } from './assets/account-name';
 export { brokerMatches, INDONESIAN_BROKERS, type IndonesianBroker } from './coretax/brokers';
 export { goldBrandMatches, INDONESIAN_GOLD_BRANDS, WORLD_GOLD_BRANDS, type GoldMaker } from './assets/gold-brands';
 export { fundPlaceMatches, INDONESIAN_FUND_APPS, type FundPlace } from './assets/fund-places';

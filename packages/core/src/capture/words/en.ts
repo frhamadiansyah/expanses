@@ -9,6 +9,7 @@ export const EN: WordList = {
   notDirection: ['credit card', 'credit-card'],
   promo: ['discount', 'cashback', 'voucher', 'promo', 'reward', 'coupon', 'points'],
   transaction: ['transaction', 'edc'],
+  sent: ['transfer', 'transferred', 'sent'],
   notName: ['your', 'my', 'our', 'their', 'the', 'this', 'that', 'a', 'an'],
   balance: ['balance', 'available balance', 'remaining'],
   amountLabels: ['total', 'amount', 'grand total', 'total paid'],

@@ -113,6 +113,11 @@ export interface WordList {
    */
   transaction: string[];
   /**
+   * Words that say money was sent to an account rather than paid for something: "dikirim", "transfer", "sent". With a
+   * recipient named after a bank the owner keeps an account at ("dikirim ke MANDIRI …"), the capture is a transfer.
+   */
+  sent: string[];
+  /**
    * Words that are never somebody's name, however a lead-in points at them: "your", "anda". Without this a
    * notification reading "from your credit card" names a merchant called "your".
    */
