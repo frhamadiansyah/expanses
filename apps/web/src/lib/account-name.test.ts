@@ -106,7 +106,7 @@ describe('a fund account: its custodian bank where money is listed, its broker w
     ]);
   });
 
-  it('renames the balance sheet\'s broker rows alone, with the broker in the note when a bank is shared', () => {
+  it('names the balance sheet\'s rows as money lists do: bank accounts with their bank, brokers by their custodian', () => {
     const shown = shownAccounts([...rows, row('bibit', 'fund', 'Bibit', 'CIMB Niaga')]);
     const sheet = [
       { accountId: 'mirae', name: 'Mirae Sekuritas', note: null },
@@ -119,7 +119,7 @@ describe('a fund account: its custodian bank where money is listed, its broker w
       ['CIMB Niaga', 'Mirae Sekuritas'],
       ['Bank Jago', null],
       ['Ajaib Sekuritas', null],
-      ['Xpresi', null],
+      ['Mandiri Xpresi', null],
       ['Partner Sekuritas', null],
     ]);
   });

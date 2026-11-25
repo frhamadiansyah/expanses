@@ -64,17 +64,18 @@ export function brokerNameOf(account: Pick<AccountRow, 'name' | 'typedName'>): s
 }
 
 /**
- * Rows of a list made straight from the database (the balance sheet's), with a broker's cash renamed as every list of
- * money names it: its custodian bank, and its broker in the row's note when another broker shares that bank. `accounts`
- * are the shown ones (`shownAccounts`). Every other row — a bank account, a holding, another member's item — is left
- * exactly as it was.
+ * Rows of a list made straight from the database (the balance sheet's), named as every list of money names them
+ * (`shownAccounts`): an account at a bank with its bank in front ("CIMB Niaga Octo Savers", owner 25 Nov 2026: the
+ * balance sheet printed the typed name alone, so only accounts typed with their bank read so), a broker's cash by its
+ * custodian bank, with its broker in the row's note when another broker shares that bank. A row that is not one of
+ * these accounts as typed — a holding, another member's item — is left exactly as it was.
  */
 export function withCustodianNames<T extends { accountId: string; name: string; note: string | null }>(rows: readonly T[], accounts: readonly AccountRow[]): T[] {
   const byId = new Map(accounts.map((account) => [account.id, account]));
   return rows.map((row) => {
     const account = byId.get(row.accountId);
-    if (!account || !custodianNamed(account) || typedNameOf(account) !== row.name) return row;
-    return { ...row, name: account.name, note: row.note ?? account.tellApart ?? null };
+    if (!account || typedNameOf(account) !== row.name || account.name === row.name) return row;
+    return { ...row, name: account.name, note: row.note ?? (custodianNamed(account) ? (account.tellApart ?? null) : null) };
   });
 }
 
