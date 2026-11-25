@@ -1,4 +1,4 @@
-import { categoryPath, currencyInfo, groupedMajorString, groupTypedAmount, isNotMonthlyRepeat, isoDate, monthName, ordinal, parseGroupedMajor, sinkingPlan } from '@expanses/core';
+import { categoryPath, currencyInfo, groupedMajorString, groupTypedAmount, isNotMonthlyRepeat, isoDate, monthName, ordinal, parseGroupedMajor, sinkingPlan, WEEKS_EVERY_MAX, WEEKS_EVERY_MIN, weeklyStartOn } from '@expanses/core';
 import { deleteExpenseTemplate, saveExpenseTemplate } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
@@ -27,6 +27,10 @@ const lastFundAccount = (): string => {
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 const EVERY = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
+const WEEKS = Array.from({ length: WEEKS_EVERY_MAX - WEEKS_EVERY_MIN + 1 }, (_, i) => WEEKS_EVERY_MIN + i);
+
+/** Under a bill by weeks: the one rule its dates follow (owner's mockup, 25 Nov 2026). */
+export const WEEKLY_BILL_NOTE = 'The next one is counted from the last payment, so paying early or late moves the rest with it.';
 
 export function EditBillRoute() {
   const { billId } = useParams({ from: '/bills/$billId/edit' });
@@ -53,10 +57,13 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [moneyAccountId, setMoneyAccountId] = useState('');
   // '' follows the account that pays: the bill is then written in that account's money, as every bill was before this.
   const [currency, setCurrency] = useState('');
-  // Every month, every few months from the month chosen below, or once a year in it.
-  const [repeat, setRepeat] = useState<'monthly' | 'months' | 'yearly'>('monthly');
+  // Every month, every few weeks from the day chosen below, every few months from the month chosen below, or once a year in it.
+  const [repeat, setRepeat] = useState<'monthly' | 'weeks' | 'months' | 'yearly'>('monthly');
   const [month, setMonth] = useState('');
   const [every, setEvery] = useState('3');
+  const [weeks, setWeeks] = useState('3');
+  // A bill by weeks is first due on this day; after that, N weeks after each payment.
+  const [startsOn, setStartsOn] = useState(() => isoDate());
   // A yearly bill can save up each month in an account already held; '' monthly follows the worked-out figure.
   const [fundOn, setFundOn] = useState(false);
   const [fundAccountId, setFundAccountId] = useState('');
@@ -120,10 +127,15 @@ export function BillFormPage({ billId }: { billId?: string }) {
     setMoneyAccountId(bill.moneyAccountId);
     setRepeat(bill.repeat);
     setMonth(bill.repeatMonth === null ? '' : String(bill.repeatMonth));
-    setEvery(String(bill.repeatEvery ?? 3));
+    setEvery(String(bill.repeat === 'months' ? (bill.repeatEvery ?? 3) : 3));
+    if (bill.repeat === 'weeks') {
+      setWeeks(String(bill.repeatEvery ?? 3));
+      setStartsOn(weeklyStartOn(bill.startsMonth, bill.dayOfMonth));
+    }
     // A bill that is not monthly has one date, the day it is due by: an older yearly bill with a later due-by day shows that day.
     setOutDay(String(bill.repeat !== 'monthly' && bill.payByDay !== null && bill.payByDay >= bill.dayOfMonth ? bill.payByDay : bill.dayOfMonth));
     setPayBy(bill.repeat === 'monthly' ? String(bill.payByDay ?? '') : '');
+    if (bill.repeat === 'weeks') setOutDay(String(bill.dayOfMonth));
     const fund = (funds.data ?? []).find((f) => f.billId === billId);
     if (fund) {
       setFundOn(true);
@@ -150,15 +162,20 @@ export function BillFormPage({ billId }: { billId?: string }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    if (repeat !== 'monthly' && month === '') {
+    const weekly = repeat === 'weeks';
+    if (weekly && !/^\d{4}-\d{2}-\d{2}$/.test(startsOn)) {
+      setError(new Error('Choose the day it starts'));
+      return;
+    }
+    if (!weekly && repeat !== 'monthly' && month === '') {
       setError(new Error(repeat === 'yearly' ? 'Choose the month' : 'Choose the starting month'));
       return;
     }
-    if (outDay === '') {
+    if (!weekly && outDay === '') {
       setError(new Error(repeat === 'monthly' ? 'Choose the bill date' : 'Choose the due day'));
       return;
     }
-    const saving = repeat !== 'monthly' && fundOn;
+    const saving = (repeat === 'yearly' || repeat === 'months') && fundOn;
     if (saving && parsedAmount === null) {
       setError(new Error('A sinking fund needs a fixed amount'));
       return;
@@ -172,10 +189,12 @@ export function BillFormPage({ billId }: { billId?: string }) {
         amountMinor: amount.trim() === '' ? null : parseGroupedMajor(amount.trim(), billCurrency),
         currency: currency || null,
         repeat,
-        repeatMonth: repeat === 'monthly' ? null : Number(month),
-        repeatEvery: repeat === 'months' ? Number(every) : null,
-        // The one date of a yearly or every-few-months bill is both the day it comes out and the day it is due.
-        dayOfMonth: Number(outDay),
+        repeatMonth: repeat === 'monthly' || weekly ? null : Number(month),
+        repeatEvery: repeat === 'months' ? Number(every) : weekly ? Number(weeks) : null,
+        // A bill by weeks is kept by its start day; the one date of a yearly or every-few-months bill is both the day
+        // it comes out and the day it is due.
+        ...(weekly ? { startsOn } : {}),
+        dayOfMonth: weekly ? Number(startsOn.slice(8, 10)) : Number(outDay),
         payByDay: repeat !== 'monthly' || payBy === '' ? null : Number(payBy),
         fund: saving
           ? {
@@ -266,18 +285,27 @@ export function BillFormPage({ billId }: { billId?: string }) {
           </InsetGroup>
 
           {/* Yearly or every few months (always 2 or more): Cashflow leaves its payments out of a month (`not-monthly.ts`). */}
-          <InsetGroup footer={isNotMonthlyRepeat(repeat, repeat === 'months' ? Number(every) : null) ? <span data-testid="not-monthly-bill-note">{NOT_MONTHLY_BILL_NOTE}</span> : undefined}>
+          <InsetGroup
+            footer={
+              repeat === 'weeks' ? (
+                <span data-testid="weekly-bill-note">{WEEKLY_BILL_NOTE}</span>
+              ) : isNotMonthlyRepeat(repeat, repeat === 'months' ? Number(every) : null) ? (
+                <span data-testid="not-monthly-bill-note">{NOT_MONTHLY_BILL_NOTE}</span>
+              ) : undefined
+            }
+          >
             <SelectRow
               label="Repeats"
               value={repeat}
               onChange={(e) => {
-                const next = e.target.value === 'yearly' ? 'yearly' : e.target.value === 'months' ? 'months' : 'monthly';
+                const next = e.target.value === 'yearly' ? 'yearly' : e.target.value === 'months' ? 'months' : e.target.value === 'weeks' ? 'weeks' : 'monthly';
                 setRepeat(next);
                 // Every few months starts from this month unless another is chosen.
                 if (next === 'months' && month === '') setMonth(String(Number(isoDate().slice(5, 7))));
               }}
             >
               <option value="monthly">Every month</option>
+              <option value="weeks">Every few weeks</option>
               <option value="months">Every few months</option>
               <option value="yearly">Every year</option>
             </SelectRow>
@@ -290,7 +318,19 @@ export function BillFormPage({ billId }: { billId?: string }) {
                 ))}
               </SelectRow>
             )}
-            {repeat !== 'monthly' && (
+            {repeat === 'weeks' && (
+              <>
+                <SelectRow label="Every" id="bill-weeks" value={weeks} onChange={(e) => setWeeks(e.target.value)}>
+                  {WEEKS.map((n) => (
+                    <option key={n} value={n}>
+                      {n === 1 ? '1 week' : `${n} weeks`}
+                    </option>
+                  ))}
+                </SelectRow>
+                <TextRow label="Starts on" id="bill-starts-on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+              </>
+            )}
+            {(repeat === 'yearly' || repeat === 'months') && (
               <SelectRow label={repeat === 'yearly' ? 'Month' : 'Starting'} value={month} onChange={(e) => setMonth(e.target.value)}>
                 <option value="">Choose a month</option>
                 {MONTHS.map((m) => (
@@ -300,7 +340,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
                 ))}
               </SelectRow>
             )}
-            {repeat === 'monthly' ? (
+            {repeat === 'weeks' ? null : repeat === 'monthly' ? (
               <>
                 <SelectRow label="Bill date" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
                   <option value="">Choose a day</option>
@@ -331,7 +371,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
             )}
           </InsetGroup>
 
-          {repeat !== 'monthly' && (
+          {(repeat === 'yearly' || repeat === 'months') && (
             <InsetGroup header="Sinking fund">
               <SwitchRow label="Save up for it" checked={fundOn} onChange={setFundOn} />
               {fundOn && (

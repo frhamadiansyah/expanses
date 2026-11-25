@@ -198,7 +198,8 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   if (tx.originalCurrency && tx.originalAmountMinor !== null && tx.originalAmountMinor !== undefined) {
     lines.push({ label: 'Original amount', value: formatMinor(Math.abs(tx.originalAmountMinor), tx.originalCurrency) });
   }
-  if (tx.billMonth) lines.push({ label: 'Bill month', value: `${monthName(tx.billMonth, 'long')} ${tx.billMonth.slice(0, 4)}` });
+  // A bill by weeks keys its payment by the day it was made (2026-11-25): its date is the receipt's own, no month to name.
+  if (tx.billMonth && tx.billMonth.length === 7) lines.push({ label: 'Bill month', value: `${monthName(tx.billMonth, 'long')} ${tx.billMonth.slice(0, 4)}` });
   return lines;
 }
 

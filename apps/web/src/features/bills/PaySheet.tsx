@@ -58,6 +58,8 @@ export function PaySheet({
   const currency = bill.currency ?? payerCurrency;
   const foreign = currency !== payerCurrency;
   const months = bill.payableMonths.length > 0 ? bill.payableMonths : [bill.billMonth];
+  // A bill by weeks is paid for the day it is paid: no month to choose, none to skip.
+  const weekly = bill.repeat === 'weeks';
   /** The one reading of the typed figure: Save throws what it says, the question reads 0 until it parses. */
   const readAmount = () => (amount.trim() ? parseGroupedMajor(amount.trim(), currency) : 0);
   const typedMinor = (() => {
@@ -116,7 +118,8 @@ export function PaySheet({
         payments: [{ templateId: bill.id, billMonth: month, amountMinor, chargedMinor: chargedAmount, moneyAccountId: payer, setAside: setAside.choice, payCardFromFund: payFromFund }],
       });
       await invalidate();
-      onPaid(ids, amountMinor, paidOn, month);
+      // A payment of a bill by weeks is kept under its own day.
+      onPaid(ids, amountMinor, paidOn, weekly ? paidOn : month);
     } catch (e) {
       setError(e);
     } finally {
@@ -167,14 +170,16 @@ export function PaySheet({
               ) : undefined
             }
           />
-          <SelectRow label="For" id="pay-for" value={month} onChange={(e) => setMonth(e.target.value)}>
-            {months.map((m) => (
-              <option key={m} value={m}>
-                {monthName(m, 'long')}
-                {bill.repeat !== 'monthly' && ` ${m.slice(0, 4)}`} bill
-              </option>
-            ))}
-          </SelectRow>
+          {!weekly && (
+            <SelectRow label="For" id="pay-for" value={month} onChange={(e) => setMonth(e.target.value)}>
+              {months.map((m) => (
+                <option key={m} value={m}>
+                  {monthName(m, 'long')}
+                  {bill.repeat !== 'monthly' && ` ${m.slice(0, 4)}`} bill
+                </option>
+              ))}
+            </SelectRow>
+          )}
           <SelectRow label="Payment method" id="pay-with" value={payer} onChange={(e) => setPayer(e.target.value)}>
             {wallets.map((account) => (
               <option key={account.id} value={account.id}>
@@ -217,13 +222,13 @@ export function PaySheet({
 
         <InsetGroup>
           <InsetRow action title="Record payment" disabled={busy || !setAside.ready} onClick={submit} />
-          <InsetRow action title="Skip this month" disabled={busy} onClick={() => void skip()} className={grey} />
+          {!weekly && <InsetRow action title="Skip this month" disabled={busy} onClick={() => void skip()} className={grey} />}
           {onSeeBill && <InsetRow action title="See bill" onClick={onSeeBill} className={grey} />}
         </InsetGroup>
 
         {onLink && (
           <InsetGroup>
-            <InsetRow title="Already recorded? Link a purchase" plain onClick={() => onLink(month)} testId="link-purchase" />
+            <InsetRow title="Already recorded? Link a purchase" plain onClick={() => onLink(weekly ? paidOn.slice(0, 7) : month)} testId="link-purchase" />
           </InsetGroup>
         )}
       </form>
