@@ -170,6 +170,8 @@ export function StatementPanel({
   const assignable = (line: StatementLine) => line.spending && !line.instalment?.noPurchase && plastic.length > 1 && !plastic.some((piece) => piece.id === line.cardId);
   const lines = statement.data?.lines ?? [];
   const chosen = lines.filter((line) => selected.has(line.transactionId) && payable(line));
+  // What is left to pay of each, as Pay counts it: a purchase a payment covered in part owes only the rest.
+  const chosenTotal = chosen.reduce((total, line) => total + (cover.get(line.key)?.leftMinor ?? line.owedMinor), 0);
   // Payments are kept off the list (owner, 21 Nov 2026): it holds what was charged and money back. Paid opens them.
   const shown = lines.filter((line) => !isPaymentLine(line));
   // One statement, split by card when the account carries more than one, the way the bank prints it.
@@ -913,8 +915,9 @@ export function StatementPanel({
           <button type="button" aria-label="Clear" disabled={busy} onClick={() => setSelected(new Set())} className={`${SELECT_CIRCLE} text-[var(--ph-ink-2)]`}>
             <X size={19} aria-hidden />
           </button>
-          <span aria-live="polite" className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
-            {chosen.length} selected
+          {/* The ticked purchases' total, what Pay would pay, rather than how many (owner, 25 Nov 2026); the count stays for a reader. */}
+          <span aria-live="polite" aria-label={`${money(chosenTotal)}, ${chosen.length} selected`} className="tabular min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-[var(--ph-ink)]">
+            {money(chosenTotal)}
           </span>
           {/*
             Pay as the card's own Pay glyph, a circle matching Clear: the name stays for screen readers. It opens the

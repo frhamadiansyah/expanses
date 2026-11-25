@@ -77,13 +77,14 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   await page.getByLabel('Pay Ranch Market').check();
   // The select bar on top counts them; ✕ clears every tick and the bar goes.
   const bar = page.getByTestId('statement-select-bar');
-  await expect(bar).toContainText('2 selected');
+  // It shows what the ticked purchases come to, not how many.
+  await expect(bar).toContainText('530.000');
   await bar.getByRole('button', { name: 'Clear' }).click();
   await expect(bar).toHaveCount(0);
   await expect(page.getByLabel('Pay Superindo')).not.toBeChecked();
   await page.getByLabel('Pay Superindo').check();
   await page.getByLabel('Pay Ranch Market').check();
-  await expect(bar).toContainText('2 selected');
+  await expect(bar).toContainText('530.000');
   // Pay opens the card's own "Pay credit card" screen, the two purchases listed under it and the amount their total.
   const form = await openStatementPay(page);
   await expect(page.getByText('Paying 2 purchases', { exact: true })).toBeVisible();
